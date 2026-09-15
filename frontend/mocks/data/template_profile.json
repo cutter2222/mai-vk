@@ -1,0 +1,1226 @@
+{
+  "schema_version": "1.1",
+  "template_id": "tpl_vk_education",
+  "template_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "source_file": {
+    "name": "Шаблон презентации VK Education.pptx",
+    "size_bytes": 23500000,
+    "format": "pptx"
+  },
+  "analyzer": {
+    "name": "template-analyzer",
+    "version": "0.1.0"
+  },
+  "created_at": "2026-09-15T12:00:00Z",
+  "slide_size": {
+    "width_emu": 12192000,
+    "height_emu": 6858000,
+    "aspect_ratio": 1.7778
+  },
+  "masters": [
+    {
+      "master_id": "master1",
+      "name": "VK Education",
+      "theme_name": "VK"
+    }
+  ],
+  "layouts": [
+    {
+      "layout_id": "slideLayout6",
+      "name": "Заголовок",
+      "master_id": "master1",
+      "placeholders": [
+        {
+          "idx": 0,
+          "type": "title",
+          "bbox": {
+            "x": 0.05,
+            "y": 0.06,
+            "width": 0.9,
+            "height": 0.12
+          }
+        }
+      ],
+      "sample_slide_count": 27
+    },
+    {
+      "layout_id": "slideLayout10",
+      "name": "2 фактоида + текст",
+      "master_id": "master1",
+      "placeholders": [
+        {
+          "idx": 0,
+          "type": "title"
+        },
+        {
+          "idx": 13,
+          "type": "body"
+        }
+      ],
+      "sample_slide_count": 1
+    },
+    {
+      "layout_id": "slideLayout2",
+      "name": "3_Титульный слайд",
+      "master_id": "master1",
+      "placeholders": [
+        {
+          "idx": 0,
+          "type": "title"
+        }
+      ],
+      "sample_slide_count": 1
+    },
+    {
+      "layout_id": "slideLayout7",
+      "name": "Титульный слайд раздела",
+      "master_id": "master1",
+      "placeholders": [
+        {
+          "idx": 0,
+          "type": "title"
+        }
+      ],
+      "sample_slide_count": 1
+    },
+    {
+      "layout_id": "slideLayout15",
+      "name": "Заголовок + текст",
+      "master_id": "master1",
+      "placeholders": [
+        {
+          "idx": 0,
+          "type": "title"
+        }
+      ],
+      "sample_slide_count": 1
+    },
+    {
+      "layout_id": "slideLayout18",
+      "name": "Финальный с QR + подпись",
+      "master_id": "master1",
+      "placeholders": [
+        {
+          "idx": 0,
+          "type": "title"
+        }
+      ],
+      "sample_slide_count": 1
+    }
+  ],
+  "design_tokens": {
+    "colors": {
+      "theme": {
+        "dk1": "#000000",
+        "lt1": "#EBF3F9",
+        "dk2": "#0077FF",
+        "lt2": "#FFFFFF",
+        "accent1": "#0077FF",
+        "accent2": "#FF3885",
+        "accent3": "#7CEDF8"
+      },
+      "palette": [
+        {
+          "hex": "#0077FF",
+          "role": "primary",
+          "usage_count": 153,
+          "source": "theme",
+          "scope": {
+            "level": "theme",
+            "applies_to_new_content": true
+          },
+          "confidence": 0.9,
+          "style_source": {
+            "level": "theme",
+            "theme_ref": "accent1"
+          }
+        },
+        {
+          "hex": "#000000",
+          "role": "text",
+          "usage_count": 450,
+          "source": "slides",
+          "scope": {
+            "level": "pattern",
+            "applies_to_new_content": true
+          },
+          "confidence": 0.9
+        },
+        {
+          "hex": "#BFBFBF",
+          "role": "muted",
+          "usage_count": 120,
+          "source": "slides",
+          "scope": {
+            "level": "pattern",
+            "applies_to_new_content": true
+          },
+          "confidence": 0.9
+        },
+        {
+          "hex": "#FF3885",
+          "role": "accent",
+          "usage_count": 12,
+          "source": "theme",
+          "scope": {
+            "level": "theme",
+            "applies_to_new_content": true
+          },
+          "confidence": 0.9
+        }
+      ]
+    },
+    "typography": {
+      "theme_fonts": {
+        "major": "Arial",
+        "minor": "Arial"
+      },
+      "fonts": [
+        {
+          "family": "Play",
+          "usage_count": 1581,
+          "embedded": true,
+          "available_in_renderer": true,
+          "roles": [
+            "title"
+          ],
+          "scope": {
+            "level": "text_role",
+            "text_roles": [
+              "title"
+            ],
+            "applies_to_new_content": true
+          },
+          "file": "fonts/Play-Regular.ttf"
+        },
+        {
+          "family": "Arial",
+          "usage_count": 1861,
+          "embedded": false,
+          "available_in_renderer": true,
+          "fallback": "Liberation Sans",
+          "roles": [
+            "body"
+          ],
+          "scope": {
+            "level": "text_role",
+            "text_roles": [
+              "body"
+            ],
+            "applies_to_new_content": true
+          },
+          "file": "fonts/LiberationSans-Regular.ttf"
+        },
+        {
+          "family": "Consolas",
+          "usage_count": 176,
+          "embedded": false,
+          "available_in_renderer": false,
+          "fallback": "Liberation Mono",
+          "roles": [
+            "code"
+          ],
+          "scope": {
+            "level": "text_role",
+            "text_roles": [
+              "code"
+            ],
+            "applies_to_new_content": true
+          },
+          "file": "fonts/LiberationMono-Regular.ttf"
+        }
+      ],
+      "scale": [
+        {
+          "size_pt": 32,
+          "role": "title",
+          "usage_count": 24,
+          "scope": {
+            "level": "text_role",
+            "text_roles": [
+              "title"
+            ],
+            "applies_to_new_content": true
+          },
+          "confidence": 0.85
+        },
+        {
+          "size_pt": 16,
+          "role": "body",
+          "usage_count": 228,
+          "scope": {
+            "level": "text_role",
+            "text_roles": [
+              "body"
+            ],
+            "applies_to_new_content": true
+          },
+          "confidence": 0.85
+        },
+        {
+          "size_pt": 14,
+          "role": "body",
+          "usage_count": 133,
+          "scope": {
+            "level": "text_role",
+            "text_roles": [
+              "body"
+            ],
+            "applies_to_new_content": true
+          },
+          "confidence": 0.85
+        },
+        {
+          "size_pt": 12,
+          "role": "caption",
+          "usage_count": 63,
+          "scope": {
+            "level": "text_role",
+            "text_roles": [
+              "caption"
+            ],
+            "applies_to_new_content": true
+          },
+          "confidence": 0.85
+        },
+        {
+          "size_pt": 48,
+          "role": "kpi",
+          "usage_count": 9,
+          "scope": {
+            "level": "text_role",
+            "text_roles": [
+              "kpi"
+            ],
+            "applies_to_new_content": true
+          },
+          "confidence": 0.85
+        }
+      ],
+      "max_font_families": 2
+    },
+    "spacing": {
+      "margins": {
+        "top": 0.06,
+        "right": 0.05,
+        "bottom": 0.07,
+        "left": 0.05
+      },
+      "column_grid": {
+        "columns": 12,
+        "gutter": 0.012
+      }
+    }
+  },
+  "guides": [
+    {
+      "orientation": "vertical",
+      "pos": 0.5,
+      "source": "inferred"
+    }
+  ],
+  "fixed_elements": [
+    {
+      "element_id": "logo_footer",
+      "kind": "logo",
+      "bbox": {
+        "x": 0.05,
+        "y": 0.92,
+        "width": 0.08,
+        "height": 0.04
+      },
+      "appears_on": "all",
+      "asset_id": "asset_logo",
+      "must_not_move": true,
+      "element_ref": "5",
+      "source_part": "ppt/slideMasters/slideMaster1.xml"
+    }
+  ],
+  "assets": [
+    {
+      "asset_id": "asset_logo",
+      "kind": "logo",
+      "media_path": "ppt/media/image1.png",
+      "sha256": "…",
+      "width_px": 400,
+      "height_px": 120,
+      "reusable": false
+    },
+    {
+      "asset_id": "icon_rocket",
+      "kind": "icon",
+      "media_path": "ppt/media/image57.png",
+      "sha256": "…",
+      "width_px": 96,
+      "height_px": 96,
+      "source_slide_index": 24,
+      "tags": [
+        "rocket",
+        "launch"
+      ],
+      "reusable": true
+    }
+  ],
+  "patterns": [
+    {
+      "pattern_id": "pat_kpi_2",
+      "name": "2 фактоида + текст",
+      "role": "kpi",
+      "source": {
+        "kind": "sample_slide",
+        "slide_index": 17,
+        "layout_id": "slideLayout10",
+        "pptx_slide_part": "ppt/slides/slide18.xml"
+      },
+      "slots": [
+        {
+          "slot_id": "title",
+          "kind": "title",
+          "bbox": {
+            "x": 0.05,
+            "y": 0.06,
+            "width": 0.9,
+            "height": 0.12
+          },
+          "z_order": 1,
+          "font": {
+            "family": "Play",
+            "size_pt": 32,
+            "color": "#000000"
+          },
+          "capacity": {
+            "max_chars": 70,
+            "max_lines": 2,
+            "measured_with": {
+              "font_file": "fonts/Play-Regular.ttf",
+              "method": "font_metrics",
+              "margin_ratio": 0.1
+            },
+            "confidence": 0.8
+          },
+          "required": true,
+          "sample_text": "Заголовок — ключевая мысль слайда",
+          "element_ref": "10",
+          "computed_style": {
+            "font": {
+              "family": "Play",
+              "size_pt": 32,
+              "color": "#000000"
+            },
+            "font_source": {
+              "level": "run"
+            },
+            "size_source": {
+              "level": "run"
+            }
+          },
+          "paragraph_params": {
+            "line_spacing": 1.0,
+            "insets": {
+              "left": 0.006,
+              "top": 0.004,
+              "right": 0.006,
+              "bottom": 0.004
+            },
+            "autofit": "none",
+            "word_wrap": true
+          }
+        },
+        {
+          "slot_id": "kpi_1_value",
+          "kind": "number",
+          "bbox": {
+            "x": 0.05,
+            "y": 0.3,
+            "width": 0.25,
+            "height": 0.15
+          },
+          "z_order": 2,
+          "font": {
+            "family": "Play",
+            "size_pt": 48,
+            "color": "#0077FF"
+          },
+          "capacity": {
+            "max_chars": 8,
+            "max_lines": 1,
+            "measured_with": {
+              "font_file": "fonts/Play-Regular.ttf",
+              "method": "font_metrics",
+              "margin_ratio": 0.1
+            },
+            "confidence": 0.8
+          },
+          "repeat_group": "kpi",
+          "sample_text": "23 %",
+          "element_ref": "11",
+          "computed_style": {
+            "font": {
+              "family": "Play",
+              "size_pt": 48,
+              "color": "#0077FF"
+            },
+            "font_source": {
+              "level": "run"
+            },
+            "size_source": {
+              "level": "run"
+            }
+          },
+          "paragraph_params": {
+            "line_spacing": 1.0,
+            "insets": {
+              "left": 0.006,
+              "top": 0.004,
+              "right": 0.006,
+              "bottom": 0.004
+            },
+            "autofit": "none",
+            "word_wrap": true
+          }
+        },
+        {
+          "slot_id": "kpi_1_label",
+          "kind": "label",
+          "bbox": {
+            "x": 0.05,
+            "y": 0.46,
+            "width": 0.25,
+            "height": 0.1
+          },
+          "z_order": 2,
+          "font": {
+            "family": "Arial",
+            "size_pt": 14
+          },
+          "capacity": {
+            "max_chars": 60,
+            "max_lines": 3,
+            "measured_with": {
+              "font_file": "fonts/Play-Regular.ttf",
+              "method": "font_metrics",
+              "margin_ratio": 0.1
+            },
+            "confidence": 0.8
+          },
+          "repeat_group": "kpi",
+          "sample_text": "Объяснение этого показателя",
+          "element_ref": "12",
+          "computed_style": {
+            "font": {
+              "family": "Arial",
+              "size_pt": 14
+            },
+            "font_source": {
+              "level": "run"
+            },
+            "size_source": {
+              "level": "run"
+            }
+          },
+          "paragraph_params": {
+            "line_spacing": 1.0,
+            "insets": {
+              "left": 0.006,
+              "top": 0.004,
+              "right": 0.006,
+              "bottom": 0.004
+            },
+            "autofit": "none",
+            "word_wrap": true
+          }
+        },
+        {
+          "slot_id": "body",
+          "kind": "body",
+          "bbox": {
+            "x": 0.55,
+            "y": 0.3,
+            "width": 0.4,
+            "height": 0.4
+          },
+          "z_order": 2,
+          "font": {
+            "family": "Arial",
+            "size_pt": 16
+          },
+          "capacity": {
+            "max_chars": 420,
+            "max_lines": 9,
+            "measured_with": {
+              "font_file": "fonts/Play-Regular.ttf",
+              "method": "font_metrics",
+              "margin_ratio": 0.1
+            },
+            "confidence": 0.8
+          },
+          "element_ref": "13",
+          "computed_style": {
+            "font": {
+              "family": "Arial",
+              "size_pt": 16
+            },
+            "font_source": {
+              "level": "run"
+            },
+            "size_source": {
+              "level": "run"
+            }
+          },
+          "paragraph_params": {
+            "line_spacing": 1.0,
+            "insets": {
+              "left": 0.006,
+              "top": 0.004,
+              "right": 0.006,
+              "bottom": 0.004
+            },
+            "autofit": "none",
+            "word_wrap": true
+          }
+        }
+      ],
+      "constraints": {
+        "min_items": 2,
+        "max_items": 3,
+        "supports": [
+          "number"
+        ]
+      },
+      "tags": [
+        "kpi",
+        "numbers"
+      ],
+      "preview_path": "previews/slide18.png",
+      "confidence": 0.9,
+      "role_source": "layout_name",
+      "static_object_ids": [
+        "2",
+        "3"
+      ],
+      "removable_object_ids": [
+        "14"
+      ],
+      "sequence_hints": {
+        "typical_position": "middle",
+        "max_consecutive": 2
+      }
+    },
+    {
+      "pattern_id": "pat_title",
+      "name": "Титульный слайд",
+      "role": "title",
+      "source": {
+        "kind": "sample_slide",
+        "slide_index": 2,
+        "layout_id": "slideLayout2",
+        "pptx_slide_part": "ppt/slides/slide3.xml"
+      },
+      "slots": [
+        {
+          "slot_id": "title",
+          "kind": "title",
+          "bbox": {
+            "x": 0.06,
+            "y": 0.35,
+            "width": 0.7,
+            "height": 0.2
+          },
+          "z_order": 2,
+          "font": {
+            "family": "Play",
+            "size_pt": 44
+          },
+          "required": true,
+          "capacity": {
+            "max_chars": 90,
+            "max_lines": 3
+          }
+        },
+        {
+          "slot_id": "subtitle",
+          "kind": "subtitle",
+          "bbox": {
+            "x": 0.06,
+            "y": 0.58,
+            "width": 0.6,
+            "height": 0.1
+          },
+          "z_order": 2,
+          "font": {
+            "family": "Play",
+            "size_pt": 20
+          },
+          "required": false,
+          "capacity": {
+            "max_chars": 120,
+            "max_lines": 2
+          }
+        }
+      ],
+      "constraints": {
+        "supports": []
+      },
+      "tags": [
+        "title"
+      ],
+      "preview_path": "previews/slide03.png",
+      "confidence": 0.95,
+      "role_source": "layout_name",
+      "sequence_hints": {
+        "typical_position": "first",
+        "max_consecutive": 1
+      }
+    },
+    {
+      "pattern_id": "pat_section",
+      "name": "Разделитель",
+      "role": "section_divider",
+      "source": {
+        "kind": "sample_slide",
+        "slide_index": 8,
+        "layout_id": "slideLayout7",
+        "pptx_slide_part": "ppt/slides/slide9.xml"
+      },
+      "slots": [
+        {
+          "slot_id": "title",
+          "kind": "title",
+          "bbox": {
+            "x": 0.06,
+            "y": 0.4,
+            "width": 0.8,
+            "height": 0.2
+          },
+          "z_order": 2,
+          "font": {
+            "family": "Play",
+            "size_pt": 40
+          },
+          "required": true,
+          "capacity": {
+            "max_chars": 60,
+            "max_lines": 2
+          }
+        }
+      ],
+      "tags": [
+        "section"
+      ],
+      "preview_path": "previews/slide09.png",
+      "confidence": 0.9,
+      "role_source": "layout_name",
+      "sequence_hints": {
+        "typical_position": "any",
+        "max_consecutive": 1
+      }
+    },
+    {
+      "pattern_id": "pat_bullets_4",
+      "name": "Заголовок + четыре преимущества",
+      "role": "bullets",
+      "source": {
+        "kind": "sample_slide",
+        "slide_index": 16,
+        "layout_id": "slideLayout6",
+        "pptx_slide_part": "ppt/slides/slide17.xml"
+      },
+      "slots": [
+        {
+          "slot_id": "title",
+          "kind": "title",
+          "bbox": {
+            "x": 0.05,
+            "y": 0.06,
+            "width": 0.9,
+            "height": 0.12
+          },
+          "z_order": 2,
+          "font": {
+            "family": "Play",
+            "size_pt": 32
+          },
+          "required": true,
+          "capacity": {
+            "max_chars": 70,
+            "max_lines": 2
+          }
+        },
+        {
+          "slot_id": "bullets",
+          "kind": "bullets",
+          "bbox": {
+            "x": 0.05,
+            "y": 0.25,
+            "width": 0.9,
+            "height": 0.6
+          },
+          "z_order": 2,
+          "font": {
+            "family": "Arial",
+            "size_pt": 16
+          },
+          "required": true,
+          "capacity": {
+            "max_items": 4,
+            "max_words_per_item": 15,
+            "max_lines": 12
+          }
+        }
+      ],
+      "constraints": {
+        "min_items": 2,
+        "max_items": 4,
+        "supports": [
+          "icon"
+        ]
+      },
+      "tags": [
+        "bullets"
+      ],
+      "preview_path": "previews/slide17.png",
+      "confidence": 0.9,
+      "role_source": "heuristic",
+      "sequence_hints": {
+        "typical_position": "middle",
+        "max_consecutive": 2
+      }
+    },
+    {
+      "pattern_id": "pat_text",
+      "name": "Заголовок + текст",
+      "role": "text",
+      "source": {
+        "kind": "sample_slide",
+        "slide_index": 33,
+        "layout_id": "slideLayout15",
+        "pptx_slide_part": "ppt/slides/slide34.xml"
+      },
+      "slots": [
+        {
+          "slot_id": "title",
+          "kind": "title",
+          "bbox": {
+            "x": 0.05,
+            "y": 0.06,
+            "width": 0.9,
+            "height": 0.12
+          },
+          "z_order": 2,
+          "font": {
+            "family": "Play",
+            "size_pt": 32
+          },
+          "required": true,
+          "capacity": {
+            "max_chars": 70,
+            "max_lines": 2
+          }
+        },
+        {
+          "slot_id": "body",
+          "kind": "body",
+          "bbox": {
+            "x": 0.05,
+            "y": 0.25,
+            "width": 0.9,
+            "height": 0.6
+          },
+          "z_order": 2,
+          "font": {
+            "family": "Arial",
+            "size_pt": 16
+          },
+          "required": true,
+          "capacity": {
+            "max_chars": 700,
+            "max_lines": 14
+          }
+        }
+      ],
+      "tags": [
+        "text"
+      ],
+      "preview_path": "previews/slide34.png",
+      "confidence": 0.85,
+      "role_source": "layout_name",
+      "sequence_hints": {
+        "typical_position": "middle",
+        "max_consecutive": 2
+      }
+    },
+    {
+      "pattern_id": "pat_chart",
+      "name": "График",
+      "role": "chart",
+      "source": {
+        "kind": "sample_slide",
+        "slide_index": 47,
+        "layout_id": "slideLayout6",
+        "pptx_slide_part": "ppt/slides/slide48.xml"
+      },
+      "slots": [
+        {
+          "slot_id": "title",
+          "kind": "title",
+          "bbox": {
+            "x": 0.05,
+            "y": 0.06,
+            "width": 0.9,
+            "height": 0.12
+          },
+          "z_order": 2,
+          "font": {
+            "family": "Play",
+            "size_pt": 32
+          },
+          "required": true,
+          "capacity": {
+            "max_chars": 70,
+            "max_lines": 2
+          }
+        },
+        {
+          "slot_id": "chart",
+          "kind": "chart",
+          "bbox": {
+            "x": 0.08,
+            "y": 0.25,
+            "width": 0.84,
+            "height": 0.6
+          },
+          "z_order": 2,
+          "font": {
+            "family": "Play",
+            "size_pt": 16
+          },
+          "required": true
+        },
+        {
+          "slot_id": "caption",
+          "kind": "caption",
+          "bbox": {
+            "x": 0.08,
+            "y": 0.87,
+            "width": 0.84,
+            "height": 0.05
+          },
+          "z_order": 2,
+          "font": {
+            "family": "Arial",
+            "size_pt": 12
+          },
+          "required": false,
+          "capacity": {
+            "max_chars": 120,
+            "max_lines": 1
+          }
+        }
+      ],
+      "constraints": {
+        "supports": [
+          "chart"
+        ]
+      },
+      "tags": [
+        "chart",
+        "data"
+      ],
+      "preview_path": "previews/slide48.png",
+      "confidence": 0.85,
+      "role_source": "vlm",
+      "sequence_hints": {
+        "typical_position": "middle",
+        "max_consecutive": 2
+      }
+    },
+    {
+      "pattern_id": "pat_table",
+      "name": "Таблица",
+      "role": "table",
+      "source": {
+        "kind": "sample_slide",
+        "slide_index": 37,
+        "layout_id": "slideLayout6",
+        "pptx_slide_part": "ppt/slides/slide38.xml"
+      },
+      "slots": [
+        {
+          "slot_id": "title",
+          "kind": "title",
+          "bbox": {
+            "x": 0.05,
+            "y": 0.06,
+            "width": 0.9,
+            "height": 0.12
+          },
+          "z_order": 2,
+          "font": {
+            "family": "Play",
+            "size_pt": 32
+          },
+          "required": true,
+          "capacity": {
+            "max_chars": 70,
+            "max_lines": 2
+          }
+        },
+        {
+          "slot_id": "table",
+          "kind": "table",
+          "bbox": {
+            "x": 0.05,
+            "y": 0.25,
+            "width": 0.9,
+            "height": 0.62
+          },
+          "z_order": 2,
+          "font": {
+            "family": "Play",
+            "size_pt": 16
+          },
+          "required": true
+        }
+      ],
+      "constraints": {
+        "supports": [
+          "table"
+        ]
+      },
+      "tags": [
+        "table"
+      ],
+      "preview_path": "previews/slide38.png",
+      "confidence": 0.9,
+      "role_source": "heuristic"
+    },
+    {
+      "pattern_id": "pat_timeline_4",
+      "name": "Нумерация этапов",
+      "role": "process",
+      "source": {
+        "kind": "sample_slide",
+        "slide_index": 43,
+        "layout_id": "slideLayout6",
+        "pptx_slide_part": "ppt/slides/slide44.xml"
+      },
+      "slots": [
+        {
+          "slot_id": "title",
+          "kind": "title",
+          "bbox": {
+            "x": 0.05,
+            "y": 0.06,
+            "width": 0.9,
+            "height": 0.12
+          },
+          "z_order": 2,
+          "font": {
+            "family": "Play",
+            "size_pt": 32
+          },
+          "required": true,
+          "capacity": {
+            "max_chars": 70,
+            "max_lines": 2
+          }
+        },
+        {
+          "slot_id": "diagram",
+          "kind": "diagram",
+          "bbox": {
+            "x": 0.05,
+            "y": 0.28,
+            "width": 0.9,
+            "height": 0.55
+          },
+          "z_order": 2,
+          "font": {
+            "family": "Play",
+            "size_pt": 16
+          },
+          "required": true
+        }
+      ],
+      "constraints": {
+        "min_items": 2,
+        "max_items": 4,
+        "supports": [
+          "diagram"
+        ]
+      },
+      "tags": [
+        "process",
+        "timeline"
+      ],
+      "preview_path": "previews/slide44.png",
+      "confidence": 0.8,
+      "role_source": "vlm"
+    },
+    {
+      "pattern_id": "pat_thanks_qr",
+      "name": "Финальный с QR",
+      "role": "thanks",
+      "source": {
+        "kind": "sample_slide",
+        "slide_index": 51,
+        "layout_id": "slideLayout18",
+        "pptx_slide_part": "ppt/slides/slide52.xml"
+      },
+      "slots": [
+        {
+          "slot_id": "title",
+          "kind": "title",
+          "bbox": {
+            "x": 0.06,
+            "y": 0.3,
+            "width": 0.7,
+            "height": 0.2
+          },
+          "z_order": 2,
+          "font": {
+            "family": "Play",
+            "size_pt": 40
+          },
+          "required": true,
+          "capacity": {
+            "max_chars": 80,
+            "max_lines": 2
+          }
+        },
+        {
+          "slot_id": "name",
+          "kind": "name",
+          "bbox": {
+            "x": 0.06,
+            "y": 0.55,
+            "width": 0.5,
+            "height": 0.06
+          },
+          "z_order": 2,
+          "font": {
+            "family": "Arial",
+            "size_pt": 18
+          },
+          "required": false,
+          "capacity": {
+            "max_chars": 60,
+            "max_lines": 1
+          }
+        },
+        {
+          "slot_id": "qr",
+          "kind": "qr",
+          "bbox": {
+            "x": 0.8,
+            "y": 0.7,
+            "width": 0.15,
+            "height": 0.25
+          },
+          "z_order": 2,
+          "font": {
+            "family": "Play",
+            "size_pt": 16
+          },
+          "required": false
+        }
+      ],
+      "constraints": {
+        "supports": [
+          "qr"
+        ]
+      },
+      "tags": [
+        "thanks"
+      ],
+      "preview_path": "previews/slide52.png",
+      "confidence": 0.95,
+      "role_source": "layout_name",
+      "sequence_hints": {
+        "typical_position": "last",
+        "max_consecutive": 1
+      }
+    }
+  ],
+  "guidelines": [
+    {
+      "text": "Шрифт для заголовков — VK Sans Display Medium. Основной цвет — синий.",
+      "source_slide_index": 6,
+      "kind": "typography"
+    },
+    {
+      "text": "Перекрытие рядов = ±50%. Боковой зазор = 0%. Избавляемся от линий сетки, засечек.",
+      "source_slide_index": 50,
+      "kind": "chart"
+    }
+  ],
+  "placeholder_markers": [
+    "Заголовок",
+    "Текст",
+    "Описание",
+    "Имя Фамилия",
+    "Должность",
+    "Вставить фото",
+    "Lorem ipsum",
+    "ххх%"
+  ],
+  "stats": {
+    "slides": 55,
+    "layouts": 30,
+    "masters": 2,
+    "media": 257,
+    "native_charts": 0,
+    "native_tables": 3,
+    "smartart": 0,
+    "embedded_fonts": 2,
+    "notes_with_text": 0
+  },
+  "llm_digest": "Шаблон VK Education, 16:9. Палитра: синий #0077FF, чёрный текст, серый #BFBFBF, акцент #FF3885. Заголовки Play 32 pt, текст Arial 16/14 pt, подписи 12 pt, KPI 48 pt. Паттерны: pat_title, pat_section, pat_bullets_4 (до 4 пунктов по 15 слов), pat_text (700 символов), pat_kpi_2 (2–3 числа с подписями и текст 420 символов), pat_chart, pat_table (до 7×5), pat_timeline_4, pat_thanks_qr.",
+  "warnings": [
+    {
+      "code": "font_mentioned_not_used",
+      "message": "VK Sans Display упомянут в тексте шаблона, но не встроен и не используется в текстах; заголовки набраны Play"
+    },
+    {
+      "code": "font_substituted",
+      "message": "Consolas заменён на Liberation Mono при рендеринге миниатюр"
+    }
+  ],
+  "sample_slides": [
+    {
+      "slide_index": 0,
+      "layout_id": "slideLayout1",
+      "classification": "content_sample",
+      "group_id": "g_title",
+      "preview_path": "previews/slide01.png",
+      "confidence": 0.95
+    },
+    {
+      "slide_index": 6,
+      "layout_id": "slideLayout6",
+      "classification": "style_guide",
+      "confidence": 0.9
+    },
+    {
+      "slide_index": 17,
+      "layout_id": "slideLayout10",
+      "classification": "content_sample",
+      "group_id": "g_kpi",
+      "preview_path": "previews/slide18.png",
+      "confidence": 0.9
+    },
+    {
+      "slide_index": 24,
+      "layout_id": "slideLayout12",
+      "classification": "asset_catalog",
+      "confidence": 0.98
+    }
+  ],
+  "dynamic_fields": [
+    {
+      "kind": "slide_number",
+      "appears_on": "all",
+      "element_ref": "7"
+    }
+  ]
+}

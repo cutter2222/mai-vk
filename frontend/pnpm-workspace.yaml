@@ -1,3 +1,6 @@
 allowBuilds:
+  msw: true
+  '@playwright/test': true
+  playwright: true
   sharp: false
   unrs-resolver: false

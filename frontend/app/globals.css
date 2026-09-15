@@ -1,11 +1,67 @@
-:root {
-  color-scheme: light;
-}
-
 html,
 body {
   margin: 0;
   padding: 0;
-  background: #ffffff;
-  color: #1a1a1a;
+}
+
+/* Слайды и рамки аудита */
+.slide-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--mantine-color-gray-1);
+  border: 1px solid var(--mantine-color-gray-3);
+  border-radius: var(--mantine-radius-sm);
+  overflow: hidden;
+}
+
+.slide-frame img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.issue-box {
+  position: absolute;
+  border: 2px solid var(--mantine-color-red-6);
+  background: rgba(250, 82, 82, 0.08);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: box-shadow 120ms ease;
+}
+
+.issue-box[data-severity="warning"] {
+  border-color: var(--mantine-color-yellow-7);
+  background: rgba(250, 176, 5, 0.1);
+}
+
+.issue-box[data-severity="info"] {
+  border-color: var(--mantine-color-blue-6);
+  background: rgba(34, 139, 230, 0.08);
+}
+
+.issue-box[data-active="true"] {
+  box-shadow: 0 0 0 3px rgba(34, 139, 230, 0.45);
+}
+
+.thumb-strip {
+  display: flex;
+  gap: var(--mantine-spacing-xs);
+  overflow-x: auto;
+  padding-bottom: var(--mantine-spacing-xs);
+}
+
+.thumb-strip button {
+  flex: 0 0 160px;
+  border: 2px solid transparent;
+  border-radius: var(--mantine-radius-sm);
+  padding: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.thumb-strip button[data-active="true"] {
+  border-color: var(--mantine-color-blue-6);
 }

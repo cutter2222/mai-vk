@@ -1,9 +1,149 @@
 /* Сгенерировано scripts/gen-types.mjs из contracts/schemas. Не редактировать вручную. */
 
 /**
+ * Содержание одного слота. Ровно одно из полей содержания должно соответствовать kind слота.
+ */
+export type Block = {
+  [k: string]: unknown;
+} & {
+  [k: string]: unknown;
+} & {
+  [k: string]: unknown;
+} & {
+  [k: string]: unknown;
+} & {
+  [k: string]: unknown;
+} & {
+  [k: string]: unknown;
+} & {
+  [k: string]: unknown;
+} & {
+  [k: string]: unknown;
+} & {
+  /**
+   * Стабильный идентификатор. Не содержит пробелов и путей.
+   */
+  slot_id: string;
+  kind:
+    | "title"
+    | "subtitle"
+    | "body"
+    | "bullets"
+    | "number"
+    | "label"
+    | "caption"
+    | "date"
+    | "name"
+    | "position"
+    | "image"
+    | "icon"
+    | "table"
+    | "chart"
+    | "diagram"
+    | "qr"
+    | "code";
+  /**
+   * может содержать {fact:<fact_id>}; композер подставляет значение из реестра
+   */
+  text?: string;
+  items?: {
+    text: string;
+    icon?: Icon;
+    fact_refs?: string[];
+  }[];
+  number?: {
+    /**
+     * Стабильный идентификатор. Не содержит пробелов и путей.
+     */
+    fact_id: string;
+    /**
+     * например «{value} %» или «{value} млн ₽»
+     */
+    format?: string;
+  };
+  table?: {
+    /**
+     * Стабильный идентификатор. Не содержит пробелов и путей.
+     */
+    dataset_id: string;
+    columns?: string[];
+    max_rows?: number;
+    highlight_row?: number;
+  };
+  /**
+   * Нативная диаграмма PowerPoint; стиль берётся из палитры и правил шаблона
+   */
+  chart?: {
+    type: "column" | "bar" | "stacked_column" | "line" | "area" | "pie" | "doughnut" | "scatter";
+    /**
+     * Стабильный идентификатор. Не содержит пробелов и путей.
+     */
+    dataset_id: string;
+    category_column?: string;
+    /**
+     * @maxItems 5
+     */
+    series:
+      | []
+      | [string]
+      | [string, string]
+      | [string, string, string]
+      | [string, string, string, string]
+      | [string, string, string, string, string];
+    title?: string;
+    units?: string;
+    show_legend?: boolean;
+    show_axis_labels?: boolean;
+    show_data_labels?: boolean;
+  };
+  image?: {
+    /**
+     * Стабильный идентификатор. Не содержит пробелов и путей.
+     */
+    asset_id?: string;
+    /**
+     * задача со звёздочкой: генерация изображения моделью text-to-image
+     */
+    generate?: {
+      prompt: string;
+      negative_prompt?: string;
+      style?: string;
+    };
+    fit?: "cover" | "contain";
+    alt?: string;
+  };
+  icon?: Icon;
+  /**
+   * Схема из нативных фигур: замена SmartArt
+   */
+  diagram?: {
+    kind: "process" | "cycle" | "pyramid" | "hierarchy" | "matrix" | "funnel" | "timeline" | "venn";
+    items: {
+      text: string;
+      sub?: string;
+      icon?: Icon;
+    }[];
+    direction?: "horizontal" | "vertical";
+  };
+  source_refs?: string[];
+  fact_refs?: string[];
+};
+
+export interface Contracts {
+  audit_report?: AuditReport;
+  composed_deck?: ComposedDeck;
+  content_package?: ContentPackage;
+  generation_request?: GenerationRequest;
+  generation_result?: GenerationResult;
+  job_status?: JobStatus;
+  skill_manifest?: SkillManifest;
+  slide_plan?: SlidePlan;
+  story_plan?: StoryPlan;
+  template_profile?: TemplateProfile;
+}
+/**
  * Отчёт аудита одной ревизии одного варианта. Реестр проверок повторяет Приложение 1 ТЗ и расширяется своими проверками. Версия 1.1: результат каждой проверки по области passed/failed/not_applicable/not_checked с причиной; серьёзность отдельно от способа; ревизия; входы контекстных проверок; покрытие и зависимые повторные проверки.
  */
-
 export interface AuditReport {
   schema_version: "1.1";
   /**
@@ -161,12 +301,10 @@ export interface AuditReport {
 /**
  * Ссылка на версионируемый компонент: скилл, промпт, анализатор, рендерер
  */
-
 export interface VersionRef {
   name: string;
   version: string;
 }
-
 export interface Issue {
   /**
    * Стабильный идентификатор. Не содержит пробелов и путей.
@@ -234,7 +372,6 @@ export interface Issue {
 /**
  * область для подсветки на миниатюре
  */
-
 export interface Bbox {
   x: number;
   y: number;
@@ -244,7 +381,6 @@ export interface Bbox {
 /**
  * Модель, использованная на этапе. Заполняется из конфигурации моделей; hf_url обязателен для MODELS.md.
  */
-
 export interface ModelRef {
   role: "llm" | "vlm" | "text_to_image" | "embedding";
   name: string;
@@ -258,14 +394,9 @@ export interface ModelRef {
   license?: string;
   reasoning_mode?: string;
 }
-
-export type ObjectKind =
-  "text" | "picture" | "table" | "chart" | "shape" | "connector" | "group" | "placeholder_empty" | "other";
-
 /**
  * Описание фактически собранного PPTX одного варианта: объекты, вычисленные стили, геометрия, порядок слоёв, ресурсы, связи со слотами плана и исходными слайдами шаблона. Строится слоем вёрстки по сохранённому файлу и используется аудитом, подсветкой и HTML-экспортом. Поля ограничены разделом 16 FRAMEWORKS.md; детали добавляются версией 1.2 на этапе 8.
  */
-
 export interface ComposedDeck {
   schema_version: "1.1";
   /**
@@ -324,7 +455,9 @@ export interface ComposedDeck {
    */
   html_support: {
     full_native: boolean;
-    supported_kinds?: ObjectKind[];
+    supported_kinds?: (
+      "text" | "picture" | "table" | "chart" | "shape" | "connector" | "group" | "placeholder_empty" | "other"
+    )[];
     fallback_elements: {
       /**
        * Стабильный идентификатор. Не содержит пробелов и путей.
@@ -340,13 +473,11 @@ export interface ComposedDeck {
 /**
  * Размер слайда в EMU. В датасете встречаются 12192000×6858000 и 9144000×5143500, поэтому кегли сравниваются только внутри одного шаблона.
  */
-
 export interface SlideSize {
   width_emu: number;
   height_emu: number;
   aspect_ratio: number;
 }
-
 export interface Slide {
   /**
    * Стабильный идентификатор. Не содержит пробелов и путей.
@@ -385,15 +516,14 @@ export interface Slide {
   };
   objects: Object[];
 }
-
 export interface Object {
   /**
    * p:cNvPr@id внутри слайда
    */
   object_id: string;
   name?: string;
-  kind: ObjectKind;
-  bbox: Bbox;
+  kind: "text" | "picture" | "table" | "chart" | "shape" | "connector" | "group" | "placeholder_empty" | "other";
+  bbox: Bbox1;
   rotation_deg?: number;
   z_order: number;
   /**
@@ -483,7 +613,15 @@ export interface Object {
 /**
  * Прямоугольник в долях ширины и высоты слайда; начало координат в левом верхнем углу. Значения вне 0..1 допустимы: так описываются элементы, вышедшие за слайд.
  */
-
+export interface Bbox1 {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+/**
+ * Вычисленный стиль текста после разрешения наследования, с источником каждого свойства
+ */
 export interface ComputedTextStyle {
   font?: FontSpec;
   font_source?: StyleSource;
@@ -500,7 +638,6 @@ export interface ComputedTextStyle {
 /**
  * Шрифт текстовой области. size_pt всегда в пунктах и всегда вместе с размером слайда в профиле.
  */
-
 export interface FontSpec {
   family?: string;
   size_pt?: number;
@@ -519,7 +656,6 @@ export interface FontSpec {
 /**
  * Откуда унаследовано вычисленное свойство стиля
  */
-
 export interface StyleSource {
   level:
     | "theme"
@@ -545,17 +681,14 @@ export interface StyleSource {
    */
   modifiers?: string[];
 }
-
 export interface Warning {
   code: string;
   message: string;
   slide_index?: number;
 }
-
 /**
  * Результат слоя импорта содержания. Два входа: контент-пакет (файлы) и краткий бриф с назначением. Факты и наборы данных извлекаются детерминированно до вызова модели. Версия 1.1: контекст факта (показатель, период, субъект, единица, исходный фрагмент или ячейка), производные показатели с формулой, отметка неопределённости.
  */
-
 export interface ContentPackage {
   schema_version: "1.1";
   /**
@@ -763,11 +896,9 @@ export interface ContentPackage {
     thesis_hint?: string;
   }[];
 }
-
 /**
  * Тело POST /api/generations и вход CLI-команды generate. Версия 1.1. Приоритет: явные настройки запроса → бриф ContentPackage → умолчания config/app.yaml. Пути файлов от клиента не принимаются: только идентификаторы.
  */
-
 export interface GenerationRequest {
   /**
    * Стабильный идентификатор. Не содержит пробелов и путей.
@@ -818,11 +949,9 @@ export interface GenerationRequest {
    */
   idempotency_key?: string;
 }
-
 /**
  * Результат задания генерации. Отдаётся по ссылке из JobStatus и напрямую GET /api/generations/{id}; пока задание идёт, поля вариантов заполняются по мере готовности. Версия 1.1: ревизии, режим исполнения слоёв, частичные результаты, полнота аудита, версии рендерера и шрифтов, ожидание очереди и квоты, повторы, кэши, время первого и всех готовых вариантов.
  */
-
 export interface GenerationResult {
   schema_version: "1.1";
   /**
@@ -1042,15 +1171,13 @@ export interface GenerationResult {
    */
   partial?: boolean;
 }
-
 export interface Progress {
   percent?: number;
   message?: string;
 }
 /**
- * Тело POST /api/generations и вход CLI-команды generate. Версия 1.1. Приоритет: явные настройки запроса → бриф ContentPackage → умолчания config/app.yaml. Пути файлов от клиента не принимаются: только идентификаторы.
+ * Ошибка задания или операции API
  */
-
 export interface Error {
   code: string;
   message: string;
@@ -1071,7 +1198,6 @@ export interface Error {
     [k: string]: unknown;
   };
 }
-
 export interface StageTiming {
   stage:
     | "queued"
@@ -1099,9 +1225,8 @@ export interface StageTiming {
   cache_hit?: boolean;
 }
 /**
- * Ссылка на версионируемый компонент: скилл, промпт, анализатор, рендерер
+ * Какие слои работали по-настоящему, а какие заглушками. Заглушечный результат не выдаётся за генерацию.
  */
-
 export interface ExecutionMode {
   mode: "real" | "mixed" | "stub";
   /**
@@ -1111,11 +1236,9 @@ export interface ExecutionMode {
     [k: string]: "real" | "stub" | "replay" | "skipped";
   };
 }
-
 /**
  * Общее состояние любого задания: анализ шаблона, импорт содержания, генерация, исправление. Отдаётся GET /api/jobs/{id}. Ссылка на результат ведёт на документ своего вида; задания анализа и импорта не заполняют GenerationResult.
  */
-
 export interface JobStatus {
   schema_version: "1.1";
   /**
@@ -1179,11 +1302,9 @@ export interface JobStatus {
   error?: Error;
   warnings?: Warning[];
 }
-
 /**
  * Манифест скилла или агента (skills/<name>/skill.yaml). ТЗ требует версионировать скиллы и агентов и хранить промпты и конфиги отдельными файлами.
  */
-
 export interface SkillManifest {
   name: string;
   version: string;
@@ -1224,141 +1345,9 @@ export interface SkillManifest {
   };
   response_format?: "json_schema" | "json_object" | "text";
 }
-
-/**
- * Содержание одного слота. Ровно одно из полей содержания должно соответствовать kind слота.
- */
-
-export type Block = {
-  [k: string]: unknown;
-} & {
-  [k: string]: unknown;
-} & {
-  [k: string]: unknown;
-} & {
-  [k: string]: unknown;
-} & {
-  [k: string]: unknown;
-} & {
-  [k: string]: unknown;
-} & {
-  [k: string]: unknown;
-} & {
-  [k: string]: unknown;
-} & {
-  /**
-   * Стабильный идентификатор. Не содержит пробелов и путей.
-   */
-  slot_id: string;
-  kind:
-    | "title"
-    | "subtitle"
-    | "body"
-    | "bullets"
-    | "number"
-    | "label"
-    | "caption"
-    | "date"
-    | "name"
-    | "position"
-    | "image"
-    | "icon"
-    | "table"
-    | "chart"
-    | "diagram"
-    | "qr"
-    | "code";
-  /**
-   * может содержать {fact:<fact_id>}; композер подставляет значение из реестра
-   */
-  text?: string;
-  items?: {
-    text: string;
-    icon?: Icon;
-    fact_refs?: string[];
-  }[];
-  number?: {
-    /**
-     * Стабильный идентификатор. Не содержит пробелов и путей.
-     */
-    fact_id: string;
-    /**
-     * например «{value} %» или «{value} млн ₽»
-     */
-    format?: string;
-  };
-  table?: {
-    /**
-     * Стабильный идентификатор. Не содержит пробелов и путей.
-     */
-    dataset_id: string;
-    columns?: string[];
-    max_rows?: number;
-    highlight_row?: number;
-  };
-  /**
-   * Нативная диаграмма PowerPoint; стиль берётся из палитры и правил шаблона
-   */
-  chart?: {
-    type: "column" | "bar" | "stacked_column" | "line" | "area" | "pie" | "doughnut" | "scatter";
-    /**
-     * Стабильный идентификатор. Не содержит пробелов и путей.
-     */
-    dataset_id: string;
-    category_column?: string;
-    /**
-     * @maxItems 5
-     */
-    series:
-      | []
-      | [string]
-      | [string, string]
-      | [string, string, string]
-      | [string, string, string, string]
-      | [string, string, string, string, string];
-    title?: string;
-    units?: string;
-    show_legend?: boolean;
-    show_axis_labels?: boolean;
-    show_data_labels?: boolean;
-  };
-  image?: {
-    /**
-     * Стабильный идентификатор. Не содержит пробелов и путей.
-     */
-    asset_id?: string;
-    /**
-     * задача со звёздочкой: генерация изображения моделью text-to-image
-     */
-    generate?: {
-      prompt: string;
-      negative_prompt?: string;
-      style?: string;
-    };
-    fit?: "cover" | "contain";
-    alt?: string;
-  };
-  icon?: Icon;
-  /**
-   * Схема из нативных фигур: замена SmartArt
-   */
-  diagram?: {
-    kind: "process" | "cycle" | "pyramid" | "hierarchy" | "matrix" | "funnel" | "timeline" | "venn";
-    items: {
-      text: string;
-      sub?: string;
-      icon?: Icon;
-    }[];
-    direction?: "horizontal" | "vertical";
-  };
-  source_refs?: string[];
-  fact_refs?: string[];
-};
-
 /**
  * План одного варианта презентации: порядок слайдов, выбранные паттерны и содержание каждого слота. Создаётся слоем генерации, проверяется по схеме и по ёмкости слотов до вёрстки. Версия 1.1: ссылка на StoryPlan, покрытие обязательных тезисов, точное число или диапазон слайдов, данные для сопоставления вариантов. Соответствие kind содержимому блока проверяется схемой (allOf/if) и валидаторами.
  */
-
 export interface SlidePlan {
   schema_version: "1.1";
   /**
@@ -1397,7 +1386,7 @@ export interface SlidePlan {
   /**
    * @minItems 1
    */
-  slides: [Slide, ...Slide[]];
+  slides: [Slide1, ...Slide1[]];
   generation_meta: GenerationMeta;
   warnings?: Warning[];
   /**
@@ -1436,7 +1425,38 @@ export interface SlidePlan {
     text_chars_total?: number;
   };
 }
-
+export interface Slide1 {
+  /**
+   * Стабильный идентификатор. Не содержит пробелов и путей.
+   */
+  slide_id: string;
+  order: number;
+  /**
+   * роль из TemplateProfile.pattern.role
+   */
+  role?: string;
+  /**
+   * Стабильный идентификатор. Не содержит пробелов и путей.
+   */
+  pattern_id: string;
+  /**
+   * заголовок-вывод, а не название темы
+   */
+  title: string;
+  /**
+   * пересказ слайда одним предложением; используется аудитом
+   */
+  key_message?: string;
+  blocks: Block[];
+  notes?: string;
+  source_refs?: string[];
+  fact_refs?: string[];
+  thesis_refs?: string[];
+  /**
+   * что изменено исправлением относительно прошлой ревизии
+   */
+  revision_note?: string;
+}
 export interface Icon {
   /**
    * Стабильный идентификатор. Не содержит пробелов и путей.
@@ -1454,7 +1474,6 @@ export interface Icon {
 /**
  * Как был создан документ моделью: версии скиллов и промптов, модели, параметры, usage
  */
-
 export interface GenerationMeta {
   skills: VersionRef[];
   prompts?: VersionRef[];
@@ -1467,13 +1486,8 @@ export interface GenerationMeta {
   created_at?: string;
 }
 /**
- * Ссылка на версионируемый компонент: скилл, промпт, анализатор, рендерер
- */
-
-/**
  * Общий смысловой план презентации, создаётся один раз из ContentPackage и не зависит от шаблона и геометрии. Три SlidePlan ссылаются на него и обязаны покрыть все обязательные тезисы. Поля ограничены разделом 16 FRAMEWORKS.md; детали добавляются версией 1.2 на этапе 6.
  */
-
 export interface StoryPlan {
   schema_version: "1.1";
   /**
@@ -1523,7 +1537,6 @@ export interface StoryPlan {
   generation_meta: GenerationMeta;
   warnings?: Warning[];
 }
-
 export interface Thesis {
   /**
    * Стабильный идентификатор. Не содержит пробелов и путей.
@@ -1555,13 +1568,8 @@ export interface Thesis {
     "text" | "bullets" | "number" | "chart" | "table" | "diagram" | "image" | "quote" | "comparison" | "timeline";
 }
 /**
- * Как был создан документ моделью: версии скиллов и промптов, модели, параметры, usage
- */
-
-/**
  * Результат слоя парсинга: дизайн-система, фиксированные элементы, ресурсы и композиционные паттерны шаблона. Полный профиль читают вёрстка и аудит; в модель уходит только llm_digest и выдержки по выбранным паттернам. Версия 1.1: области действия правил, вычисленные стили с источником, геометрия групп и crop, ссылки на объекты слотов, статические и динамические элементы, параметры абзацев.
  */
-
 export interface TemplateProfile {
   schema_version: "1.1";
   /**
@@ -1642,10 +1650,6 @@ export interface TemplateProfile {
     element_ref?: string;
   }[];
 }
-/**
- * Ссылка на версионируемый компонент: скилл, промпт, анализатор, рендерер
- */
-
 export interface Layout {
   /**
    * Стабильный идентификатор. Не содержит пробелов и путей.
@@ -1663,7 +1667,7 @@ export interface Layout {
     idx: number;
     type:
       "title" | "ctrTitle" | "subTitle" | "body" | "obj" | "pic" | "chart" | "tbl" | "dt" | "ftr" | "sldNum" | "other";
-    bbox?: Bbox;
+    bbox?: Bbox1;
     font?: FontSpec;
   }[];
   /**
@@ -1671,10 +1675,6 @@ export interface Layout {
    */
   sample_slide_count?: number;
 }
-/**
- * Прямоугольник в долях ширины и высоты слайда; начало координат в левом верхнем углу. Значения вне 0..1 допустимы: так описываются элементы, вышедшие за слайд.
- */
-
 export interface DesignTokens {
   colors: {
     /**
@@ -1748,7 +1748,6 @@ export interface DesignTokens {
 /**
  * Область действия правила: где найдено и к чему применимо. Случайный цвет на служебном слайде не становится разрешением использовать его везде.
  */
-
 export interface RuleScope {
   level: "theme" | "master" | "layout" | "pattern" | "text_role" | "slide";
   pattern_ids?: string[];
@@ -1759,10 +1758,6 @@ export interface RuleScope {
    */
   applies_to_new_content?: boolean;
 }
-/**
- * Откуда унаследовано вычисленное свойство стиля
- */
-
 export interface Guide {
   orientation: "horizontal" | "vertical";
   pos: number;
@@ -1771,14 +1766,13 @@ export interface Guide {
 /**
  * Элемент, который должен оставаться на месте: логотип, колонтитул, номер страницы, навигационные точки, фон
  */
-
 export interface FixedElement {
   /**
    * Стабильный идентификатор. Не содержит пробелов и путей.
    */
   element_id: string;
   kind: "logo" | "footer" | "page_number" | "background" | "decoration" | "navigation_dots" | "qr_placeholder";
-  bbox: Bbox;
+  bbox: Bbox1;
   /**
    * all | layout:<layout_id> | pattern:<pattern_id>
    */
@@ -1794,7 +1788,6 @@ export interface FixedElement {
    */
   source_part?: string;
 }
-
 export interface Asset {
   /**
    * Стабильный идентификатор. Не содержит пробелов и путей.
@@ -1809,7 +1802,7 @@ export interface Asset {
   width_px?: number;
   height_px?: number;
   source_slide_index?: number;
-  bbox_on_source?: Bbox;
+  bbox_on_source?: Bbox1;
   tags?: string[];
   /**
    * можно ли использовать как пиктограмму или иллюстрацию в новых слайдах
@@ -1819,7 +1812,6 @@ export interface Asset {
 /**
  * Композиционный паттерн. Источник: образцовый слайд шаблона или макет. В шаблонах датасета почти все паттерны идут от образцовых слайдов.
  */
-
 export interface Pattern {
   /**
    * Стабильный идентификатор. Не содержит пробелов и путей.
@@ -1891,7 +1883,6 @@ export interface Pattern {
 /**
  * Область паттерна под содержание. Ёмкость считается по метрикам шрифта, а не на глаз.
  */
-
 export interface Slot {
   /**
    * Стабильный идентификатор. Не содержит пробелов и путей.
@@ -1916,7 +1907,7 @@ export interface Slot {
     | "qr"
     | "code"
     | "footer";
-  bbox: Bbox;
+  bbox: Bbox1;
   z_order?: number;
   font?: FontSpec;
   align?: "left" | "center" | "right" | "justify";
@@ -1961,9 +1952,8 @@ export interface Slot {
   };
 }
 /**
- * Вычисленный стиль текста после разрешения наследования, с источником каждого свойства
+ * Параметры абзаца, нужные для измерения вместимости
  */
-
 export interface ParagraphParams {
   line_spacing?: number;
   space_before_pt?: number;
@@ -1985,10 +1975,8 @@ export interface ParagraphParams {
 /**
  * Правило оформления, найденное текстом в самом шаблоне, например «Перекрытие рядов ±50%, без линий сетки»
  */
-
 export interface Guideline {
   text: string;
   source_slide_index?: number;
   kind: "typography" | "color" | "chart" | "table" | "icons" | "layout" | "general";
 }
-

@@ -1,0 +1,487 @@
+{
+  "schema_version": "1.1",
+  "plan_id": "plan_demo_balanced",
+  "template_id": "tpl_vk_education",
+  "package_id": "pkg_demo",
+  "language": "ru",
+  "variant": {
+    "variant_id": "balanced",
+    "axis": "density",
+    "value": "balanced",
+    "rationale": "Средняя плотность: один тезис на слайд, числа выносятся в KPI-паттерны, таблица заменяется графиком"
+  },
+  "story": {
+    "purpose": "одобрение пилота",
+    "key_takeaway": "Умные уведомления возвращают 40 % потерянного внимания",
+    "outline": [
+      "Проблема",
+      "Решение",
+      "Метрики пилота",
+      "План"
+    ]
+  },
+  "slides": [
+    {
+      "slide_id": "s1",
+      "order": 1,
+      "role": "title",
+      "pattern_id": "pat_title",
+      "title": "Умные уведомления: пилот и план запуска",
+      "key_message": "Мы предлагаем запустить пилот умных уведомлений",
+      "blocks": [
+        {
+          "slot_id": "title",
+          "kind": "title",
+          "text": "Умные уведомления: пилот и план запуска"
+        },
+        {
+          "slot_id": "subtitle",
+          "kind": "subtitle",
+          "text": "Предложение для руководителей продуктовых направлений"
+        }
+      ],
+      "thesis_refs": []
+    },
+    {
+      "slide_id": "s1b",
+      "order": 2,
+      "role": "section_divider",
+      "pattern_id": "pat_section",
+      "title": "Проблема",
+      "key_message": "Раздел: проблема",
+      "blocks": [
+        {
+          "slot_id": "title",
+          "kind": "title",
+          "text": "Проблема"
+        }
+      ],
+      "thesis_refs": [
+        "t1"
+      ]
+    },
+    {
+      "slide_id": "s2",
+      "order": 3,
+      "role": "kpi",
+      "pattern_id": "pat_kpi_2",
+      "title": "Пользователи теряют почти половину важных уведомлений",
+      "key_message": "Без приоритизации 40 % важных уведомлений остаются непрочитанными",
+      "blocks": [
+        {
+          "slot_id": "title",
+          "kind": "title",
+          "text": "Пользователи теряют почти половину важных уведомлений"
+        },
+        {
+          "slot_id": "kpi_1_value",
+          "kind": "number",
+          "number": {
+            "fact_id": "f1",
+            "format": "{value} %"
+          },
+          "fact_refs": [
+            "f1"
+          ]
+        },
+        {
+          "slot_id": "kpi_1_label",
+          "kind": "label",
+          "text": "важных уведомлений пропускается",
+          "fact_refs": [
+            "f1"
+          ]
+        },
+        {
+          "slot_id": "body",
+          "kind": "body",
+          "text": "Уведомления приходят без приоритизации, поэтому {fact:f1} важных сообщений теряется в общем потоке.",
+          "source_refs": [
+            "b2"
+          ],
+          "fact_refs": [
+            "f1"
+          ]
+        }
+      ],
+      "source_refs": [
+        "b1",
+        "b2"
+      ],
+      "fact_refs": [
+        "f1"
+      ],
+      "thesis_refs": [
+        "t1",
+        "t2"
+      ]
+    },
+    {
+      "slide_id": "s2b",
+      "order": 4,
+      "role": "section_divider",
+      "pattern_id": "pat_section",
+      "title": "Решение",
+      "key_message": "Раздел: решение",
+      "blocks": [
+        {
+          "slot_id": "title",
+          "kind": "title",
+          "text": "Решение"
+        }
+      ],
+      "thesis_refs": [
+        "t3"
+      ]
+    },
+    {
+      "slide_id": "s4",
+      "order": 5,
+      "role": "bullets",
+      "pattern_id": "pat_bullets_4",
+      "title": "Три механизма возвращают внимание пользователей",
+      "key_message": "Решение состоит из трёх механизмов",
+      "blocks": [
+        {
+          "slot_id": "title",
+          "kind": "title",
+          "text": "Три механизма возвращают внимание пользователей"
+        },
+        {
+          "slot_id": "bullets",
+          "kind": "bullets",
+          "items": [
+            {
+              "text": "Приоритизация по контексту"
+            },
+            {
+              "text": "Единый центр уведомлений"
+            },
+            {
+              "text": "Тихие часы"
+            }
+          ],
+          "source_refs": [
+            "b3"
+          ]
+        }
+      ],
+      "source_refs": [
+        "b3"
+      ],
+      "thesis_refs": [
+        "t3",
+        "t4"
+      ]
+    },
+    {
+      "slide_id": "s4b",
+      "order": 6,
+      "role": "process",
+      "pattern_id": "pat_timeline_4",
+      "title": "Как работает приоритизация: четыре шага",
+      "key_message": "Механизм в четыре шага",
+      "blocks": [
+        {
+          "slot_id": "title",
+          "kind": "title",
+          "text": "Как работает приоритизация: четыре шага"
+        },
+        {
+          "slot_id": "diagram",
+          "kind": "diagram",
+          "diagram": {
+            "kind": "process",
+            "direction": "horizontal",
+            "items": [
+              {
+                "text": "Событие"
+              },
+              {
+                "text": "Оценка контекста"
+              },
+              {
+                "text": "Приоритет"
+              },
+              {
+                "text": "Доставка"
+              }
+            ]
+          },
+          "source_refs": [
+            "b3"
+          ]
+        }
+      ],
+      "source_refs": [
+        "b3"
+      ],
+      "thesis_refs": [
+        "t4"
+      ]
+    },
+    {
+      "slide_id": "s3",
+      "order": 7,
+      "role": "chart",
+      "pattern_id": "pat_chart",
+      "title": "Открываемость выросла с 31 до 44 % за три месяца пилота",
+      "key_message": "Пилот показал устойчивый рост открываемости",
+      "blocks": [
+        {
+          "slot_id": "title",
+          "kind": "title",
+          "text": "Открываемость выросла с 31 до 44 % за три месяца пилота"
+        },
+        {
+          "slot_id": "chart",
+          "kind": "chart",
+          "chart": {
+            "type": "column",
+            "dataset_id": "ds_metrics",
+            "category_column": "Месяц",
+            "series": [
+              "Открываемость"
+            ],
+            "units": "%",
+            "show_legend": false,
+            "show_axis_labels": true,
+            "show_data_labels": true
+          }
+        }
+      ],
+      "source_refs": [
+        "b4"
+      ],
+      "thesis_refs": [
+        "t5"
+      ]
+    },
+    {
+      "slide_id": "s3b",
+      "order": 8,
+      "role": "table",
+      "pattern_id": "pat_table",
+      "title": "Метрики пилота по месяцам",
+      "key_message": "Все три месяца показали рост",
+      "blocks": [
+        {
+          "slot_id": "title",
+          "kind": "title",
+          "text": "Метрики пилота по месяцам"
+        },
+        {
+          "slot_id": "table",
+          "kind": "table",
+          "table": {
+            "dataset_id": "ds_metrics",
+            "columns": [
+              "Месяц",
+              "Открываемость",
+              "Отписки"
+            ],
+            "max_rows": 5
+          },
+          "source_refs": [
+            "b4"
+          ]
+        }
+      ],
+      "source_refs": [
+        "b4"
+      ],
+      "thesis_refs": [
+        "t5"
+      ]
+    },
+    {
+      "slide_id": "s5",
+      "order": 9,
+      "role": "kpi",
+      "pattern_id": "pat_kpi_2",
+      "title": "Пилот окупается за год",
+      "key_message": "Экономия 12,5 млн ₽ в год",
+      "blocks": [
+        {
+          "slot_id": "title",
+          "kind": "title",
+          "text": "Пилот окупается за год"
+        },
+        {
+          "slot_id": "kpi_1_value",
+          "kind": "number",
+          "number": {
+            "fact_id": "f2",
+            "format": "{value} млн ₽"
+          },
+          "fact_refs": [
+            "f2"
+          ]
+        },
+        {
+          "slot_id": "kpi_1_label",
+          "kind": "label",
+          "text": "экономия в год",
+          "fact_refs": [
+            "f2"
+          ]
+        },
+        {
+          "slot_id": "body",
+          "kind": "body",
+          "text": "Меньше повторных обращений в поддержку и ручной рассылки.",
+          "fact_refs": [
+            "f2"
+          ]
+        }
+      ],
+      "fact_refs": [
+        "f2"
+      ],
+      "thesis_refs": [
+        "t6"
+      ]
+    },
+    {
+      "slide_id": "s6",
+      "order": 10,
+      "role": "thanks",
+      "pattern_id": "pat_thanks_qr",
+      "title": "Просим одобрить расширение пилота",
+      "key_message": "Призыв к решению",
+      "blocks": [
+        {
+          "slot_id": "title",
+          "kind": "title",
+          "text": "Просим одобрить расширение пилота на все продукты в четвёртом квартале"
+        }
+      ],
+      "thesis_refs": [
+        "t7"
+      ]
+    }
+  ],
+  "generation_meta": {
+    "skills": [
+      {
+        "name": "variant_planner",
+        "version": "0.1.0"
+      }
+    ],
+    "prompts": [
+      {
+        "name": "plan.slides",
+        "version": "0.1.0"
+      }
+    ],
+    "models": [
+      {
+        "role": "llm",
+        "name": "qwen3.8-27b",
+        "provider": "qwen-api",
+        "hf_url": "https://huggingface.co/Qwen/Qwen3.8-27B",
+        "params_b": 27,
+        "license": "Apache-2.0",
+        "reasoning_mode": "low"
+      }
+    ],
+    "seed": 42,
+    "temperature": 0.2,
+    "prompt_tokens": 6100,
+    "completion_tokens": 2400,
+    "cache_hit": false,
+    "created_at": "2026-09-15T12:00:00Z"
+  },
+  "story_id": "story_demo",
+  "slide_count": {
+    "min": 10,
+    "max": 15
+  },
+  "coverage": {
+    "required_thesis_ids": [
+      "t1",
+      "t2",
+      "t3",
+      "t4",
+      "t5",
+      "t6",
+      "t7"
+    ],
+    "covered": [
+      {
+        "thesis_id": "t1",
+        "slide_ids": [
+          "s1b",
+          "s2"
+        ]
+      },
+      {
+        "thesis_id": "t2",
+        "slide_ids": [
+          "s2"
+        ]
+      },
+      {
+        "thesis_id": "t3",
+        "slide_ids": [
+          "s2b",
+          "s4"
+        ]
+      },
+      {
+        "thesis_id": "t4",
+        "slide_ids": [
+          "s4",
+          "s4b"
+        ]
+      },
+      {
+        "thesis_id": "t5",
+        "slide_ids": [
+          "s3",
+          "s3b"
+        ]
+      },
+      {
+        "thesis_id": "t6",
+        "slide_ids": [
+          "s5"
+        ]
+      },
+      {
+        "thesis_id": "t7",
+        "slide_ids": [
+          "s6"
+        ]
+      }
+    ],
+    "missing": []
+  },
+  "comparison": {
+    "pattern_sequence": [
+      "pat_title",
+      "pat_section",
+      "pat_kpi_2",
+      "pat_section",
+      "pat_bullets_4",
+      "pat_timeline_4",
+      "pat_chart",
+      "pat_table",
+      "pat_kpi_2",
+      "pat_thanks_qr"
+    ],
+    "visual_kinds": [
+      "title",
+      "section",
+      "number",
+      "section",
+      "bullets",
+      "diagram",
+      "chart",
+      "table",
+      "number",
+      "thanks"
+    ],
+    "text_chars_total": 1180
+  }
+}

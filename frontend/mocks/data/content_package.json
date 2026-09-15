@@ -1,0 +1,257 @@
+{
+  "schema_version": "1.1",
+  "package_id": "pkg_demo",
+  "mode": "mixed",
+  "created_at": "2026-09-15T12:00:00Z",
+  "brief": {
+    "purpose": "product",
+    "title": "Запуск сервиса умных уведомлений",
+    "audience": "руководители продуктовых направлений",
+    "goal": "получить одобрение на пилот",
+    "language": "ru",
+    "slide_count": {
+      "min": 10,
+      "max": 15
+    },
+    "must_include": [
+      "метрики пилота",
+      "план на квартал"
+    ],
+    "avoid": [
+      "технические детали инфраструктуры"
+    ]
+  },
+  "sources": [
+    {
+      "source_id": "src_brief",
+      "kind": "user_input",
+      "name": "бриф",
+      "extracted": true
+    },
+    {
+      "source_id": "src_doc",
+      "kind": "docx",
+      "name": "product_description.docx",
+      "sha256": "…",
+      "size_bytes": 48211,
+      "extracted": true
+    },
+    {
+      "source_id": "src_data",
+      "kind": "xlsx",
+      "name": "metrics.xlsx",
+      "sha256": "…",
+      "size_bytes": 12000,
+      "extracted": true
+    }
+  ],
+  "blocks": [
+    {
+      "block_id": "b1",
+      "source_id": "src_doc",
+      "order": 1,
+      "kind": "heading",
+      "level": 1,
+      "text": "Проблема"
+    },
+    {
+      "block_id": "b2",
+      "source_id": "src_doc",
+      "order": 2,
+      "kind": "paragraph",
+      "text": "Пользователи пропускают до 40 % важных уведомлений, потому что получают их без приоритизации.",
+      "importance": "must"
+    },
+    {
+      "block_id": "b3",
+      "source_id": "src_doc",
+      "order": 3,
+      "kind": "bullets",
+      "items": [
+        "Приоритизация по контексту",
+        "Единый центр уведомлений",
+        "Тихие часы"
+      ],
+      "importance": "should"
+    },
+    {
+      "block_id": "b4",
+      "source_id": "src_data",
+      "order": 4,
+      "kind": "table",
+      "dataset_id": "ds_metrics",
+      "importance": "must"
+    }
+  ],
+  "facts": [
+    {
+      "fact_id": "f1",
+      "source_id": "src_doc",
+      "block_id": "b2",
+      "raw": "40 %",
+      "kind": "percent",
+      "value": 40,
+      "unit": "%",
+      "label": "доля пропущенных важных уведомлений",
+      "must_keep": true,
+      "context": {
+        "metric": "доля пропущенных важных уведомлений",
+        "period": "2025 год",
+        "subject": "пользователи продукта",
+        "unit": "%"
+      },
+      "source_location": {
+        "fragment": "Пользователи пропускают до 40 % важных уведомлений",
+        "char_offset": 0
+      },
+      "uncertainty": {
+        "level": "confirmed",
+        "extracted_by": "regex",
+        "confidence": 0.95
+      }
+    },
+    {
+      "fact_id": "f2",
+      "source_id": "src_data",
+      "block_id": "b4",
+      "raw": "12,5 млн ₽",
+      "kind": "money",
+      "value": 12500000,
+      "unit": "₽",
+      "label": "экономия за год",
+      "must_keep": true,
+      "context": {
+        "metric": "экономия",
+        "period": "год",
+        "subject": "компания",
+        "unit": "₽"
+      },
+      "source_location": {
+        "sheet": "Итоги",
+        "cell": "B4"
+      },
+      "uncertainty": {
+        "level": "confirmed",
+        "extracted_by": "parser",
+        "confidence": 0.98
+      }
+    },
+    {
+      "fact_id": "f3",
+      "source_id": "src_data",
+      "raw": "+13 п. п.",
+      "kind": "number",
+      "value": 13,
+      "unit": "п. п.",
+      "label": "рост открываемости за пилот",
+      "context": {
+        "metric": "открываемость",
+        "period": "май–июль",
+        "subject": "пилот",
+        "unit": "п. п.",
+        "comparison": "июль к маю"
+      },
+      "derived": {
+        "formula": "44 - 31",
+        "inputs": [
+          "f4",
+          "f5"
+        ]
+      },
+      "uncertainty": {
+        "level": "inferred",
+        "extracted_by": "parser",
+        "confidence": 0.9
+      },
+      "must_keep": false
+    },
+    {
+      "fact_id": "f4",
+      "source_id": "src_data",
+      "raw": "31",
+      "kind": "percent",
+      "value": 31,
+      "unit": "%",
+      "label": "открываемость в мае",
+      "source_location": {
+        "sheet": "Метрики",
+        "cell": "B2"
+      },
+      "must_keep": false
+    },
+    {
+      "fact_id": "f5",
+      "source_id": "src_data",
+      "raw": "44",
+      "kind": "percent",
+      "value": 44,
+      "unit": "%",
+      "label": "открываемость в июле",
+      "source_location": {
+        "sheet": "Метрики",
+        "cell": "B4"
+      },
+      "must_keep": false
+    }
+  ],
+  "assets": [
+    {
+      "asset_id": "img_screenshot_1",
+      "kind": "screenshot",
+      "path": "assets/screenshot_1.png",
+      "width_px": 1600,
+      "height_px": 1000,
+      "caption": "Центр уведомлений",
+      "source_id": "src_doc"
+    }
+  ],
+  "datasets": [
+    {
+      "dataset_id": "ds_metrics",
+      "title": "Метрики пилота по месяцам",
+      "columns": [
+        {
+          "name": "Месяц",
+          "type": "string"
+        },
+        {
+          "name": "Открываемость",
+          "type": "percent",
+          "unit": "%"
+        },
+        {
+          "name": "Отписки",
+          "type": "percent",
+          "unit": "%"
+        }
+      ],
+      "rows": [
+        [
+          "Май",
+          31,
+          4.1
+        ],
+        [
+          "Июнь",
+          38,
+          3.2
+        ],
+        [
+          "Июль",
+          44,
+          2.7
+        ]
+      ],
+      "source_id": "src_data",
+      "block_id": "b4"
+    }
+  ],
+  "warnings": [],
+  "missing_data": [
+    {
+      "what": "бюджет пилота",
+      "why_needed": "для слайда с планом на квартал",
+      "thesis_hint": "план"
+    }
+  ]
+}

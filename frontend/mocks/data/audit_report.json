@@ -1,0 +1,286 @@
+{
+  "schema_version": "1.1",
+  "report_id": "audit_demo_balanced",
+  "job_id": "job_demo",
+  "variant_id": "balanced",
+  "created_at": "2026-09-15T12:09:00Z",
+  "deck": {
+    "pptx_artifact": "balanced/r1/deck.pptx",
+    "slide_count": 10,
+    "renderer": {
+      "name": "libreoffice",
+      "version": "25.8"
+    },
+    "thumbnail_width_px": 1280,
+    "pptx_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "composed_deck_artifact": "balanced/r1/composed.json",
+    "fonts": [
+      {
+        "requested": "Play",
+        "actual": "Play",
+        "file": "fonts/Play-Regular.ttf"
+      },
+      {
+        "requested": "Arial",
+        "actual": "Liberation Sans",
+        "file": "fonts/LiberationSans-Regular.ttf"
+      }
+    ]
+  },
+  "checks": [
+    {
+      "check_id": "layout.out_of_bounds",
+      "name": "Элемент вышел за границы слайда",
+      "category": "layout",
+      "kind": "deterministic",
+      "version": "1.0",
+      "scope": "slide",
+      "origin": "appendix1",
+      "implemented": true,
+      "inputs": [
+        "composed_deck"
+      ]
+    },
+    {
+      "check_id": "layout.text_overflow",
+      "name": "Текст не поместился в свою рамку",
+      "category": "layout",
+      "kind": "deterministic",
+      "version": "1.0",
+      "scope": "slide",
+      "origin": "appendix1",
+      "implemented": true,
+      "threshold": {
+        "method": "font_metrics",
+        "tolerance_lines": 0
+      },
+      "inputs": [
+        "composed_deck",
+        "font_metrics",
+        "render"
+      ]
+    },
+    {
+      "check_id": "density.too_many_bullets",
+      "name": "Больше 6 буллетов на слайде",
+      "category": "density",
+      "kind": "deterministic",
+      "version": "1.0",
+      "scope": "slide",
+      "origin": "appendix1",
+      "implemented": true,
+      "threshold": {
+        "max_bullets": 6
+      },
+      "inputs": [
+        "composed_deck"
+      ],
+      "applicability": "не применяется к паттернам title, section_divider, thanks"
+    },
+    {
+      "check_id": "integrity.duplicate_slides",
+      "name": "Два слайда дублируют друг друга",
+      "category": "integrity",
+      "kind": "deterministic",
+      "version": "1.0",
+      "scope": "deck",
+      "origin": "appendix1",
+      "implemented": true,
+      "inputs": [
+        "composed_deck"
+      ]
+    },
+    {
+      "check_id": "content.q4",
+      "name": "Все цифры и факты со слайда есть в исходных материалах?",
+      "category": "content",
+      "kind": "contextual",
+      "version": "1.0",
+      "scope": "slide",
+      "origin": "appendix1",
+      "implemented": true,
+      "inputs": [
+        "render",
+        "composed_deck",
+        "content_package",
+        "story_plan"
+      ]
+    }
+  ],
+  "issues": [
+    {
+      "issue_id": "iss_1",
+      "check_id": "layout.text_overflow",
+      "slide_id": "s5",
+      "slide_index": 8,
+      "severity": "error",
+      "kind": "deterministic",
+      "message": "Текст в блоке «body» не помещается: 11 строк при вместимости 9",
+      "bbox": {
+        "x": 0.55,
+        "y": 0.3,
+        "width": 0.4,
+        "height": 0.4
+      },
+      "element_ids": [
+        "12"
+      ],
+      "evidence": {
+        "measured": 11,
+        "threshold": 9,
+        "details": "Arial 16 pt, ширина 0.4 слайда, метрики fontTools"
+      },
+      "fix": {
+        "available": true,
+        "strategy": "rewrite_shorter",
+        "description": "Сократить текст до 9 строк, сохранив факты f1, f2",
+        "cost": "llm",
+        "affects": [
+          "slide"
+        ]
+      },
+      "status": "open",
+      "revision": 1,
+      "origin": "generated"
+    },
+    {
+      "issue_id": "iss_2",
+      "check_id": "content.q4",
+      "slide_id": "s3b",
+      "slide_index": 7,
+      "severity": "warning",
+      "kind": "contextual",
+      "message": "Модель не нашла в источниках число «52 %» с этого слайда",
+      "evidence": {
+        "details": "ответ no, уверенность 0.8"
+      },
+      "fix": {
+        "available": true,
+        "strategy": "regenerate_text",
+        "description": "Перегенерировать текст слайда только из фактов реестра",
+        "cost": "llm",
+        "affects": [
+          "slide",
+          "fact_coverage"
+        ]
+      },
+      "status": "open",
+      "revision": 1,
+      "origin": "generated"
+    }
+  ],
+  "contextual_answers": [
+    {
+      "slide_id": "s3b",
+      "slide_index": 7,
+      "question_id": 4,
+      "question": "Все цифры и факты со слайда есть в исходных материалах?",
+      "answer": "no",
+      "confidence": 0.8,
+      "explanation": "Число 52 % отсутствует в реестре фактов",
+      "model": {
+        "role": "vlm",
+        "name": "qwen3.8-27b"
+      },
+      "prompt": {
+        "name": "audit.content_questions",
+        "version": "0.1.0"
+      },
+      "inputs": [
+        "render",
+        "extracted_text",
+        "fact_registry"
+      ],
+      "outcome": "failed"
+    }
+  ],
+  "summary": {
+    "issues_total": 2,
+    "by_severity": {
+      "blocking": 0,
+      "error": 1,
+      "warning": 1,
+      "info": 0
+    },
+    "by_category": {
+      "layout": 1,
+      "content": 1
+    },
+    "by_kind": {
+      "deterministic": 1,
+      "contextual": 1
+    },
+    "slides_with_issues": 2,
+    "score": 88
+  },
+  "metrics": {
+    "duration_ms": 41000,
+    "llm_calls": 12,
+    "prompt_tokens": 18000,
+    "completion_tokens": 2600
+  },
+  "revision": 1,
+  "results": [
+    {
+      "check_id": "layout.out_of_bounds",
+      "scope": "slide",
+      "slide_id": "s2",
+      "slide_index": 1,
+      "outcome": "passed",
+      "duration_ms": 3
+    },
+    {
+      "check_id": "layout.text_overflow",
+      "scope": "slide",
+      "slide_id": "s5",
+      "slide_index": 8,
+      "outcome": "failed",
+      "issue_ids": [
+        "iss_1"
+      ],
+      "duration_ms": 12
+    },
+    {
+      "check_id": "density.too_many_bullets",
+      "scope": "slide",
+      "slide_id": "s1",
+      "slide_index": 0,
+      "outcome": "not_applicable",
+      "reason": "паттерн title"
+    },
+    {
+      "check_id": "integrity.duplicate_slides",
+      "scope": "deck",
+      "outcome": "passed",
+      "duration_ms": 8
+    },
+    {
+      "check_id": "content.q4",
+      "scope": "slide",
+      "slide_id": "s3b",
+      "slide_index": 7,
+      "outcome": "failed",
+      "issue_ids": [
+        "iss_2"
+      ],
+      "duration_ms": 4200
+    },
+    {
+      "check_id": "content.q4",
+      "scope": "slide",
+      "slide_id": "s6",
+      "slide_index": 9,
+      "outcome": "not_checked",
+      "reason": "vlm_unavailable: превышен лимит времени контекстного аудита"
+    }
+  ],
+  "coverage": {
+    "complete": false,
+    "checked": 5,
+    "not_checked": 1,
+    "not_applicable": 1,
+    "missing_inputs": [
+      "vlm_timeout"
+    ]
+  }
+}
