@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://presentation-designer.local/contracts/skill_manifest.schema.json",
+  "title": "SkillManifest",
+  "description": "Манифест скилла или агента (skills/<name>/skill.yaml). ТЗ требует версионировать скиллы и агентов и хранить промпты и конфиги отдельными файлами.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "name",
+    "version",
+    "stage",
+    "description",
+    "prompts"
+  ],
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "stage": {
+      "enum": [
+        "analyze",
+        "import",
+        "story",
+        "plan",
+        "compose",
+        "audit",
+        "repair"
+      ]
+    },
+    "description": {
+      "type": "string"
+    },
+    "model_role": {
+      "enum": [
+        "llm",
+        "vlm",
+        "text_to_image",
+        "none"
+      ]
+    },
+    "prompts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string",
+            "description": "относительный путь к файлу промпта"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "path",
+          "version"
+        ]
+      }
+    },
+    "params": {
+      "type": "object",
+      "description": "temperature, seed, лимиты, пороги",
+      "additionalProperties": true
+    },
+    "input_schema": {
+      "type": "string",
+      "description": "какой контракт на входе"
+    },
+    "output_schema": {
+      "type": "string",
+      "description": "какой контракт на выходе"
+    },
+    "changelog": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "note"
+        ]
+      }
+    },
+    "schema_version": {
+      "const": "1.1"
+    },
+    "reasoning": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "off",
+            "low",
+            "medium",
+            "high",
+            "provider_default"
+          ]
+        },
+        "max_output_tokens": {
+          "type": "integer"
+        }
+      }
+    },
+    "response_format": {
+      "enum": [
+        "json_schema",
+        "json_object",
+        "text"
+      ]
+    }
+  }
+}

@@ -1,0 +1,545 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://presentation-designer.local/contracts/audit_report.schema.json",
+  "title": "AuditReport",
+  "description": "Отчёт аудита одной ревизии одного варианта. Реестр проверок повторяет Приложение 1 ТЗ и расширяется своими проверками. Версия 1.1: результат каждой проверки по области passed/failed/not_applicable/not_checked с причиной; серьёзность отдельно от способа; ревизия; входы контекстных проверок; покрытие и зависимые повторные проверки.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "report_id",
+    "job_id",
+    "variant_id",
+    "revision",
+    "deck",
+    "created_at",
+    "checks",
+    "results",
+    "issues",
+    "coverage",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.1"
+    },
+    "report_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "job_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "variant_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "deck": {
+      "type": "object",
+      "properties": {
+        "pptx_artifact": {
+          "type": "string"
+        },
+        "slide_count": {
+          "type": "integer"
+        },
+        "renderer": {
+          "$ref": "common.schema.json#/$defs/version_ref"
+        },
+        "thumbnail_width_px": {
+          "type": "integer"
+        },
+        "pptx_hash": {
+          "type": "string"
+        },
+        "composed_deck_artifact": {
+          "type": "string"
+        },
+        "fonts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "requested": {
+                "type": "string"
+              },
+              "actual": {
+                "type": "string"
+              },
+              "file": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "pptx_artifact",
+        "slide_count"
+      ]
+    },
+    "checks": {
+      "type": "array",
+      "description": "Что запускалось. Список целиком, включая проверки без находок: из него собирается AUDIT.md.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "check_id": {
+            "type": "string",
+            "pattern": "^(layout|template|density|integrity|content)\\.[a-z0-9_]+$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "category": {
+            "enum": [
+              "layout",
+              "template",
+              "density",
+              "integrity",
+              "content"
+            ]
+          },
+          "kind": {
+            "enum": [
+              "deterministic",
+              "contextual"
+            ]
+          },
+          "version": {
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "slide",
+              "deck"
+            ]
+          },
+          "origin": {
+            "enum": [
+              "appendix1",
+              "own"
+            ]
+          },
+          "implemented": {
+            "type": "boolean"
+          },
+          "threshold": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "applicability": {
+            "type": "string",
+            "description": "правило применимости: роли паттернов или условия, при которых проверка не применяется"
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "xml",
+                "composed_deck",
+                "render",
+                "font_metrics",
+                "template_profile",
+                "story_plan",
+                "content_package",
+                "neighbor_slides",
+                "whole_deck_text"
+              ]
+            },
+            "description": "входы проверки; для контекстных показывает, что модель получила помимо картинки"
+          }
+        },
+        "required": [
+          "check_id",
+          "name",
+          "category",
+          "kind",
+          "version",
+          "scope",
+          "implemented"
+        ]
+      }
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/issue"
+      }
+    },
+    "contextual_answers": {
+      "type": "array",
+      "description": "Ответы модели на 11 вопросов валидации контента по картинке слайда",
+      "items": {
+        "type": "object",
+        "properties": {
+          "slide_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "slide_index": {
+            "type": "integer"
+          },
+          "question_id": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 11
+          },
+          "question": {
+            "type": "string"
+          },
+          "answer": {
+            "enum": [
+              "yes",
+              "no",
+              "unsure"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "explanation": {
+            "type": "string"
+          },
+          "model": {
+            "$ref": "common.schema.json#/$defs/model_ref"
+          },
+          "prompt": {
+            "$ref": "common.schema.json#/$defs/version_ref"
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "outcome": {
+            "enum": [
+              "passed",
+              "failed",
+              "not_applicable",
+              "not_checked"
+            ]
+          }
+        },
+        "required": [
+          "slide_id",
+          "question_id",
+          "answer"
+        ]
+      }
+    },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "issues_total": {
+          "type": "integer"
+        },
+        "by_severity": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "by_category": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "by_kind": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "slides_with_issues": {
+          "type": "integer"
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "required": [
+        "issues_total",
+        "by_severity"
+      ]
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "duration_ms": {
+          "type": "integer"
+        },
+        "llm_calls": {
+          "type": "integer"
+        },
+        "prompt_tokens": {
+          "type": "integer"
+        },
+        "completion_tokens": {
+          "type": "integer"
+        }
+      }
+    },
+    "revision": {
+      "$ref": "common.schema.json#/$defs/revision"
+    },
+    "results": {
+      "type": "array",
+      "description": "Результат каждой проверки для каждой области (слайд или колода), включая пройденные и неприменимые",
+      "items": {
+        "type": "object",
+        "required": [
+          "check_id",
+          "scope",
+          "outcome"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "check_id": {
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "slide",
+              "deck"
+            ]
+          },
+          "slide_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "slide_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "outcome": {
+            "enum": [
+              "passed",
+              "failed",
+              "not_applicable",
+              "not_checked"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "обязательна для not_applicable и not_checked"
+          },
+          "issue_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "common.schema.json#/$defs/id"
+            }
+          },
+          "duration_ms": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "required": [
+        "complete"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "complete": {
+          "type": "boolean",
+          "description": "все обязательные проверки выполнены"
+        },
+        "checked": {
+          "type": "integer"
+        },
+        "not_checked": {
+          "type": "integer"
+        },
+        "not_applicable": {
+          "type": "integer"
+        },
+        "missing_inputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "например: vlm_unavailable, render_failed"
+        }
+      }
+    },
+    "rechecked_after_repair": {
+      "type": "object",
+      "description": "Что повторно проверено после исправления и почему",
+      "additionalProperties": false,
+      "properties": {
+        "base_revision": {
+          "$ref": "common.schema.json#/$defs/revision"
+        },
+        "changed_slide_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/id"
+          }
+        },
+        "dependent_slide_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "description": "соседи и слайды, затронутые порядком или покрытием фактов"
+        },
+        "deck_checks_rerun": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "issue": {
+      "type": "object",
+      "properties": {
+        "issue_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "check_id": {
+          "type": "string"
+        },
+        "slide_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "slide_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "severity": {
+          "enum": [
+            "blocking",
+            "error",
+            "warning",
+            "info"
+          ],
+          "description": "blocking мешает статусу succeeded"
+        },
+        "kind": {
+          "enum": [
+            "deterministic",
+            "contextual"
+          ],
+          "description": "способ проверки; серьёзность задаётся отдельно полем severity"
+        },
+        "message": {
+          "type": "string",
+          "description": "понятная пользователю формулировка"
+        },
+        "bbox": {
+          "$ref": "common.schema.json#/$defs/bbox",
+          "description": "область для подсветки на миниатюре"
+        },
+        "element_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence": {
+          "type": "object",
+          "description": "измеренное значение и порог: например measured 7 буллетов при пороге 6",
+          "properties": {
+            "measured": {},
+            "threshold": {},
+            "details": {
+              "type": "string"
+            }
+          }
+        },
+        "fix": {
+          "type": "object",
+          "properties": {
+            "available": {
+              "type": "boolean"
+            },
+            "strategy": {
+              "enum": [
+                "shrink_text",
+                "rewrite_shorter",
+                "split_slide",
+                "change_pattern",
+                "move_element",
+                "resize_element",
+                "recolor",
+                "replace_font",
+                "remove_placeholder",
+                "regenerate_text",
+                "regenerate_image",
+                "add_labels",
+                "remove_slide",
+                "none"
+              ]
+            },
+            "description": {
+              "type": "string"
+            },
+            "cost": {
+              "enum": [
+                "cheap",
+                "llm",
+                "rerender"
+              ]
+            },
+            "affects": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "slide",
+                  "neighbors",
+                  "deck_order",
+                  "fact_coverage",
+                  "all_variants"
+                ]
+              }
+            }
+          },
+          "required": [
+            "available"
+          ]
+        },
+        "status": {
+          "enum": [
+            "open",
+            "selected",
+            "fixed",
+            "ignored",
+            "unfixable"
+          ],
+          "default": "open"
+        },
+        "revision": {
+          "$ref": "common.schema.json#/$defs/revision"
+        },
+        "origin": {
+          "enum": [
+            "generated",
+            "template"
+          ],
+          "description": "template: дефект присутствует в исходном шаблоне"
+        }
+      },
+      "required": [
+        "issue_id",
+        "check_id",
+        "slide_index",
+        "severity",
+        "kind",
+        "message",
+        "fix",
+        "status"
+      ]
+    }
+  }
+}

@@ -1,0 +1,70 @@
+# Настройки приложения. Переопределяются переменными окружения с префиксом PD_,
+# например PD_LIMITS__MAX_UPLOAD_MB=200. Загрузчик: presentation_designer.shared.settings.
+app:
+  name: presentation-designer
+  contracts_version: "1.1"
+  language_default: ru
+
+paths:
+  data_dir: data            # загрузки, состояние, кэш
+  artifacts_dir: artifacts  # результаты заданий по ревизиям
+  runs_dir: runs            # трассы и отчёты прогонов
+  organizers_dir: data/organizers
+
+limits:
+  max_upload_mb: 100        # шаблоны датасета 13–23 МБ, шаблон ЛЦТ 34 МБ
+  max_content_files: 20
+  slide_count_default: { min: 10, max: 15 }
+  slide_count_max: 60
+  variants_default: [compact, balanced, detailed]
+
+timeouts:
+  job_total_s: 600          # общий deadline пользовательского запроса
+  stage_analyze_s: 180
+  stage_story_s: 120
+  stage_plan_s: 120
+  stage_compose_s: 60
+  stage_export_s: 120
+  stage_audit_s: 180
+  render_convert_s: 90      # одна конвертация LibreOffice
+  llm_call_s: 90
+
+budget:
+  target_total_s: 240       # FRAMEWORKS.md §15: цель, не измеренный результат
+  hard_limit_s: 300         # лимит ТЗ на колоду
+
+queue:
+  analysis_queue: analysis
+  generation_queue: generation
+  generation_workers: 3
+  result_ttl_s: 86400
+  failure_ttl_s: 604800
+
+render:
+  slots: 2                  # одновременных конвертаций LibreOffice на сервере
+  thumbnail_width_px: 1280
+  vlm_image_max_px: 1024
+  mode: process_per_convert # или uno_pool, по замерам этапа 9
+
+audit:
+  contextual_enabled: true
+  contextual_concurrency: 4
+  thresholds:
+    max_bullets: 6
+    max_words_per_bullet: 15
+    table_max_rows: 7
+    table_max_cols: 5
+    chart_max_series: 5
+    fill_ratio_min: 0.25
+    fill_ratio_max: 0.75
+    min_contrast: 4.5
+    overlap_min_ratio: 0.02
+    guide_tolerance: 0.005
+
+llm:
+  cache_mode: read_write    # off | read | record | replay | read_write
+  cache_dir: data/llm-cache
+  concurrency: 4            # одновременных запросов с одного воркера; общий лимит в Valkey
+  rpm: 60
+  tpm: 200000
+  max_retries: 3

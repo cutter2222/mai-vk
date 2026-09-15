@@ -1,0 +1,647 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://presentation-designer.local/contracts/slide_plan.schema.json",
+  "title": "SlidePlan",
+  "description": "План одного варианта презентации: порядок слайдов, выбранные паттерны и содержание каждого слота. Создаётся слоем генерации, проверяется по схеме и по ёмкости слотов до вёрстки. Версия 1.1: ссылка на StoryPlan, покрытие обязательных тезисов, точное число или диапазон слайдов, данные для сопоставления вариантов. Соответствие kind содержимому блока проверяется схемой (allOf/if) и валидаторами.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "plan_id",
+    "template_id",
+    "package_id",
+    "story_id",
+    "variant",
+    "language",
+    "slide_count",
+    "slides",
+    "coverage",
+    "generation_meta"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.1"
+    },
+    "plan_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "template_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "package_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "language": {
+      "type": "string"
+    },
+    "variant": {
+      "type": "object",
+      "description": "Три варианта вёрстки одного контента различаются по одной заявленной оси. Ось и обоснование попадают в документацию и в интерфейс сравнения.",
+      "properties": {
+        "variant_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "axis": {
+          "enum": [
+            "density",
+            "layout_family",
+            "visualization",
+            "narrative_order",
+            "custom"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "description": "например compact | balanced | detailed"
+        },
+        "rationale": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "variant_id",
+        "axis",
+        "value"
+      ]
+    },
+    "story": {
+      "type": "object",
+      "properties": {
+        "purpose": {
+          "type": "string"
+        },
+        "key_takeaway": {
+          "type": "string"
+        },
+        "outline": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "slides": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/slide"
+      }
+    },
+    "generation_meta": {
+      "$ref": "common.schema.json#/$defs/generation_meta"
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/warning"
+      }
+    },
+    "story_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "slide_count": {
+      "type": "object",
+      "description": "Требование к числу слайдов, унаследованное из запроса: точное число или диапазон; план обязан ему соответствовать",
+      "additionalProperties": false,
+      "properties": {
+        "exact": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "min": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "description": "Покрытие обязательных тезисов StoryPlan: заполняется планировщиком, проверяется валидатором",
+      "required": [
+        "required_thesis_ids",
+        "covered"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "required_thesis_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/id"
+          }
+        },
+        "covered": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "thesis_id",
+              "slide_ids"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "thesis_id": {
+                "$ref": "common.schema.json#/$defs/id"
+              },
+              "slide_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "common.schema.json#/$defs/id"
+                }
+              },
+              "reduction": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/id"
+          }
+        }
+      }
+    },
+    "comparison": {
+      "type": "object",
+      "description": "Данные для сопоставления вариантов: последовательность паттернов и способы визуализации",
+      "additionalProperties": false,
+      "properties": {
+        "pattern_sequence": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/id"
+          }
+        },
+        "visual_kinds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "text_chars_total": {
+          "type": "integer"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "slide": {
+      "type": "object",
+      "properties": {
+        "slide_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "role": {
+          "type": "string",
+          "description": "роль из TemplateProfile.pattern.role"
+        },
+        "pattern_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "title": {
+          "type": "string",
+          "description": "заголовок-вывод, а не название темы"
+        },
+        "key_message": {
+          "type": "string",
+          "description": "пересказ слайда одним предложением; используется аудитом"
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/block"
+          }
+        },
+        "notes": {
+          "type": "string"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/id"
+          }
+        },
+        "fact_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/id"
+          }
+        },
+        "thesis_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/id"
+          }
+        },
+        "revision_note": {
+          "type": "string",
+          "description": "что изменено исправлением относительно прошлой ревизии"
+        }
+      },
+      "required": [
+        "slide_id",
+        "order",
+        "pattern_id",
+        "title",
+        "blocks"
+      ]
+    },
+    "block": {
+      "type": "object",
+      "description": "Содержание одного слота. Ровно одно из полей содержания должно соответствовать kind слота.",
+      "properties": {
+        "slot_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "title",
+            "subtitle",
+            "body",
+            "bullets",
+            "number",
+            "label",
+            "caption",
+            "date",
+            "name",
+            "position",
+            "image",
+            "icon",
+            "table",
+            "chart",
+            "diagram",
+            "qr",
+            "code"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "description": "может содержать {fact:<fact_id>}; композер подставляет значение из реестра"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "icon": {
+                "$ref": "#/$defs/icon"
+              },
+              "fact_refs": {
+                "type": "array",
+                "items": {
+                  "$ref": "common.schema.json#/$defs/id"
+                }
+              }
+            },
+            "required": [
+              "text"
+            ]
+          }
+        },
+        "number": {
+          "type": "object",
+          "properties": {
+            "fact_id": {
+              "$ref": "common.schema.json#/$defs/id"
+            },
+            "format": {
+              "type": "string",
+              "description": "например «{value} %» или «{value} млн ₽»"
+            }
+          },
+          "required": [
+            "fact_id"
+          ]
+        },
+        "table": {
+          "type": "object",
+          "properties": {
+            "dataset_id": {
+              "$ref": "common.schema.json#/$defs/id"
+            },
+            "columns": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "max_rows": {
+              "type": "integer"
+            },
+            "highlight_row": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "dataset_id"
+          ]
+        },
+        "chart": {
+          "type": "object",
+          "description": "Нативная диаграмма PowerPoint; стиль берётся из палитры и правил шаблона",
+          "properties": {
+            "type": {
+              "enum": [
+                "column",
+                "bar",
+                "stacked_column",
+                "line",
+                "area",
+                "pie",
+                "doughnut",
+                "scatter"
+              ]
+            },
+            "dataset_id": {
+              "$ref": "common.schema.json#/$defs/id"
+            },
+            "category_column": {
+              "type": "string"
+            },
+            "series": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 5
+            },
+            "title": {
+              "type": "string"
+            },
+            "units": {
+              "type": "string"
+            },
+            "show_legend": {
+              "type": "boolean"
+            },
+            "show_axis_labels": {
+              "type": "boolean"
+            },
+            "show_data_labels": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "type",
+            "dataset_id",
+            "series"
+          ]
+        },
+        "image": {
+          "type": "object",
+          "properties": {
+            "asset_id": {
+              "$ref": "common.schema.json#/$defs/id"
+            },
+            "generate": {
+              "type": "object",
+              "description": "задача со звёздочкой: генерация изображения моделью text-to-image",
+              "properties": {
+                "prompt": {
+                  "type": "string"
+                },
+                "negative_prompt": {
+                  "type": "string"
+                },
+                "style": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "prompt"
+              ]
+            },
+            "fit": {
+              "enum": [
+                "cover",
+                "contain"
+              ]
+            },
+            "alt": {
+              "type": "string"
+            }
+          }
+        },
+        "icon": {
+          "$ref": "#/$defs/icon"
+        },
+        "diagram": {
+          "type": "object",
+          "description": "Схема из нативных фигур: замена SmartArt",
+          "properties": {
+            "kind": {
+              "enum": [
+                "process",
+                "cycle",
+                "pyramid",
+                "hierarchy",
+                "matrix",
+                "funnel",
+                "timeline",
+                "venn"
+              ]
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  },
+                  "sub": {
+                    "type": "string"
+                  },
+                  "icon": {
+                    "$ref": "#/$defs/icon"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            },
+            "direction": {
+              "enum": [
+                "horizontal",
+                "vertical"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "items"
+          ]
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/id"
+          }
+        },
+        "fact_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/id"
+          }
+        }
+      },
+      "required": [
+        "slot_id",
+        "kind"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "title",
+                  "subtitle",
+                  "body",
+                  "label",
+                  "caption",
+                  "date",
+                  "name",
+                  "position",
+                  "code"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "text"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "bullets"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "items"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "number"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "number"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "table"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "table"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "chart"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "chart"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "image"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "image"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "icon"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "icon"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "diagram"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "diagram"
+            ]
+          }
+        }
+      ]
+    },
+    "icon": {
+      "type": "object",
+      "properties": {
+        "asset_id": {
+          "$ref": "common.schema.json#/$defs/id",
+          "description": "пиктограмма из ресурсов шаблона"
+        },
+        "query": {
+          "type": "string",
+          "description": "поисковый запрос к библиотеке иконок, если в шаблоне нет подходящей"
+        },
+        "color": {
+          "$ref": "common.schema.json#/$defs/color"
+        }
+      }
+    }
+  }
+}

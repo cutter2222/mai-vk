@@ -1,0 +1,512 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://presentation-designer.local/contracts/content_package.schema.json",
+  "title": "ContentPackage",
+  "description": "Результат слоя импорта содержания. Два входа: контент-пакет (файлы) и краткий бриф с назначением. Факты и наборы данных извлекаются детерминированно до вызова модели. Версия 1.1: контекст факта (показатель, период, субъект, единица, исходный фрагмент или ячейка), производные показатели с формулой, отметка неопределённости.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "package_id",
+    "mode",
+    "brief",
+    "sources",
+    "blocks",
+    "facts",
+    "assets",
+    "datasets"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.1"
+    },
+    "package_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "mode": {
+      "enum": [
+        "package",
+        "brief",
+        "mixed"
+      ],
+      "description": "package: содержание дано; brief: структуру и текст генерирует сервис; mixed: бриф плюс материалы"
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "brief": {
+      "type": "object",
+      "properties": {
+        "purpose": {
+          "enum": [
+            "feature",
+            "product",
+            "project",
+            "initiative",
+            "report",
+            "other"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "audience": {
+          "type": "string"
+        },
+        "goal": {
+          "type": "string",
+          "description": "чего должна добиться презентация: одобрение, информирование, продажа"
+        },
+        "language": {
+          "type": "string",
+          "default": "ru"
+        },
+        "tone": {
+          "type": "string"
+        },
+        "slide_count": {
+          "type": "object",
+          "properties": {
+            "min": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "must_include": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "avoid": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "purpose",
+        "title",
+        "language"
+      ]
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "kind": {
+            "enum": [
+              "text",
+              "markdown",
+              "docx",
+              "pdf",
+              "xlsx",
+              "csv",
+              "json",
+              "image",
+              "url",
+              "user_input"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer"
+          },
+          "extracted": {
+            "type": "boolean"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "common.schema.json#/$defs/warning"
+            }
+          }
+        },
+        "required": [
+          "source_id",
+          "kind",
+          "name"
+        ]
+      }
+    },
+    "blocks": {
+      "type": "array",
+      "description": "Содержание в порядке исходников. Планировщик ссылается на block_id, а не копирует текст без ссылки.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "block_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "source_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "order": {
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "heading",
+              "paragraph",
+              "bullets",
+              "table",
+              "figure",
+              "quote",
+              "kpi",
+              "code"
+            ]
+          },
+          "level": {
+            "type": "integer",
+            "description": "уровень заголовка"
+          },
+          "text": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dataset_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "asset_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "importance": {
+            "enum": [
+              "must",
+              "should",
+              "could"
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "block_id",
+          "source_id",
+          "order",
+          "kind"
+        ]
+      }
+    },
+    "facts": {
+      "type": "array",
+      "description": "Реестр фактов. В тексте планов факты подставляются через {fact:<fact_id>}; модель не переписывает значения.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "fact_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "source_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "block_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "raw": {
+            "type": "string",
+            "description": "как написано в источнике: «12,5 млн ₽»"
+          },
+          "kind": {
+            "enum": [
+              "number",
+              "percent",
+              "money",
+              "date",
+              "range",
+              "ratio",
+              "name",
+              "other"
+            ]
+          },
+          "value": {
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "unit": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string",
+            "description": "что измеряет факт: «выручка за 2025 год»"
+          },
+          "must_keep": {
+            "type": "boolean",
+            "default": true
+          },
+          "context": {
+            "type": "object",
+            "description": "Что именно измеряет факт. «Рост выручки на 25 %» и «рост прибыли на 25 %» различаются контекстом, а не значением.",
+            "additionalProperties": false,
+            "properties": {
+              "metric": {
+                "type": "string",
+                "description": "показатель: выручка, DAU, доля рынка"
+              },
+              "period": {
+                "type": "string",
+                "description": "период: 2025 год, 3 квартал, май"
+              },
+              "subject": {
+                "type": "string",
+                "description": "субъект: компания, продукт, сегмент"
+              },
+              "unit": {
+                "type": "string"
+              },
+              "comparison": {
+                "type": "string",
+                "description": "с чем сравнение: год к году, план"
+              }
+            }
+          },
+          "source_location": {
+            "type": "object",
+            "description": "Точное место в источнике",
+            "additionalProperties": false,
+            "properties": {
+              "fragment": {
+                "type": "string",
+                "description": "исходный фрагмент текста вокруг факта"
+              },
+              "page": {
+                "type": "integer"
+              },
+              "sheet": {
+                "type": "string"
+              },
+              "cell": {
+                "type": "string",
+                "description": "например B12"
+              },
+              "char_offset": {
+                "type": "integer"
+              }
+            }
+          },
+          "derived": {
+            "type": "object",
+            "description": "Производный показатель, вычисленный кодом из других фактов",
+            "additionalProperties": false,
+            "required": [
+              "formula",
+              "inputs"
+            ],
+            "properties": {
+              "formula": {
+                "type": "string",
+                "description": "например (f2 - f1) / f1 * 100"
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "$ref": "common.schema.json#/$defs/id"
+                }
+              }
+            }
+          },
+          "uncertainty": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "level": {
+                "enum": [
+                  "confirmed",
+                  "inferred",
+                  "assumed",
+                  "missing"
+                ]
+              },
+              "note": {
+                "type": "string"
+              },
+              "extracted_by": {
+                "enum": [
+                  "regex",
+                  "parser",
+                  "model",
+                  "user"
+                ]
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            }
+          }
+        },
+        "required": [
+          "fact_id",
+          "source_id",
+          "raw",
+          "kind"
+        ]
+      }
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "asset_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "kind": {
+            "enum": [
+              "image",
+              "logo",
+              "screenshot",
+              "chart_image",
+              "diagram_image",
+              "photo"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "description": "путь в рабочем каталоге задания"
+          },
+          "width_px": {
+            "type": "integer"
+          },
+          "height_px": {
+            "type": "integer"
+          },
+          "caption": {
+            "type": "string"
+          },
+          "source_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          }
+        },
+        "required": [
+          "asset_id",
+          "kind",
+          "path"
+        ]
+      }
+    },
+    "datasets": {
+      "type": "array",
+      "description": "Табличные данные для таблиц и графиков",
+      "items": {
+        "type": "object",
+        "properties": {
+          "dataset_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "title": {
+            "type": "string"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "string",
+                    "number",
+                    "date",
+                    "percent",
+                    "money"
+                  ]
+                },
+                "unit": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "type"
+              ]
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": [
+                  "string",
+                  "number",
+                  "null"
+                ]
+              }
+            }
+          },
+          "source_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "block_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          }
+        },
+        "required": [
+          "dataset_id",
+          "columns",
+          "rows"
+        ]
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/warning"
+      }
+    },
+    "missing_data": {
+      "type": "array",
+      "description": "Данные, которых не хватает для брифа: не выдумываются, а помечаются",
+      "items": {
+        "type": "object",
+        "required": [
+          "what"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "what": {
+            "type": "string"
+          },
+          "why_needed": {
+            "type": "string"
+          },
+          "thesis_hint": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

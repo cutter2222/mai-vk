@@ -1,0 +1,25 @@
+# Манифест скилла по contracts/schemas/skill_manifest.schema.json
+schema_version: '1.1'
+name: auditor
+version: 0.1.0
+stage: audit
+description: 'Контекстные проверки готовых слайдов: 11 вопросов Приложения 1 по картинке,
+  извлечённому тексту и источникам'
+model_role: vlm
+response_format: json_schema
+reasoning:
+  mode: low
+  max_output_tokens: 4000
+prompts:
+- id: audit.content_questions
+  path: prompts/audit.content_questions.v0.1.0.md
+  version: 0.1.0
+params:
+  temperature: 0.2
+input_schema: composed_deck
+output_schema: audit_report
+changelog:
+- version: 0.1.0
+  date: '2026-09-15'
+  note: 'каркас: манифест и заглушка промпта; содержание промпта пишется на этапе
+    реализации слоя'

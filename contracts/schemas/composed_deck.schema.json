@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://presentation-designer.local/contracts/composed_deck.schema.json",
+  "title": "ComposedDeck",
+  "description": "Описание фактически собранного PPTX одного варианта: объекты, вычисленные стили, геометрия, порядок слоёв, ресурсы, связи со слотами плана и исходными слайдами шаблона. Строится слоем вёрстки по сохранённому файлу и используется аудитом, подсветкой и HTML-экспортом. Поля ограничены разделом 16 FRAMEWORKS.md; детали добавляются версией 1.2 на этапе 8.",
+  "type": "object",
+  "required": ["schema_version", "deck_id", "job_id", "variant_id", "revision", "plan_id", "template_id", "pptx_hash", "slide_size", "slides", "html_support"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.1" },
+    "deck_id": { "$ref": "common.schema.json#/$defs/id" },
+    "job_id": { "$ref": "common.schema.json#/$defs/id" },
+    "variant_id": { "$ref": "common.schema.json#/$defs/id" },
+    "revision": { "$ref": "common.schema.json#/$defs/revision" },
+    "plan_id": { "$ref": "common.schema.json#/$defs/id" },
+    "template_id": { "$ref": "common.schema.json#/$defs/id" },
+    "pptx_hash": { "type": "string", "description": "sha256 сохранённого PPTX этой ревизии" },
+    "pptx_artifact": { "type": "string", "description": "имя артефакта в манифесте задания" },
+    "slide_size": { "$ref": "common.schema.json#/$defs/slide_size" },
+    "slides": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/slide" } },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["asset_id", "media_path", "sha256"],
+        "additionalProperties": false,
+        "properties": {
+          "asset_id": { "$ref": "common.schema.json#/$defs/id" },
+          "media_path": { "type": "string" },
+          "sha256": { "type": "string" },
+          "content_type": { "type": "string" },
+          "origin": { "enum": ["template", "content", "generated", "icon_library"] },
+          "shared_with_template": { "type": "boolean", "description": "неизменяемый ресурс, разделяемый с исходным пакетом" }
+        }
+      }
+    },
+    "html_support": {
+      "type": "object",
+      "description": "границы поддержки HTML-экспорта для этой колоды и причины резервного рендера",
+      "required": ["full_native", "fallback_elements"],
+      "additionalProperties": false,
+      "properties": {
+        "full_native": { "type": "boolean" },
+        "supported_kinds": { "type": "array", "items": { "$ref": "#/$defs/object_kind" } },
+        "fallback_elements": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["slide_id", "object_id", "reason"],
+            "additionalProperties": false,
+            "properties": {
+              "slide_id": { "$ref": "common.schema.json#/$defs/id" },
+              "object_id": { "type": "string" },
+              "reason": { "type": "string" },
+              "fallback": { "enum": ["raster_from_render", "omitted"] }
+            }
+          }
+        }
+      }
+    },
+    "warnings": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/warning" } }
+  },
+  "$defs": {
+    "object_kind": { "enum": ["text", "picture", "table", "chart", "shape", "connector", "group", "placeholder_empty", "other"] },
+    "slide": {
+      "type": "object",
+      "required": ["slide_id", "index", "layout_id", "objects"],
+      "additionalProperties": false,
+      "properties": {
+        "slide_id": { "$ref": "common.schema.json#/$defs/id", "description": "стабильный идентификатор из SlidePlan" },
+        "index": { "type": "integer", "minimum": 0, "description": "позиция в сохранённом файле" },
+        "pptx_slide_part": { "type": "string", "description": "например ppt/slides/slide3.xml" },
+        "layout_id": { "$ref": "common.schema.json#/$defs/id" },
+        "pattern_id": { "$ref": "common.schema.json#/$defs/id" },
+        "source_slide_index": { "type": "integer", "description": "индекс образцового слайда шаблона, из которого клонирован" },
+        "background": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "enum": ["solid", "gradient", "image", "inherited"] },
+            "color": { "$ref": "common.schema.json#/$defs/color" },
+            "asset_id": { "$ref": "common.schema.json#/$defs/id" }
+          }
+        },
+        "objects": { "type": "array", "items": { "$ref": "#/$defs/object" } }
+      }
+    },
+    "object": {
+      "type": "object",
+      "required": ["object_id", "kind", "bbox", "z_order"],
+      "additionalProperties": false,
+      "properties": {
+        "object_id": { "type": "string", "description": "p:cNvPr@id внутри слайда" },
+        "name": { "type": "string" },
+        "kind": { "$ref": "#/$defs/object_kind" },
+        "bbox": { "$ref": "common.schema.json#/$defs/bbox" },
+        "rotation_deg": { "type": "number" },
+        "z_order": { "type": "integer" },
+        "group_path": { "type": "array", "items": { "type": "string" }, "description": "идентификаторы групп от внешней к внутренней" },
+        "slot_id": { "$ref": "common.schema.json#/$defs/id", "description": "слот плана, из которого пришло содержимое" },
+        "source_object_id": { "type": "string", "description": "объект образцового слайда шаблона" },
+        "role": { "enum": ["content", "fixed", "decoration", "background"] },
+        "text": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "plain": { "type": "string" },
+            "paragraphs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "text": { "type": "string" },
+                  "level": { "type": "integer" },
+                  "bullet": { "type": "boolean" },
+                  "align": { "enum": ["left", "center", "right", "justify"] },
+                  "style": { "$ref": "common.schema.json#/$defs/computed_text_style" }
+                }
+              }
+            },
+            "computed_style": { "$ref": "common.schema.json#/$defs/computed_text_style" },
+            "insets": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": { "left": { "type": "number" }, "top": { "type": "number" }, "right": { "type": "number" }, "bottom": { "type": "number" } }
+            },
+            "autofit": { "enum": ["none", "shrink", "resize_shape"] },
+            "fact_refs": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/id" } }
+          }
+        },
+        "picture": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "asset_id": { "$ref": "common.schema.json#/$defs/id" },
+            "crop": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": { "left": { "type": "number" }, "top": { "type": "number" }, "right": { "type": "number" }, "bottom": { "type": "number" } }
+            },
+            "natural_width_px": { "type": "integer" },
+            "natural_height_px": { "type": "integer" }
+          }
+        },
+        "table": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "rows": { "type": "integer" },
+            "cols": { "type": "integer" },
+            "dataset_id": { "$ref": "common.schema.json#/$defs/id" },
+            "header_row": { "type": "boolean" }
+          }
+        },
+        "chart": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "chart_part": { "type": "string" },
+            "type": { "type": "string" },
+            "series_count": { "type": "integer" },
+            "dataset_id": { "$ref": "common.schema.json#/$defs/id" },
+            "has_legend": { "type": "boolean" },
+            "has_axis_titles": { "type": "boolean" },
+            "has_data_labels": { "type": "boolean" },
+            "units": { "type": "string" }
+          }
+        },
+        "fill": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "enum": ["none", "solid", "gradient", "image", "inherited"] },
+            "color": { "$ref": "common.schema.json#/$defs/color" },
+            "source": { "$ref": "common.schema.json#/$defs/style_source" }
+          }
+        },
+        "line": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "color": { "$ref": "common.schema.json#/$defs/color" },
+            "width_pt": { "type": "number" }
+          }
+        }
+      }
+    }
+  }
+}

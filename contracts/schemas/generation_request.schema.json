@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://presentation-designer.local/contracts/generation_request.schema.json",
+  "title": "GenerationRequest",
+  "description": "Тело POST /api/generations и вход CLI-команды generate. Версия 1.1. Приоритет: явные настройки запроса → бриф ContentPackage → умолчания config/app.yaml. Пути файлов от клиента не принимаются: только идентификаторы.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "template_id",
+    "package_id"
+  ],
+  "properties": {
+    "template_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "package_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "settings": {
+      "type": "object",
+      "properties": {
+        "slide_count": {
+          "type": "object",
+          "description": "точное число или диапазон; при обоих заданных exact имеет приоритет; min <= max проверяется валидатором",
+          "additionalProperties": false,
+          "properties": {
+            "exact": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 60
+            },
+            "min": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 60
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 60
+            }
+          }
+        },
+        "language": {
+          "type": "string",
+          "default": "ru"
+        },
+        "variants": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "compact",
+              "balanced",
+              "detailed"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 3,
+          "default": [
+            "compact",
+            "balanced",
+            "detailed"
+          ]
+        },
+        "generate_images": {
+          "type": "boolean",
+          "default": false,
+          "description": "генерация новых изображений моделью; доступно только при включённой возможности сервиса"
+        },
+        "run_contextual_audit": {
+          "type": "boolean",
+          "default": true,
+          "description": "отключение даёт неполный аудит и статус needs_review"
+        },
+        "seed": {
+          "type": "integer",
+          "description": "передаётся провайдеру, побитовая воспроизводимость не гарантируется"
+        },
+        "force_regenerate": {
+          "type": "boolean",
+          "default": false,
+          "description": "явная перегенерация: кэш ответов модели не используется"
+        }
+      },
+      "additionalProperties": false
+    },
+    "schema_version": {
+      "const": "1.1"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "повтор запроса с тем же ключом возвращает то же задание"
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,327 @@
+{
+  "schema_version": "1.1",
+  "deck_id": "deck_demo_balanced_r1",
+  "job_id": "job_demo",
+  "variant_id": "balanced",
+  "revision": 1,
+  "plan_id": "plan_demo_balanced",
+  "template_id": "tpl_vk_education",
+  "pptx_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "pptx_artifact": "balanced/r1/deck.pptx",
+  "slide_size": {
+    "width_emu": 12192000,
+    "height_emu": 6858000,
+    "aspect_ratio": 1.7778
+  },
+  "slides": [
+    {
+      "slide_id": "s2",
+      "index": 2,
+      "pptx_slide_part": "ppt/slides/slide2.xml",
+      "layout_id": "slideLayout10",
+      "pattern_id": "pat_kpi_2",
+      "source_slide_index": 17,
+      "background": {
+        "kind": "inherited"
+      },
+      "objects": [
+        {
+          "object_id": "10",
+          "name": "Title 1",
+          "kind": "text",
+          "bbox": {
+            "x": 0.05,
+            "y": 0.06,
+            "width": 0.9,
+            "height": 0.12
+          },
+          "z_order": 1,
+          "slot_id": "title",
+          "source_object_id": "10",
+          "role": "content",
+          "text": {
+            "plain": "Пользователи теряют почти половину важных уведомлений",
+            "paragraphs": [
+              {
+                "text": "Пользователи теряют почти половину важных уведомлений",
+                "level": 0,
+                "bullet": false,
+                "align": "left"
+              }
+            ],
+            "computed_style": {
+              "font": {
+                "family": "Play",
+                "size_pt": 32,
+                "bold": true,
+                "color": "#000000"
+              },
+              "font_source": {
+                "level": "run"
+              },
+              "size_source": {
+                "level": "run"
+              }
+            },
+            "insets": {
+              "left": 0.006,
+              "top": 0.004,
+              "right": 0.006,
+              "bottom": 0.004
+            },
+            "autofit": "none"
+          }
+        },
+        {
+          "object_id": "11",
+          "kind": "text",
+          "bbox": {
+            "x": 0.05,
+            "y": 0.3,
+            "width": 0.25,
+            "height": 0.15
+          },
+          "z_order": 2,
+          "slot_id": "kpi_1_value",
+          "source_object_id": "11",
+          "role": "content",
+          "text": {
+            "plain": "40 %",
+            "computed_style": {
+              "font": {
+                "family": "Play",
+                "size_pt": 48,
+                "color": "#0077FF"
+              },
+              "font_source": {
+                "level": "run"
+              },
+              "color_source": {
+                "level": "theme",
+                "theme_ref": "accent1"
+              }
+            },
+            "autofit": "none",
+            "fact_refs": [
+              "f1"
+            ]
+          }
+        },
+        {
+          "object_id": "5",
+          "kind": "picture",
+          "bbox": {
+            "x": 0.05,
+            "y": 0.92,
+            "width": 0.08,
+            "height": 0.04
+          },
+          "z_order": 0,
+          "role": "fixed",
+          "source_object_id": "5",
+          "picture": {
+            "asset_id": "asset_logo",
+            "natural_width_px": 400,
+            "natural_height_px": 120
+          }
+        }
+      ]
+    },
+    {
+      "slide_id": "s3",
+      "index": 6,
+      "pptx_slide_part": "ppt/slides/slide3.xml",
+      "layout_id": "slideLayout6",
+      "pattern_id": "pat_chart",
+      "source_slide_index": 47,
+      "objects": [
+        {
+          "object_id": "10",
+          "kind": "text",
+          "bbox": {
+            "x": 0.05,
+            "y": 0.06,
+            "width": 0.9,
+            "height": 0.12
+          },
+          "z_order": 1,
+          "slot_id": "title",
+          "role": "content",
+          "text": {
+            "plain": "Открываемость выросла с 31 до 44 % за три месяца пилота",
+            "autofit": "none",
+            "fact_refs": [
+              "f4",
+              "f5"
+            ]
+          }
+        },
+        {
+          "object_id": "20",
+          "kind": "chart",
+          "bbox": {
+            "x": 0.08,
+            "y": 0.25,
+            "width": 0.84,
+            "height": 0.6
+          },
+          "z_order": 2,
+          "slot_id": "chart",
+          "role": "content",
+          "chart": {
+            "chart_part": "ppt/charts/chart1.xml",
+            "type": "column",
+            "series_count": 1,
+            "dataset_id": "ds_metrics",
+            "has_legend": false,
+            "has_axis_titles": true,
+            "has_data_labels": true,
+            "units": "%"
+          }
+        }
+      ]
+    },
+    {
+      "slide_id": "s3b",
+      "index": 7,
+      "pptx_slide_part": "ppt/slides/slide8.xml",
+      "layout_id": "slideLayout6",
+      "pattern_id": "pat_table",
+      "source_slide_index": 37,
+      "objects": [
+        {
+          "object_id": "10",
+          "kind": "text",
+          "bbox": {
+            "x": 0.05,
+            "y": 0.06,
+            "width": 0.9,
+            "height": 0.12
+          },
+          "z_order": 1,
+          "slot_id": "title",
+          "role": "content",
+          "text": {
+            "plain": "Метрики пилота по месяцам",
+            "autofit": "none"
+          }
+        },
+        {
+          "object_id": "30",
+          "kind": "table",
+          "bbox": {
+            "x": 0.05,
+            "y": 0.25,
+            "width": 0.9,
+            "height": 0.4
+          },
+          "z_order": 2,
+          "slot_id": "table",
+          "role": "content",
+          "table": {
+            "rows": 4,
+            "cols": 3,
+            "dataset_id": "ds_metrics",
+            "header_row": true
+          }
+        }
+      ]
+    },
+    {
+      "slide_id": "s5",
+      "index": 8,
+      "pptx_slide_part": "ppt/slides/slide9.xml",
+      "layout_id": "slideLayout10",
+      "pattern_id": "pat_kpi_2",
+      "source_slide_index": 17,
+      "objects": [
+        {
+          "object_id": "10",
+          "kind": "text",
+          "bbox": {
+            "x": 0.05,
+            "y": 0.06,
+            "width": 0.9,
+            "height": 0.12
+          },
+          "z_order": 1,
+          "slot_id": "title",
+          "role": "content",
+          "text": {
+            "plain": "Пилот окупается за год",
+            "autofit": "none"
+          }
+        },
+        {
+          "object_id": "13",
+          "kind": "text",
+          "bbox": {
+            "x": 0.55,
+            "y": 0.3,
+            "width": 0.4,
+            "height": 0.4
+          },
+          "z_order": 2,
+          "slot_id": "body",
+          "role": "content",
+          "text": {
+            "plain": "Меньше повторных обращений в поддержку и ручной рассылки.",
+            "autofit": "none",
+            "fact_refs": [
+              "f2"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "slide_id": "s6",
+      "index": 9,
+      "pptx_slide_part": "ppt/slides/slide10.xml",
+      "layout_id": "slideLayout18",
+      "pattern_id": "pat_thanks_qr",
+      "source_slide_index": 51,
+      "objects": [
+        {
+          "object_id": "10",
+          "kind": "text",
+          "bbox": {
+            "x": 0.06,
+            "y": 0.3,
+            "width": 0.7,
+            "height": 0.2
+          },
+          "z_order": 1,
+          "slot_id": "title",
+          "role": "content",
+          "text": {
+            "plain": "Просим одобрить расширение пилота на все продукты в четвёртом квартале",
+            "autofit": "none"
+          }
+        }
+      ]
+    }
+  ],
+  "assets": [
+    {
+      "asset_id": "asset_logo",
+      "media_path": "ppt/media/image1.png",
+      "sha256": "…",
+      "content_type": "image/png",
+      "origin": "template",
+      "shared_with_template": true
+    }
+  ],
+  "html_support": {
+    "full_native": true,
+    "supported_kinds": [
+      "text",
+      "picture",
+      "table",
+      "chart",
+      "shape"
+    ],
+    "fallback_elements": []
+  },
+  "warnings": []
+}

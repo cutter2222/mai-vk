@@ -1,0 +1,1055 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://presentation-designer.local/contracts/template_profile.schema.json",
+  "title": "TemplateProfile",
+  "description": "Результат слоя парсинга: дизайн-система, фиксированные элементы, ресурсы и композиционные паттерны шаблона. Полный профиль читают вёрстка и аудит; в модель уходит только llm_digest и выдержки по выбранным паттернам. Версия 1.1: области действия правил, вычисленные стили с источником, геометрия групп и crop, ссылки на объекты слотов, статические и динамические элементы, параметры абзацев.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "template_id",
+    "template_hash",
+    "source_file",
+    "analyzer",
+    "slide_size",
+    "layouts",
+    "design_tokens",
+    "fixed_elements",
+    "assets",
+    "patterns",
+    "stats"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.1"
+    },
+    "template_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "template_hash": {
+      "type": "string",
+      "description": "sha256 исходного файла; ключ кэша профиля вместе с analyzer.version"
+    },
+    "source_file": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "size_bytes": {
+          "type": "integer"
+        },
+        "format": {
+          "enum": [
+            "pptx"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "size_bytes",
+        "format"
+      ]
+    },
+    "analyzer": {
+      "$ref": "common.schema.json#/$defs/version_ref"
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "slide_size": {
+      "$ref": "common.schema.json#/$defs/slide_size"
+    },
+    "masters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "master_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "name": {
+            "type": "string"
+          },
+          "theme_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "master_id"
+        ]
+      }
+    },
+    "layouts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/layout"
+      }
+    },
+    "design_tokens": {
+      "$ref": "#/$defs/design_tokens"
+    },
+    "guides": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/guide"
+      }
+    },
+    "fixed_elements": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/fixed_element"
+      }
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/asset"
+      }
+    },
+    "patterns": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/pattern"
+      }
+    },
+    "guidelines": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/guideline"
+      }
+    },
+    "placeholder_markers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Строки-заглушки, найденные в образцах шаблона: «Заголовок», «Текст», «Lorem ipsum», «ххх%», «Вставить фото». Используются при очистке и в проверке integrity.placeholder_text."
+    },
+    "stats": {
+      "type": "object",
+      "properties": {
+        "slides": {
+          "type": "integer"
+        },
+        "layouts": {
+          "type": "integer"
+        },
+        "masters": {
+          "type": "integer"
+        },
+        "media": {
+          "type": "integer"
+        },
+        "native_charts": {
+          "type": "integer"
+        },
+        "native_tables": {
+          "type": "integer"
+        },
+        "smartart": {
+          "type": "integer"
+        },
+        "embedded_fonts": {
+          "type": "integer"
+        },
+        "notes_with_text": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "slides",
+        "layouts",
+        "masters"
+      ]
+    },
+    "llm_digest": {
+      "type": "string",
+      "description": "Компактное текстовое описание профиля для промптов: палитра, шрифты, шкала, список паттернов с ролями и ёмкостью. Ориентир не более 2000 токенов."
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/warning"
+      }
+    },
+    "sample_slides": {
+      "type": "array",
+      "description": "Классификация каждого слайда шаблона: образец содержания, инструкция по оформлению, каталог ресурсов, пустой. Из паттернов исключаются все, кроме образцов.",
+      "items": {
+        "type": "object",
+        "required": [
+          "slide_index",
+          "classification"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "pptx_slide_part": {
+            "type": "string"
+          },
+          "layout_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "classification": {
+            "enum": [
+              "content_sample",
+              "style_guide",
+              "asset_catalog",
+              "empty",
+              "hidden",
+              "other"
+            ]
+          },
+          "group_id": {
+            "type": "string",
+            "description": "группа похожих образцов, отправленных в VLM вместе"
+          },
+          "preview_path": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "dynamic_fields": {
+      "type": "array",
+      "description": "Поля, которые обновляются при смене порядка слайдов: номер слайда, дата, нумерация разделов",
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "appears_on"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "slide_number",
+              "date",
+              "section_index",
+              "total_slides"
+            ]
+          },
+          "appears_on": {
+            "type": "string"
+          },
+          "element_ref": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "layout": {
+      "type": "object",
+      "properties": {
+        "layout_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "name": {
+          "type": "string",
+          "description": "имя из cSld@name, например «2 фактоида + текст»"
+        },
+        "master_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "placeholders": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "idx": {
+                "type": "integer"
+              },
+              "type": {
+                "enum": [
+                  "title",
+                  "ctrTitle",
+                  "subTitle",
+                  "body",
+                  "obj",
+                  "pic",
+                  "chart",
+                  "tbl",
+                  "dt",
+                  "ftr",
+                  "sldNum",
+                  "other"
+                ]
+              },
+              "bbox": {
+                "$ref": "common.schema.json#/$defs/bbox"
+              },
+              "font": {
+                "$ref": "common.schema.json#/$defs/font_spec"
+              }
+            },
+            "required": [
+              "idx",
+              "type"
+            ]
+          }
+        },
+        "sample_slide_count": {
+          "type": "integer",
+          "description": "сколько образцовых слайдов шаблона используют этот макет"
+        }
+      },
+      "required": [
+        "layout_id",
+        "name",
+        "placeholders"
+      ]
+    },
+    "design_tokens": {
+      "type": "object",
+      "properties": {
+        "colors": {
+          "type": "object",
+          "properties": {
+            "theme": {
+              "type": "object",
+              "description": "цвета темы мастера: dk1, lt1, dk2, lt2, accent1..accent6, hlink",
+              "additionalProperties": {
+                "$ref": "common.schema.json#/$defs/color"
+              }
+            },
+            "palette": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "hex": {
+                    "$ref": "common.schema.json#/$defs/color"
+                  },
+                  "role": {
+                    "enum": [
+                      "primary",
+                      "secondary",
+                      "accent",
+                      "neutral",
+                      "background",
+                      "text",
+                      "muted",
+                      "warning"
+                    ]
+                  },
+                  "usage_count": {
+                    "type": "integer"
+                  },
+                  "source": {
+                    "enum": [
+                      "theme",
+                      "slides",
+                      "layouts",
+                      "master"
+                    ]
+                  },
+                  "scope": {
+                    "$ref": "#/$defs/rule_scope"
+                  },
+                  "confidence": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "style_source": {
+                    "$ref": "common.schema.json#/$defs/style_source"
+                  }
+                },
+                "required": [
+                  "hex",
+                  "role"
+                ]
+              }
+            }
+          },
+          "required": [
+            "theme",
+            "palette"
+          ]
+        },
+        "typography": {
+          "type": "object",
+          "properties": {
+            "theme_fonts": {
+              "type": "object",
+              "properties": {
+                "major": {
+                  "type": "string"
+                },
+                "minor": {
+                  "type": "string"
+                }
+              }
+            },
+            "fonts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "family": {
+                    "type": "string"
+                  },
+                  "usage_count": {
+                    "type": "integer"
+                  },
+                  "embedded": {
+                    "type": "boolean"
+                  },
+                  "available_in_renderer": {
+                    "type": "boolean"
+                  },
+                  "fallback": {
+                    "type": "string"
+                  },
+                  "roles": {
+                    "type": "array",
+                    "items": {
+                      "enum": [
+                        "title",
+                        "body",
+                        "code",
+                        "decorative"
+                      ]
+                    }
+                  },
+                  "scope": {
+                    "$ref": "#/$defs/rule_scope"
+                  },
+                  "file": {
+                    "type": "string",
+                    "description": "фактический файл шрифта в рендерере, по которому измеряется текст"
+                  }
+                },
+                "required": [
+                  "family",
+                  "usage_count",
+                  "embedded"
+                ]
+              }
+            },
+            "scale": {
+              "type": "array",
+              "description": "типографическая шкала шаблона; кегли не из шкалы считаются нарушением",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "size_pt": {
+                    "type": "number"
+                  },
+                  "role": {
+                    "enum": [
+                      "display",
+                      "title",
+                      "subtitle",
+                      "body",
+                      "caption",
+                      "kpi",
+                      "other"
+                    ]
+                  },
+                  "usage_count": {
+                    "type": "integer"
+                  },
+                  "scope": {
+                    "$ref": "#/$defs/rule_scope"
+                  },
+                  "confidence": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                },
+                "required": [
+                  "size_pt",
+                  "role"
+                ]
+              }
+            },
+            "max_font_families": {
+              "type": "integer",
+              "default": 2
+            }
+          },
+          "required": [
+            "fonts",
+            "scale"
+          ]
+        },
+        "spacing": {
+          "type": "object",
+          "properties": {
+            "margins": {
+              "type": "object",
+              "description": "поля слайда в долях ширины и высоты; выводятся из образцов",
+              "properties": {
+                "top": {
+                  "type": "number"
+                },
+                "right": {
+                  "type": "number"
+                },
+                "bottom": {
+                  "type": "number"
+                },
+                "left": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "top",
+                "right",
+                "bottom",
+                "left"
+              ]
+            },
+            "column_grid": {
+              "type": "object",
+              "properties": {
+                "columns": {
+                  "type": "integer"
+                },
+                "gutter": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "colors",
+        "typography"
+      ]
+    },
+    "guide": {
+      "type": "object",
+      "properties": {
+        "orientation": {
+          "enum": [
+            "horizontal",
+            "vertical"
+          ]
+        },
+        "pos": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "source": {
+          "enum": [
+            "view_props",
+            "inferred"
+          ]
+        }
+      },
+      "required": [
+        "orientation",
+        "pos",
+        "source"
+      ]
+    },
+    "fixed_element": {
+      "type": "object",
+      "description": "Элемент, который должен оставаться на месте: логотип, колонтитул, номер страницы, навигационные точки, фон",
+      "properties": {
+        "element_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "logo",
+            "footer",
+            "page_number",
+            "background",
+            "decoration",
+            "navigation_dots",
+            "qr_placeholder"
+          ]
+        },
+        "bbox": {
+          "$ref": "common.schema.json#/$defs/bbox"
+        },
+        "appears_on": {
+          "type": "string",
+          "description": "all | layout:<layout_id> | pattern:<pattern_id>"
+        },
+        "asset_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "must_not_move": {
+          "type": "boolean",
+          "default": true
+        },
+        "element_ref": {
+          "type": "string"
+        },
+        "source_part": {
+          "type": "string",
+          "description": "часть пакета, где живёт элемент: мастер, макет или слайд"
+        }
+      },
+      "required": [
+        "element_id",
+        "kind",
+        "bbox",
+        "appears_on"
+      ]
+    },
+    "asset": {
+      "type": "object",
+      "properties": {
+        "asset_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "image",
+            "icon",
+            "logo",
+            "photo",
+            "screenshot",
+            "mockup",
+            "chart_image",
+            "qr",
+            "background"
+          ]
+        },
+        "media_path": {
+          "type": "string",
+          "description": "путь внутри pptx, например ppt/media/image12.png"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "width_px": {
+          "type": "integer"
+        },
+        "height_px": {
+          "type": "integer"
+        },
+        "source_slide_index": {
+          "type": "integer"
+        },
+        "bbox_on_source": {
+          "$ref": "common.schema.json#/$defs/bbox"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reusable": {
+          "type": "boolean",
+          "description": "можно ли использовать как пиктограмму или иллюстрацию в новых слайдах"
+        }
+      },
+      "required": [
+        "asset_id",
+        "kind",
+        "media_path",
+        "sha256"
+      ]
+    },
+    "slot": {
+      "type": "object",
+      "description": "Область паттерна под содержание. Ёмкость считается по метрикам шрифта, а не на глаз.",
+      "properties": {
+        "slot_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "title",
+            "subtitle",
+            "body",
+            "bullets",
+            "number",
+            "label",
+            "caption",
+            "date",
+            "name",
+            "position",
+            "image",
+            "icon",
+            "table",
+            "chart",
+            "diagram",
+            "qr",
+            "code",
+            "footer"
+          ]
+        },
+        "bbox": {
+          "$ref": "common.schema.json#/$defs/bbox"
+        },
+        "z_order": {
+          "type": "integer"
+        },
+        "font": {
+          "$ref": "common.schema.json#/$defs/font_spec"
+        },
+        "align": {
+          "enum": [
+            "left",
+            "center",
+            "right",
+            "justify"
+          ]
+        },
+        "valign": {
+          "enum": [
+            "top",
+            "middle",
+            "bottom"
+          ]
+        },
+        "capacity": {
+          "type": "object",
+          "properties": {
+            "max_chars": {
+              "type": "integer"
+            },
+            "max_lines": {
+              "type": "integer"
+            },
+            "max_items": {
+              "type": "integer"
+            },
+            "max_words_per_item": {
+              "type": "integer"
+            },
+            "measured_with": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "font_file": {
+                  "type": "string"
+                },
+                "method": {
+                  "enum": [
+                    "font_metrics",
+                    "heuristic"
+                  ]
+                },
+                "margin_ratio": {
+                  "type": "number"
+                }
+              }
+            },
+            "confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        },
+        "required": {
+          "type": "boolean",
+          "default": false
+        },
+        "repeat_group": {
+          "type": "string",
+          "description": "идентификатор группы повторяющихся карточек; слоты одной группы клонируются вместе"
+        },
+        "sample_text": {
+          "type": "string"
+        },
+        "element_ref": {
+          "type": "string",
+          "description": "id объекта в исходном образцовом слайде (p:cNvPr@id); вёрстка заменяет содержимое именно этого объекта"
+        },
+        "computed_style": {
+          "$ref": "common.schema.json#/$defs/computed_text_style"
+        },
+        "paragraph_params": {
+          "$ref": "common.schema.json#/$defs/paragraph_params"
+        },
+        "group_path": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "идентификаторы групп от внешней к внутренней, если объект вложен"
+        },
+        "rotation_deg": {
+          "type": "number"
+        },
+        "crop": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "left": {
+              "type": "number"
+            },
+            "top": {
+              "type": "number"
+            },
+            "right": {
+              "type": "number"
+            },
+            "bottom": {
+              "type": "number"
+            }
+          },
+          "description": "crop исходной картинки в долях, для слотов image"
+        }
+      },
+      "required": [
+        "slot_id",
+        "kind",
+        "bbox"
+      ]
+    },
+    "pattern": {
+      "type": "object",
+      "description": "Композиционный паттерн. Источник: образцовый слайд шаблона или макет. В шаблонах датасета почти все паттерны идут от образцовых слайдов.",
+      "properties": {
+        "pattern_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "title",
+            "agenda",
+            "section_divider",
+            "bullets",
+            "text",
+            "two_column",
+            "cards",
+            "kpi",
+            "numbers",
+            "table",
+            "chart",
+            "timeline",
+            "process",
+            "comparison",
+            "quote",
+            "team",
+            "speaker",
+            "screenshot",
+            "mockup",
+            "pricing",
+            "code",
+            "image_full",
+            "qr",
+            "thanks",
+            "freeform"
+          ]
+        },
+        "source": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "enum": [
+                "sample_slide",
+                "layout"
+              ]
+            },
+            "slide_index": {
+              "type": "integer"
+            },
+            "layout_id": {
+              "$ref": "common.schema.json#/$defs/id"
+            },
+            "pptx_slide_part": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "layout_id"
+          ]
+        },
+        "slots": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/slot"
+          }
+        },
+        "constraints": {
+          "type": "object",
+          "properties": {
+            "min_items": {
+              "type": "integer"
+            },
+            "max_items": {
+              "type": "integer"
+            },
+            "supports": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "image",
+                  "icon",
+                  "table",
+                  "chart",
+                  "diagram",
+                  "number",
+                  "qr"
+                ]
+              }
+            }
+          }
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "preview_path": {
+          "type": "string",
+          "description": "миниатюра исходного слайда"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "role_source": {
+          "enum": [
+            "heuristic",
+            "vlm",
+            "layout_name",
+            "manual"
+          ]
+        },
+        "notes": {
+          "type": "string"
+        },
+        "static_object_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "объекты образца, которые остаются как есть: декор, фон, логотипы"
+        },
+        "removable_object_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "объекты образца, удаляемые при незаполненных слотах, например лишние карточки"
+        },
+        "sequence_hints": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "typical_position": {
+              "enum": [
+                "first",
+                "early",
+                "middle",
+                "late",
+                "last",
+                "any"
+              ]
+            },
+            "max_consecutive": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "required": [
+        "pattern_id",
+        "role",
+        "source",
+        "slots"
+      ]
+    },
+    "guideline": {
+      "type": "object",
+      "description": "Правило оформления, найденное текстом в самом шаблоне, например «Перекрытие рядов ±50%, без линий сетки»",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "source_slide_index": {
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "typography",
+            "color",
+            "chart",
+            "table",
+            "icons",
+            "layout",
+            "general"
+          ]
+        }
+      },
+      "required": [
+        "text",
+        "kind"
+      ]
+    },
+    "rule_scope": {
+      "type": "object",
+      "description": "Область действия правила: где найдено и к чему применимо. Случайный цвет на служебном слайде не становится разрешением использовать его везде.",
+      "required": [
+        "level"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "enum": [
+            "theme",
+            "master",
+            "layout",
+            "pattern",
+            "text_role",
+            "slide"
+          ]
+        },
+        "pattern_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/id"
+          }
+        },
+        "text_roles": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "display",
+              "title",
+              "subtitle",
+              "body",
+              "caption",
+              "kpi",
+              "label",
+              "code",
+              "other"
+            ]
+          }
+        },
+        "slide_indexes": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "applies_to_new_content": {
+          "type": "boolean",
+          "description": "можно ли использовать в новых слайдах"
+        }
+      }
+    }
+  }
+}

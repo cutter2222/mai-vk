@@ -1,0 +1,58 @@
+# Роли моделей и провайдеры. Секреты только в окружении: имена переменных указаны в env_*.
+# Допуск по ТЗ: открытые веса, лицензия Apache 2.0 или MIT, до 35B (text-to-image до 20B).
+# Значения model для VK — ориентир из ТЗ (Qwen 3.8 27B). Точный model ID, endpoint и
+# возможности фиксируются после зонда (scripts/probe_llm.py) в docs/llm-capabilities.md;
+# конфиг не выдаёт ориентир за проверенный API.
+
+providers:
+  qwen-api:
+    kind: openai_compatible
+    env_base_url: PD_QWEN_BASE_URL
+    env_api_key: PD_QWEN_API_KEY
+    supports:              # заполняется по результатам зонда; до него значения null
+      json_schema: null
+      json_object: null
+      images: null
+      multi_image: null
+      usage: null
+    limits:
+      concurrency: null
+      rpm: null
+      tpm: null
+  vk-inference:
+    kind: openai_compatible
+    env_base_url: PD_VK_BASE_URL
+    env_api_key: PD_VK_API_KEY
+    note: "Обязателен для команд топ-10. Доступ и model ID подтверждаются организаторами."
+    supports: { json_schema: null, json_object: null, images: null, multi_image: null, usage: null }
+    limits: { concurrency: null, rpm: null, tpm: null }
+
+active_provider: qwen-api
+
+roles:
+  llm:
+    provider: qwen-api
+    model: qwen3.8-27b       # ориентир по ТЗ; подтвердить точный ID у провайдера
+    hf_url: https://huggingface.co/Qwen/Qwen3.8-27B
+    license: Apache-2.0
+    params_b: 27
+    reasoning: { mode: low, max_output_tokens: 4000 }
+    temperature: 0.2
+    verified: { by: null, date: null, source: null }
+  vlm:
+    provider: qwen-api
+    model: qwen3.8-27b       # мультимодальный checkpoint той же линейки; подтвердить
+    hf_url: https://huggingface.co/Qwen/Qwen3.8-27B
+    license: Apache-2.0
+    params_b: 27
+    reasoning: { mode: "off", max_output_tokens: 1500 }
+    temperature: 0.0
+    verified: { by: null, date: null, source: null }
+  text_to_image:
+    enabled: false           # задача со звёздочкой, только топ-10 (этап 13)
+    provider: null
+    model: null
+    hf_url: null
+    license: null
+    params_b: null
+    verified: { by: null, date: null, source: null }

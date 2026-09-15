@@ -1,0 +1,25 @@
+# Манифест скилла по contracts/schemas/skill_manifest.schema.json
+schema_version: '1.1'
+name: repairer
+version: 0.1.0
+stage: repair
+description: 'Смысловые исправления по выбранным находкам: сокращение, перефразирование,
+  перегенерация блока из фактов'
+model_role: llm
+response_format: json_schema
+reasoning:
+  mode: low
+  max_output_tokens: 4000
+prompts:
+- id: repair.rewrite_block
+  path: prompts/repair.rewrite_block.v0.1.0.md
+  version: 0.1.0
+params:
+  temperature: 0.2
+input_schema: audit_report
+output_schema: slide_plan
+changelog:
+- version: 0.1.0
+  date: '2026-09-15'
+  note: 'каркас: манифест и заглушка промпта; содержание промпта пишется на этапе
+    реализации слоя'

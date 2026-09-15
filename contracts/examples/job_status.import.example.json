@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.1",
+  "job_id": "job_import_pkg",
+  "kind": "content_import",
+  "status": "succeeded",
+  "stage": "done",
+  "stages": [
+    {
+      "stage": "import",
+      "status": "done",
+      "duration_ms": 1200
+    }
+  ],
+  "progress": {
+    "percent": 100,
+    "message": "Импорт готов: 4 блока, 5 фактов, 1 таблица"
+  },
+  "created_at": "2026-09-15T11:59:00Z",
+  "finished_at": "2026-09-15T11:59:02Z",
+  "result": {
+    "package_id": "pkg_demo",
+    "content_package_url": "/api/content/pkg_demo"
+  }
+}

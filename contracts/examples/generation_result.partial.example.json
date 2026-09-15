@@ -1,0 +1,689 @@
+{
+  "schema_version": "1.1",
+  "job_id": "job_partial",
+  "status": "needs_review",
+  "stage": "done",
+  "progress": {
+    "percent": 100,
+    "message": "Готово: 2 варианта из 3, вариант detailed завершился ошибкой"
+  },
+  "template_id": "tpl_vk_education",
+  "package_id": "pkg_demo",
+  "request": {
+    "schema_version": "1.1",
+    "template_id": "tpl_vk_education",
+    "package_id": "pkg_demo",
+    "idempotency_key": "ui-7c1e2a",
+    "settings": {
+      "slide_count": {
+        "min": 10,
+        "max": 15
+      },
+      "language": "ru",
+      "variants": [
+        "compact",
+        "balanced",
+        "detailed"
+      ],
+      "generate_images": false,
+      "run_contextual_audit": true,
+      "force_regenerate": false,
+      "seed": 42
+    }
+  },
+  "created_at": "2026-09-15T12:00:00Z",
+  "finished_at": "2026-09-15T12:04:10Z",
+  "variants": [
+    {
+      "variant_id": "compact",
+      "axis": "density",
+      "value": "compact",
+      "rationale": "Минимум текста, один факт на слайд",
+      "status": "ready",
+      "slide_count": 10,
+      "audit_summary": {
+        "issues_total": 0
+      },
+      "artifacts": {
+        "pptx": "compact/r1/deck.pptx",
+        "pdf": "compact/r1/deck.pdf",
+        "html": "compact/r1/deck.html",
+        "thumbnails": [
+          {
+            "slide_index": 0,
+            "name": "compact/r1/thumbs/slide-01.png",
+            "width_px": 1280,
+            "height_px": 720
+          },
+          {
+            "slide_index": 1,
+            "name": "compact/r1/thumbs/slide-02.png",
+            "width_px": 1280,
+            "height_px": 720
+          },
+          {
+            "slide_index": 2,
+            "name": "compact/r1/thumbs/slide-03.png",
+            "width_px": 1280,
+            "height_px": 720
+          },
+          {
+            "slide_index": 3,
+            "name": "compact/r1/thumbs/slide-04.png",
+            "width_px": 1280,
+            "height_px": 720
+          },
+          {
+            "slide_index": 4,
+            "name": "compact/r1/thumbs/slide-05.png",
+            "width_px": 1280,
+            "height_px": 720
+          },
+          {
+            "slide_index": 5,
+            "name": "compact/r1/thumbs/slide-06.png",
+            "width_px": 1280,
+            "height_px": 720
+          },
+          {
+            "slide_index": 6,
+            "name": "compact/r1/thumbs/slide-07.png",
+            "width_px": 1280,
+            "height_px": 720
+          },
+          {
+            "slide_index": 7,
+            "name": "compact/r1/thumbs/slide-08.png",
+            "width_px": 1280,
+            "height_px": 720
+          },
+          {
+            "slide_index": 8,
+            "name": "compact/r1/thumbs/slide-09.png",
+            "width_px": 1280,
+            "height_px": 720
+          },
+          {
+            "slide_index": 9,
+            "name": "compact/r1/thumbs/slide-10.png",
+            "width_px": 1280,
+            "height_px": 720
+          }
+        ]
+      },
+      "revision": 1,
+      "revisions": [
+        {
+          "revision": 1,
+          "created_at": "2026-09-15T12:03:40Z",
+          "pptx_hash": "sha256:…",
+          "artifacts_prefix": "compact/r1/"
+        }
+      ],
+      "composed_deck_artifact": "compact/r1/composed.json",
+      "ready_at": "2026-09-15T12:03:40Z",
+      "audited_at": "2026-09-15T12:04:10Z",
+      "audit": {
+        "status": "complete",
+        "coverage_complete": true,
+        "issues_total": 0,
+        "blocking": 0,
+        "report_artifact": "compact/r1/audit.json"
+      },
+      "stages": [
+        {
+          "stage": "plan",
+          "variant_id": "compact",
+          "status": "done",
+          "duration_ms": 25000,
+          "quota_wait_ms": 1800
+        },
+        {
+          "stage": "compose",
+          "variant_id": "compact",
+          "status": "done",
+          "duration_ms": 3000
+        },
+        {
+          "stage": "export",
+          "variant_id": "compact",
+          "status": "done",
+          "duration_ms": 14000
+        },
+        {
+          "stage": "audit",
+          "variant_id": "compact",
+          "status": "done",
+          "duration_ms": 30000,
+          "quota_wait_ms": 4000
+        }
+      ],
+      "plan_artifact": "compact/r1/plan.json"
+    },
+    {
+      "variant_id": "balanced",
+      "axis": "density",
+      "value": "balanced",
+      "rationale": "Средняя плотность",
+      "status": "needs_review",
+      "slide_count": 12,
+      "audit_summary": {
+        "issues_total": 2
+      },
+      "artifacts": {
+        "pptx": "balanced/r1/deck.pptx",
+        "pdf": "balanced/r1/deck.pdf",
+        "html": "balanced/r1/deck.html",
+        "thumbnails": [
+          {
+            "slide_index": 0,
+            "name": "balanced/r1/thumbs/slide-01.png",
+            "width_px": 1280,
+            "height_px": 720
+          },
+          {
+            "slide_index": 1,
+            "name": "balanced/r1/thumbs/slide-02.png",
+            "width_px": 1280,
+            "height_px": 720
+          },
+          {
+            "slide_index": 2,
+            "name": "balanced/r1/thumbs/slide-03.png",
+            "width_px": 1280,
+            "height_px": 720
+          },
+          {
+            "slide_index": 3,
+            "name": "balanced/r1/thumbs/slide-04.png",
+            "width_px": 1280,
+            "height_px": 720
+          },
+          {
+            "slide_index": 4,
+            "name": "balanced/r1/thumbs/slide-05.png",
+            "width_px": 1280,
+            "height_px": 720
+          },
+          {
+            "slide_index": 5,
+            "name": "balanced/r1/thumbs/slide-06.png",
+            "width_px": 1280,
+            "height_px": 720
+          },
+          {
+            "slide_index": 6,
+            "name": "balanced/r1/thumbs/slide-07.png",
+            "width_px": 1280,
+            "height_px": 720
+          },
+          {
+            "slide_index": 7,
+            "name": "balanced/r1/thumbs/slide-08.png",
+            "width_px": 1280,
+            "height_px": 720
+          },
+          {
+            "slide_index": 8,
+            "name": "balanced/r1/thumbs/slide-09.png",
+            "width_px": 1280,
+            "height_px": 720
+          },
+          {
+            "slide_index": 9,
+            "name": "balanced/r1/thumbs/slide-10.png",
+            "width_px": 1280,
+            "height_px": 720
+          },
+          {
+            "slide_index": 10,
+            "name": "balanced/r1/thumbs/slide-11.png",
+            "width_px": 1280,
+            "height_px": 720
+          },
+          {
+            "slide_index": 11,
+            "name": "balanced/r1/thumbs/slide-12.png",
+            "width_px": 1280,
+            "height_px": 720
+          }
+        ]
+      },
+      "revision": 1,
+      "revisions": [
+        {
+          "revision": 1,
+          "created_at": "2026-09-15T12:03:40Z",
+          "pptx_hash": "sha256:…",
+          "artifacts_prefix": "balanced/r1/"
+        }
+      ],
+      "composed_deck_artifact": "balanced/r1/composed.json",
+      "ready_at": "2026-09-15T12:03:40Z",
+      "audited_at": "2026-09-15T12:04:10Z",
+      "audit": {
+        "status": "partial",
+        "coverage_complete": false,
+        "issues_total": 2,
+        "blocking": 0,
+        "report_artifact": "balanced/r1/audit.json"
+      },
+      "stages": [
+        {
+          "stage": "plan",
+          "variant_id": "balanced",
+          "status": "done",
+          "duration_ms": 25000,
+          "quota_wait_ms": 1800
+        },
+        {
+          "stage": "compose",
+          "variant_id": "balanced",
+          "status": "done",
+          "duration_ms": 3000
+        },
+        {
+          "stage": "export",
+          "variant_id": "balanced",
+          "status": "done",
+          "duration_ms": 14000
+        },
+        {
+          "stage": "audit",
+          "variant_id": "balanced",
+          "status": "done",
+          "duration_ms": 30000,
+          "quota_wait_ms": 4000
+        }
+      ],
+      "plan_artifact": "balanced/r1/plan.json"
+    },
+    {
+      "variant_id": "detailed",
+      "axis": "density",
+      "value": "detailed",
+      "rationale": "Подробный вариант с таблицами",
+      "status": "failed",
+      "slide_count": 15,
+      "audit_summary": {
+        "issues_total": 3
+      },
+      "artifacts": {},
+      "revision": 1,
+      "revisions": [
+        {
+          "revision": 1,
+          "created_at": "2026-09-15T12:03:40Z",
+          "pptx_hash": "sha256:…",
+          "artifacts_prefix": "detailed/r1/"
+        }
+      ],
+      "composed_deck_artifact": "detailed/r1/composed.json",
+      "audit": {
+        "status": "failed",
+        "coverage_complete": false,
+        "issues_total": 0,
+        "blocking": 0
+      },
+      "stages": [
+        {
+          "stage": "plan",
+          "variant_id": "detailed",
+          "status": "done",
+          "duration_ms": 25000,
+          "quota_wait_ms": 1800
+        },
+        {
+          "stage": "compose",
+          "variant_id": "detailed",
+          "status": "done",
+          "duration_ms": 3000
+        },
+        {
+          "stage": "export",
+          "variant_id": "detailed",
+          "status": "done",
+          "duration_ms": 14000
+        },
+        {
+          "stage": "audit",
+          "variant_id": "detailed",
+          "status": "done",
+          "duration_ms": 30000,
+          "quota_wait_ms": 4000
+        }
+      ],
+      "plan_artifact": "detailed/r1/plan.json",
+      "error": {
+        "code": "compose_failed",
+        "message": "Не удалось клонировать образец slide29: битая ссылка на медиа",
+        "stage": "compose",
+        "retryable": true
+      }
+    }
+  ],
+  "artifacts_manifest": {
+    "compact/r1/deck.pptx": {
+      "content_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "size_bytes": 2400000,
+      "sha256": "…"
+    },
+    "compact/r1/deck.pdf": {
+      "content_type": "application/pdf",
+      "size_bytes": 900000,
+      "sha256": "…"
+    },
+    "compact/r1/deck.html": {
+      "content_type": "text/html",
+      "size_bytes": 350000,
+      "sha256": "…"
+    },
+    "compact/thumbs/slide-01.png": {
+      "content_type": "image/png",
+      "size_bytes": 180000,
+      "sha256": "…"
+    },
+    "compact/r1/thumbs/slide-01.png": {
+      "content_type": "image/png",
+      "size_bytes": 180000,
+      "sha256": "…"
+    },
+    "compact/r1/thumbs/slide-02.png": {
+      "content_type": "image/png",
+      "size_bytes": 180000,
+      "sha256": "…"
+    },
+    "compact/r1/thumbs/slide-03.png": {
+      "content_type": "image/png",
+      "size_bytes": 180000,
+      "sha256": "…"
+    },
+    "compact/r1/thumbs/slide-04.png": {
+      "content_type": "image/png",
+      "size_bytes": 180000,
+      "sha256": "…"
+    },
+    "compact/r1/thumbs/slide-05.png": {
+      "content_type": "image/png",
+      "size_bytes": 180000,
+      "sha256": "…"
+    },
+    "compact/r1/thumbs/slide-06.png": {
+      "content_type": "image/png",
+      "size_bytes": 180000,
+      "sha256": "…"
+    },
+    "compact/r1/thumbs/slide-07.png": {
+      "content_type": "image/png",
+      "size_bytes": 180000,
+      "sha256": "…"
+    },
+    "compact/r1/thumbs/slide-08.png": {
+      "content_type": "image/png",
+      "size_bytes": 180000,
+      "sha256": "…"
+    },
+    "compact/r1/thumbs/slide-09.png": {
+      "content_type": "image/png",
+      "size_bytes": 180000,
+      "sha256": "…"
+    },
+    "compact/r1/thumbs/slide-10.png": {
+      "content_type": "image/png",
+      "size_bytes": 180000,
+      "sha256": "…"
+    },
+    "compact/r1/plan.json": {
+      "content_type": "application/json",
+      "size_bytes": 40000,
+      "sha256": "…"
+    },
+    "compact/r1/composed.json": {
+      "content_type": "application/json",
+      "size_bytes": 40000,
+      "sha256": "…"
+    },
+    "compact/r1/audit.json": {
+      "content_type": "application/json",
+      "size_bytes": 30000,
+      "sha256": "…"
+    },
+    "balanced/r1/deck.pptx": {
+      "content_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "size_bytes": 2400000,
+      "sha256": "…"
+    },
+    "balanced/r1/deck.pdf": {
+      "content_type": "application/pdf",
+      "size_bytes": 900000,
+      "sha256": "…"
+    },
+    "balanced/r1/deck.html": {
+      "content_type": "text/html",
+      "size_bytes": 350000,
+      "sha256": "…"
+    },
+    "balanced/r1/thumbs/slide-01.png": {
+      "content_type": "image/png",
+      "size_bytes": 180000,
+      "sha256": "…"
+    },
+    "balanced/r1/thumbs/slide-02.png": {
+      "content_type": "image/png",
+      "size_bytes": 180000,
+      "sha256": "…"
+    },
+    "balanced/r1/thumbs/slide-03.png": {
+      "content_type": "image/png",
+      "size_bytes": 180000,
+      "sha256": "…"
+    },
+    "balanced/r1/thumbs/slide-04.png": {
+      "content_type": "image/png",
+      "size_bytes": 180000,
+      "sha256": "…"
+    },
+    "balanced/r1/thumbs/slide-05.png": {
+      "content_type": "image/png",
+      "size_bytes": 180000,
+      "sha256": "…"
+    },
+    "balanced/r1/thumbs/slide-06.png": {
+      "content_type": "image/png",
+      "size_bytes": 180000,
+      "sha256": "…"
+    },
+    "balanced/r1/thumbs/slide-07.png": {
+      "content_type": "image/png",
+      "size_bytes": 180000,
+      "sha256": "…"
+    },
+    "balanced/r1/thumbs/slide-08.png": {
+      "content_type": "image/png",
+      "size_bytes": 180000,
+      "sha256": "…"
+    },
+    "balanced/r1/thumbs/slide-09.png": {
+      "content_type": "image/png",
+      "size_bytes": 180000,
+      "sha256": "…"
+    },
+    "balanced/r1/thumbs/slide-10.png": {
+      "content_type": "image/png",
+      "size_bytes": 180000,
+      "sha256": "…"
+    },
+    "balanced/r1/thumbs/slide-11.png": {
+      "content_type": "image/png",
+      "size_bytes": 180000,
+      "sha256": "…"
+    },
+    "balanced/r1/thumbs/slide-12.png": {
+      "content_type": "image/png",
+      "size_bytes": 180000,
+      "sha256": "…"
+    },
+    "balanced/r1/plan.json": {
+      "content_type": "application/json",
+      "size_bytes": 40000,
+      "sha256": "…"
+    },
+    "balanced/r1/composed.json": {
+      "content_type": "application/json",
+      "size_bytes": 40000,
+      "sha256": "…"
+    },
+    "balanced/r1/audit.json": {
+      "content_type": "application/json",
+      "size_bytes": 30000,
+      "sha256": "…"
+    }
+  },
+  "metrics": {
+    "stages": [
+      {
+        "stage": "analyze",
+        "status": "done",
+        "duration_ms": 9000,
+        "cache_hit": true
+      },
+      {
+        "stage": "import",
+        "status": "done",
+        "duration_ms": 1200
+      },
+      {
+        "stage": "story",
+        "status": "done",
+        "duration_ms": 18000,
+        "quota_wait_ms": 500
+      }
+    ],
+    "llm_calls": [
+      {
+        "stage": "plan",
+        "variant_id": "balanced",
+        "attempt": 1,
+        "model": "qwen3.8-27b",
+        "prompt": {
+          "name": "plan.slides",
+          "version": "0.1.0"
+        },
+        "prompt_tokens": 6100,
+        "completion_tokens": 2400,
+        "latency_ms": 14000,
+        "cache_hit": false,
+        "ok": true,
+        "quota_wait_ms": 1800,
+        "reasoning_tokens": 300
+      }
+    ],
+    "totals": {
+      "duration_ms": 250000,
+      "llm_calls": 44,
+      "prompt_tokens": 96000,
+      "completion_tokens": 21000,
+      "peak_memory_mb": 1400
+    },
+    "cost_estimate": {
+      "known": false
+    },
+    "queue_wait_ms": 300,
+    "quota_wait_ms": 9800,
+    "retries": 1,
+    "cache": {
+      "llm_hits": 2,
+      "llm_misses": 42,
+      "profile_hit": true,
+      "story_hit": false,
+      "render_hits": 0
+    },
+    "timeline": {
+      "accepted_at": "2026-09-15T12:00:00Z",
+      "first_file_ready_ms": 95000,
+      "first_variant_audited_ms": 140000,
+      "all_variants_ready_ms": 220000,
+      "all_variants_audited_ms": 250000
+    }
+  },
+  "versions": {
+    "app": "0.1.0",
+    "skills": [
+      {
+        "name": "template-analyzer",
+        "version": "0.1.0"
+      },
+      {
+        "name": "planner",
+        "version": "0.1.0"
+      },
+      {
+        "name": "auditor",
+        "version": "0.1.0"
+      }
+    ],
+    "prompts": [
+      {
+        "name": "plan.slides",
+        "version": "0.1.0"
+      },
+      {
+        "name": "audit.content_questions",
+        "version": "0.1.0"
+      }
+    ],
+    "models": [
+      {
+        "role": "llm",
+        "name": "qwen3.8-27b",
+        "provider": "qwen-api",
+        "hf_url": "https://huggingface.co/Qwen/Qwen3.8-27B",
+        "params_b": 27,
+        "license": "Apache-2.0"
+      }
+    ],
+    "renderer": {
+      "name": "libreoffice",
+      "version": "25.8"
+    },
+    "analyzer": {
+      "name": "template-analyzer",
+      "version": "0.1.0"
+    },
+    "contracts": "1.1",
+    "image_digest": "sha256:…",
+    "fonts": [
+      {
+        "family": "Play",
+        "file": "fonts/Play-Regular.ttf",
+        "sha256": "…"
+      }
+    ]
+  },
+  "repairs": [],
+  "warnings": [
+    {
+      "code": "font_not_available",
+      "message": "VK Sans Display заменён на Arial при рендеринге миниатюр"
+    },
+    {
+      "code": "variant_failed",
+      "message": "Вариант detailed не собран; доступны compact и balanced"
+    }
+  ],
+  "story_id": "story_demo",
+  "partial": true,
+  "execution_mode": {
+    "mode": "mixed",
+    "layers": {
+      "parsing.template": "real",
+      "parsing.content": "real",
+      "generation.story": "real",
+      "generation.plan": "real",
+      "layout": "real",
+      "export": "real",
+      "audit.deterministic": "real",
+      "audit.contextual": "skipped"
+    }
+  }
+}

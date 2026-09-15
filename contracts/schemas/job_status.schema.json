@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://presentation-designer.local/contracts/job_status.schema.json",
+  "title": "JobStatus",
+  "description": "Общее состояние любого задания: анализ шаблона, импорт содержания, генерация, исправление. Отдаётся GET /api/jobs/{id}. Ссылка на результат ведёт на документ своего вида; задания анализа и импорта не заполняют GenerationResult.",
+  "type": "object",
+  "required": ["schema_version", "job_id", "kind", "status", "created_at"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.1" },
+    "job_id": { "$ref": "common.schema.json#/$defs/id" },
+    "kind": { "enum": ["template_analysis", "content_import", "generation", "repair"] },
+    "status": { "$ref": "common.schema.json#/$defs/job_state" },
+    "stage": { "$ref": "common.schema.json#/$defs/stage" },
+    "stages": {
+      "type": "array",
+      "description": "пройденные и текущие этапы с временем; для генерации разбивка по вариантам живёт в GenerationResult",
+      "items": { "$ref": "common.schema.json#/$defs/stage_timing" }
+    },
+    "progress": { "$ref": "common.schema.json#/$defs/progress" },
+    "created_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "started_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "finished_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "queue_wait_ms": { "type": "integer", "description": "ожидание свободного воркера" },
+    "depends_on": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/id" } },
+    "parent_job_id": { "$ref": "common.schema.json#/$defs/id", "description": "для исправлений: задание генерации" },
+    "result": {
+      "type": "object",
+      "description": "ссылка на результат своего вида; заполняется по мере готовности",
+      "additionalProperties": false,
+      "properties": {
+        "template_id": { "$ref": "common.schema.json#/$defs/id" },
+        "package_id": { "$ref": "common.schema.json#/$defs/id" },
+        "generation_result_url": { "type": "string" },
+        "template_profile_url": { "type": "string" },
+        "content_package_url": { "type": "string" },
+        "revision": { "$ref": "common.schema.json#/$defs/revision" }
+      }
+    },
+    "error": { "$ref": "common.schema.json#/$defs/error" },
+    "warnings": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/warning" } }
+  }
+}

@@ -1,0 +1,114 @@
+# Local AI coding assistants, instructions, histories and MCP settings.
+# Application prompts and the deliverable skill belong in src/ and integrations/.
+.claude/
+.codex/
+.agents/
+.cursor/
+.windsurf/
+.gemini/
+.chatgpt/
+.gpt/
+.copilot/
+.continue/
+.roo/
+.clinerules
+.roorules
+.cursorrules
+.windsurfrules
+.aider*
+.mcp.json
+.mcp.local.json
+AGENTS.md
+AGENTS.local.md
+CODEX.md
+CODEX.local.md
+CLAUDE.md
+CLAUDE.local.md
+GEMINI.md
+GEMINI.local.md
+GPT.md
+GPT.local.md
+CHATGPT.md
+CHATGPT.local.md
+/.github/copilot-instructions.md
+/.github/instructions/
+/.github/prompts/
+/ai-local/
+/mcp.json
+
+# Secrets and machine-specific environment settings.
+.env
+.env.*
+!.env.example
+!.env.*.example
+.envrc
+.npmrc
+/.secrets/
+/secrets/
+/credentials/
+
+# Python environments, caches and build output.
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+
+# JavaScript dependencies and generated output. Keep dependency lockfiles.
+node_modules/
+.next/
+.nuxt/
+.vite/
+.turbo/
+.npm/
+.pnpm-store/
+dist/
+build/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Local inputs and generated presentations, previews, metrics and model traces.
+# Keep public, redistributable examples under examples/ or tests/fixtures/.
+/data/organizers/
+/data/private/
+/data/uploads/
+/data/runtime/
+/artifacts/
+/runs/
+/logs/
+/tmp/
+.cache/
+*.log
+~$*
+
+# Local editor, OS and development-worktree files.
+.DS_Store
+._*
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+/.worktrees/
+
+# Материалы организаторов: ТЗ, датасет и шаблоны. В открытый репозиторий не попадают.
+/docs/Датасет/
+/docs/*.pdf
+/docs/*.pptx
+
+# Документы планирования команды. В открытый репозиторий не попадают.
+/PROJECT_BRIEF.md
+/WORK_PLAN.md
+/FRAMEWORKS.md
+/docs/QUESTIONS_TO_ORGANIZERS.md
+/IMPLEMENTATION_PLAN.md

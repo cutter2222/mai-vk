@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.1",
+  "template_id": "tpl_vk_education",
+  "package_id": "pkg_demo",
+  "idempotency_key": "ui-7c1e2a",
+  "settings": {
+    "slide_count": {
+      "min": 10,
+      "max": 15
+    },
+    "language": "ru",
+    "variants": [
+      "compact",
+      "balanced",
+      "detailed"
+    ],
+    "generate_images": false,
+    "run_contextual_audit": true,
+    "force_regenerate": false,
+    "seed": 42
+  }
+}

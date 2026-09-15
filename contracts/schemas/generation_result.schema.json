@@ -1,0 +1,540 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://presentation-designer.local/contracts/generation_result.schema.json",
+  "title": "GenerationResult",
+  "description": "Результат задания генерации. Отдаётся по ссылке из JobStatus и напрямую GET /api/generations/{id}; пока задание идёт, поля вариантов заполняются по мере готовности. Версия 1.1: ревизии, режим исполнения слоёв, частичные результаты, полнота аудита, версии рендерера и шрифтов, ожидание очереди и квоты, повторы, кэши, время первого и всех готовых вариантов.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "job_id",
+    "status",
+    "stage",
+    "template_id",
+    "package_id",
+    "execution_mode",
+    "variants",
+    "metrics",
+    "versions",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.1"
+    },
+    "job_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "status": {
+      "$ref": "common.schema.json#/$defs/job_state"
+    },
+    "stage": {
+      "$ref": "common.schema.json#/$defs/stage"
+    },
+    "progress": {
+      "$ref": "common.schema.json#/$defs/progress"
+    },
+    "template_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "package_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "request": {
+      "$ref": "generation_request.schema.json"
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "finished_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "variants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "variant_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "axis": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "running",
+              "ready",
+              "needs_review",
+              "failed"
+            ]
+          },
+          "slide_count": {
+            "type": "integer"
+          },
+          "plan_artifact": {
+            "type": "string"
+          },
+          "audit_artifact": {
+            "type": "string"
+          },
+          "audit_summary": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "artifacts": {
+            "type": "object",
+            "properties": {
+              "pptx": {
+                "type": "string"
+              },
+              "pdf": {
+                "type": "string"
+              },
+              "html": {
+                "type": "string"
+              },
+              "thumbnails": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "slide_index": {
+                      "type": "integer"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "width_px": {
+                      "type": "integer"
+                    },
+                    "height_px": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "slide_index",
+                    "name"
+                  ]
+                }
+              }
+            }
+          },
+          "revision": {
+            "$ref": "common.schema.json#/$defs/revision"
+          },
+          "revisions": {
+            "type": "array",
+            "description": "история ревизий варианта",
+            "items": {
+              "type": "object",
+              "required": [
+                "revision",
+                "created_at"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "revision": {
+                  "$ref": "common.schema.json#/$defs/revision"
+                },
+                "created_at": {
+                  "$ref": "common.schema.json#/$defs/timestamp"
+                },
+                "repair_job_id": {
+                  "$ref": "common.schema.json#/$defs/id"
+                },
+                "changed_slide_ids": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "common.schema.json#/$defs/id"
+                  }
+                },
+                "pptx_hash": {
+                  "type": "string"
+                },
+                "artifacts_prefix": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "audit": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "status": {
+                "enum": [
+                  "pending",
+                  "running",
+                  "complete",
+                  "partial",
+                  "failed",
+                  "skipped"
+                ]
+              },
+              "coverage_complete": {
+                "type": "boolean"
+              },
+              "issues_total": {
+                "type": "integer"
+              },
+              "blocking": {
+                "type": "integer"
+              },
+              "report_artifact": {
+                "type": "string"
+              }
+            }
+          },
+          "error": {
+            "$ref": "common.schema.json#/$defs/error"
+          },
+          "composed_deck_artifact": {
+            "type": "string"
+          },
+          "ready_at": {
+            "$ref": "common.schema.json#/$defs/timestamp",
+            "description": "момент готовности файлов варианта"
+          },
+          "audited_at": {
+            "$ref": "common.schema.json#/$defs/timestamp"
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "$ref": "common.schema.json#/$defs/stage_timing"
+            }
+          }
+        },
+        "required": [
+          "variant_id",
+          "axis",
+          "value",
+          "status",
+          "revision"
+        ]
+      }
+    },
+    "artifacts_manifest": {
+      "type": "object",
+      "description": "Единственный источник разрешённых имён для GET /api/jobs/{id}/artifacts/{name}",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "content_type": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer"
+          },
+          "sha256": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "content_type",
+          "size_bytes"
+        ]
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "stages": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/stage_timing"
+          }
+        },
+        "llm_calls": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "stage": {
+                "type": "string"
+              },
+              "variant_id": {
+                "type": "string"
+              },
+              "slide_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "attempt": {
+                "type": "integer"
+              },
+              "model": {
+                "type": "string"
+              },
+              "prompt": {
+                "$ref": "common.schema.json#/$defs/version_ref"
+              },
+              "prompt_tokens": {
+                "type": "integer"
+              },
+              "completion_tokens": {
+                "type": "integer"
+              },
+              "latency_ms": {
+                "type": "integer"
+              },
+              "cache_hit": {
+                "type": "boolean"
+              },
+              "ok": {
+                "type": "boolean"
+              },
+              "quota_wait_ms": {
+                "type": "integer"
+              },
+              "reasoning_tokens": {
+                "type": "integer"
+              },
+              "error_code": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "stage",
+              "model",
+              "attempt"
+            ]
+          }
+        },
+        "totals": {
+          "type": "object",
+          "properties": {
+            "duration_ms": {
+              "type": "integer"
+            },
+            "llm_calls": {
+              "type": "integer"
+            },
+            "prompt_tokens": {
+              "type": "integer"
+            },
+            "completion_tokens": {
+              "type": "integer"
+            },
+            "peak_memory_mb": {
+              "type": "integer"
+            }
+          }
+        },
+        "cost_estimate": {
+          "type": "object",
+          "properties": {
+            "known": {
+              "type": "boolean"
+            },
+            "currency": {
+              "type": "string"
+            },
+            "amount": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "known"
+          ]
+        },
+        "queue_wait_ms": {
+          "type": "integer"
+        },
+        "quota_wait_ms": {
+          "type": "integer",
+          "description": "суммарное ожидание лимитера провайдера"
+        },
+        "retries": {
+          "type": "integer"
+        },
+        "cache": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "llm_hits": {
+              "type": "integer"
+            },
+            "llm_misses": {
+              "type": "integer"
+            },
+            "profile_hit": {
+              "type": "boolean"
+            },
+            "story_hit": {
+              "type": "boolean"
+            },
+            "render_hits": {
+              "type": "integer"
+            }
+          }
+        },
+        "timeline": {
+          "type": "object",
+          "description": "ключевые моменты от принятия задания",
+          "additionalProperties": false,
+          "properties": {
+            "accepted_at": {
+              "$ref": "common.schema.json#/$defs/timestamp"
+            },
+            "first_file_ready_ms": {
+              "type": "integer"
+            },
+            "first_variant_audited_ms": {
+              "type": "integer"
+            },
+            "all_variants_ready_ms": {
+              "type": "integer"
+            },
+            "all_variants_audited_ms": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "required": [
+        "totals"
+      ]
+    },
+    "versions": {
+      "type": "object",
+      "description": "Всё, что нужно для воспроизведения: версии приложения, скиллов, промптов, моделей и рендерера",
+      "properties": {
+        "app": {
+          "type": "string"
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/version_ref"
+          }
+        },
+        "prompts": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/version_ref"
+          }
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/model_ref"
+          }
+        },
+        "renderer": {
+          "$ref": "common.schema.json#/$defs/version_ref"
+        },
+        "analyzer": {
+          "$ref": "common.schema.json#/$defs/version_ref"
+        },
+        "fonts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "family": {
+                "type": "string"
+              },
+              "file": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "contracts": {
+          "type": "string",
+          "description": "версия контрактов, например 1.1"
+        },
+        "image_digest": {
+          "type": "string",
+          "description": "digest образа воркера"
+        }
+      },
+      "required": [
+        "app",
+        "skills",
+        "models"
+      ]
+    },
+    "repairs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "repair_job_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "variant_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "issue_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "result": {
+            "enum": [
+              "applied",
+              "partially_applied",
+              "failed",
+              "skipped"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "base_revision": {
+            "$ref": "common.schema.json#/$defs/revision"
+          },
+          "new_revision": {
+            "$ref": "common.schema.json#/$defs/revision"
+          },
+          "changed_slide_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "common.schema.json#/$defs/id"
+            }
+          }
+        },
+        "required": [
+          "repair_job_id",
+          "variant_id",
+          "issue_ids",
+          "result"
+        ]
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/warning"
+      }
+    },
+    "error": {
+      "$ref": "common.schema.json#/$defs/error"
+    },
+    "story_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "execution_mode": {
+      "$ref": "common.schema.json#/$defs/execution_mode"
+    },
+    "partial": {
+      "type": "boolean",
+      "description": "часть вариантов не готова или завершилась ошибкой; готовые доступны"
+    }
+  }
+}

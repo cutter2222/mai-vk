@@ -1,0 +1,25 @@
+# Манифест скилла по contracts/schemas/skill_manifest.schema.json
+schema_version: '1.1'
+name: template_analyzer
+version: 0.1.0
+stage: analyze
+description: Классифицирует образцы шаблона по роли и назначению по сгруппированным
+  миниатюрам; уточняет теги ресурсов
+model_role: vlm
+response_format: json_schema
+reasoning:
+  mode: low
+  max_output_tokens: 4000
+prompts:
+- id: analyze.classify_samples
+  path: prompts/analyze.classify_samples.v0.1.0.md
+  version: 0.1.0
+params:
+  temperature: 0.2
+input_schema: template_profile
+output_schema: template_profile
+changelog:
+- version: 0.1.0
+  date: '2026-09-15'
+  note: 'каркас: манифест и заглушка промпта; содержание промпта пишется на этапе
+    реализации слоя'

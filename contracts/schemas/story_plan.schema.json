@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://presentation-designer.local/contracts/story_plan.schema.json",
+  "title": "StoryPlan",
+  "description": "Общий смысловой план презентации, создаётся один раз из ContentPackage и не зависит от шаблона и геометрии. Три SlidePlan ссылаются на него и обязаны покрыть все обязательные тезисы. Поля ограничены разделом 16 FRAMEWORKS.md; детали добавляются версией 1.2 на этапе 6.",
+  "type": "object",
+  "required": ["schema_version", "story_id", "package_id", "content_hash", "language", "purpose", "key_takeaway", "theses", "generation_meta"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.1" },
+    "story_id": { "$ref": "common.schema.json#/$defs/id" },
+    "package_id": { "$ref": "common.schema.json#/$defs/id" },
+    "content_hash": {
+      "type": "string",
+      "description": "sha256 нормализованного содержания ContentPackage; ключ кэша StoryPlan вместе с версией промпта"
+    },
+    "language": { "type": "string" },
+    "purpose": { "enum": ["feature", "product", "project", "initiative", "report", "other"] },
+    "audience": { "type": "string" },
+    "goal": { "type": "string" },
+    "key_takeaway": { "type": "string", "description": "главный вывод всей презентации одним предложением" },
+    "theses": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/thesis" }
+    },
+    "allowed_reductions": {
+      "type": "array",
+      "description": "что допустимо сокращать в компактных вариантах без потери обязательного содержания",
+      "items": {
+        "type": "object",
+        "required": ["thesis_id", "reduction"],
+        "additionalProperties": false,
+        "properties": {
+          "thesis_id": { "$ref": "common.schema.json#/$defs/id" },
+          "reduction": { "enum": ["drop_examples", "merge_with", "shorten_wording", "table_to_chart", "chart_to_number", "drop_entirely"] },
+          "target_thesis_id": { "$ref": "common.schema.json#/$defs/id", "description": "для merge_with: с каким тезисом объединить" },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "description": "допущения режима брифа, отделённые от подтверждённых данных",
+      "items": { "type": "string" }
+    },
+    "generation_meta": { "$ref": "common.schema.json#/$defs/generation_meta" },
+    "warnings": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/warning" } }
+  },
+  "$defs": {
+    "thesis": {
+      "type": "object",
+      "required": ["thesis_id", "order", "kind", "statement", "required"],
+      "additionalProperties": false,
+      "properties": {
+        "thesis_id": { "$ref": "common.schema.json#/$defs/id" },
+        "order": { "type": "integer", "minimum": 1 },
+        "kind": { "enum": ["section", "claim", "evidence", "conclusion", "call_to_action", "context"] },
+        "parent_id": { "$ref": "common.schema.json#/$defs/id", "description": "тезис-раздел, к которому относится" },
+        "statement": { "type": "string", "description": "формулировка-вывод; может содержать {fact:<fact_id>}" },
+        "explanation": { "type": "string" },
+        "required": { "type": "boolean", "description": "обязателен во всех трёх вариантах" },
+        "source_refs": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/id" }, "description": "block_id из ContentPackage" },
+        "fact_refs": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/id" } },
+        "dataset_refs": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/id" } },
+        "asset_refs": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/id" } },
+        "suggested_visual": { "enum": ["text", "bullets", "number", "chart", "table", "diagram", "image", "quote", "comparison", "timeline"] }
+      }
+    }
+  }
+}

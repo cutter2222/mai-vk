@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.1",
+  "job_id": "job_demo",
+  "kind": "generation",
+  "status": "running",
+  "stage": "audit",
+  "stages": [
+    {
+      "stage": "analyze",
+      "status": "done",
+      "duration_ms": 9000,
+      "cache_hit": true
+    },
+    {
+      "stage": "import",
+      "status": "done",
+      "duration_ms": 1200
+    },
+    {
+      "stage": "story",
+      "status": "done",
+      "duration_ms": 18000
+    },
+    {
+      "stage": "plan",
+      "status": "done",
+      "duration_ms": 26000
+    },
+    {
+      "stage": "compose",
+      "status": "done",
+      "duration_ms": 3000
+    },
+    {
+      "stage": "export",
+      "status": "done",
+      "duration_ms": 14000
+    },
+    {
+      "stage": "audit",
+      "status": "running",
+      "started_at": "2026-09-15T12:03:40Z"
+    }
+  ],
+  "progress": {
+    "percent": 80,
+    "message": "Аудит: 2 варианта из 3 проверены"
+  },
+  "created_at": "2026-09-15T12:00:00Z",
+  "started_at": "2026-09-15T12:00:00Z",
+  "queue_wait_ms": 300,
+  "depends_on": [
+    "job_analyze_tpl",
+    "job_import_pkg"
+  ],
+  "result": {
+    "template_id": "tpl_vk_education",
+    "package_id": "pkg_demo",
+    "generation_result_url": "/api/generations/job_demo"
+  }
+}
