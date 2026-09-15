@@ -47,6 +47,14 @@ export interface ContentDetail {
   package?: ContentPackage;
 }
 
+export interface BriefExtractResponse {
+  brief: Partial<{ purpose: string; title: string; audience: string; goal: string; language: string; tone: string; must_include: string[]; avoid: string[] }>;
+  slide_count?: { exact?: number; min?: number; max?: number };
+  variants?: string[];
+  /** Какие поля действительно найдены в тексте. */
+  understood: string[];
+}
+
 export interface ApiErrorBody {
   error: { code: string; message: string; stage?: string; retryable?: boolean; details?: Record<string, unknown> };
 }
@@ -106,6 +114,11 @@ export const api = {
       return request<{ template_id: string; job_id: string; cached: boolean }>("/templates", { method: "POST", body: form, headers: mockFilesHeader([file]) });
     },
     assetUrl: (id: string, name: string) => `${API_BASE}/templates/${encodeURIComponent(id)}/assets/${name}`,
+  },
+
+  /** Бриф из свободного сообщения чата. Поля, которых нет в тексте, сервер не заполняет. */
+  brief: {
+    extract: (text: string, brief?: Record<string, unknown>) => request<BriefExtractResponse>("/brief", json({ text, brief })),
   },
 
   content: {

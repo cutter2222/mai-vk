@@ -1,6 +1,7 @@
 import "@mantine/core/styles.css";
 import "@mantine/dropzone/styles.css";
 import "@mantine/notifications/styles.css";
+import "@fontsource-variable/golos-text";
 import "./globals.css";
 
 import type { Metadata } from "next";

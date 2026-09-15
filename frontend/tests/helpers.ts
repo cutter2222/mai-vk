@@ -17,31 +17,58 @@ export function collectConsoleErrors(page: Page): string[] {
 const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
+export const BRIEF_TEXT = "Сделай презентацию про запуск сервиса умных уведомлений для руководителей, чтобы одобрили расширение пилота";
+
+/** Создаёт проект с главной и возвращает его идентификатор. */
+export async function createProject(page: Page): Promise<string> {
+  await page.goto("/");
+  await page.getByTestId("new-project").click();
+  await page.waitForURL(/\/project\?id=/);
+  await expect(page.getByTestId("project-editor")).toBeVisible();
+  return new URL(page.url()).searchParams.get("id") as string;
+}
+
+/** Прикрепляет файлы через кнопку-скрепку: диалог выбора файла работает во всех трёх движках. */
+export async function attach(page: Page, files: Array<{ name: string; mimeType: string; buffer: Buffer }>): Promise<void> {
+  const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.getByTestId("chat-attach").click()]);
+  await chooser.setFiles(files);
+  await expect(page.getByTestId("pending-files")).toContainText(files[0].name);
+}
+
+export async function sendMessage(page: Page, text?: string): Promise<void> {
+  if (text) await page.getByTestId("chat-input").fill(text);
+  await page.getByTestId("chat-send").click();
+}
+
+/** Кладёт PPTX в чат и подтверждает, что это шаблон. */
 export async function uploadTemplate(page: Page, name = "Корпоративный шаблон.pptx"): Promise<void> {
-  // Через диалог выбора файла: так работает во всех трёх движках, включая WebKit.
-  const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.getByTestId("template-dropzone").click()]);
-  await chooser.setFiles({ name, mimeType: PPTX_MIME, buffer: Buffer.from("PK-mock-template") });
-  await expect(page.locator('[data-testid^="template-card-"]').filter({ hasText: name })).toBeVisible();
+  await attach(page, [{ name, mimeType: PPTX_MIME, buffer: Buffer.from("PK-mock-template") }]);
+  await sendMessage(page);
+  await page.getByTestId("answer-template").last().click();
+  await expect(page.getByTestId("template-card").last()).toBeVisible();
 }
 
-export async function fillBriefAndImport(page: Page): Promise<void> {
-  await page.getByTestId("brief-title").fill("Запуск сервиса умных уведомлений");
-  const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.getByTestId("content-dropzone").click()]);
-  await chooser.setFiles([{ name: "metrics.xlsx", mimeType: XLSX_MIME, buffer: Buffer.from("mock") }]);
-  await expect(page.getByText("metrics.xlsx")).toBeVisible();
-  await page.getByTestId("content-submit").click();
-  await expect(page.getByTestId("import-summary")).toBeVisible({ timeout: 15000 });
+/** Материалы и задача одной фразой: карточки материалов и брифа. */
+export async function sendMaterialsAndBrief(page: Page, text = BRIEF_TEXT): Promise<void> {
+  await attach(page, [{ name: "metrics.xlsx", mimeType: XLSX_MIME, buffer: Buffer.from("mock") }]);
+  await sendMessage(page, text);
+  await expect(page.getByTestId("import-summary").last()).toBeVisible({ timeout: 15000 });
+  await expect(page.getByTestId("brief-card").last()).toBeVisible();
 }
 
+/** Запускает генерацию из карточки брифа и возвращает идентификатор задания. */
 export async function startGeneration(page: Page): Promise<string> {
-  await page.getByTestId("generate").click();
-  await page.waitForURL(/\/workspace\?job=/);
-  const url = new URL(page.url());
-  return url.searchParams.get("job") as string;
+  await page.getByTestId("generate").last().click();
+  const panel = page.getByTestId("progress-panel").last();
+  await expect(panel).toBeVisible({ timeout: 15000 });
+  const text = await panel.textContent();
+  const jobId = text?.match(/job_[a-z0-9]+/)?.[0];
+  expect(jobId).toBeTruthy();
+  return jobId as string;
 }
 
 export async function waitForAllVariantsDone(page: Page): Promise<void> {
-  const panel = page.getByTestId("progress-panel");
+  const panel = page.getByTestId("progress-panel").last();
   await expect(
     panel.locator('[data-testid="status-needs_review"], [data-testid="status-succeeded"], [data-testid="status-failed"]').first(),
   ).toBeVisible({ timeout: 50000 });

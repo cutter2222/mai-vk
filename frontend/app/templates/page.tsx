@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, Card, ColorSwatch, Group, SimpleGrid, Stack, Table, Text, Title, Tooltip } from "@mantine/core";
+import { Badge, Card, ColorSwatch, Container, Group, SimpleGrid, Stack, Table, Text, Title, Tooltip } from "@mantine/core";
 import { useEffect, useState } from "react";
 
 import { SlideImage } from "@/components/common/SlideImage";
@@ -21,12 +21,14 @@ export default function TemplatesPage() {
   }, []);
 
   return (
-    <Stack gap="lg" py="md">
+    <div className="page-surface">
+    <Container size="xl" py="xl">
+    <Stack gap="lg">
       <div>
-        <Title order={3}>Шаблоны и их дизайн-системы</Title>
+        <Title order={2}>Шаблоны и их дизайн-системы</Title>
         <Text c="dimmed" size="sm">Что сервис извлёк из каждого шаблона: палитра, шрифты, шкала кеглей, композиции из образцов, фиксированные элементы.</Text>
       </div>
-      {items.length === 0 && <Text c="dimmed">Шаблонов пока нет. Загрузите первый на главной.</Text>}
+      {items.length === 0 && <Text c="dimmed">Шаблонов пока нет. Загрузите первый в проекте презентации.</Text>}
       {items.map((t) => {
         const p = details[t.template_id]?.profile;
         return (
@@ -112,5 +114,7 @@ export default function TemplatesPage() {
         );
       })}
     </Stack>
+    </Container>
+    </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, Tooltip } from "@mantine/core";
+import { Tooltip } from "@mantine/core";
 import { useEffect, useState } from "react";
 
 import { api, type HealthResponse } from "@/lib/api/client";
@@ -23,15 +23,16 @@ export function HealthIndicator() {
     };
   }, []);
 
-  if (health === null) return <Badge variant="dot" color="gray">Проверка сервиса</Badge>;
-  if (health === "error") return <Badge variant="dot" color="red" data-testid="health">Сервис недоступен</Badge>;
-  const color = health.status === "ok" ? "green" : health.status === "degraded" ? "yellow" : "red";
+  if (health === null) return <span className="quiet-status"><i />Проверка сервиса</span>;
+  if (health === "error") return <span className="quiet-status" data-tone="bad" data-testid="health"><i />Сервис недоступен</span>;
+  const tone = health.status === "ok" ? "ok" : health.status === "degraded" ? "warn" : "bad";
   const label = `Воркеры: анализ ${health.workers.analysis}, генерация ${health.workers.generation}; Valkey ${health.valkey_ok ? "ок" : "нет"}; рендерер ${health.renderer_ok ? "ок" : "нет"}; версия ${health.version}`;
   return (
-    <Tooltip label={label} withArrow>
-      <Badge variant="dot" color={color} data-testid="health">
+    <Tooltip label={label}>
+      <span className="quiet-status" data-tone={tone} data-testid="health">
+        <i />
         {health.status === "ok" ? "Сервис работает" : health.status === "degraded" ? "Сервис ограничен" : "Сервис недоступен"}
-      </Badge>
+      </span>
     </Tooltip>
   );
 }

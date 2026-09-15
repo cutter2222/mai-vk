@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, Card, Group, SegmentedControl, SimpleGrid, Stack, Text } from "@mantine/core";
+import { Badge, Group, SegmentedControl, SimpleGrid, Stack, Text } from "@mantine/core";
 
 import { SlideImage } from "@/components/common/SlideImage";
 import { api } from "@/lib/api/client";
@@ -30,11 +30,11 @@ export function RevisionsPanel({ jobId, variant, revision, onRevision, issuesBef
   };
 
   return (
-    <Card data-testid="revisions-panel">
+    <div data-testid="revisions-panel">
       <Group justify="space-between" mb="sm">
         <Group gap="xs">
           <Text fw={600}>Ревизии</Text>
-          {revision !== variant.revision && <Badge color="orange" variant="light">просмотр устаревшей ревизии</Badge>}
+          {revision !== variant.revision && <Badge color="yellow" size="xs">устаревшая ревизия</Badge>}
         </Group>
         <SegmentedControl size="xs" value={String(revision)} onChange={(v) => onRevision(Number(v))} data={revisions.map((r) => ({ value: String(r.revision), label: `r${r.revision}` }))} />
       </Group>
@@ -46,7 +46,7 @@ export function RevisionsPanel({ jobId, variant, revision, onRevision, issuesBef
               <Text size="sm" c="dimmed">находок: {issuesBefore} → {issuesAfter}</Text>
             )}
           </Group>
-          <SimpleGrid cols={{ base: 1, md: Math.min(3, Math.max(changed.length, 1)) }} spacing="sm">
+          <SimpleGrid cols={1} spacing="sm">
             {changed.map((sid) => {
               const idx = slideIndexFromId(sid);
               const name = (r: number) => `${variant.variant_id}/r${r}/thumbs/slide-${String(idx + 1).padStart(2, "0")}.png`;
@@ -69,6 +69,6 @@ export function RevisionsPanel({ jobId, variant, revision, onRevision, issuesBef
           </SimpleGrid>
         </Stack>
       )}
-    </Card>
+    </div>
   );
 }

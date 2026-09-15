@@ -1,0 +1,61 @@
+"use client";
+
+import { Button, Stack, Text } from "@mantine/core";
+import { IconLayoutDashboard } from "@tabler/icons-react";
+
+import { ApiError, type TemplateDetail } from "@/lib/api/client";
+import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
+import type { Project } from "@/lib/state/projects";
+
+import { GenerationPreview } from "./GenerationPreview";
+import { TemplatePreview } from "./TemplatePreview";
+
+interface Props {
+  project: Project;
+  session: GenerationSession;
+  templateDetail: TemplateDetail | null;
+  templateError: Error | null;
+  onChoose: (variantId: string | null) => void;
+  onOpenTemplateTab: () => void;
+}
+
+/** Правая часть редактора: слайды задания, иначе образцы шаблона, иначе подсказка. */
+export function PreviewPane({ project, session, templateDetail, templateError, onChoose, onOpenTemplateTab }: Props) {
+  if (project.job_id) {
+    if (session.job.error && !session.result) {
+      const notFound = session.job.error instanceof ApiError && session.job.error.status === 404;
+      return (
+        <div className="preview-empty">
+          <Stack align="center" gap={6} maw={460} data-testid="job-missing">
+            <Text fw={600} component="h3" m={0}>{notFound ? "Задание не найдено" : "Не удалось загрузить задание"}</Text>
+            <Text size="sm" c="dimmed" ta="center">{session.job.error.message}</Text>
+            <Text size="xs" c="dimmed" ta="center">Проверьте содержание и запустите генерацию заново: проект сохранит новое задание.</Text>
+          </Stack>
+        </div>
+      );
+    }
+    if (!session.result) {
+      return (
+        <div className="preview-empty">
+          <Text c="dimmed">Загружаем задание…</Text>
+        </div>
+      );
+    }
+    return <GenerationPreview session={session} chosenVariant={project.chosen_variant} onChoose={onChoose} />;
+  }
+
+  if (project.template_id) {
+    return <TemplatePreview templateId={project.template_id} detail={templateDetail} error={templateError} />;
+  }
+
+  return (
+    <div className="preview-empty">
+      <Stack align="center" gap="xs" maw={440} data-testid="preview-empty">
+        <IconLayoutDashboard size={44} stroke={1.2} color="var(--mantine-color-gray-5)" />
+        <Text fw={600}>Здесь появятся слайды</Text>
+        <Text size="sm" c="dimmed" ta="center">Сначала образцы шаблона, как только вы его добавите в чат, потом — слайды презентации в трёх вариантах с находками аудита.</Text>
+        <Button variant="default" mt="xs" onClick={onOpenTemplateTab}>Перейти в чат</Button>
+      </Stack>
+    </div>
+  );
+}

@@ -2,16 +2,18 @@ html,
 body {
   margin: 0;
   padding: 0;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Слайды и рамки аудита */
+/* ---------- Слайды и рамки аудита ---------- */
+
 .slide-frame {
   position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
-  background: var(--mantine-color-gray-1);
-  border: 1px solid var(--mantine-color-gray-3);
-  border-radius: var(--mantine-radius-sm);
+  background: #fff;
+  border: 1px solid var(--mantine-color-gray-2);
+  border-radius: var(--mantine-radius-xs);
   overflow: hidden;
 }
 
@@ -25,8 +27,8 @@ body {
 
 .issue-box {
   position: absolute;
-  border: 2px solid var(--mantine-color-red-6);
-  background: rgba(250, 82, 82, 0.08);
+  border: 1.5px solid var(--mantine-color-red-6);
+  background: rgba(250, 82, 82, 0.07);
   border-radius: 2px;
   cursor: pointer;
   transition: box-shadow 120ms ease;
@@ -34,34 +36,577 @@ body {
 
 .issue-box[data-severity="warning"] {
   border-color: var(--mantine-color-yellow-7);
-  background: rgba(250, 176, 5, 0.1);
+  background: rgba(250, 176, 5, 0.09);
 }
 
 .issue-box[data-severity="info"] {
   border-color: var(--mantine-color-blue-6);
-  background: rgba(34, 139, 230, 0.08);
+  background: rgba(77, 119, 187, 0.08);
 }
 
 .issue-box[data-active="true"] {
-  box-shadow: 0 0 0 3px rgba(34, 139, 230, 0.45);
+  box-shadow: 0 0 0 3px rgba(77, 119, 187, 0.35);
 }
 
-.thumb-strip {
+/* ---------- Просмотрщик: вертикальная лента миниатюр и слайд ---------- */
+
+.viewer {
   display: flex;
-  gap: var(--mantine-spacing-xs);
-  overflow-x: auto;
-  padding-bottom: var(--mantine-spacing-xs);
+  flex: 1;
+  min-height: 0;
 }
 
-.thumb-strip button {
-  flex: 0 0 160px;
-  border: 2px solid transparent;
-  border-radius: var(--mantine-radius-sm);
+.filmstrip {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 200px;
+  flex: 0 0 200px;
+  overflow-y: auto;
+  padding: 16px 14px 16px 10px;
+  border-right: 1px solid var(--mantine-color-gray-2);
+  background: var(--mantine-color-body);
+}
+
+.filmstrip button {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  border: 0;
   padding: 0;
   background: none;
   cursor: pointer;
+  text-align: left;
 }
 
-.thumb-strip button[data-active="true"] {
-  border-color: var(--mantine-color-blue-6);
+.filmstrip .thumb-number {
+  flex: 0 0 18px;
+  padding-top: 3px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--mantine-color-gray-5);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.filmstrip .thumb-image {
+  position: relative;
+  display: block;
+  flex: 1;
+  min-width: 0;
+  border-radius: var(--mantine-radius-sm);
+  outline: 1.5px solid transparent;
+  outline-offset: 2px;
+  transition: outline-color 120ms ease;
+}
+
+.filmstrip button:hover .thumb-image {
+  outline-color: var(--mantine-color-gray-3);
+}
+
+.filmstrip button[data-active="true"] .thumb-image {
+  outline-color: var(--mantine-color-blue-6);
+}
+
+.filmstrip button[data-active="true"] .thumb-number {
+  color: var(--mantine-color-graphite-8);
+  font-weight: 600;
+}
+
+.filmstrip button:focus-visible .thumb-image {
+  outline-color: var(--mantine-color-blue-4);
+}
+
+.filmstrip .thumb-issues {
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mantine-color-red-6);
+  box-shadow: 0 0 0 2px #fff;
+}
+
+.viewer-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 28px 28px;
+}
+
+/* ---------- Сетка проектов ---------- */
+
+.page-surface {
+  min-height: calc(100dvh - 56px);
+  background: var(--mantine-color-body);
+}
+
+.project-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  padding: 0;
+  border: 1px solid var(--mantine-color-gray-2);
+  border-radius: var(--mantine-radius-lg);
+  background: var(--mantine-color-body);
+  transition: border-color 140ms ease;
+}
+
+.project-card:hover,
+.project-card:focus-visible {
+  border-color: var(--mantine-color-gray-4);
+  outline: none;
+}
+
+.project-card .project-thumb {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: var(--mantine-color-gray-0);
+  border-bottom: 1px solid var(--mantine-color-gray-2);
+  overflow: hidden;
+}
+
+.project-card .project-thumb img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.project-card .project-thumb-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--mantine-color-gray-4);
+  background: var(--mantine-color-gray-0);
+}
+
+.project-card .project-menu {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.project-card:hover .project-menu,
+.project-card:focus-within .project-menu {
+  opacity: 1;
+}
+
+.project-card .project-body {
+  padding: 12px 16px 14px;
+}
+
+.project-card-new {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 100%;
+  cursor: pointer;
+  border: 1px dashed var(--mantine-color-gray-3);
+  border-radius: var(--mantine-radius-lg);
+  background: var(--mantine-color-gray-0);
+  color: var(--mantine-color-gray-6);
+  font: inherit;
+  transition: border-color 140ms ease, color 140ms ease;
+}
+
+.project-card-new:hover,
+.project-card-new:focus-visible {
+  border-color: var(--mantine-color-gray-5);
+  color: var(--mantine-color-graphite-8);
+  outline: none;
+}
+
+/* ---------- Редактор проекта ---------- */
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - 56px);
+  overflow: hidden;
+}
+
+.editor-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 52px;
+  padding: 0 16px 0 10px;
+  border-bottom: 1px solid var(--mantine-color-gray-2);
+  background: var(--mantine-color-body);
+  flex: 0 0 auto;
+}
+
+.editor-title-input input {
+  font-weight: 600;
+  font-size: 15px;
+  padding-left: 8px;
+  padding-right: 8px;
+  border-radius: var(--mantine-radius-sm);
+}
+
+.editor-title-input input:hover,
+.editor-title-input input:focus {
+  background: var(--mantine-color-gray-0);
+}
+
+.editor-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.editor-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 56px;
+  padding: 10px 0;
+  border-right: 1px solid var(--mantine-color-gray-2);
+  background: var(--mantine-color-body);
+  flex: 0 0 auto;
+}
+
+.editor-panel {
+  display: flex;
+  flex-direction: column;
+  width: 400px;
+  flex: 0 0 400px;
+  border-right: 1px solid var(--mantine-color-gray-2);
+  background: var(--mantine-color-body);
+  min-height: 0;
+}
+
+.editor-panel-head {
+  padding: 16px 20px 12px;
+  flex: 0 0 auto;
+}
+
+.editor-panel-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 20px 24px;
+}
+
+.editor-panel-foot {
+  padding: 14px 20px 16px;
+  border-top: 1px solid var(--mantine-color-gray-2);
+  background: var(--mantine-color-body);
+  flex: 0 0 auto;
+}
+
+.editor-preview {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--mantine-color-gray-0);
+}
+
+.preview-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--mantine-color-gray-2);
+  background: var(--mantine-color-body);
+  flex: 0 0 auto;
+}
+
+.preview-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 28px 28px;
+}
+
+.preview-stage {
+  margin: 0 auto;
+  max-width: min(100%, calc((100dvh - 56px - 52px - 48px - 44px - 60px) * 16 / 9));
+}
+
+.preview-stage .slide-frame {
+  border-color: var(--mantine-color-gray-3);
+  border-radius: var(--mantine-radius-sm);
+}
+
+.preview-empty {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 40px;
+}
+
+/* Секции в узкой панели: без вложенных рамок, разделены линиями. */
+.panel-section {
+  padding: 16px 0;
+  border-top: 1px solid var(--mantine-color-gray-2);
+}
+
+.panel-section:first-child {
+  border-top: 0;
+  padding-top: 8px;
+}
+
+.template-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--mantine-color-gray-2);
+  border-radius: var(--mantine-radius-md);
+  background: var(--mantine-color-body);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.template-row:hover {
+  border-color: var(--mantine-color-gray-4);
+}
+
+.template-row[data-selected="true"] {
+  border-color: var(--mantine-color-graphite-8);
+}
+
+/* Тихий индикатор состояния в шапке: точка и текст вместо капс-бейджа. */
+.quiet-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--mantine-color-gray-6);
+  white-space: nowrap;
+}
+
+.quiet-status i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mantine-color-gray-4);
+}
+
+.quiet-status[data-tone="ok"] i { background: var(--mantine-color-green-6); }
+.quiet-status[data-tone="warn"] i { background: var(--mantine-color-yellow-6); }
+.quiet-status[data-tone="bad"] i { background: var(--mantine-color-red-6); }
+
+/* ---------- Чат проекта ---------- */
+
+.chat-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 20px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Сообщения прижаты к низу, как в мессенджере; при переполнении список прокручивается. */
+.chat-list > :first-child {
+  margin-top: auto;
+}
+
+.chat-intro {
+  padding: 14px 16px;
+  border-radius: var(--mantine-radius-md);
+  background: var(--mantine-color-gray-0);
+}
+
+.chat-msg-user {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.chat-msg-user > * {
+  max-width: 88%;
+}
+
+.chat-bubble {
+  padding: 8px 12px;
+  border-radius: var(--mantine-radius-md);
+  border-bottom-right-radius: var(--mantine-radius-xs);
+  background: var(--mantine-color-graphite-8);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chat-assistant-text {
+  padding-right: 12px;
+  line-height: 1.5;
+}
+
+.chat-card {
+  padding: 12px 14px;
+  border: 1px solid var(--mantine-color-gray-2);
+  border-radius: var(--mantine-radius-md);
+  background: var(--mantine-color-body);
+}
+
+.brief-grid {
+  display: grid;
+  gap: 4px 12px;
+}
+
+.brief-row {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.chat-composer {
+  flex: 0 0 auto;
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--mantine-color-gray-2);
+  background: var(--mantine-color-body);
+}
+
+.chat-input {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 4px 6px 4px 4px;
+  border: 1px solid var(--mantine-color-gray-3);
+  border-radius: var(--mantine-radius-md);
+  background: var(--mantine-color-body);
+  transition: border-color 120ms ease;
+}
+
+.chat-input:focus-within {
+  border-color: var(--mantine-color-graphite-6);
+}
+
+.chat-input textarea {
+  padding: 8px 4px;
+  font-size: 14px;
+}
+
+.mantine-Dropzone-root[data-accept] .chat-list {
+  outline: 2px dashed var(--mantine-color-blue-5);
+  outline-offset: -8px;
+  border-radius: var(--mantine-radius-md);
+}
+
+/* ---------- Файлы проекта ---------- */
+
+.files-scroll {
+  display: flex;
+  flex-direction: column;
+  padding-top: 0;
+}
+
+.files-group {
+  padding: 10px 0 12px;
+  border-bottom: 1px solid var(--mantine-color-gray-2);
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  margin: 0 -8px;
+  border-radius: var(--mantine-radius-sm);
+}
+
+.file-row:hover {
+  background: var(--mantine-color-gray-0);
+}
+
+.file-row .file-icon {
+  display: inline-flex;
+  color: var(--mantine-color-gray-6);
+  flex: 0 0 auto;
+}
+
+.file-row .file-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.file-row .file-actions {
+  display: inline-flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.file-row:hover .file-actions,
+.file-row:focus-within .file-actions,
+.file-row .file-actions[data-always] {
+  opacity: 1;
+}
+
+/* Подсказка в конце списка: вся панель принимает перетаскивание, клик открывает выбор файла. */
+.files-drop-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+  min-height: 72px;
+  flex: 1;
+  padding: 16px;
+  border: 1px dashed var(--mantine-color-gray-3);
+  border-radius: var(--mantine-radius-md);
+  background: transparent;
+  color: var(--mantine-color-gray-6);
+  font: inherit;
+  font-size: 13px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.files-drop-hint:hover,
+.files-drop-hint:focus-visible {
+  border-color: var(--mantine-color-gray-5);
+  color: var(--mantine-color-graphite-8);
+  outline: none;
+}
+
+.mantine-Dropzone-root[data-accept] .files-drop-hint {
+  border-color: var(--mantine-color-blue-5);
+  color: var(--mantine-color-blue-7);
+}
+
+/* ---------- Панель аудита рядом со слайдом ---------- */
+
+.audit-drawer {
+  width: 360px;
+  flex: 0 0 360px;
+  overflow-y: auto;
+  padding: 16px 18px 24px;
+  border-left: 1px solid var(--mantine-color-gray-2);
+  background: var(--mantine-color-body);
+}
+
+/* При открытом аудите на неширокой странице лента миниатюр уступает место слайду: по слайдам ведёт список находок. */
+@media (max-width: 1700px) {
+  .viewer[data-aside="true"] .filmstrip {
+    display: none;
+  }
 }

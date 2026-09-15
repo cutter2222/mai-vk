@@ -1,0 +1,217 @@
+"use client";
+
+import { Accordion, Badge, Button, ColorSwatch, Group, Loader, Stack, Text, Tooltip } from "@mantine/core";
+import { IconFile, IconFileTypePpt, IconRocket } from "@tabler/icons-react";
+
+import { ProgressPanel } from "@/components/workspace/ProgressPanel";
+import { MetricsPanel } from "@/components/workspace/MetricsPanel";
+import { api, type ContentDetail, type TemplateDetail } from "@/lib/api/client";
+import { usePolling } from "@/lib/api/usePolling";
+import { STATUS_LABELS, VARIANT_LABELS } from "@/lib/format";
+import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
+import type { ChatMessage, Project } from "@/lib/state/projects";
+
+import { PURPOSE_LABELS, PURPOSE_OPTIONS } from "../panels/BriefFields";
+
+type Msg<K extends string> = Extract<ChatMessage, { kind: K }>;
+
+export interface CardContext {
+  project: Project;
+  session: GenerationSession;
+  onResolveTemplate: (messageId: string, fileId: string, answer: "template" | "material") => void;
+  onEditBrief: () => void;
+  onSetPurpose: (purpose: string) => void;
+  onGenerate: () => void;
+  generating: boolean;
+  onOpenAudit: (variantId?: string) => void;
+  onRepairAll: () => void;
+}
+
+/** Обёртка карточки шага конвейера: заголовок, содержимое, действия. */
+function Card({ title, aside, children, testId }: { title: React.ReactNode; aside?: React.ReactNode; children?: React.ReactNode; testId?: string }) {
+  return (
+    <div className="chat-card" data-testid={testId}>
+      <Group justify="space-between" wrap="nowrap" mb={children ? 8 : 0}>
+        <Text size="sm" fw={600}>{title}</Text>
+        {aside}
+      </Group>
+      {children}
+    </div>
+  );
+}
+
+export function TemplateQuestionCard({ m, ctx }: { m: Msg<"template_question">; ctx: CardContext }) {
+  const file = ctx.project.files.find((f) => f.id === m.file_id);
+  const name = file?.name ?? "файл";
+  return (
+    <Card title={<Group gap={6} wrap="nowrap"><IconFileTypePpt size={16} />{name}</Group>} testId={`template-question-${m.id}`}>
+      <Text size="sm" c="dimmed" mb={m.resolved ? 0 : 8}>
+        {m.resolved === "template" ? "Разбираю как шаблон: палитра, шрифты и композиции слайдов." : m.resolved === "material" ? "Считаю материалом: текст слайдов пойдёт в содержание." : "Похоже на презентацию. Разобрать её как шаблон оформления или это материал с содержанием?"}
+      </Text>
+      {!m.resolved && (
+        <Group gap="xs">
+          <Button size="xs" onClick={() => ctx.onResolveTemplate(m.id, m.file_id, "template")} data-testid="answer-template">Разобрать как шаблон</Button>
+          <Button size="xs" variant="default" onClick={() => ctx.onResolveTemplate(m.id, m.file_id, "material")} data-testid="answer-material">Это материал</Button>
+        </Group>
+      )}
+    </Card>
+  );
+}
+
+export function TemplateCard({ m, ctx }: { m: Msg<"template_card">; ctx: CardContext }) {
+  const detail = usePolling<TemplateDetail>(() => api.templates.get(m.template_id), (d) => d.status === "succeeded" || d.status === "failed", [m.template_id]);
+  const profile = detail.data?.profile;
+  const current = ctx.project.template_id === m.template_id;
+  return (
+    <Card
+      title="Шаблон"
+      aside={current ? <Badge color="green" size="xs">используется</Badge> : <Badge color="gray" size="xs">заменён</Badge>}
+      testId="template-card"
+    >
+      <Group gap="sm" wrap="nowrap" align="flex-start">
+        <IconFileTypePpt size={22} stroke={1.5} style={{ flex: "0 0 auto", marginTop: 2 }} />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <Text size="sm" fw={500} truncate>{detail.data?.name ?? m.template_id}</Text>
+          {!profile ? (
+            <Group gap={6} mt={4}><Loader size={12} /><Text size="xs" c="dimmed">{detail.error ? detail.error.message : "Анализирую образцы, палитру и шрифты. Ждать не нужно, можно добавлять материалы."}</Text></Group>
+          ) : (
+            <Stack gap={6} mt={4}>
+              <Text size="xs" c="dimmed" data-testid="template-profile">{profile.patterns.length} композиций · {profile.stats.slides} слайдов · {profile.design_tokens.typography.fonts.slice(0, 2).map((f) => f.family).join(", ")}</Text>
+              <Group gap={4}>
+                {profile.design_tokens.colors.palette.slice(0, 8).map((c) => (
+                  <Tooltip key={c.hex} label={`${c.hex} · ${c.role}`}><ColorSwatch color={c.hex} size={14} /></Tooltip>
+                ))}
+              </Group>
+              <Text size="xs" c="dimmed">Из этих композиций будут собраны слайды. Образцы — справа; сменить шаблон можно в шапке проекта.</Text>
+            </Stack>
+          )}
+        </div>
+      </Group>
+    </Card>
+  );
+}
+
+export function ContentCard({ m, ctx }: { m: Msg<"content_card">; ctx: CardContext }) {
+  const detail = usePolling<ContentDetail>(() => api.content.get(m.package_id), (d) => d.status === "succeeded" || d.status === "failed", [m.package_id]);
+  const pkg = detail.data?.package;
+  const files = ctx.project.files.filter((f) => m.file_ids.includes(f.id));
+  const current = ctx.project.package_id === m.package_id;
+  return (
+    <Card title="Материалы" aside={!current ? <Badge color="gray" size="xs">переимпортированы</Badge> : undefined} testId="content-card">
+      {files.length > 0 && (
+        <Group gap={6} mb={6}>
+          {files.map((f) => (
+            <Badge key={f.id} color="gray" leftSection={<IconFile size={11} />} size="sm">{f.name}</Badge>
+          ))}
+        </Group>
+      )}
+      {!pkg ? (
+        <Group gap={6}><Loader size={12} /><Text size="xs" c="dimmed">{detail.error ? detail.error.message : "Извлекаю блоки, факты, таблицы и изображения."}</Text></Group>
+      ) : (
+        <Text size="sm" data-testid="import-summary">
+          Нашёл {pkg.blocks.length} блоков, {pkg.facts.length} фактов, {pkg.datasets.length} таблиц, {pkg.assets.length} изображений{files.length === 0 ? " — по брифу" : ""}.
+          {pkg.missing_data && pkg.missing_data.length > 0 ? ` Не хватает: ${pkg.missing_data.map((x) => x.what).join(", ")} — выдумывать не буду.` : ""}
+        </Text>
+      )}
+    </Card>
+  );
+}
+
+export function BriefCard({ m, ctx }: { m: Msg<"brief_card">; ctx: CardContext }) {
+  const { brief, settings } = ctx.project;
+  const missingPurpose = !brief.purpose;
+  const missing = [!ctx.project.template_id ? "шаблон" : null, !ctx.project.package_id ? "материалы или бриф" : null, missingPurpose ? "назначение" : null].filter(Boolean) as string[];
+  const ready = missing.length === 0;
+  const hl = (field: string) => (m.understood.includes(field) ? { fw: 500 } : {});
+  const slides = settings.mode === "exact" ? `ровно ${settings.exact}` : `${settings.min}–${settings.max}`;
+  const rows: Array<[string, string, string]> = [
+    ["purpose", "Назначение", brief.purpose ? PURPOSE_LABELS[brief.purpose] ?? brief.purpose : "—"],
+    ["title", "Тема", brief.title || "—"],
+    ["audience", "Аудитория", brief.audience || "—"],
+    ["goal", "Цель", brief.goal || "—"],
+  ];
+  return (
+    <Card title={m.understood.length ? "Понял задачу так" : "Задача"} aside={<Button size="compact-xs" variant="subtle" color="gray" onClick={ctx.onEditBrief} data-testid="edit-brief">Изменить</Button>} testId="brief-card">
+      <div className="brief-grid">
+        {rows.map(([key, label, value]) => (
+          <div key={key} className="brief-row">
+            <Text size="xs" c="dimmed">{label}</Text>
+            <Text size="sm" {...hl(key)}>{value}</Text>
+          </div>
+        ))}
+        <div className="brief-row">
+          <Text size="xs" c="dimmed">Объём</Text>
+          <Text size="sm" {...hl("slide_count")}>{slides} слайдов · {settings.variants.length === 3 ? "три варианта" : settings.variants.map((v) => VARIANT_LABELS[v]?.toLowerCase()).join(", ")}{settings.contextual ? "" : " · без контекстного аудита"}</Text>
+        </div>
+      </div>
+      {missingPurpose && (
+        <Stack gap={6} mt={8}>
+          <Text size="sm">Уточните назначение — от него зависит структура колоды:</Text>
+          <Group gap={6}>
+            {PURPOSE_OPTIONS.map((o) => (
+              <Button key={o.value} size="xs" variant="default" onClick={() => ctx.onSetPurpose(o.value)} data-testid={`purpose-${o.value}`}>{o.label}</Button>
+            ))}
+          </Group>
+        </Stack>
+      )}
+      <Stack gap={6} mt={10}>
+        <Button size="sm" leftSection={<IconRocket size={15} />} disabled={!ready} loading={ctx.generating} onClick={ctx.onGenerate} data-testid="generate" w="fit-content">
+          {ctx.project.job_id ? "Сгенерировать заново" : "Сгенерировать"}
+        </Button>
+        <Text size="xs" c="dimmed">{ready ? "Три варианта строятся параллельно, слайды появятся справа." : `Не хватает: ${missing.join(", ")}.`}</Text>
+      </Stack>
+    </Card>
+  );
+}
+
+export function JobCard({ m, ctx }: { m: Msg<"job_card">; ctx: CardContext }) {
+  const { session } = ctx;
+  if (session.jobId !== m.job_id) {
+    return <Card title="Генерация" aside={<Badge color="gray" size="xs">заменена новым заданием</Badge>} />;
+  }
+  if (!session.result) {
+    return <Card title="Генерация"><Group gap={6}><Loader size={12} /><Text size="xs" c="dimmed">{session.job.error ? session.job.error.message : "Ставлю задание в очередь."}</Text></Group></Card>;
+  }
+  return (
+    <Card title="Генерация" testId="job-card">
+      <ProgressPanel result={session.result} />
+      {session.terminal && (
+        <Accordion variant="default" chevronPosition="left" mt={6} styles={{ control: { paddingLeft: 0, paddingRight: 0 }, content: { paddingLeft: 0, paddingRight: 0 }, item: { border: 0 } }}>
+          <Accordion.Item value="metrics">
+            <Accordion.Control><Text size="xs" c="dimmed">Метрики и версии</Text></Accordion.Control>
+            <Accordion.Panel><MetricsPanel result={session.result} /></Accordion.Panel>
+          </Accordion.Item>
+        </Accordion>
+      )}
+    </Card>
+  );
+}
+
+export function AuditCard({ m, ctx }: { m: Msg<"audit_card">; ctx: CardContext }) {
+  const { session } = ctx;
+  if (session.jobId !== m.job_id || !session.result) return null;
+  const variants = session.result.variants;
+  const total = variants.reduce((n, v) => n + (v.audit?.issues_total ?? 0), 0);
+  const worst = [...variants].sort((a, b) => (b.audit?.issues_total ?? 0) - (a.audit?.issues_total ?? 0))[0];
+  const incomplete = variants.some((v) => v.audit && !v.audit.coverage_complete);
+  return (
+    <Card title="Аудит" aside={<Badge color={total ? "yellow" : "green"} size="xs">{total ? `${total} находок` : "находок нет"}</Badge>} testId="audit-card">
+      <Stack gap={4} mb={8}>
+        {variants.map((v) => (
+          <Group key={v.variant_id} justify="space-between" wrap="nowrap">
+            <Text size="sm">{VARIANT_LABELS[v.variant_id] ?? v.variant_id}</Text>
+            <Text size="xs" c="dimmed">{v.status === "failed" ? STATUS_LABELS.failed : v.audit ? `${v.audit.issues_total} находок${v.audit.coverage_complete ? "" : " · аудит неполный"}` : "—"}</Text>
+          </Group>
+        ))}
+      </Stack>
+      <Text size="xs" c="dimmed" mb={8}>
+        {total ? "Находки отмечены рамками на слайдах и красными точками в ленте. Выберите, что исправить: каждое исправление создаёт новую ревизию." : "Все проверки пройдены."}
+        {incomplete ? " Часть проверок не выполнена, поэтому статус «требует проверки»." : ""}
+      </Text>
+      <Group gap="xs">
+        <Button size="xs" variant="default" onClick={() => ctx.onOpenAudit(worst?.variant_id)} data-testid="open-audit">Показать находки</Button>
+        {total > 0 && <Button size="xs" onClick={ctx.onRepairAll} data-testid="repair-all">Исправить всё исправимое</Button>}
+      </Group>
+    </Card>
+  );
+}

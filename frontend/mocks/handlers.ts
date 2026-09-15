@@ -3,6 +3,7 @@ import { HttpResponse, delay, http } from "msw";
 import { API_BASE } from "@/lib/api/config";
 import type { GenerationRequest } from "@/lib/api/types";
 
+import { extractBrief } from "./brief";
 import { htmlBlob, pdfBlob, pptxBlob, slidePng } from "./files";
 import {
   buildAudit,
@@ -114,6 +115,13 @@ export const handlers = [
     const pattern = t.profile.patterns.find((p) => p.preview_path === name);
     const png = await slidePng(`tpl:${t.template_id}:${name}`, pattern?.name ?? "Образец", `Образец шаблона: ${pattern?.role ?? ""}`, "#0077FF", 640);
     return new HttpResponse(png, { headers: { "Content-Type": "image/png" } });
+  }),
+
+  // ---------- бриф из сообщения ----------
+  http.post(base("/brief"), async ({ request }) => {
+    const body = (await request.json()) as { text?: string };
+    await delay(350);
+    return HttpResponse.json(extractBrief(body.text ?? ""));
   }),
 
   // ---------- содержание ----------

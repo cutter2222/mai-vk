@@ -4,7 +4,7 @@ test("скриншоты главной и шаблонов", async ({ page }) =
   const errors: string[] = [];
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   await page.goto("/");
-  await expect(page.getByText("1. Шаблон")).toBeVisible();
+  await expect(page.getByText("Мои презентации").first()).toBeVisible();
   await expect(page.getByTestId("health")).toContainText("Сервис работает");
   await page.screenshot({ path: process.env.SHOT_DIR + "/home.png", fullPage: true });
   await page.goto("/templates");
