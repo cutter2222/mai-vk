@@ -1,4 +1,17 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 import { expect, type Page } from "@playwright/test";
+
+/** Настоящие файлы из tests/fixtures: рабочий режим проверяет их на сервере, заглушки содержимое не читают. */
+const FIXTURES = path.resolve(__dirname, "../../tests/fixtures");
+export const fixture = (rel: string): Buffer => readFileSync(path.join(FIXTURES, rel));
+export const PPTX = () => fixture("pptx/mini_template.pptx");
+/** Копия шаблона с другим sha256: шаблоны дедуплицируются по байтам, а сценарий «вариант падает» завязан на имя. */
+export const PPTX_FAIL = () => fixture("pptx/mini_template_fail.pptx");
+export const XLSX = () => fixture("content/metrics.xlsx");
+export const DOCX = () => fixture("content/product_description.docx");
+export const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 /** Ускоряет имитацию заданий в заглушке в N раз (mocks/state.ts читает mock_speed). */
 export async function speedUp(page: Page, factor = 8): Promise<void> {
@@ -14,7 +27,7 @@ export function collectConsoleErrors(page: Page): string[] {
   return errors;
 }
 
-const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+export const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 export const BRIEF_TEXT = "Сделай презентацию про запуск сервиса умных уведомлений для руководителей, чтобы одобрили расширение пилота";
@@ -42,7 +55,7 @@ export async function sendMessage(page: Page, text?: string): Promise<void> {
 
 /** Кладёт PPTX в чат и подтверждает, что это шаблон. */
 export async function uploadTemplate(page: Page, name = "Корпоративный шаблон.pptx"): Promise<void> {
-  await attach(page, [{ name, mimeType: PPTX_MIME, buffer: Buffer.from("PK-mock-template") }]);
+  await attach(page, [{ name, mimeType: PPTX_MIME, buffer: /fail/i.test(name) ? PPTX_FAIL() : PPTX() }]);
   await sendMessage(page);
   await page.getByTestId("answer-template").last().click();
   await expect(page.getByTestId("template-card").last()).toBeVisible();
@@ -50,7 +63,7 @@ export async function uploadTemplate(page: Page, name = "Корпоративн�
 
 /** Материалы и задача одной фразой: карточки материалов и брифа. */
 export async function sendMaterialsAndBrief(page: Page, text = BRIEF_TEXT): Promise<void> {
-  await attach(page, [{ name: "metrics.xlsx", mimeType: XLSX_MIME, buffer: Buffer.from("mock") }]);
+  await attach(page, [{ name: "metrics.xlsx", mimeType: XLSX_MIME, buffer: XLSX() }]);
   await sendMessage(page, text);
   await expect(page.getByTestId("import-summary").last()).toBeVisible({ timeout: 15000 });
   await expect(page.getByTestId("brief-card").last()).toBeVisible();

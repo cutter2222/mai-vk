@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.2",
+  "brief": {
+    "purpose": "product",
+    "title": "Запуск сервиса умных уведомлений",
+    "audience": "руководителей",
+    "goal": "одобрили расширение пилота"
+  },
+  "slide_count": { "min": 10, "max": 12 },
+  "understood": ["purpose", "title", "audience", "goal", "slide_count"],
+  "intent": "none",
+  "source": "heuristic"
+}

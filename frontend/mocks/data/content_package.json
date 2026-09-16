@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "package_id": "pkg_demo",
   "mode": "mixed",
   "created_at": "2026-09-15T12:00:00Z",
@@ -34,7 +34,8 @@
       "name": "product_description.docx",
       "sha256": "…",
       "size_bytes": 48211,
-      "extracted": true
+      "extracted": true,
+      "file_id": "file_doc"
     },
     {
       "source_id": "src_data",
@@ -42,7 +43,8 @@
       "name": "metrics.xlsx",
       "sha256": "…",
       "size_bytes": 12000,
-      "extracted": true
+      "extracted": true,
+      "file_id": "file_data"
     }
   ],
   "blocks": [

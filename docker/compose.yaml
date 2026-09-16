@@ -1,8 +1,32 @@
 # Стек сервиса. Переменные из .env (корень репозитория для make up, $SERVER_DIR/.env на сервере):
 #   docker compose -f docker/compose.yaml --env-file .env up -d
-# Пути ниже относительны каталогу docker/. Сейчас в стеке вход Caddy и статический интерфейс
-# в режиме заглушек; API, воркеры и Valkey добавляются на следующем этапе.
+# Пути ниже относительны каталогу docker/. Вход Caddy, статический интерфейс, API, воркер анализа
+# и исправлений, воркеры генерации, Valkey. Данные — в каталогах PD_DATA_DIR, PD_ARTIFACTS_DIR,
+# PD_RUNS_DIR (на сервере вне репозитория), файл окружения контейнеров — PD_ENV_FILE.
 name: presentation-designer
+
+x-app: &app
+  image: presentation-designer/app:${PD_IMAGE_TAG:-latest}
+  restart: unless-stopped
+  user: "${PD_UID:-1000}:${PD_GID:-1000}"
+  env_file:
+    - path: ${PD_ENV_FILE:-../.env}
+      required: false
+  environment:
+    PD_VALKEY_URL: redis://valkey:6379/0
+    PD_PATHS__DATA_DIR: /app/data
+    PD_PATHS__ARTIFACTS_DIR: /app/artifacts
+    PD_PATHS__RUNS_DIR: /app/runs
+    PD_PATHS__ORGANIZERS_DIR: /app/data/organizers
+  volumes:
+    # Каталог данных с SQLite: на сервере — путь на диске (PD_DATA_DIR), локально — том Docker:
+    # WAL SQLite требует разделяемой памяти, которой нет у bind-mount Docker Desktop.
+    - ${PD_DATA_DIR:-app_data}:/app/data
+    - ${PD_ARTIFACTS_DIR:-../artifacts}:/app/artifacts
+    - ${PD_RUNS_DIR:-../runs}:/app/runs
+  depends_on:
+    valkey:
+      condition: service_healthy
 
 services:
   caddy:
@@ -15,12 +39,18 @@ services:
     environment:
       PD_SITE_ADDRESS: ${PD_SITE_ADDRESS:-http://localhost}
       PD_PUBLIC_URL: ${PD_PUBLIC_URL:-http://localhost}
+    # Caddyfile как config, а не bind-mount: compose следит за содержимым и пересоздаёт контейнер
+    # при изменении, а после замены каталога repo при выкладке не остаётся ссылка на старый файл.
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
     volumes:
-      - ../deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
       frontend:
+        condition: service_healthy
+      api:
         condition: service_healthy
 
   frontend:
@@ -29,8 +59,8 @@ services:
       context: ../frontend
       dockerfile: ../docker/frontend.Dockerfile
       args:
-        # mock — интерфейс работает на заглушках без API; real — обращается к /api того же origin.
-        API_MODE: ${PD_FRONTEND_API_MODE:-mock}
+        # real — интерфейс обращается к /api того же origin; mock — заглушки в браузере без API.
+        API_MODE: ${PD_FRONTEND_API_MODE:-real}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:8080/"]
@@ -39,6 +69,58 @@ services:
       retries: 5
       start_period: 5s
 
+  api:
+    <<: *app
+    build:
+      context: ..
+      dockerfile: docker/app.Dockerfile
+      target: api
+    image: presentation-designer/api:${PD_IMAGE_TAG:-latest}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 6
+      start_period: 10s
+
+  worker-analysis:
+    <<: *app
+    build:
+      context: ..
+      dockerfile: docker/app.Dockerfile
+      target: worker
+    image: presentation-designer/worker:${PD_IMAGE_TAG:-latest}
+    command: ["python", "-m", "presentation_designer.cli.worker", "--queues", "analysis", "repair", "--skip-render-check"]
+
+  worker-generation:
+    <<: *app
+    build:
+      context: ..
+      dockerfile: docker/app.Dockerfile
+      target: worker
+    image: presentation-designer/worker:${PD_IMAGE_TAG:-latest}
+    command: ["python", "-m", "presentation_designer.cli.worker", "--queues", "generation"]
+    deploy:
+      replicas: ${PD_GENERATION_WORKERS:-3}
+
+  valkey:
+    image: valkey/valkey:8.1-alpine
+    restart: unless-stopped
+    command: ["valkey-server", "--appendonly", "yes", "--save", "60", "1"]
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+configs:
+  caddyfile:
+    file: ../deploy/Caddyfile
+
 volumes:
   caddy_data:
   caddy_config:
+  valkey_data:
+  app_data:

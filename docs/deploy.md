@@ -1,6 +1,19 @@
 # Развёртывание
 
-Сервис работает на сервере Ubuntu в Docker Compose. Код живёт в репозитории, на сервере руками ничего не правится: любое изменение попадает туда через `deploy/deploy.sh`, который записывает commit и признак незакоммиченных изменений в `$SERVER_DIR/deploys.log`. Сервер заменяем: на нём только образы, собранные из репозитория, `.env` с настройками и данные в `$SERVER_DIR`. Сейчас стек состоит из входа Caddy и статического интерфейса в режиме заглушек; API, воркеры и Valkey добавляются на следующем этапе, резервные копии и прод-лимиты — после него.
+Сервис работает на сервере Ubuntu в Docker Compose. Код живёт в репозитории, на сервере руками ничего не правится: любое изменение попадает туда через `deploy/deploy.sh`, который записывает commit и признак незакоммиченных изменений в `$SERVER_DIR/deploys.log`. Сервер заменяем: на нём только образы, собранные из репозитория, `.env` с настройками и данные в `$SERVER_DIR`.
+
+Сервисы стека (`docker/compose.yaml`):
+
+| Сервис | Образ | Назначение |
+| --- | --- | --- |
+| `caddy` | `caddy:2.11.4-alpine` | вход: TLS, `/api/*` → API, остальное → интерфейс; `www.` → основной адрес |
+| `frontend` | `presentation-designer/frontend` | статический экспорт Next.js в рабочем режиме |
+| `api` | `presentation-designer/api` | FastAPI: проекты, файлы, шаблоны, содержание, задания, артефакты; SQLite в `data/` |
+| `worker-analysis` | `presentation-designer/worker` | очереди `analysis` и `repair`: анализ шаблонов, исправления |
+| `worker-generation` ×3 | `presentation-designer/worker` | очередь `generation`: импорт, смысловой план, варианты; образ с LibreOffice и шрифтами; число реплик — `PD_GENERATION_WORKERS` |
+| `valkey` | `valkey/valkey:8.1-alpine` | очередь RQ, лимитер, кэш; данные на томе |
+
+Данные: `$SERVER_DIR/data` (SQLite `state.sqlite3`, загрузки `uploads/<sha256>`), `$SERVER_DIR/artifacts` (артефакты заданий по ревизиям, превью шаблонов), `$SERVER_DIR/runs`. Каталоги принадлежат пользователю сервиса, контейнеры работают от него же (`PD_UID`/`PD_GID` в `.env`). Резервные копии и прод-лимиты — следующий этап.
 
 ## Требования к серверу
 
@@ -50,10 +63,10 @@
 
 ## Проверка после выкладки
 
-- `curl --fail "$SERVER_URL/"` отдаёт главную страницу; `curl -I "$SERVER_URL/mockServiceWorker.js"` — `text/javascript`.
-- Сценарий в браузере по адресу сервера: главная → новый проект → шаблон и материалы в чат → бриф → генерация → варианты → аудит → скачивание. В шапке видны пометки «Режим заглушек» и «Сервис работает».
-- Сквозные тесты против сервера: `PLAYWRIGHT_BASE_URL="$SERVER_URL" pnpm -C frontend test:e2e`.
-- С этапа API: `curl --fail "$SERVER_URL/api/health"`. Сейчас `/api/*` отвечает 503 с JSON `api_unavailable`: в режиме заглушек запросы к API перехватывает service worker в браузере и до сервера не доходят.
+- `curl --fail "$SERVER_URL/api/health"` — `status: ok`, воркеры `analysis ≥ 1`, `generation ≥ 1`, `renderer_ok: true`; `degraded` означает, что часть воркеров ещё стартует или не прошла проверку рендерера, `down` — недоступны база или хранилище.
+- `make test-server` — интеграционные тесты API (`tests/integration`, `API_BASE_URL`) и 27 сквозных тестов интерфейса в трёх движках против `SERVER_URL` из `deploy/server.env`; без файла — против локального стека.
+- Сценарий в браузере по адресу сервера: главная → новый проект → шаблон и материалы в чат → бриф → генерация → три варианта → аудит → исправление → скачивание PPTX/PDF/HTML; проект открывается по ссылке из другого браузера.
+- Перезапуск: `docker compose … restart` и повторное открытие проекта — проекты, файлы, задания и артефакты восстанавливаются из `data/` и `artifacts/`.
 
 ## Логи и перезапуск
 
@@ -62,10 +75,13 @@
 ```bash
 cd /srv/presentation-designer/repo
 docker compose -f docker/compose.yaml --env-file ../.env ps
+docker compose -f docker/compose.yaml --env-file ../.env logs --tail=100 api
+docker compose -f docker/compose.yaml --env-file ../.env logs -f worker-generation
 docker compose -f docker/compose.yaml --env-file ../.env logs --tail=100 caddy
-docker compose -f docker/compose.yaml --env-file ../.env logs -f frontend
-docker compose -f docker/compose.yaml --env-file ../.env restart caddy
+docker compose -f docker/compose.yaml --env-file ../.env restart api
 ```
+
+Задания без живого исполнителя (потерянный воркер, истёкший срок) API помечает ошибкой при периодической сверке (`queue.reconcile_interval_s`); состояние заданий читается из SQLite, а не из очереди.
 
 Журнал выкладок: `$SERVER_DIR/deploys.log` — время, commit, признак незакоммиченных изменений, ветка и адрес. Сертификаты Caddy лежат в томе `presentation-designer_caddy_data`; при `down` и повторном `up` они не запрашиваются заново.
 
@@ -84,4 +100,4 @@ git checkout main && git stash pop
 
 ## Локальный запуск того же стека
 
-`make up` (то же, что `./deploy/deploy.sh --target local`) собирает и поднимает compose на этой машине по адресу `http://localhost:8080` с настройками из корневого `.env` (создаётся из `config/.env.example`). `localhost` для браузера считается защищённым контекстом, TLS не нужен. `make down` останавливает контейнеры. Локальный запуск служит отладке и серверную проверку этапа не заменяет.
+`make up` (то же, что `./deploy/deploy.sh --target local`) собирает и поднимает весь compose на этой машине по адресу `http://localhost:8080` с настройками из корневого `.env` (создаётся из `config/.env.example`). Каталог данных со SQLite локально живёт на томе Docker `app_data`: WAL SQLite требует разделяемой памяти, которой нет у bind-mount Docker Desktop. `make down` останавливает контейнеры. Если путь к репозиторию содержит не-ASCII символы, сборка идёт через символическую ссылку в `$TMPDIR` — BuildKit в Docker 29 иначе отказывается. Без Docker: `make api` поднимает API со встроенным исполнителем задач, `make dev-real` — интерфейс с прокси `/api`. Локальный запуск служит отладке и серверную проверку этапа не заменяет.

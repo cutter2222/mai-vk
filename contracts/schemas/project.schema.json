@@ -1,0 +1,410 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://presentation-designer.local/contracts/project.schema.json",
+  "title": "Project",
+  "description": "Проект — одна презентация: выбранный шаблон, файлы, бриф, настройки, задание генерации и лента событий чата. Серверная сущность: интерфейс восстанавливает проект по идентификатору из URL. Карточки ленты ссылаются на шаблоны, пакеты, задания и файлы по идентификаторам и не дублируют данные. Версия 1.2.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "project_id",
+    "title",
+    "created_at",
+    "updated_at",
+    "brief",
+    "settings",
+    "files",
+    "events"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.2"
+    },
+    "project_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "updated_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "template_id": {
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Отсутствие поля равно null."
+    },
+    "package_id": {
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Отсутствие поля равно null."
+    },
+    "job_id": {
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "текущее задание генерации Отсутствие поля равно null."
+    },
+    "chosen_variant": {
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Отсутствие поля равно null."
+    },
+    "brief": {
+      "$ref": "#/$defs/brief_draft"
+    },
+    "settings": {
+      "$ref": "#/$defs/settings_draft"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "$ref": "project_file.schema.json"
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/event"
+      }
+    }
+  },
+  "$defs": {
+    "brief_draft": {
+      "type": "object",
+      "description": "Черновик брифа в интерфейсе: пустая строка означает «не задано»; в ContentPackage уходит с умолчаниями",
+      "required": [
+        "purpose",
+        "title",
+        "audience",
+        "goal",
+        "language",
+        "tone",
+        "must_include",
+        "avoid"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "purpose": {
+          "enum": [
+            "",
+            "feature",
+            "product",
+            "project",
+            "initiative",
+            "report",
+            "other"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "audience": {
+          "type": "string"
+        },
+        "goal": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        },
+        "tone": {
+          "type": "string"
+        },
+        "must_include": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "avoid": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "settings_draft": {
+      "type": "object",
+      "description": "Настройки генерации в интерфейсе; в GenerationRequest переводятся при запуске",
+      "required": [
+        "mode",
+        "min",
+        "max",
+        "exact",
+        "variants",
+        "contextual",
+        "images",
+        "force"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "range",
+            "exact"
+          ]
+        },
+        "min": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60
+        },
+        "max": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60
+        },
+        "exact": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60
+        },
+        "variants": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "compact",
+              "balanced",
+              "detailed"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "contextual": {
+          "type": "boolean"
+        },
+        "images": {
+          "type": "boolean"
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "отсутствие поля равно null"
+        },
+        "force": {
+          "type": "boolean"
+        }
+      }
+    },
+    "event": {
+      "type": "object",
+      "description": "Событие ленты чата: сообщение пользователя или карточка шага. Карточка хранит только идентификаторы и читает живое состояние",
+      "required": [
+        "event_id",
+        "at",
+        "role",
+        "kind"
+      ],
+      "properties": {
+        "event_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "at": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        },
+        "role": {
+          "enum": [
+            "user",
+            "assistant"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "message",
+            "text",
+            "template_question",
+            "template_card",
+            "content_card",
+            "brief_card",
+            "job_card",
+            "audit_card"
+          ]
+        },
+        "text": {
+          "type": "string"
+        },
+        "file_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/id"
+          }
+        },
+        "file_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "resolved": {
+          "enum": [
+            "template",
+            "material"
+          ]
+        },
+        "template_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "package_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "job_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "understood": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing_purpose": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "role": {
+                "const": "user"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "message"
+              }
+            },
+            "required": [
+              "text",
+              "file_ids"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "text"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "text"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "template_question"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "file_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "template_card"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "template_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "content_card"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "package_id",
+              "file_ids"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "brief_card"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "understood",
+              "missing_purpose"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "job_card",
+                  "audit_card"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "job_id"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

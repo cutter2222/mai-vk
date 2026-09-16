@@ -8,7 +8,7 @@ from presentation_designer.shared import settings as s
 def test_settings_load_from_yaml() -> None:
     s.reset_cache()
     cfg = s.get_settings()
-    assert cfg.app.contracts_version == "1.1"
+    assert cfg.app.contracts_version == "1.2"
     assert cfg.limits.max_upload_mb == 100
     assert cfg.budget.hard_limit_s == 300
 

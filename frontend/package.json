@@ -11,7 +11,8 @@
     "gen-types": "node scripts/gen-types.mjs",
     "dev:mock": "NEXT_PUBLIC_API_MODE=mock next dev",
     "build:mock": "NEXT_PUBLIC_API_MODE=mock next build",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:server": "sh -c 'PLAYWRIGHT_BASE_URL=\"${PLAYWRIGHT_BASE_URL:?укажите адрес сервера}\" playwright test'"
   },
   "dependencies": {
     "@fontsource-variable/golos-text": "5.3.0",

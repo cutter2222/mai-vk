@@ -1,6 +1,6 @@
 # Контракты между слоями
 
-Версия 1.1 от 15 сентября 2026 года. Схемы в формате JSON Schema 2020-12 лежат в [schemas/](schemas/), примеры документов в [examples/](examples/), проверка примеров по схемам в [validate.py](validate.py). Схемы общие для Python-ядра и интерфейса на TypeScript: Pydantic-модели (`src/presentation_designer/contracts/models.py`) и TS-типы (`frontend/lib/api/types.ts`) генерируются командой `make gen-contracts`, руками не правятся. Проверки связей, которые схема выразить не может, живут в `src/presentation_designer/contracts/validators.py`. Схема меняется только вместе с примером и с повышением `schema_version`; изменение проверяет второй участник.
+Версия набора 1.2 от 16 сентября 2026 года: документы `project`, `project_file`, `brief_extract` и `content_package` имеют `schema_version` 1.2, остальные остаются 1.1 до изменений своих полей. Схемы в формате JSON Schema 2020-12 лежат в [schemas/](schemas/), примеры документов в [examples/](examples/), проверка примеров по схемам в [validate.py](validate.py). Схемы общие для Python-ядра и интерфейса на TypeScript: Pydantic-модели (`src/presentation_designer/contracts/models.py`) и TS-типы (`frontend/lib/api/types.ts`) генерируются командой `make gen-contracts`, руками не правятся. Проверки связей, которые схема выразить не может, живут в `src/presentation_designer/contracts/validators.py`. Схема меняется только вместе с примером и с повышением `schema_version`; изменение проверяет второй участник.
 
 ТЗ требует прозрачное разделение слоёв: парсинг, генерация, вёрстка, аудит, экспорт. Каждый слой принимает и отдаёт документы по этим схемам, поэтому слои разрабатываются независимо и тестируются на примерах, не дожидаясь друг друга.
 
@@ -50,6 +50,9 @@
 | [generation_result](schemas/generation_result.schema.json) | pipeline | api, интерфейс, CLI, отчёты |
 | [job_status](schemas/job_status.schema.json) | pipeline, для заданий любого вида | api, интерфейс |
 | [skill_manifest](schemas/skill_manifest.schema.json) | `skills/<name>/skill.yaml` | pipeline, MODELS.md, ARCHITECTURE.md |
+| [project](schemas/project.schema.json) | api (SQLite) | интерфейс: проект, бриф, настройки, файлы, лента чата |
+| [project_file](schemas/project_file.schema.json) | api при загрузке | интерфейс, templates и content по `file_id` |
+| [brief_extract](schemas/brief_extract.schema.json) | parsing/content (`brief`) через api | интерфейс: карточка «понял задачу так» |
 
 Общие определения в [common](schemas/common.schema.json): идентификаторы, ревизия, координаты, размер слайда, стили с источником, параметры абзаца, состояния и этапы задания, режим исполнения слоёв, ошибка.
 
@@ -72,13 +75,25 @@
 
 | Операция | Назначение | Ответ |
 | --- | --- | --- |
-| `GET /api/health` | готовность api, воркеров и рендерера | `{status, workers: {analysis, generation}, valkey_ok, renderer_ok, version}` |
-| `GET /api/capabilities` | возможности сервиса и режим слоёв | `{contracts_version, execution_mode, features: {generate_images, contextual_audit, html_export}, limits}` |
-| `POST /api/templates` | загрузка PPTX (multipart), идемпотентна по sha256 | `202 {template_id, job_id, cached}` |
+| `GET /api/health` | готовность api, воркеров и рендерера; `checks` по частям: база, хранилище, Valkey, воркеры, пробный рендер на воркере | `{status: ok|degraded|down, workers: {analysis, generation}, valkey_ok, renderer_ok, version, execution_mode, checks}` |
+| `GET /api/capabilities` | возможности сервиса и режим слоёв, включая слой `brief` | `{contracts_version, execution_mode, features: {generate_images, contextual_audit, html_export}, limits: {max_upload_mb, max_content_files, slide_count_max, max_project_files, max_project_mb}}` |
+| `GET /api/projects` | список проектов с состоянием для карточек | `[{project_id, title, created_at, updated_at, template_id, package_id, job_id, chosen_variant, files_count, template_name, job_status, thumbnail_url, slide_count}]` |
+| `POST /api/projects` | новый проект: `{title?, job_id?}` | `201` Project |
+| `GET /api/projects/{id}` | проект с файлами и лентой; открывается по ссылке из любого браузера | Project |
+| `PATCH /api/projects/{id}` | название, бриф, настройки, `template_id`, `package_id`, `job_id`, `chosen_variant` | Project |
+| `DELETE /api/projects/{id}` | удаляет проект и ленту, снимает ссылки на файлы | `204` |
+| `GET /api/projects/{id}/events` | лента чата | `[Event]` (см. `project.schema.json#/$defs/event`) |
+| `POST /api/projects/{id}/events` | дозапись сообщения или карточки: `{role, kind, …}` | `201` Event |
+| `PATCH /api/projects/{id}/events/{event_id}` | правка события, например ответ на вопрос «шаблон или материал» | Event |
+| `POST /api/projects/{id}/files` | multipart `files`: потоковая загрузка с проверкой типа, дедупликацией по sha256 и квотами проекта | `201 [ProjectFile]` |
+| `PATCH /api/projects/{id}/files/{file_id}` | вид файла: `template`, `material`, `other` | ProjectFile |
+| `DELETE /api/projects/{id}/files/{file_id}` | снять ссылку проекта на файл; байты без ссылок удаляет сборка мусора | `204` |
+| `POST /api/brief` | бриф из фразы: `{text, brief?, settings?}`; пока эвристика, `source: heuristic` | BriefExtract |
+| `POST /api/templates` | JSON `{file_id}` из файлов проекта или multipart `file` (CLI); идемпотентна по sha256 | `202 {template_id, job_id, cached}` |
 | `GET /api/templates` | список шаблонов | `[{template_id, name, status, slide_count, created_at}]` |
 | `GET /api/templates/{id}` | статус анализа, профиль, миниатюры образцов | `{status, job_id, profile?: TemplateProfile, previews: [name]}` |
 | `GET /api/templates/{id}/assets/{name}` | миниатюра образца или ресурс по манифесту профиля | файл |
-| `POST /api/content` | файлы контент-пакета (multipart, до `max_content_files`) и/или бриф (`brief` JSON) | `202 {package_id, job_id}` |
+| `POST /api/content` | JSON `{file_ids, brief?}` из файлов проекта или multipart `files` + `brief` (CLI), до `max_content_files`; идемпотентна по набору sha256 и брифу | `202 {package_id, job_id, cached}` |
 | `GET /api/content/{id}` | результат импорта | `{status, job_id, package?: ContentPackage}` |
 | `GET /api/content/{id}/assets/{name}` | изображение из пакета по манифесту | файл |
 | `POST /api/generations` | GenerationRequest; `idempotency_key` возвращает то же задание | `202 {job_id}` |
@@ -90,6 +105,8 @@
 | `GET /api/jobs/{id}` | состояние задания любого вида | JobStatus |
 | `POST /api/jobs/{id}/cancel` | отмена; дочерние задания отменяются | `202` |
 | `POST /api/jobs/{id}/retry` | повтор упавшего задания с переиспользованием завершённых этапов | `202 {job_id}` |
+
+Файлы загружаются на сервер один раз через `POST /api/projects/{id}/files`; анализ шаблона и импорт содержания принимают `file_id`/`file_ids`, поэтому уточнение брифа или удаление одного материала не пересылает байты. Multipart в `templates` и `content` сохраняется для CLI и внешних клиентов. Один арендатор без авторизации: все проекты видны всем, кто открыл адрес сервиса.
 
 Состояния задания: `queued`, `running`, `succeeded`, `needs_review`, `failed`, `canceled`. Этапы: `queued`, `analyze`, `import`, `story`, `plan`, `compose`, `export`, `audit`, `repair`, `finalize`, `done`. Клиент опрашивает `GET /api/jobs/{id}` с ограниченной частотой и останавливается на терминальном состоянии; готовность каждого варианта и полнота аудита видны в GenerationResult до завершения всего задания.
 

@@ -21,7 +21,7 @@ export function BriefFields({ brief, onChange }: { brief: BriefDraft; onChange: 
     <Stack gap="xs">
       <TextInput label="Название" placeholder="Запуск сервиса умных уведомлений" value={brief.title} onChange={(e) => set("title", e.currentTarget.value)} data-testid="brief-title" />
       <Group grow>
-        <Select label="Назначение" data={PURPOSE_OPTIONS} value={brief.purpose || null} placeholder="Не выбрано" onChange={(v) => set("purpose", v ?? "")} allowDeselect={false} data-testid="brief-purpose" />
+        <Select label="Назначение" data={PURPOSE_OPTIONS} value={brief.purpose || null} placeholder="Не выбрано" onChange={(v) => set("purpose", (v ?? "") as BriefDraft["purpose"])} allowDeselect={false} data-testid="brief-purpose" />
         <Select label="Язык" data={[{ value: "ru", label: "Русский" }, { value: "en", label: "English" }]} value={brief.language} onChange={(v) => set("language", v ?? "ru")} allowDeselect={false} />
       </Group>
       <TextInput label="Аудитория" placeholder="руководители продуктовых направлений" value={brief.audience} onChange={(e) => set("audience", e.currentTarget.value)} />

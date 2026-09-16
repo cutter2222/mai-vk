@@ -16,8 +16,15 @@ export function WorkspaceClient() {
       router.replace("/");
       return;
     }
-    const project = findProjectByJob(jobId) ?? createProject({ title: `Задание ${jobId}`, job_id: jobId });
-    router.replace(`/project?id=${encodeURIComponent(project.id)}`);
+    let alive = true;
+    void (async () => {
+      const found = await findProjectByJob(jobId);
+      const id = found?.project_id ?? (await createProject({ title: `Задание ${jobId}`, job_id: jobId })).project_id;
+      if (alive) router.replace(`/project?id=${encodeURIComponent(id)}`);
+    })();
+    return () => {
+      alive = false;
+    };
   }, [jobId, router]);
 
   return null;

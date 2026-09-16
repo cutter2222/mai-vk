@@ -42,6 +42,11 @@ main() {
   set_env_key "$env_file" PD_SITE_ADDRESS "$site_address"
   set_env_key "$env_file" PD_HTTP_PORT 80
   set_env_key "$env_file" PD_HTTPS_PORT 443
+  # Данные живут вне репозитория, чтобы переживать замену каталога repo при выкладке.
+  set_env_key "$env_file" PD_DATA_DIR "$server_dir/data"
+  set_env_key "$env_file" PD_ARTIFACTS_DIR "$server_dir/artifacts"
+  set_env_key "$env_file" PD_RUNS_DIR "$server_dir/runs"
+  set_env_key "$env_file" PD_ENV_FILE "$env_file"
 
   if [ "$build" = build ]; then
     compose build --pull

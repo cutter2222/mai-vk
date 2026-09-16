@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.2",
+  "file_id": "file_01j9x8k2m4n5p6q7r8s9t0u1v2",
+  "name": "metrics.xlsx",
+  "size_bytes": 12000,
+  "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+  "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "kind": "material",
+  "added_at": "2026-09-16T08:30:00Z",
+  "check": { "status": "ok", "format": "xlsx" },
+  "package_id": "pkg_demo"
+}

@@ -3,11 +3,14 @@
 from presentation_designer.contracts import validators
 from presentation_designer.contracts.models import (
     AuditReport,
+    BriefExtract,
     ComposedDeck,
     ContentPackage,
     GenerationRequest,
     GenerationResult,
     JobStatus,
+    Project,
+    ProjectFile,
     SkillManifest,
     SlidePlan,
     StoryPlan,
@@ -15,17 +18,20 @@ from presentation_designer.contracts.models import (
 )
 from presentation_designer.contracts.validators import ContractError, Violation, raise_if
 
-CONTRACTS_VERSION = "1.1"
+CONTRACTS_VERSION = "1.2"
 
 __all__ = [
     "CONTRACTS_VERSION",
     "AuditReport",
+    "BriefExtract",
     "ComposedDeck",
     "ContentPackage",
     "ContractError",
     "GenerationRequest",
     "GenerationResult",
     "JobStatus",
+    "Project",
+    "ProjectFile",
     "SkillManifest",
     "SlidePlan",
     "StoryPlan",

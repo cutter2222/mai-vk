@@ -10,7 +10,6 @@ import { api, ApiError } from "@/lib/api/client";
 import { downloadArtifact } from "@/lib/download";
 import { formatBytes, VARIANT_LABELS } from "@/lib/format";
 import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
-import { fileStore } from "@/lib/state/fileStore";
 import type { Project, ProjectFile } from "@/lib/state/projects";
 
 interface Props {
@@ -84,14 +83,13 @@ export function FilesPanel({ project, session, onAdd, onRemove, onSelectTemplate
             <Text size="xs" c="dimmed" fw={500} mb={4}>{TYPE_LABEL[g.type]} · {g.files.length}</Text>
             {g.files.map((f) => {
               const r = role(f);
-              const lost = !fileStore.has(f.id) && !f.template_id && !f.package_id;
               return (
-                <div key={f.id} className="file-row" data-testid={`file-${f.id}`}>
+                <div key={f.file_id} className="file-row" data-testid={`file-${f.file_id}`}>
                   <span className="file-icon">{icon(g.type)}</span>
                   <div className="file-main">
                     <Text size="sm" truncate title={f.name}>{f.name}</Text>
                     <Text size="xs" c={r.active ? "green.8" : "dimmed"} truncate>
-                      {r.text} · {formatBytes(f.size)}{lost ? " · содержимое не сохранилось после перезагрузки" : ""}
+                      {r.text} · {formatBytes(f.size_bytes)}
                     </Text>
                   </div>
                   <div className="file-actions">
@@ -101,7 +99,7 @@ export function FilesPanel({ project, session, onAdd, onRemove, onSelectTemplate
                       </Tooltip>
                     )}
                     <Tooltip label="Удалить из проекта">
-                      <ActionIcon variant="subtle" color="gray" size="sm" onClick={() => onRemove(f.id)} aria-label="Удалить" data-testid={`file-remove-${f.id}`}><IconTrash size={14} /></ActionIcon>
+                      <ActionIcon variant="subtle" color="gray" size="sm" onClick={() => onRemove(f.file_id)} aria-label="Удалить" data-testid={`file-remove-${f.file_id}`}><IconTrash size={14} /></ActionIcon>
                     </Tooltip>
                   </div>
                 </div>

@@ -42,10 +42,7 @@ test-results/
 
 # Local inputs and generated presentations, previews, metrics and model traces.
 # Keep public, redistributable examples under examples/ or tests/fixtures/.
-/data/organizers/
-/data/private/
-/data/uploads/
-/data/runtime/
+/data/
 /artifacts/
 /runs/
 /logs/

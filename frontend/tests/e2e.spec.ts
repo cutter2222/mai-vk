@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 
-import { attach, collectConsoleErrors, createProject, sendMaterialsAndBrief, sendMessage, speedUp, startGeneration, uploadTemplate, waitForAllVariantsDone } from "./helpers";
+import { attach, collectConsoleErrors, createProject, DOCX, DOCX_MIME, PPTX, PPTX_MIME, sendMaterialsAndBrief, sendMessage, speedUp, startGeneration, uploadTemplate, waitForAllVariantsDone } from "./helpers";
 
 const SHOTS = process.env.SHOT_DIR;
 const shot = async (page: Page, name: string) => {
@@ -19,7 +19,8 @@ test.describe("сквозной сценарий в чате на заглушк
     await expect(page.getByTestId("preview-empty")).toBeVisible();
 
     await uploadTemplate(page);
-    await expect(page.getByTestId("template-analyzing")).toBeVisible();
+    // На сервере уже разобранный шаблон отдаётся из кэша сразу: состояние «разбираю» может не появиться.
+    await expect(page.getByTestId("template-analyzing").or(page.getByTestId("template-profile").last())).toBeVisible();
     // Текущий шаблон виден в шапке, в списке он отмечен галочкой
     await expect(page.getByTestId("template-menu")).toContainText("Корпоративный шаблон");
     await page.getByTestId("template-menu").click();
@@ -149,7 +150,7 @@ test.describe("сквозной сценарий в чате на заглушк
     await expect(page.getByTestId("brief-card").last()).toContainText("Отчёт");
 
     // PPTX как материал, а не шаблон
-    await attach(page, [{ name: "Старая презентация.pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: Buffer.from("PK") }]);
+    await attach(page, [{ name: "Старая презентация.pptx", mimeType: PPTX_MIME, buffer: PPTX() }]);
     await sendMessage(page);
     await page.getByTestId("answer-material").last().click();
     await expect(page.getByTestId("import-summary").last()).toBeVisible({ timeout: 15000 });
@@ -158,7 +159,7 @@ test.describe("сквозной сценарий в чате на заглушк
     await page.getByTestId("tab-files").click();
     await expect(page.getByTestId("files-panel")).toContainText("Презентации");
     const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.getByTestId("files-add").click()]);
-    await chooser.setFiles([{ name: "brief.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", buffer: Buffer.from("mock") }]);
+    await chooser.setFiles([{ name: "brief.docx", mimeType: DOCX_MIME, buffer: DOCX() }]);
     await expect(page.getByTestId("files-panel")).toContainText("Документы");
     await expect(page.getByTestId("files-panel")).toContainText("brief.docx");
     const row = page.locator('[data-testid^="file-"]').filter({ hasText: "Старая презентация.pptx" }).first();
@@ -181,7 +182,8 @@ test.describe("сквозной сценарий в чате на заглушк
     await page.getByTestId(`project-delete-${projectId}`).click();
     await page.getByTestId("confirm-delete").click();
     await expect(page.getByTestId(`project-card-${projectId}`)).toHaveCount(0);
-    await expect(page.getByTestId("projects-empty")).toBeVisible();
+    // В заглушках список пуст; на сервере остаются проекты других сессий.
+    if ((await page.locator('[data-testid^="project-card-"]').count()) === 0) await expect(page.getByTestId("projects-empty")).toBeVisible();
   });
 
   test("неизвестное задание, прежняя ссылка /workspace и /project без параметра", async ({ page }) => {

@@ -1,6 +1,49 @@
 /* Сгенерировано scripts/gen-types.mjs из contracts/schemas. Не редактировать вручную. */
 
 /**
+ * Событие ленты чата: сообщение пользователя или карточка шага. Карточка хранит только идентификаторы и читает живое состояние
+ */
+export type Event = {
+  [k: string]: unknown;
+} & {
+  /**
+   * Стабильный идентификатор. Не содержит пробелов и путей.
+   */
+  event_id: string;
+  at: string;
+  role: "user" | "assistant";
+  kind:
+    | "message"
+    | "text"
+    | "template_question"
+    | "template_card"
+    | "content_card"
+    | "brief_card"
+    | "job_card"
+    | "audit_card";
+  text?: string;
+  file_ids?: string[];
+  /**
+   * Стабильный идентификатор. Не содержит пробелов и путей.
+   */
+  file_id?: string;
+  resolved?: "template" | "material";
+  /**
+   * Стабильный идентификатор. Не содержит пробелов и путей.
+   */
+  template_id?: string;
+  /**
+   * Стабильный идентификатор. Не содержит пробелов и путей.
+   */
+  package_id?: string;
+  /**
+   * Стабильный идентификатор. Не содержит пробелов и путей.
+   */
+  job_id?: string;
+  understood?: string[];
+  missing_purpose?: boolean;
+};
+/**
  * Содержание одного слота. Ровно одно из полей содержания должно соответствовать kind слота.
  */
 export type Block = {
@@ -131,11 +174,14 @@ export type Block = {
 
 export interface Contracts {
   audit_report?: AuditReport;
+  brief_extract?: BriefExtract;
   composed_deck?: ComposedDeck;
   content_package?: ContentPackage;
   generation_request?: GenerationRequest;
   generation_result?: GenerationResult;
   job_status?: JobStatus;
+  project?: Project;
+  project_file?: ProjectFile;
   skill_manifest?: SkillManifest;
   slide_plan?: SlidePlan;
   story_plan?: StoryPlan;
@@ -393,6 +439,41 @@ export interface ModelRef {
   active_params_b?: number;
   license?: string;
   reasoning_mode?: string;
+}
+/**
+ * Ответ POST /api/brief: бриф и настройки, извлечённые из свободного сообщения чата. Запрос описан в $defs/request. Поля, которых нет в тексте, не заполняются; understood перечисляет найденные. Ответ — предложение для подтверждения пользователем, а не решение. Версия 1.2.
+ */
+export interface BriefExtract {
+  schema_version: "1.2";
+  brief: {
+    purpose?: "feature" | "product" | "project" | "initiative" | "report" | "other";
+    title?: string;
+    audience?: string;
+    goal?: string;
+    language?: string;
+    tone?: string;
+    must_include?: string[];
+    avoid?: string[];
+  };
+  slide_count?: {
+    exact?: number;
+    min?: number;
+    max?: number;
+  };
+  variants?: ("compact" | "balanced" | "detailed")[];
+  /**
+   * какие поля действительно найдены в тексте: purpose, title, audience, goal, tone, language, must_include, avoid, slide_count, variants
+   */
+  understood: string[];
+  /**
+   * generate: явная команда запустить генерацию; edit: правка готовых слайдов; none: описание задачи или ничего
+   */
+  intent: "generate" | "edit" | "none";
+  /**
+   * model: извлечено моделью; heuristic: детерминированные правила без модели
+   */
+  source: "model" | "heuristic";
+  model?: ModelRef;
 }
 /**
  * Описание фактически собранного PPTX одного варианта: объекты, вычисленные стили, геометрия, порядок слоёв, ресурсы, связи со слотами плана и исходными слайдами шаблона. Строится слоем вёрстки по сохранённому файлу и используется аудитом, подсветкой и HTML-экспортом. Поля ограничены разделом 16 FRAMEWORKS.md; детали добавляются версией 1.2 на этапе 8.
@@ -687,10 +768,10 @@ export interface Warning {
   slide_index?: number;
 }
 /**
- * Результат слоя импорта содержания. Два входа: контент-пакет (файлы) и краткий бриф с назначением. Факты и наборы данных извлекаются детерминированно до вызова модели. Версия 1.1: контекст факта (показатель, период, субъект, единица, исходный фрагмент или ячейка), производные показатели с формулой, отметка неопределённости.
+ * Результат слоя импорта содержания. Два входа: контент-пакет (файлы) и краткий бриф с назначением. Факты и наборы данных извлекаются детерминированно до вызова модели. Версия 1.2: источник ссылается на файл проекта (file_id), вид pptx для материалов-презентаций, неполный бриф дополняется умолчаниями с предупреждением brief_incomplete. Версия 1.1: контекст факта (показатель, период, субъект, единица, исходный фрагмент или ячейка), производные показатели с формулой, отметка неопределённости.
  */
 export interface ContentPackage {
-  schema_version: "1.1";
+  schema_version: "1.2";
   /**
    * Стабильный идентификатор. Не содержит пробелов и путей.
    */
@@ -723,12 +804,16 @@ export interface ContentPackage {
      * Стабильный идентификатор. Не содержит пробелов и путей.
      */
     source_id: string;
-    kind: "text" | "markdown" | "docx" | "pdf" | "xlsx" | "csv" | "json" | "image" | "url" | "user_input";
+    kind: "text" | "markdown" | "docx" | "pdf" | "xlsx" | "csv" | "json" | "image" | "pptx" | "url" | "user_input";
     name: string;
     sha256?: string;
     size_bytes?: number;
     extracted?: boolean;
     warnings?: Warning[];
+    /**
+     * Стабильный идентификатор. Не содержит пробелов и путей.
+     */
+    file_id?: string;
   }[];
   /**
    * Содержание в порядке исходников. Планировщик ссылается на block_id, а не копирует текст без ссылки.
@@ -1301,6 +1386,104 @@ export interface JobStatus {
   };
   error?: Error;
   warnings?: Warning[];
+}
+/**
+ * Проект — одна презентация: выбранный шаблон, файлы, бриф, настройки, задание генерации и лента событий чата. Серверная сущность: интерфейс восстанавливает проект по идентификатору из URL. Карточки ленты ссылаются на шаблоны, пакеты, задания и файлы по идентификаторам и не дублируют данные. Версия 1.2.
+ */
+export interface Project {
+  schema_version: "1.2";
+  /**
+   * Стабильный идентификатор. Не содержит пробелов и путей.
+   */
+  project_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  /**
+   * Отсутствие поля равно null.
+   */
+  template_id?: string | null;
+  /**
+   * Отсутствие поля равно null.
+   */
+  package_id?: string | null;
+  /**
+   * текущее задание генерации Отсутствие поля равно null.
+   */
+  job_id?: string | null;
+  /**
+   * Отсутствие поля равно null.
+   */
+  chosen_variant?: string | null;
+  brief: BriefDraft;
+  settings: SettingsDraft;
+  files: ProjectFile[];
+  events: Event[];
+}
+/**
+ * Черновик брифа в интерфейсе: пустая строка означает «не задано»; в ContentPackage уходит с умолчаниями
+ */
+export interface BriefDraft {
+  purpose: "" | "feature" | "product" | "project" | "initiative" | "report" | "other";
+  title: string;
+  audience: string;
+  goal: string;
+  language: string;
+  tone: string;
+  must_include: string[];
+  avoid: string[];
+}
+/**
+ * Настройки генерации в интерфейсе; в GenerationRequest переводятся при запуске
+ */
+export interface SettingsDraft {
+  mode: "range" | "exact";
+  min: number;
+  max: number;
+  exact: number;
+  variants: ("compact" | "balanced" | "detailed")[];
+  contextual: boolean;
+  images: boolean;
+  /**
+   * отсутствие поля равно null
+   */
+  seed?: number | null;
+  force: boolean;
+}
+/**
+ * Файл проекта: шаблон, материал или что-то ещё, что пользователь положил в чат. Байты хранятся на сервере один раз по sha256, запись проекта ссылается на них; вид файла меняется пользователем (PPTX может быть и шаблоном, и материалом). Версия 1.2.
+ */
+export interface ProjectFile {
+  schema_version: "1.2";
+  /**
+   * Стабильный идентификатор. Не содержит пробелов и путей.
+   */
+  file_id: string;
+  name: string;
+  size_bytes: number;
+  sha256: string;
+  mime: string;
+  /**
+   * template: шаблон оформления; material: содержание для импорта; other: хранится в проекте без импорта
+   */
+  kind: "template" | "material" | "other";
+  added_at: string;
+  /**
+   * Результат проверки при загрузке: ZIP и тип содержимого для pptx/docx/xlsx, свой парсер для pdf, текста и изображений; неподдерживаемые типы принимаются без проверки
+   */
+  check: {
+    status: "ok" | "rejected" | "skipped";
+    format?: "pptx" | "docx" | "xlsx" | "csv" | "pdf" | "markdown" | "text" | "image" | "other";
+    message?: string;
+  };
+  /**
+   * Стабильный идентификатор. Не содержит пробелов и путей.
+   */
+  template_id?: string;
+  /**
+   * Стабильный идентификатор. Не содержит пробелов и путей.
+   */
+  package_id?: string;
 }
 /**
  * Манифест скилла или агента (skills/<name>/skill.yaml). ТЗ требует версионировать скиллы и агентов и хранить промпты и конфиги отдельными файлами.

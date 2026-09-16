@@ -5,7 +5,12 @@
 
 import type { BriefExtractResponse } from "@/lib/api/client";
 
-const PURPOSES: Array<[RegExp, string]> = [
+type Purpose = NonNullable<BriefExtractResponse["brief"]["purpose"]>;
+type Variant = "compact" | "balanced" | "detailed";
+const GENERATE_RE = /сгенерир|запусти|собери|сделай|построй|начина/i;
+const EDIT_RE = /поменя[йть]|перестав|местами|удали|убери|добавь слайд|переимен/i;
+
+const PURPOSES: Array<[RegExp, Purpose]> = [
   [/отч[её]т/i, "report"],
   [/инициатив/i, "initiative"],
   [/фич[аиеу]/i, "feature"],
@@ -19,9 +24,11 @@ export function extractBrief(text: string): BriefExtractResponse {
   const understood: string[] = [];
   const brief: BriefExtractResponse["brief"] = {};
   let slide_count: BriefExtractResponse["slide_count"];
-  let variants: string[] | undefined;
+  let variants: Variant[] | undefined;
   const t = text.replace(/\s+/g, " ").trim();
-  if (!t) return { brief, understood };
+  const intent: BriefExtractResponse["intent"] = EDIT_RE.test(t) ? "edit" : GENERATE_RE.test(t) ? "generate" : "none";
+  const base = { schema_version: "1.2" as const, intent, source: "heuristic" as const };
+  if (!t) return { ...base, brief, understood };
 
   const purpose = PURPOSES.find(([re]) => re.test(t))?.[1];
   if (purpose) {
@@ -82,18 +89,15 @@ export function extractBrief(text: string): BriefExtractResponse {
     understood.push("slide_count");
   }
 
-  const wanted = ["compact", "balanced", "detailed"].filter((v) => {
-    const re = { compact: /компактн/i, balanced: /сбалансир/i, detailed: /подробн/i }[v as "compact"] as RegExp;
-    return re.test(t);
-  });
+  const ALL: Variant[] = ["compact", "balanced", "detailed"];
+  const wanted = ALL.filter((v) => ({ compact: /компактн/i, balanced: /сбалансир/i, detailed: /подробн/i })[v].test(t));
   if (/без\s+(компактн|сбалансир|подробн)/i.test(t)) {
-    const drop = wanted;
-    variants = ["compact", "balanced", "detailed"].filter((v) => !drop.includes(v));
+    variants = ALL.filter((v) => !wanted.includes(v));
     understood.push("variants");
   } else if (/только\s+(компактн|сбалансир|подробн)/i.test(t) && wanted.length) {
     variants = wanted;
     understood.push("variants");
   }
 
-  return { brief, slide_count, variants, understood };
+  return { ...base, brief, slide_count, variants, understood };
 }

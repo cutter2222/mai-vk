@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://presentation-designer.local/contracts/project_file.schema.json",
+  "title": "ProjectFile",
+  "description": "Файл проекта: шаблон, материал или что-то ещё, что пользователь положил в чат. Байты хранятся на сервере один раз по sha256, запись проекта ссылается на них; вид файла меняется пользователем (PPTX может быть и шаблоном, и материалом). Версия 1.2.",
+  "type": "object",
+  "required": ["schema_version", "file_id", "name", "size_bytes", "sha256", "mime", "kind", "added_at", "check"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.2" },
+    "file_id": { "$ref": "common.schema.json#/$defs/id" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 255 },
+    "size_bytes": { "type": "integer", "minimum": 0 },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "mime": { "type": "string" },
+    "kind": {
+      "enum": ["template", "material", "other"],
+      "description": "template: шаблон оформления; material: содержание для импорта; other: хранится в проекте без импорта"
+    },
+    "added_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "check": {
+      "type": "object",
+      "description": "Результат проверки при загрузке: ZIP и тип содержимого для pptx/docx/xlsx, свой парсер для pdf, текста и изображений; неподдерживаемые типы принимаются без проверки",
+      "required": ["status"],
+      "additionalProperties": false,
+      "properties": {
+        "status": { "enum": ["ok", "rejected", "skipped"] },
+        "format": { "enum": ["pptx", "docx", "xlsx", "csv", "pdf", "markdown", "text", "image", "other"] },
+        "message": { "type": "string" }
+      }
+    },
+    "template_id": { "$ref": "common.schema.json#/$defs/id", "description": "для шаблона: идентификатор после загрузки в библиотеку" },
+    "package_id": { "$ref": "common.schema.json#/$defs/id", "description": "для материала: пакет, в который он импортирован последним" }
+  }
+}

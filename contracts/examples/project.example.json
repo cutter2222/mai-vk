@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.2",
+  "project_id": "prj_01j9x8k2m4n5p6q7r8s9t0u1v0",
+  "title": "Запуск сервиса умных уведомлений",
+  "created_at": "2026-09-16T08:29:10Z",
+  "updated_at": "2026-09-16T08:35:42Z",
+  "template_id": "tpl_demo",
+  "package_id": "pkg_demo",
+  "job_id": "job_demo",
+  "chosen_variant": null,
+  "brief": {
+    "purpose": "product",
+    "title": "Запуск сервиса умных уведомлений",
+    "audience": "руководители продуктовых направлений",
+    "goal": "получить одобрение на расширение пилота",
+    "language": "ru",
+    "tone": "",
+    "must_include": ["метрики пилота", "план на квартал"],
+    "avoid": []
+  },
+  "settings": {
+    "mode": "range",
+    "min": 10,
+    "max": 15,
+    "exact": 12,
+    "variants": ["compact", "balanced", "detailed"],
+    "contextual": true,
+    "images": false,
+    "seed": null,
+    "force": false
+  },
+  "files": [
+    {
+      "schema_version": "1.2",
+      "file_id": "file_01j9x8k2m4n5p6q7r8s9t0u1v1",
+      "name": "Корпоративный шаблон.pptx",
+      "size_bytes": 23500000,
+      "sha256": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+      "mime": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "kind": "template",
+      "added_at": "2026-09-16T08:30:00Z",
+      "check": { "status": "ok", "format": "pptx" },
+      "template_id": "tpl_demo"
+    },
+    {
+      "schema_version": "1.2",
+      "file_id": "file_01j9x8k2m4n5p6q7r8s9t0u1v2",
+      "name": "metrics.xlsx",
+      "size_bytes": 12000,
+      "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "kind": "material",
+      "added_at": "2026-09-16T08:31:00Z",
+      "check": { "status": "ok", "format": "xlsx" },
+      "package_id": "pkg_demo"
+    }
+  ],
+  "events": [
+    { "event_id": "evt_1", "at": "2026-09-16T08:30:00Z", "role": "user", "kind": "message", "text": "", "file_ids": ["file_01j9x8k2m4n5p6q7r8s9t0u1v1"] },
+    { "event_id": "evt_2", "at": "2026-09-16T08:30:01Z", "role": "assistant", "kind": "template_question", "file_id": "file_01j9x8k2m4n5p6q7r8s9t0u1v1", "resolved": "template" },
+    { "event_id": "evt_3", "at": "2026-09-16T08:30:05Z", "role": "assistant", "kind": "template_card", "template_id": "tpl_demo" },
+    { "event_id": "evt_4", "at": "2026-09-16T08:31:00Z", "role": "user", "kind": "message", "text": "Сделай презентацию про запуск сервиса умных уведомлений для руководителей, чтобы одобрили расширение пилота", "file_ids": ["file_01j9x8k2m4n5p6q7r8s9t0u1v2"] },
+    { "event_id": "evt_5", "at": "2026-09-16T08:31:02Z", "role": "assistant", "kind": "content_card", "package_id": "pkg_demo", "file_ids": ["file_01j9x8k2m4n5p6q7r8s9t0u1v2"] },
+    { "event_id": "evt_6", "at": "2026-09-16T08:31:03Z", "role": "assistant", "kind": "brief_card", "understood": ["purpose", "title", "audience", "goal"], "missing_purpose": false },
+    { "event_id": "evt_7", "at": "2026-09-16T08:32:00Z", "role": "assistant", "kind": "job_card", "job_id": "job_demo" },
+    { "event_id": "evt_8", "at": "2026-09-16T08:35:42Z", "role": "assistant", "kind": "audit_card", "job_id": "job_demo" }
+  ]
+}

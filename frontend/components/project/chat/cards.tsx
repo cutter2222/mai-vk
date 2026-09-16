@@ -9,7 +9,7 @@ import { api, type ContentDetail, type TemplateDetail } from "@/lib/api/client";
 import { usePolling } from "@/lib/api/usePolling";
 import { STATUS_LABELS, VARIANT_LABELS } from "@/lib/format";
 import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
-import type { ChatMessage, Project } from "@/lib/state/projects";
+import type { BriefDraft, ChatMessage, Project } from "@/lib/state/projects";
 
 import { PURPOSE_LABELS, PURPOSE_OPTIONS } from "../panels/BriefFields";
 
@@ -20,7 +20,7 @@ export interface CardContext {
   session: GenerationSession;
   onResolveTemplate: (messageId: string, fileId: string, answer: "template" | "material") => void;
   onEditBrief: () => void;
-  onSetPurpose: (purpose: string) => void;
+  onSetPurpose: (purpose: BriefDraft["purpose"]) => void;
   onGenerate: () => void;
   generating: boolean;
   onOpenAudit: (variantId?: string) => void;
@@ -41,17 +41,17 @@ function Card({ title, aside, children, testId }: { title: React.ReactNode; asid
 }
 
 export function TemplateQuestionCard({ m, ctx }: { m: Msg<"template_question">; ctx: CardContext }) {
-  const file = ctx.project.files.find((f) => f.id === m.file_id);
+  const file = ctx.project.files.find((f) => f.file_id === m.file_id);
   const name = file?.name ?? "файл";
   return (
-    <Card title={<Group gap={6} wrap="nowrap"><IconFileTypePpt size={16} />{name}</Group>} testId={`template-question-${m.id}`}>
+    <Card title={<Group gap={6} wrap="nowrap"><IconFileTypePpt size={16} />{name}</Group>} testId={`template-question-${m.event_id}`}>
       <Text size="sm" c="dimmed" mb={m.resolved ? 0 : 8}>
         {m.resolved === "template" ? "Разбираю как шаблон: палитра, шрифты и композиции слайдов." : m.resolved === "material" ? "Считаю материалом: текст слайдов пойдёт в содержание." : "Похоже на презентацию. Разобрать её как шаблон оформления или это материал с содержанием?"}
       </Text>
       {!m.resolved && (
         <Group gap="xs">
-          <Button size="xs" onClick={() => ctx.onResolveTemplate(m.id, m.file_id, "template")} data-testid="answer-template">Разобрать как шаблон</Button>
-          <Button size="xs" variant="default" onClick={() => ctx.onResolveTemplate(m.id, m.file_id, "material")} data-testid="answer-material">Это материал</Button>
+          <Button size="xs" onClick={() => ctx.onResolveTemplate(m.event_id, m.file_id, "template")} data-testid="answer-template">Разобрать как шаблон</Button>
+          <Button size="xs" variant="default" onClick={() => ctx.onResolveTemplate(m.event_id, m.file_id, "material")} data-testid="answer-material">Это материал</Button>
         </Group>
       )}
     </Card>
@@ -94,14 +94,14 @@ export function TemplateCard({ m, ctx }: { m: Msg<"template_card">; ctx: CardCon
 export function ContentCard({ m, ctx }: { m: Msg<"content_card">; ctx: CardContext }) {
   const detail = usePolling<ContentDetail>(() => api.content.get(m.package_id), (d) => d.status === "succeeded" || d.status === "failed", [m.package_id]);
   const pkg = detail.data?.package;
-  const files = ctx.project.files.filter((f) => m.file_ids.includes(f.id));
+  const files = ctx.project.files.filter((f) => m.file_ids.includes(f.file_id));
   const current = ctx.project.package_id === m.package_id;
   return (
     <Card title="Материалы" aside={!current ? <Badge color="gray" size="xs">переимпортированы</Badge> : undefined} testId="content-card">
       {files.length > 0 && (
         <Group gap={6} mb={6}>
           {files.map((f) => (
-            <Badge key={f.id} color="gray" leftSection={<IconFile size={11} />} size="sm">{f.name}</Badge>
+            <Badge key={f.file_id} color="gray" leftSection={<IconFile size={11} />} size="sm">{f.name}</Badge>
           ))}
         </Group>
       )}
@@ -149,7 +149,7 @@ export function BriefCard({ m, ctx }: { m: Msg<"brief_card">; ctx: CardContext }
           <Text size="sm">Уточните назначение — от него зависит структура колоды:</Text>
           <Group gap={6}>
             {PURPOSE_OPTIONS.map((o) => (
-              <Button key={o.value} size="xs" variant="default" onClick={() => ctx.onSetPurpose(o.value)} data-testid={`purpose-${o.value}`}>{o.label}</Button>
+              <Button key={o.value} size="xs" variant="default" onClick={() => ctx.onSetPurpose(o.value as BriefDraft["purpose"])} data-testid={`purpose-${o.value}`}>{o.label}</Button>
             ))}
           </Group>
         </Stack>

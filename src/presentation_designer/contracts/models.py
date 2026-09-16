@@ -83,6 +83,29 @@ class Coverage(BaseModel):
     """
 
 
+class Brief(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    purpose: Literal["feature", "product", "project", "initiative", "report", "other"] | None = None
+    title: str | None = None
+    audience: str | None = None
+    goal: str | None = None
+    language: str | None = None
+    tone: str | None = None
+    must_include: list[str] | None = None
+    avoid: list[str] | None = None
+
+
+class SlideCount(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    exact: int | None = Field(None, ge=1, le=60)
+    min: int | None = Field(None, ge=1, le=60)
+    max: int | None = Field(None, ge=1, le=60)
+
+
 class Id(RootModel[str]):
     root: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
@@ -338,12 +361,12 @@ class FallbackElement(BaseModel):
     fallback: Literal["raster_from_render", "omitted"] | None = None
 
 
-class SlideCount(BaseModel):
+class SlideCount1(BaseModel):
     min: int | None = Field(None, ge=1)
     max: int | None = Field(None, ge=1)
 
 
-class Brief(BaseModel):
+class Brief1(BaseModel):
     purpose: Literal["feature", "product", "project", "initiative", "report", "other"]
     title: str
     audience: str | None = None
@@ -353,7 +376,7 @@ class Brief(BaseModel):
     """
     language: str
     tone: str | None = None
-    slide_count: SlideCount | None = None
+    slide_count: SlideCount1 | None = None
     must_include: list[str] | None = None
     avoid: list[str] | None = None
     notes: str | None = None
@@ -365,13 +388,27 @@ class Source(BaseModel):
     Стабильный идентификатор. Не содержит пробелов и путей.
     """
     kind: Literal[
-        "text", "markdown", "docx", "pdf", "xlsx", "csv", "json", "image", "url", "user_input"
+        "text",
+        "markdown",
+        "docx",
+        "pdf",
+        "xlsx",
+        "csv",
+        "json",
+        "image",
+        "pptx",
+        "url",
+        "user_input",
     ]
     name: str
     sha256: str | None = None
     size_bytes: int | None = None
     extracted: bool | None = None
     warnings: list[Warning] | None = None
+    file_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    файл проекта, из которого извлечён источник; отсутствует у брифа и внешних ссылок
+    """
 
 
 class Block(BaseModel):
@@ -570,10 +607,10 @@ class MissingDatum(BaseModel):
 
 class ContentPackage(BaseModel):
     """
-    Результат слоя импорта содержания. Два входа: контент-пакет (файлы) и краткий бриф с назначением. Факты и наборы данных извлекаются детерминированно до вызова модели. Версия 1.1: контекст факта (показатель, период, субъект, единица, исходный фрагмент или ячейка), производные показатели с формулой, отметка неопределённости.
+    Результат слоя импорта содержания. Два входа: контент-пакет (файлы) и краткий бриф с назначением. Факты и наборы данных извлекаются детерминированно до вызова модели. Версия 1.2: источник ссылается на файл проекта (file_id), вид pptx для материалов-презентаций, неполный бриф дополняется умолчаниями с предупреждением brief_incomplete. Версия 1.1: контекст факта (показатель, период, субъект, единица, исходный фрагмент или ячейка), производные показатели с формулой, отметка неопределённости.
     """
 
-    schema_version: Literal["1.1"]
+    schema_version: Literal["1.2"]
     package_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
     Стабильный идентификатор. Не содержит пробелов и путей.
@@ -583,7 +620,7 @@ class ContentPackage(BaseModel):
     package: содержание дано; brief: структуру и текст генерирует сервис; mixed: бриф плюс материалы
     """
     created_at: AwareDatetime | None = None
-    brief: Brief
+    brief: Brief1
     sources: list[Source]
     blocks: list[Block]
     """
@@ -605,7 +642,7 @@ class ContentPackage(BaseModel):
     """
 
 
-class SlideCount1(BaseModel):
+class SlideCount2(BaseModel):
     """
     точное число или диапазон; при обоих заданных exact имеет приоритет; min <= max проверяется валидатором
     """
@@ -622,7 +659,7 @@ class Settings(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    slide_count: SlideCount1 | None = None
+    slide_count: SlideCount2 | None = None
     """
     точное число или диапазон; при обоих заданных exact имеет приоритет; min <= max проверяется валидатором
     """
@@ -857,6 +894,57 @@ class Result1(BaseModel):
     """
 
 
+class Check1(BaseModel):
+    """
+    Результат проверки при загрузке: ZIP и тип содержимого для pptx/docx/xlsx, свой парсер для pdf, текста и изображений; неподдерживаемые типы принимаются без проверки
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    status: Literal["ok", "rejected", "skipped"]
+    format: (
+        Literal["pptx", "docx", "xlsx", "csv", "pdf", "markdown", "text", "image", "other"] | None
+    ) = None
+    message: str | None = None
+
+
+class ProjectFile(BaseModel):
+    """
+    Файл проекта: шаблон, материал или что-то ещё, что пользователь положил в чат. Байты хранятся на сервере один раз по sha256, запись проекта ссылается на них; вид файла меняется пользователем (PPTX может быть и шаблоном, и материалом). Версия 1.2.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["1.2"]
+    file_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    name: str = Field(..., max_length=255, min_length=1)
+    size_bytes: int = Field(..., ge=0)
+    sha256: str = Field(..., pattern="^[0-9a-f]{64}$")
+    mime: str
+    kind: Literal["template", "material", "other"]
+    """
+    template: шаблон оформления; material: содержание для импорта; other: хранится в проекте без импорта
+    """
+    added_at: AwareDatetime
+    check: Check1
+    """
+    Результат проверки при загрузке: ZIP и тип содержимого для pptx/docx/xlsx, свой парсер для pdf, текста и изображений; неподдерживаемые типы принимаются без проверки
+    """
+    template_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    для шаблона: идентификатор после загрузки в библиотеку
+    """
+    package_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    для материала: пакет, в который он импортирован последним
+    """
+
+
 class Prompt(BaseModel):
     id: str
     path: str
@@ -932,7 +1020,7 @@ class Story(BaseModel):
     outline: list[str] | None = None
 
 
-class SlideCount2(BaseModel):
+class SlideCount3(BaseModel):
     """
     Требование к числу слайдов, унаследованное из запроса: точное число или диапазон; план обязан ему соответствовать
     """
@@ -1158,6 +1246,93 @@ class Background(BaseModel):
     """
     Стабильный идентификатор. Не содержит пробелов и путей.
     """
+
+
+class BriefDraft(BaseModel):
+    """
+    Черновик брифа в интерфейсе: пустая строка означает «не задано»; в ContentPackage уходит с умолчаниями
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    purpose: Literal["", "feature", "product", "project", "initiative", "report", "other"]
+    title: str
+    audience: str
+    goal: str
+    language: str
+    tone: str
+    must_include: list[str]
+    avoid: list[str]
+
+
+class Event(BaseModel):
+    """
+    Событие ленты чата: сообщение пользователя или карточка шага. Карточка хранит только идентификаторы и читает живое состояние
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    event_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    at: AwareDatetime
+    role: Literal["user", "assistant"]
+    kind: Literal[
+        "message",
+        "text",
+        "template_question",
+        "template_card",
+        "content_card",
+        "brief_card",
+        "job_card",
+        "audit_card",
+    ]
+    text: str | None = None
+    file_ids: list[Id] | None = None
+    file_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    resolved: Literal["template", "material"] | None = None
+    template_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    package_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    job_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    understood: list[str] | None = None
+    missing_purpose: bool | None = None
+
+
+class SettingsDraft(BaseModel):
+    """
+    Настройки генерации в интерфейсе; в GenerationRequest переводятся при запуске
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    mode: Literal["range", "exact"]
+    min: int = Field(..., ge=1, le=60)
+    max: int = Field(..., ge=1, le=60)
+    exact: int = Field(..., ge=1, le=60)
+    variants: list[Literal["compact", "balanced", "detailed"]]
+    contextual: bool
+    images: bool
+    seed: int | None = None
+    """
+    отсутствие поля равно null
+    """
+    force: bool
 
 
 class Thesis(BaseModel):
@@ -1836,6 +2011,33 @@ class AuditReport(BaseModel):
     """
 
 
+class BriefExtract(BaseModel):
+    """
+    Ответ POST /api/brief: бриф и настройки, извлечённые из свободного сообщения чата. Запрос описан в $defs/request. Поля, которых нет в тексте, не заполняются; understood перечисляет найденные. Ответ — предложение для подтверждения пользователем, а не решение. Версия 1.2.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["1.2"]
+    brief: Brief
+    slide_count: SlideCount | None = None
+    variants: list[Literal["compact", "balanced", "detailed"]] | None = None
+    understood: list[str]
+    """
+    какие поля действительно найдены в тексте: purpose, title, audience, goal, tone, language, must_include, avoid, slide_count, variants
+    """
+    intent: Literal["generate", "edit", "none"]
+    """
+    generate: явная команда запустить генерацию; edit: правка готовых слайдов; none: описание задачи или ничего
+    """
+    source: Literal["model", "heuristic"]
+    """
+    model: извлечено моделью; heuristic: детерминированные правила без модели
+    """
+    model: ModelRef | None = None
+
+
 class Error(BaseModel):
     """
     Ошибка задания или операции API
@@ -2115,6 +2317,44 @@ class JobStatus(BaseModel):
     """
     error: Error | None = None
     warnings: list[Warning] | None = None
+
+
+class Project(BaseModel):
+    """
+    Проект — одна презентация: выбранный шаблон, файлы, бриф, настройки, задание генерации и лента событий чата. Серверная сущность: интерфейс восстанавливает проект по идентификатору из URL. Карточки ленты ссылаются на шаблоны, пакеты, задания и файлы по идентификаторам и не дублируют данные. Версия 1.2.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["1.2"]
+    project_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    title: str = Field(..., max_length=200, min_length=1)
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
+    template_id: Id | None = None
+    """
+    Отсутствие поля равно null.
+    """
+    package_id: Id | None = None
+    """
+    Отсутствие поля равно null.
+    """
+    job_id: Id | None = None
+    """
+    текущее задание генерации Отсутствие поля равно null.
+    """
+    chosen_variant: Id | None = None
+    """
+    Отсутствие поля равно null.
+    """
+    brief: BriefDraft
+    settings: SettingsDraft
+    files: list[ProjectFile]
+    events: list[Event]
 
 
 class StoryPlan(BaseModel):
@@ -2545,7 +2785,7 @@ class SlidePlan(BaseModel):
     """
     Стабильный идентификатор. Не содержит пробелов и путей.
     """
-    slide_count: SlideCount2
+    slide_count: SlideCount3
     """
     Требование к числу слайдов, унаследованное из запроса: точное число или диапазон; план обязан ему соответствовать
     """
@@ -2561,11 +2801,14 @@ class SlidePlan(BaseModel):
 
 class Contracts(BaseModel):
     audit_report: AuditReport | None = None
+    brief_extract: BriefExtract | None = None
     composed_deck: ComposedDeck | None = None
     content_package: ContentPackage | None = None
     generation_request: GenerationRequest | None = None
     generation_result: GenerationResult | None = None
     job_status: JobStatus | None = None
+    project: Project | None = None
+    project_file: ProjectFile | None = None
     skill_manifest: SkillManifest | None = None
     slide_plan: SlidePlan | None = None
     story_plan: StoryPlan | None = None

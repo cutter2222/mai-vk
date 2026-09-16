@@ -104,8 +104,11 @@ case "$TARGET" in
     log "ожидание $SERVER_URL (сертификат может занять до минуты)"
     wait_for_url "$SERVER_URL/" 60 \
       || show_failure ssh -o BatchMode=yes "$SERVER_SSH" "docker compose -f $(printf '%q' "$SERVER_DIR")/repo/docker/compose.yaml --env-file $(printf '%q' "$SERVER_DIR")/.env"
-    probe_url "$SERVER_URL/mockServiceWorker.js" \
-      || die "$SERVER_URL/mockServiceWorker.js не отдаётся: режим заглушек в браузере не заработает"
+    log "проверка API: $SERVER_URL/api/health"
+    wait_for_url "$SERVER_URL/api/health" 30 \
+      || show_failure ssh -o BatchMode=yes "$SERVER_SSH" "docker compose -f $(printf '%q' "$SERVER_DIR")/repo/docker/compose.yaml --env-file $(printf '%q' "$SERVER_DIR")/.env"
+    health="$(ssh -o BatchMode=yes "$SERVER_SSH" "curl -fs --max-time 10 $(printf '%q' "$SERVER_URL")/api/health")"
+    log "health: $health"
     if ! curl -fs --max-time 10 -o /dev/null "$SERVER_URL/"; then
       log "внимание: с этой машины $SERVER_URL не отвечает, хотя с сервера доступен — проверьте VPN, прокси или DNS-кэш"
     fi
@@ -133,6 +136,8 @@ case "$TARGET" in
     compose_local build
     compose_local up -d --remove-orphans
     wait_for_url "$LOCAL_URL/" 20 || show_failure compose_local
+    wait_for_url "$LOCAL_URL/api/health" 30 || show_failure compose_local
+    log "health: $(curl -fs --max-time 10 "$LOCAL_URL/api/health")"
     compose_local ps
     log "поднято: $LOCAL_URL"
     ;;

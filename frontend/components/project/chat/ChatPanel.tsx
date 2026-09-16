@@ -24,7 +24,7 @@ export function ChatPanel({ ctx, onSend }: Props) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const resetRef = useRef<() => void>(null);
 
-  const count = project.messages.length;
+  const count = project.events.length;
   useEffect(() => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -60,8 +60,8 @@ export function ChatPanel({ ctx, onSend }: Props) {
             <Text size="sm" c="dimmed" mt={6}>Шаблон задаёт оформление, материалы — содержание. Я соберу 10–15 слайдов в трёх вариантах вёрстки, проверю их и покажу справа.</Text>
           </div>
         )}
-        {project.messages.map((m) => (
-          <div key={m.id} className={`chat-msg chat-msg-${m.role}`} data-testid={`msg-${m.role}`}>
+        {project.events.map((m) => (
+          <div key={m.event_id} className={`chat-msg chat-msg-${m.role}`} data-testid={`msg-${m.role}`}>
             {renderMessage(m, ctx)}
           </div>
         ))}
@@ -111,12 +111,12 @@ export function ChatPanel({ ctx, onSend }: Props) {
 
 function renderMessage(m: ChatMessage, ctx: CardContext) {
   if (m.role === "user") {
-    const files = ctx.project.files.filter((f) => m.file_ids.includes(f.id));
+    const files = ctx.project.files.filter((f) => m.file_ids.includes(f.file_id));
     return (
       <Stack gap={6} align="flex-end">
         {files.length > 0 && (
           <Group gap={6} justify="flex-end">
-            {files.map((f) => <Badge key={f.id} color="gray" size="sm" leftSection={<IconFile size={11} />}>{f.name}</Badge>)}
+            {files.map((f) => <Badge key={f.file_id} color="gray" size="sm" leftSection={<IconFile size={11} />}>{f.name}</Badge>)}
           </Group>
         )}
         {m.text && <div className="chat-bubble">{m.text}</div>}

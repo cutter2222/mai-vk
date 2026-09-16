@@ -81,6 +81,7 @@ main() {
       echo "PD_ENV=production"
       echo "PD_UID=$(id -u "$service_user")"
       echo "PD_GID=$(id -g "$service_user")"
+      echo "PD_GENERATION_WORKERS=3"
     } | $sudo tee "$env_file" >/dev/null
   fi
 

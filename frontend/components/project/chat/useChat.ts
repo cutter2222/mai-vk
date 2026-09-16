@@ -5,14 +5,13 @@ import { useCallback, useEffect } from "react";
 
 import { api, ApiError } from "@/lib/api/client";
 import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
-import { fileStore } from "@/lib/state/fileStore";
 import {
   addProjectFiles,
   appendMessage,
   getProject,
-  newFileId,
   patchMessage,
   patchProjectFile,
+  refreshProject,
   removeProjectFile,
   updateProject,
   type BriefDraft,
@@ -21,39 +20,34 @@ import {
   type SettingsDraft,
 } from "@/lib/state/projects";
 
-const MATERIAL_EXT = /\.(docx|xlsx|csv|pdf|md|txt|png|jpe?g)$/i;
-const TEMPLATE_EXT = /\.pptx$/i;
 const GENERATE_RE = /сгенерир|запусти|собери|сделай|построй|начина/i;
 const EDIT_RE = /поменя[йть]|перестав|местами|удали|убери|добавь слайд|переимен/i;
 
-const isTemplateFile = (f: File) => TEMPLATE_EXT.test(f.name);
-const isMaterialFile = (f: File) => MATERIAL_EXT.test(f.name);
+const isPptx = (f: ProjectFile) => f.check.format === "pptx";
+const isMaterial = (f: ProjectFile) => f.kind === "material";
 
 /**
- * Оркестратор чата. Файлы распознаются по расширению без модели; бриф из текста извлекает сервер;
+ * Оркестратор чата. Файлы уходят на сервер в момент добавления и дальше передаются по идентификаторам;
+ * тип распознаётся по расширению без модели; бриф из текста извлекает сервер;
  * каждый шаг конвейера появляется в чате карточкой, которая читает живое состояние проекта.
  */
 export function useChat(project: Project, session: GenerationSession, generate: () => Promise<boolean>) {
-  const id = project.id;
+  const id = project.project_id;
   const current = useCallback(() => getProject(id) as Project, [id]);
 
   const say = useCallback((text: string) => appendMessage(id, { role: "assistant", kind: "text", text }), [id]);
 
-  /** Импорт всех материалов проекта в новый пакет. Возвращает package_id или null. */
+  /** Импорт всех материалов проекта в новый пакет по file_ids. Возвращает package_id или null. */
   const importMaterials = useCallback(async (): Promise<string | null> => {
     const p = current();
-    const materials = p.files.filter((f) => f.kind === "material");
-    const withBytes = materials.map((f) => ({ meta: f, file: fileStore.get(f.id) })).filter((x): x is { meta: ProjectFile; file: File } => Boolean(x.file));
+    const materials = p.files.filter(isMaterial);
     const briefFilled = p.brief.title.trim().length > 0;
-    if (withBytes.length === 0 && !briefFilled) return null;
-    if (withBytes.length < materials.length) {
-      say("Часть материалов была загружена до перезагрузки страницы, их байты не сохранились. Добавьте эти файлы снова, если они нужны.");
-    }
+    if (materials.length === 0 && !briefFilled) return null;
     try {
-      const res = await api.content.create(withBytes.map((x) => x.file), briefFilled ? { ...p.brief } : undefined);
-      withBytes.forEach((x) => patchProjectFile(id, x.meta.id, { package_id: res.package_id }));
+      const res = await api.content.create(materials.map((f) => f.file_id), briefFilled ? { ...p.brief } : undefined);
+      materials.forEach((f) => patchProjectFile(id, f.file_id, { package_id: res.package_id }));
       updateProject(id, { package_id: res.package_id });
-      appendMessage(id, { role: "assistant", kind: "content_card", package_id: res.package_id, file_ids: withBytes.map((x) => x.meta.id) });
+      appendMessage(id, { role: "assistant", kind: "content_card", package_id: res.package_id, file_ids: materials.map((f) => f.file_id) });
       return res.package_id;
     } catch (e) {
       say(`Не удалось импортировать материалы: ${e instanceof ApiError ? e.message : "неизвестная ошибка"}.`);
@@ -62,15 +56,10 @@ export function useChat(project: Project, session: GenerationSession, generate: 
   }, [id, say, current]);
 
   const uploadTemplate = useCallback(async (fileId: string) => {
-    const meta = current().files.find((f) => f.id === fileId);
-    const file = fileStore.get(fileId);
+    const meta = current().files.find((f) => f.file_id === fileId);
     if (!meta) return;
-    if (!file) {
-      say(`Файл «${meta.name}» был добавлен до перезагрузки страницы, его содержимое не сохранилось. Перетащите его в чат ещё раз.`);
-      return;
-    }
     try {
-      const res = await api.templates.upload(file);
+      const res = await api.templates.upload(fileId);
       patchProjectFile(id, fileId, { kind: "template", template_id: res.template_id });
       updateProject(id, { template_id: res.template_id });
       appendMessage(id, { role: "assistant", kind: "template_card", template_id: res.template_id });
@@ -82,7 +71,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
   /** После шага проверяет, всё ли готово к генерации, и показывает карточку брифа с кнопкой. */
   const offerGeneration = useCallback((understood: string[] = []) => {
     const p = current();
-    const last = p.messages[p.messages.length - 1];
+    const last = p.events[p.events.length - 1];
     if (last && last.role === "assistant" && last.kind === "brief_card") return;
     appendMessage(id, { role: "assistant", kind: "brief_card", understood, missing_purpose: !p.brief.purpose });
   }, [id, current]);
@@ -91,29 +80,30 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     const trimmed = text.trim();
     if (!trimmed && files.length === 0) return;
 
-    // 1. Файлы попадают в проект сразу: байты в память, метаданные в реестр.
-    const metas: ProjectFile[] = files.map((f) => {
-      const fid = newFileId();
-      fileStore.put(fid, f);
-      return { id: fid, name: f.name, size: f.size, mime: f.type, kind: isTemplateFile(f) ? "other" : isMaterialFile(f) ? "material" : "other", added_at: new Date().toISOString() };
-    });
-    if (metas.length) addProjectFiles(id, metas);
-    appendMessage(id, { role: "user", text: trimmed, file_ids: metas.map((m) => m.id) });
+    // 1. Файлы попадают на сервер сразу: проверка и дедупликация там, в проекте остаются записи.
+    let rows: ProjectFile[] = [];
+    if (files.length) {
+      try {
+        rows = await addProjectFiles(id, files);
+      } catch (e) {
+        say(`Не удалось загрузить файлы: ${e instanceof ApiError ? e.message : "неизвестная ошибка"}.`);
+        if (!trimmed) return;
+      }
+    }
+    appendMessage(id, { role: "user", kind: "message", text: trimmed, file_ids: rows.map((r) => r.file_id) });
 
     // 2. PPTX может быть и шаблоном, и материалом: спрашиваем.
-    const pptx = metas.filter((m, i) => isTemplateFile(files[i]));
-    pptx.forEach((m) => appendMessage(id, { role: "assistant", kind: "template_question", file_id: m.id }));
+    rows.filter((r) => isPptx(r) && r.kind !== "template").forEach((r) => appendMessage(id, { role: "assistant", kind: "template_question", file_id: r.file_id }));
 
     // 3. Неподдерживаемые типы остаются в файлах проекта.
-    const others = metas.filter((m, i) => !isTemplateFile(files[i]) && !isMaterialFile(files[i]));
+    const others = rows.filter((r) => !isPptx(r) && r.kind === "other");
     if (others.length) {
       say(`${others.map((o) => `«${o.name}»`).join(", ")}: такой тип файла сохранён в файлах проекта, но при генерации пока не используется. Поддерживаются docx, xlsx, csv, pdf, md, txt и изображения.`);
     }
 
     // 4. Материалы импортируются пакетом вместе с уже загруженными.
-    const materials = metas.filter((m) => m.kind === "material");
     let imported = false;
-    if (materials.length) {
+    if (rows.some(isMaterial)) {
       imported = Boolean(await importMaterials());
     }
 
@@ -144,7 +134,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
       } catch {
         /* сервер не ответил: бриф можно заполнить вручную через «Изменить» */
       }
-      if (!understood.length && !metas.length && !EDIT_RE.test(trimmed)) {
+      if (!understood.length && !rows.length && !EDIT_RE.test(trimmed)) {
         say("Не нашёл в сообщении ничего про презентацию. Опишите задачу одной фразой: «сделай презентацию про запуск сервиса умных уведомлений для руководителей, чтобы одобрили пилот» — и перетащите шаблон PPTX и материалы.");
         return;
       }
@@ -167,7 +157,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
   }, [id, importMaterials, offerGeneration, say, generate, current]);
 
   const resolveTemplateQuestion = useCallback(async (messageId: string, fileId: string, answer: "template" | "material") => {
-    patchMessage(id, messageId, { resolved: answer });
+    void patchMessage(id, messageId, { resolved: answer });
     if (answer === "template") {
       await uploadTemplate(fileId);
     } else {
@@ -178,17 +168,16 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     if (current().template_id && current().package_id) offerGeneration();
   }, [id, uploadTemplate, importMaterials, offerGeneration, say, current]);
 
-  const setPurpose = useCallback(async (purpose: string) => {
+  const setPurpose = useCallback(async (purpose: BriefDraft["purpose"]) => {
     updateProject(id, (p) => ({ brief: { ...p.brief, purpose } }));
     const p = current();
     if (p.package_id) await importMaterials();
   }, [id, importMaterials, current]);
 
   const removeFile = useCallback(async (fileId: string) => {
-    const meta = current().files.find((f) => f.id === fileId);
+    const meta = current().files.find((f) => f.file_id === fileId);
     if (!meta) return;
-    removeProjectFile(id, fileId);
-    fileStore.remove(fileId);
+    await removeProjectFile(id, fileId);
     if (meta.kind === "template" && meta.template_id === current().template_id) {
       updateProject(id, { template_id: null });
       say(`Шаблон «${meta.name}» убран из проекта. Он остаётся в библиотеке шаблонов, выбрать другой можно в карточке шаблона.`);
@@ -212,11 +201,18 @@ export function useChat(project: Project, session: GenerationSession, generate: 
 
   /** PPTX, выбранный в шапке как шаблон: без вопроса «шаблон или материал». */
   const addTemplate = useCallback(async (file: File) => {
-    const fid = newFileId();
-    fileStore.put(fid, file);
-    addProjectFiles(id, [{ id: fid, name: file.name, size: file.size, mime: file.type, kind: "template", added_at: new Date().toISOString() }]);
-    appendMessage(id, { role: "user", text: "", file_ids: [fid] });
-    await uploadTemplate(fid);
+    let rows: ProjectFile[] = [];
+    try {
+      rows = await addProjectFiles(id, [file]);
+    } catch (e) {
+      notifications.show({ color: "red", title: "Шаблон не загружен", message: e instanceof ApiError ? e.message : "Неизвестная ошибка" });
+      return;
+    }
+    const row = rows[0];
+    if (!row) return;
+    appendMessage(id, { role: "user", kind: "message", text: "", file_ids: [row.file_id] });
+    await uploadTemplate(row.file_id);
+    await refreshProject(id);
     if (current().template_id && current().package_id) offerGeneration();
   }, [id, uploadTemplate, offerGeneration, current]);
 
@@ -224,18 +220,18 @@ export function useChat(project: Project, session: GenerationSession, generate: 
   useEffect(() => {
     const jobId = project.job_id;
     if (!jobId) return;
-    if (!project.messages.some((m) => m.role === "assistant" && m.kind === "job_card" && m.job_id === jobId)) {
+    if (!project.events.some((m) => m.role === "assistant" && m.kind === "job_card" && m.job_id === jobId)) {
       appendMessage(id, { role: "assistant", kind: "job_card", job_id: jobId });
     }
-  }, [id, project.job_id, project.messages]);
+  }, [id, project.job_id, project.events]);
 
   useEffect(() => {
     const jobId = session.jobId;
     if (!jobId || !session.terminal || !session.result) return;
     if (session.result.status === "canceled") return;
-    if (project.messages.some((m) => m.role === "assistant" && m.kind === "audit_card" && m.job_id === jobId)) return;
+    if (project.events.some((m) => m.role === "assistant" && m.kind === "audit_card" && m.job_id === jobId)) return;
     appendMessage(id, { role: "assistant", kind: "audit_card", job_id: jobId });
-  }, [id, session.jobId, session.terminal, session.result, project.messages]);
+  }, [id, session.jobId, session.terminal, session.result, project.events]);
 
   const notifyError = (title: string, e: unknown) => notifications.show({ color: "red", title, message: e instanceof ApiError ? e.message : "Неизвестная ошибка" });
 

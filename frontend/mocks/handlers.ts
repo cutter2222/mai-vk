@@ -1,10 +1,11 @@
 import { HttpResponse, delay, http } from "msw";
 
 import { API_BASE } from "@/lib/api/config";
-import type { GenerationRequest } from "@/lib/api/types";
+import type { Event, GenerationRequest, ProjectFile } from "@/lib/api/types";
 
 import { extractBrief } from "./brief";
 import { htmlBlob, pdfBlob, pptxBlob, slidePng } from "./files";
+import * as projects from "./projects";
 import {
   buildAudit,
   buildJobStatus,
@@ -74,12 +75,87 @@ export const handlers = [
 
   http.get(base("/capabilities"), () =>
     HttpResponse.json({
-      contracts_version: "1.1",
-      execution_mode: { mode: "stub", layers: { "parsing.template": "stub", "parsing.content": "stub", "generation.story": "stub", "generation.plan": "stub", layout: "stub", export: "stub", "audit.deterministic": "stub", "audit.contextual": "stub" } },
+      contracts_version: "1.2",
+      execution_mode: { mode: "stub", layers: { "parsing.template": "stub", "parsing.content": "stub", brief: "stub", "generation.story": "stub", "generation.plan": "stub", layout: "stub", export: "stub", "audit.deterministic": "stub", "audit.contextual": "stub" } },
       features: { generate_images: false, contextual_audit: true, html_export: true },
-      limits: { max_upload_mb: 100, max_content_files: 20, slide_count_max: 60 },
+      limits: { max_upload_mb: 100, max_content_files: 20, slide_count_max: 60, max_project_files: 50, max_project_mb: 1024 },
     }),
   ),
+
+  // ---------- проекты ----------
+  http.get(base("/projects"), () => {
+    settleRepairs();
+    return HttpResponse.json(
+      projects.projectStore.projects.map((p) => {
+        const g = p.job_id ? store.generations.get(p.job_id) : undefined;
+        const result = g ? buildResult(g) : null;
+        const variant = result?.variants.find((v) => v.variant_id === p.chosen_variant && v.artifacts?.thumbnails?.length) ?? result?.variants.find((v) => v.artifacts?.thumbnails?.length);
+        const thumb = variant?.artifacts?.thumbnails?.[0];
+        const template = p.template_id ? store.templates.get(p.template_id) : undefined;
+        const preview = template?.profile.patterns.find((x) => x.preview_path)?.preview_path;
+        return projects.listItem(p, {
+          job_status: result?.status ?? null,
+          thumbnail_url: thumb && p.job_id ? `/api/generations/${p.job_id}/artifacts/${thumb.name}` : template && preview ? `/api/templates/${template.template_id}/assets/${preview}` : null,
+          slide_count: variant?.slide_count ?? null,
+          template_name: template?.name ?? null,
+        });
+      }),
+    );
+  }),
+
+  http.post(base("/projects"), async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as { title?: string; job_id?: string };
+    return HttpResponse.json(projects.createProject(body), { status: 201 });
+  }),
+
+  http.get(base("/projects/:id"), ({ params }) => {
+    const p = projects.getProject(String(params.id));
+    return p ? HttpResponse.json(p) : err(404, "project_not_found", "Проект не найден");
+  }),
+
+  http.patch(base("/projects/:id"), async ({ params, request }) => {
+    const patch = (await request.json()) as Record<string, unknown>;
+    const p = projects.patchProject(String(params.id), patch);
+    return p ? HttpResponse.json(p) : err(404, "project_not_found", "Проект не найден");
+  }),
+
+  http.delete(base("/projects/:id"), ({ params }) => (projects.deleteProject(String(params.id)) ? new HttpResponse(null, { status: 204 }) : err(404, "project_not_found", "Проект не найден"))),
+
+  http.get(base("/projects/:id/events"), ({ params }) => {
+    const p = projects.getProject(String(params.id));
+    return p ? HttpResponse.json(p.events) : err(404, "project_not_found", "Проект не найден");
+  }),
+
+  http.post(base("/projects/:id/events"), async ({ params, request }) => {
+    const payload = (await request.json()) as Omit<Event, "event_id" | "at">;
+    const event = projects.appendEvent(String(params.id), payload);
+    return event ? HttpResponse.json(event, { status: 201 }) : err(404, "project_not_found", "Проект не найден");
+  }),
+
+  http.patch(base("/projects/:id/events/:eventId"), async ({ params, request }) => {
+    const patch = (await request.json()) as Partial<Event>;
+    const event = projects.patchEvent(String(params.id), String(params.eventId), patch);
+    return event ? HttpResponse.json(event) : err(404, "event_not_found", "Событие не найдено");
+  }),
+
+  http.post(base("/projects/:id/files"), async ({ params, request }) => {
+    const form = await request.formData();
+    const files = filesFrom(form, request, "files");
+    if (!files.length) return err(400, "file_required", "Не переданы файлы");
+    const rejected = files.find((f) => /\.pptx$/i.test(f.name) && f.size < 2);
+    if (rejected) return err(422, "file_rejected", `Файл ${rejected.name} не является PPTX`);
+    await delay(150);
+    const rows = files.map((f) => projects.addFile(String(params.id), f.name, f.size)).filter((r): r is ProjectFile => Boolean(r));
+    return rows.length ? HttpResponse.json(rows, { status: 201 }) : err(404, "project_not_found", "Проект не найден");
+  }),
+
+  http.patch(base("/projects/:id/files/:fileId"), async ({ params, request }) => {
+    const patch = (await request.json()) as Partial<ProjectFile>;
+    const file = projects.patchFile(String(params.id), String(params.fileId), patch);
+    return file ? HttpResponse.json(file) : err(404, "file_not_found", "Файл не найден");
+  }),
+
+  http.delete(base("/projects/:id/files/:fileId"), ({ params }) => (projects.deleteFile(String(params.id), String(params.fileId)) ? new HttpResponse(null, { status: 204 }) : err(404, "file_not_found", "Файл не найден"))),
 
   // ---------- шаблоны ----------
   http.get(base("/templates"), () => {
@@ -90,13 +166,13 @@ export const handlers = [
   }),
 
   http.post(base("/templates"), async ({ request }) => {
-    const form = await request.formData();
-    const [file] = filesFrom(form, request, "file");
-    if (!file) return err(400, "file_required", "Не передан файл шаблона");
-    if (!file.name.toLowerCase().endsWith(".pptx")) return err(415, "unsupported_format", "Поддерживается только формат PPTX");
-    if (file.size > 100 * 1024 * 1024) return err(413, "file_too_large", "Файл больше 100 МБ");
+    const body = (await request.json()) as { file_id?: string };
+    const found = body.file_id ? projects.findFile(body.file_id) : undefined;
+    if (!found) return err(404, "file_not_found", "Файл не найден");
+    if (found.file.check.format !== "pptx") return err(415, "unsupported_format", "Шаблоном может быть только PPTX");
     await delay(400);
-    const { template, cached } = createTemplate(file.name, file.size);
+    const { template, cached } = createTemplate(found.file.name, found.file.size_bytes);
+    projects.patchFile(found.project.project_id, found.file.file_id, { kind: "template", template_id: template.template_id });
     return HttpResponse.json({ template_id: template.template_id, job_id: template.job_id, cached }, { status: 202 });
   }),
 
@@ -126,15 +202,15 @@ export const handlers = [
 
   // ---------- содержание ----------
   http.post(base("/content"), async ({ request }) => {
-    const form = await request.formData();
-    const files = filesFrom(form, request, "files");
-    const briefRaw = form.get("brief");
-    const brief = typeof briefRaw === "string" && briefRaw ? (JSON.parse(briefRaw) as Record<string, unknown>) : undefined;
-    if (!files.length && !brief) return err(400, "content_required", "Добавьте файлы контент-пакета или заполните бриф");
-    if (files.length > 20) return err(400, "too_many_files", "Не больше 20 файлов");
+    const body = (await request.json()) as { file_ids?: string[]; brief?: Record<string, unknown> };
+    const found = (body.file_ids ?? []).map((id) => projects.findFile(id)).filter((x): x is NonNullable<typeof x> => Boolean(x));
+    const brief = body.brief && Object.values(body.brief).some((v) => v !== "" && v != null && !(Array.isArray(v) && v.length === 0)) ? body.brief : undefined;
+    if (!found.length && !brief) return err(400, "content_required", "Добавьте файлы контент-пакета или заполните бриф");
+    if (found.length > 20) return err(400, "too_many_files", "Не больше 20 файлов");
     await delay(300);
-    const p = createPackage(files.map((f) => f.name), brief);
-    return HttpResponse.json({ package_id: p.package_id, job_id: p.job_id }, { status: 202 });
+    const p = createPackage(found.map((f) => f.file.name), brief);
+    found.forEach((f) => projects.patchFile(f.project.project_id, f.file.file_id, { package_id: p.package_id }));
+    return HttpResponse.json({ package_id: p.package_id, job_id: p.job_id, cached: false }, { status: 202 });
   }),
 
   http.get(base("/content/:id"), ({ params }) => {

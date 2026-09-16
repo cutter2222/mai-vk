@@ -26,6 +26,9 @@ MODELS: dict[str, type] = {
     "generation_result": m.GenerationResult,
     "job_status": m.JobStatus,
     "skill_manifest": m.SkillManifest,
+    "project": m.Project,
+    "project_file": m.ProjectFile,
+    "brief_extract": m.BriefExtract,
 }
 
 

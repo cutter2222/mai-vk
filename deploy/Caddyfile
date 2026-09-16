@@ -15,11 +15,9 @@
 		max_size 256MB
 	}
 
-	# API подключается на этапе 2 (reverse_proxy api:8000). Сейчас запросы к /api/*
-	# перехватывает service worker режима заглушек в браузере; до сервера они не доходят.
+	# API того же origin: интерфейс обращается по относительному пути /api.
 	handle /api/* {
-		header Content-Type application/json
-		respond `{"error":{"code":"api_unavailable","message":"API ещё не развёрнут"}}` 503
+		reverse_proxy api:8000
 	}
 
 	handle {

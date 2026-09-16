@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://presentation-designer.local/contracts/brief_extract.schema.json",
+  "title": "BriefExtract",
+  "description": "Ответ POST /api/brief: бриф и настройки, извлечённые из свободного сообщения чата. Запрос описан в $defs/request. Поля, которых нет в тексте, не заполняются; understood перечисляет найденные. Ответ — предложение для подтверждения пользователем, а не решение. Версия 1.2.",
+  "type": "object",
+  "required": ["schema_version", "brief", "understood", "intent", "source"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.2" },
+    "brief": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "purpose": { "enum": ["feature", "product", "project", "initiative", "report", "other"] },
+        "title": { "type": "string" },
+        "audience": { "type": "string" },
+        "goal": { "type": "string" },
+        "language": { "type": "string" },
+        "tone": { "type": "string" },
+        "must_include": { "type": "array", "items": { "type": "string" } },
+        "avoid": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "slide_count": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "exact": { "type": "integer", "minimum": 1, "maximum": 60 },
+        "min": { "type": "integer", "minimum": 1, "maximum": 60 },
+        "max": { "type": "integer", "minimum": 1, "maximum": 60 }
+      }
+    },
+    "variants": { "type": "array", "items": { "enum": ["compact", "balanced", "detailed"] }, "uniqueItems": true },
+    "understood": {
+      "type": "array",
+      "description": "какие поля действительно найдены в тексте: purpose, title, audience, goal, tone, language, must_include, avoid, slide_count, variants",
+      "items": { "type": "string" }
+    },
+    "intent": { "enum": ["generate", "edit", "none"], "description": "generate: явная команда запустить генерацию; edit: правка готовых слайдов; none: описание задачи или ничего" },
+    "source": { "enum": ["model", "heuristic"], "description": "model: извлечено моделью; heuristic: детерминированные правила без модели" },
+    "model": { "$ref": "common.schema.json#/$defs/model_ref" }
+  },
+  "$defs": {
+    "request": {
+      "type": "object",
+      "description": "Тело POST /api/brief",
+      "required": ["text"],
+      "additionalProperties": false,
+      "properties": {
+        "text": { "type": "string", "maxLength": 4000 },
+        "brief": { "$ref": "project.schema.json#/$defs/brief_draft" },
+        "settings": { "$ref": "project.schema.json#/$defs/settings_draft" }
+      }
+    }
+  }
+}

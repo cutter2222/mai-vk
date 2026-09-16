@@ -29,7 +29,7 @@ export function ProjectEditor({ project }: { project: Project }) {
   const [starting, setStarting] = useState(false);
   const [briefModal, setBriefModal] = useState(false);
   const [briefSnapshot, setBriefSnapshot] = useState("");
-  const patch = useCallback((p: Partial<Project> | ((p: Project) => Partial<Project>)) => updateProject(project.id, p), [project.id]);
+  const patch = useCallback((p: Partial<Project> | ((p: Project) => Partial<Project>)) => updateProject(project.project_id, p), [project.project_id]);
 
   useEffect(() => {
     api.capabilities().then(setCaps).catch(() => setCaps(null));
@@ -56,7 +56,7 @@ export function ProjectEditor({ project }: { project: Project }) {
       schema_version: "1.1",
       template_id: project.template_id,
       package_id: project.package_id,
-      idempotency_key: `ui-${project.id}-${Date.now().toString(36)}`,
+      idempotency_key: `ui-${project.project_id}-${Date.now().toString(36)}`,
       settings: {
         slide_count: s.mode === "exact" ? { exact: s.exact } : { min: s.min, max: s.max },
         language: project.brief.language || "ru",
@@ -77,7 +77,7 @@ export function ProjectEditor({ project }: { project: Project }) {
     } finally {
       setStarting(false);
     }
-  }, [project.template_id, project.package_id, project.settings, project.brief.language, project.id, patch]);
+  }, [project.template_id, project.package_id, project.settings, project.brief.language, project.project_id, patch]);
 
   const chat = useChat(project, session, generate);
 

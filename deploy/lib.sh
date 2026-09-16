@@ -3,6 +3,7 @@
 
 DEPLOY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$DEPLOY_DIR/.." && pwd)"
+# shellcheck disable=SC2034  # используется deploy.sh
 COMPOSE_FILE="$REPO_DIR/docker/compose.yaml"
 SERVER_ENV_FILE="$DEPLOY_DIR/server.env"
 
@@ -119,6 +120,20 @@ probe_url() {
   fi
 }
 
+# Docker 29 не собирает образы, если в пути к контексту есть символы вне ASCII (ошибка BuildKit
+# «header key ... contains value with non-printable ASCII characters»); локально работаем через ссылку.
+compose_root() {
+  if LC_ALL=C printf '%s' "$REPO_DIR" | grep -q '[^ -~]'; then
+    local link="${TMPDIR:-/tmp}/presentation-designer-repo"
+    ln -sfn "$REPO_DIR" "$link"
+    printf '%s' "$link"
+  else
+    printf '%s' "$REPO_DIR"
+  fi
+}
+
 compose_local() {
-  docker compose -f "$COMPOSE_FILE" --env-file "$REPO_DIR/.env" "$@"
+  local root
+  root="$(compose_root)"
+  docker compose -f "$root/docker/compose.yaml" --env-file "$root/.env" "$@"
 }

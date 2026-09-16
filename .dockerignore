@@ -1,0 +1,26 @@
+# Контекст сборки docker/app.Dockerfile: код, конфиги, контракты, скиллы и маленькие фикстуры.
+.git
+.venv
+.mypy_cache
+.pytest_cache
+.ruff_cache
+__pycache__
+*.pyc
+node_modules
+frontend
+docs
+data
+artifacts
+runs
+deploy
+examples
+scripts
+tests/*
+!tests/fixtures
+tests/fixtures/*
+!tests/fixtures/pptx
+*.md
+!README.md
+.env
+.env.*
+.DS_Store

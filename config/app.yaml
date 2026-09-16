@@ -2,7 +2,7 @@
 # например PD_LIMITS__MAX_UPLOAD_MB=200. Загрузчик: presentation_designer.shared.settings.
 app:
   name: presentation-designer
-  contracts_version: "1.1"
+  contracts_version: "1.2"
   language_default: ru
 
 paths:
@@ -13,7 +13,10 @@ paths:
 
 limits:
   max_upload_mb: 100        # шаблоны датасета 13–23 МБ, шаблон ЛЦТ 34 МБ
+  max_unzipped_mb: 1024     # предел распакованного объёма pptx/docx/xlsx при проверке загрузки
   max_content_files: 20
+  max_project_files: 50     # квота файлов одного проекта
+  max_project_mb: 1024      # суммарный объём файлов одного проекта
   slide_count_default: { min: 10, max: 15 }
   slide_count_max: 60
   variants_default: [compact, balanced, detailed]
@@ -35,10 +38,17 @@ budget:
 
 queue:
   analysis_queue: analysis
+  repair_queue: repair
   generation_queue: generation
   generation_workers: 3
   result_ttl_s: 86400
   failure_ttl_s: 604800
+  heartbeat_ttl_s: 90       # воркер обновляет отметку в Valkey чаще этого срока
+  reconcile_interval_s: 60  # сверка заданий без живого исполнителя
+
+execution:
+  mode: stub                # stub | real: какие реализации слоёв подключены (этапы 4–10 включают real)
+  stub_stage_delay_ms: 400  # заглушки имитируют работу этапа, чтобы прогресс был виден
 
 render:
   slots: 2                  # одновременных конвертаций LibreOffice на сервере

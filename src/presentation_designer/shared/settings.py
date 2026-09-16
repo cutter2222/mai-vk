@@ -34,7 +34,10 @@ class Paths(BaseModel):
 
 class Limits(BaseModel):
     max_upload_mb: int = 100
+    max_unzipped_mb: int = 1024
     max_content_files: int = 20
+    max_project_files: int = 50
+    max_project_mb: int = 1024
     slide_count_default: SlideCountDefault = Field(default_factory=SlideCountDefault)
     slide_count_max: int = 60
     variants_default: list[str] = Field(default_factory=lambda: ["compact", "balanced", "detailed"])
@@ -59,10 +62,18 @@ class Budget(BaseModel):
 
 class Queue(BaseModel):
     analysis_queue: str = "analysis"
+    repair_queue: str = "repair"
     generation_queue: str = "generation"
     generation_workers: int = 3
     result_ttl_s: int = 86400
     failure_ttl_s: int = 604800
+    heartbeat_ttl_s: int = 90
+    reconcile_interval_s: int = 60
+
+
+class Execution(BaseModel):
+    mode: str = "stub"
+    stub_stage_delay_ms: int = 400
 
 
 class Render(BaseModel):
@@ -102,7 +113,7 @@ class Llm(BaseModel):
 
 class App(BaseModel):
     name: str = "presentation-designer"
-    contracts_version: str = "1.1"
+    contracts_version: str = "1.2"
     language_default: str = "ru"
 
 
@@ -113,9 +124,34 @@ class Settings(BaseModel):
     timeouts: Timeouts = Field(default_factory=Timeouts)
     budget: Budget = Field(default_factory=Budget)
     queue: Queue = Field(default_factory=Queue)
+    execution: Execution = Field(default_factory=Execution)
     render: Render = Field(default_factory=Render)
     audit: Audit = Field(default_factory=Audit)
     llm: Llm = Field(default_factory=Llm)
+
+    def resolve(self, path: pathlib.Path) -> pathlib.Path:
+        """Относительные пути из конфига считаются от корня репозитория."""
+        return path if path.is_absolute() else ROOT / path
+
+    @property
+    def data_dir(self) -> pathlib.Path:
+        return self.resolve(self.paths.data_dir)
+
+    @property
+    def artifacts_dir(self) -> pathlib.Path:
+        return self.resolve(self.paths.artifacts_dir)
+
+    @property
+    def runs_dir(self) -> pathlib.Path:
+        return self.resolve(self.paths.runs_dir)
+
+    @property
+    def db_path(self) -> pathlib.Path:
+        return self.data_dir / "state.sqlite3"
+
+    @property
+    def uploads_dir(self) -> pathlib.Path:
+        return self.data_dir / "uploads"
 
 
 class Verified(BaseModel):

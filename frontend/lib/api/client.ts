@@ -1,10 +1,16 @@
 import { API_BASE, API_MODE } from "./config";
+
+export { API_BASE };
 import type {
   AuditReport,
+  BriefExtract,
   ContentPackage,
+  Event,
   GenerationRequest,
   GenerationResult,
   JobStatus,
+  Project,
+  ProjectFile,
   StoryPlan,
   TemplateProfile,
 } from "./types";
@@ -47,13 +53,27 @@ export interface ContentDetail {
   package?: ContentPackage;
 }
 
-export interface BriefExtractResponse {
-  brief: Partial<{ purpose: string; title: string; audience: string; goal: string; language: string; tone: string; must_include: string[]; avoid: string[] }>;
-  slide_count?: { exact?: number; min?: number; max?: number };
-  variants?: string[];
-  /** Какие поля действительно найдены в тексте. */
-  understood: string[];
+export type BriefExtractResponse = BriefExtract;
+
+/** Элемент списка проектов: проект без файлов и ленты плюс состояние для карточки. */
+export interface ProjectListItem {
+  project_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  template_id: string | null;
+  package_id: string | null;
+  job_id: string | null;
+  chosen_variant: string | null;
+  files_count: number;
+  template_name: string | null;
+  job_status: "queued" | "running" | "succeeded" | "needs_review" | "failed" | "canceled" | null;
+  thumbnail_url: string | null;
+  slide_count: number | null;
 }
+
+export type ProjectPatch = Partial<Pick<Project, "title" | "template_id" | "package_id" | "job_id" | "chosen_variant" | "brief" | "settings">>;
+export type EventInput = Omit<Event, "event_id" | "at">;
 
 export interface ApiErrorBody {
   error: { code: string; message: string; stage?: string; retryable?: boolean; details?: Record<string, unknown> };
@@ -105,14 +125,31 @@ export const api = {
   health: () => request<HealthResponse>("/health"),
   capabilities: () => request<CapabilitiesResponse>("/capabilities"),
 
+  /** Проекты живут на сервере: список, проект по идентификатору, лента событий и файлы. */
+  projects: {
+    list: () => request<ProjectListItem[]>("/projects"),
+    create: (body: { title?: string; job_id?: string } = {}) => request<Project>("/projects", json(body)),
+    get: (id: string) => request<Project>(`/projects/${encodeURIComponent(id)}`),
+    patch: (id: string, patch: ProjectPatch, init?: RequestInit) => request<Project>(`/projects/${encodeURIComponent(id)}`, { ...json(patch, "PATCH"), ...init }),
+    delete: (id: string) => request<void>(`/projects/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    appendEvent: (id: string, event: EventInput) => request<Event>(`/projects/${encodeURIComponent(id)}/events`, json(event)),
+    patchEvent: (id: string, eventId: string, patch: Partial<Event>) =>
+      request<Event>(`/projects/${encodeURIComponent(id)}/events/${encodeURIComponent(eventId)}`, json(patch, "PATCH")),
+    uploadFiles: (id: string, files: File[]) => {
+      const form = new FormData();
+      files.forEach((f) => form.append("files", f));
+      return request<ProjectFile[]>(`/projects/${encodeURIComponent(id)}/files`, { method: "POST", body: form, headers: mockFilesHeader(files) });
+    },
+    patchFile: (id: string, fileId: string, patch: Partial<Pick<ProjectFile, "kind" | "template_id" | "package_id">>) =>
+      request<ProjectFile>(`/projects/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}`, json(patch, "PATCH")),
+    deleteFile: (id: string, fileId: string) => request<void>(`/projects/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}`, { method: "DELETE" }),
+  },
+
   templates: {
     list: () => request<TemplateListItem[]>("/templates"),
     get: (id: string) => request<TemplateDetail>(`/templates/${encodeURIComponent(id)}`),
-    upload: (file: File) => {
-      const form = new FormData();
-      form.append("file", file);
-      return request<{ template_id: string; job_id: string; cached: boolean }>("/templates", { method: "POST", body: form, headers: mockFilesHeader([file]) });
-    },
+    /** Шаблон из уже загруженного файла проекта: байты второй раз не пересылаются. */
+    upload: (fileId: string) => request<{ template_id: string; job_id: string; cached: boolean }>("/templates", json({ file_id: fileId })),
     assetUrl: (id: string, name: string) => `${API_BASE}/templates/${encodeURIComponent(id)}/assets/${name}`,
   },
 
@@ -122,12 +159,9 @@ export const api = {
   },
 
   content: {
-    create: (files: File[], brief?: Record<string, unknown>) => {
-      const form = new FormData();
-      files.forEach((f) => form.append("files", f));
-      if (brief) form.append("brief", JSON.stringify(brief));
-      return request<{ package_id: string; job_id: string }>("/content", { method: "POST", body: form, headers: mockFilesHeader(files) });
-    },
+    /** Контент-пакет из файлов проекта по идентификаторам и брифа. */
+    create: (fileIds: string[], brief?: Record<string, unknown>) =>
+      request<{ package_id: string; job_id: string; cached: boolean }>("/content", json({ file_ids: fileIds, brief })),
     get: (id: string) => request<ContentDetail>(`/content/${encodeURIComponent(id)}`),
   },
 

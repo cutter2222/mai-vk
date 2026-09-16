@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import pathlib
+import zipfile
 
 from docx import Document
 from openpyxl import Workbook
@@ -69,6 +70,13 @@ def make_template() -> pathlib.Path:
     PPTX_DIR.mkdir(parents=True, exist_ok=True)
     out = PPTX_DIR / "mini_template.pptx"
     prs.save(out)
+    # Копия с другим sha256 для сценария «вариант падает»: шаблоны дедуплицируются по байтам,
+    # поэтому имя со словом fail должно приходить с отдельным файлом.
+    twin = PPTX_DIR / "mini_template_fail.pptx"
+    with zipfile.ZipFile(out) as zin, zipfile.ZipFile(twin, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            zout.writestr(item, zin.read(item.filename))
+        zout.comment = b"fixture: template whose detailed variant fails in stub compose"
     return out
 
 
