@@ -1,0 +1,69 @@
+# Анализ шаблонов: результаты этапа 5
+
+Прогоны 16.09.2026 анализатора `parsing/template` (версия 0.1.0) на трёх шаблонах датасета VK и шаблоне питча ЛЦТ. Без рендера и VLM — на Mac (`uv run pytest tests/parsing/template/test_organizer_templates.py`, отчёты в `runs/analyze-tests/`); с рендером и VLM — в образе воркера (LibreOffice 7.4, провайдер `api-ai.mai.ru`, `qwen3.8-27b`, `uv run -m presentation_designer.cli analyze … --out runs/analyze/<имя>`). Профили и миниатюры лежат в `runs/analyze/<имя>/` вне Git. Роли перепроверены вручную по миниатюрам выборочно; полная сверка на всех образцах — в приёмке этапа 12.
+
+## Сводка
+
+| Шаблон | Слайдов | Образцов → паттернов (групп) | Исключено | Ресурсов (иконок) | Постоянных элементов | Правил | Без VLM и рендера, мс | Рендер, мс | VLM, мс | Всего с VLM, мс | Роли изменены VLM / отклонены |
+| --- | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| VK Tech шаблон | 54 | 53 → 53 (52) | asset_catalog: 1 | 222 (61) | 88 | 0 | 1281 | 11879 | 35807 | 49817 | 19 / 5 |
+| VK WorkSpace (клиентская конференция) | 29 | 29 → 29 (28) | — | 32 (10) | 280 | 0 | 461 | 7649 | 19097 | 27614 | 6 / 2 |
+| VK Education | 55 | 51 → 51 (37) | style_guide: 3, asset_catalog: 1 | 257 (220) | 103 | 24 | 707 | 8717 | 25608 | 35679 | 15 / 1 |
+| ЛЦТ 2026 (питч) | 37 | 26 → 25 (22) | style_guide: 4, asset_catalog: 7, other: 1 | 817 (791) | 54 | 17 | 1046 | 20613 | 14543 | 36914 | 15 / 0 |
+
+Оговорка к колонке VLM: у провайдера кэш по содержимому запроса, поэтому повторные локальные прогоны того же шаблона занижали время (одни и те же запросы шли за 40 мс). Честная цена запроса с 4–6 миниатюрами — 6–10 с; поэтому запросы идут параллельно под лимитером (одновременность 4), картинки для классификации уменьшены до 768 px, иконок размечается не больше 96, а на все запросы VLM внутри анализа отведён бюджет 75 с (`skills/template_analyzer/skill.yaml`): не успевшие роли остаются эвристикой, разметка иконок пропускается, анализ не выходит за `timeouts.stage_analyze_s = 180`.
+
+Замеры на сервере izbox.ru (2 vCPU, 3,9 ГБ; контейнер `worker-analysis`, `python -m presentation_designer.cli analyze`, лимитер в Valkey), 16.09.2026, после исправления утечки аренд лимитера:
+
+| Шаблон | Рендер, мс | VLM, мс | Всего, мс | Групп → спрошено / изменено / отклонено | Иконок размечено | Остаток бюджета VLM, с |
+| --- | ---: | ---: | ---: | --- | ---: | ---: |
+| VK Education | 17564 | 5117 | 25313 | 37 → 37 / 15 / 0 | 96 | 69,9 |
+| ЛЦТ 2026 | 34392 | 22613 | 60290 | 22 → 22 / 19 / 0 | 96 | 52,4 |
+| VK Tech (до исправления, VLM ждал квоту) | 20633 | 84276 | 108860 | 52 → 52 / 19 / 5 | 0 | — |
+
+Загрузка собственной фикстуры через интерфейс сервера: 8–12 с до профиля с превью и ролями VLM.
+
+## VK Tech шаблон
+
+Роли паттернов после VLM: cards 12, numbers 5, kpi 4, speaker 3, thanks 3, process 3, timeline 3, agenda 2, team 2, comparison 2, freeform 2, code 2, screenshot 2, title 1, section_divider 1, two_column 1, bullets 1, mockup 1, image_full 1, chart 1, pricing 1.
+Средняя уверенность 0.85; источник роли: vlm 45, layout_name 2, heuristic 6.
+Постоянные элементы: background 16, logo 48, decoration 8, footer 16.
+Исключённые слайды: asset_catalog — [30].
+Шрифты: Play (757), Consolas (70, подмена DejaVu Sans Mono), Arial (1, подмена Liberation Sans). Палитра темы: dk1 #000000, lt1 #FAFCFF, dk2 #001515, lt2 #FEFFFF, accent1 #0077FF, accent2 #FFFFFF, accent3 #FF3885, accent4 #202020.
+Предупреждения: font_substituted.
+
+## VK WorkSpace (клиентская конференция)
+
+Роли паттернов после VLM: cards 11, two_column 2, numbers 2, process 2, chart 2, thanks 2, title 1, agenda 1, table 1, text 1, freeform 1, qr 1, bullets 1, timeline 1.
+Средняя уверенность 0.84; источник роли: vlm 26, heuristic 3.
+Постоянные элементы: footer 1, decoration 241, logo 36, background 2.
+Шрифты: Play (246). Палитра темы: dk1 #000000, lt1 #FFFFFF, dk2 #0077FF, lt2 #FFFFFF, accent1 #0077FF, accent2 #00E9FF, accent3 #AAFBFF, accent4 #EDF3FC.
+
+## VK Education
+
+Роли паттернов после VLM: section_divider 11, cards 5, title 4, chart 4, thanks 4, process 3, kpi 3, screenshot 3, table 3, numbers 2, speaker 1, code 1, quote 1, team 1, two_column 1, mockup 1, text 1, timeline 1, comparison 1.
+Средняя уверенность 0.87; источник роли: vlm 50, heuristic 1.
+Постоянные элементы: decoration 91, logo 9, footer 3.
+Исключённые слайды: style_guide — [7, 8, 51]; asset_catalog — [25].
+Шрифты: Play (236), Arial (61, подмена Liberation Sans), Consolas (36, подмена DejaVu Sans Mono). Палитра темы: dk1 #000000, lt1 #EBF3F9, dk2 #0077FF, lt2 #FFFFFF, accent1 #0077FF, accent2 #FF3885, accent3 #7CEDF8, accent4 #EBF3F9.
+Примеры правил из шаблона: Шрифт для заголовков | Основной цвет — синий, но можно | В заголовках уже задан.
+Предупреждения: font_substituted.
+
+## ЛЦТ 2026 (питч)
+
+Роли паттернов после VLM: cards 4, chart 3, title 2, team 2, section_divider 2, text 2, process 2, screenshot 2, mockup 2, timeline 1, two_column 1, agenda 1, freeform 1.
+Средняя уверенность 0.85; источник роли: vlm 23, heuristic 1, layout_name 1.
+Постоянные элементы: footer 34, page_number 16, decoration 4.
+Исключённые слайды: style_guide — [2, 3, 5, 30]; asset_catalog — [6, 31, 32, 33, 34, 35, 36]; other — [1].
+Шрифты: Montserrat (104, подмена Noto Sans), Poppins Light (6, подмена Noto Sans). Палитра темы: dk1 #000000, lt1 #FFFFFF, dk2 #1C1D22, lt2 #E5E7E9, accent1 #FF0053, accent2 #FFD6E3, accent3 #FC3777, accent4 #8A83D1.
+Примеры правил из шаблона: Привет, участник хакатона! | Эта презентация — готовая основа для оформления решения команды. | Внутри — примеры слайдов, логотипы, шрифты, цвета, иконки и различные графически.
+Предупреждения: font_substituted.
+
+## Что подтверждено и что нет
+
+- Каталоги ресурсов не стали паттернами: лист из 208 иконок VK Education (слайд 25), листы иконок ЛЦТ (31–36) и логотипы постановщиков (6), «объёмные иконки сервисов» VK Tech (30); их изображения сохранены в `assets` с тегом `catalog`, иконкам добавлены теги назначения VLM (до 240 на анализ).
+- Слайды-инструкции VK Education (7, 8, 51) и ЛЦТ (2, 3, 5, 30) исключены, их текст стал `guidelines` (в том числе правило «Перекрытие рядов = ±50 %»).
+- Нативные структуры совпали с осмотром 0A: таблицы — 1 (WorkSpace) и 3 (Education), диаграммы — 3 (ЛЦТ), в шаблонах VK нативных диаграмм нет; роль `table` есть только там, где есть таблица, роль `chart` — при нативной диаграмме или её картинке (5 подсказок VLM «table» на VK Tech отклонены проверкой структуры).
+- Направляющие из `viewProps` найдены только у WorkSpace (как в WORK_PLAN), для остальных сетка выведена из повторяющихся координат.
+- Шрифты: Play встроен в VK Tech и WorkSpace и есть в рендерере; Consolas (VK Tech, Education) и Montserrat (ЛЦТ) подменяются с предупреждением `font_substituted`.
+- Не подтверждено вручную: точность ролей на каждом образце (выборочная проверка по миниатюрам показала верные `cards`, `kpi`, `thanks`, `code`, `table`; спорные — `section_divider` для слайдов ЛЦТ с макетом «Заголовок и объект» и `freeform` на составных слайдах VK Tech 22/28/43). Ёмкость слотов посчитана по метрикам шрифтов рендерера с запасом 0,92 и не проверялась вёрсткой — это этап 8.

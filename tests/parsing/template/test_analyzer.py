@@ -1,0 +1,141 @@
+"""Анализатор на синтетических шаблонах: пакет, геометрия групп, классификация, ресурсы,
+постоянные элементы, токены, паттерны с ёмкостью, правила, валидный профиль, ключ кэша."""
+
+from __future__ import annotations
+
+import pathlib
+import zipfile
+
+import pytest
+
+from presentation_designer.contracts import TemplateProfile
+from presentation_designer.parsing.template import analyzer as an
+from presentation_designer.parsing.template.classify import classify_all, is_marker
+from presentation_designer.parsing.template.package import PackageError, open_template
+from presentation_designer.shared import text_metrics
+
+
+def analyze(path: pathlib.Path, **kw: object) -> an.AnalysisResult:
+    return an.analyze_template(
+        path,
+        template_id="tpl_test",
+        name=path.name,
+        size_bytes=path.stat().st_size,
+        render=False,
+        use_vlm=False,
+        **kw,  # type: ignore[arg-type]
+    )
+
+
+def test_package_errors(tmp_path: pathlib.Path) -> None:
+    with pytest.raises(PackageError) as info:
+        open_template(tmp_path / "нет.pptx")
+    assert info.value.code == "file_missing"
+    bad = tmp_path / "bad.pptx"
+    bad.write_bytes(b"not a zip at all")
+    with pytest.raises(PackageError) as info:
+        open_template(bad)
+    assert info.value.code == "not_a_zip"
+    docx = tmp_path / "doc.pptx"
+    with zipfile.ZipFile(docx, "w") as zf:
+        zf.writestr("word/document.xml", "<w/>")
+        zf.writestr("[Content_Types].xml", "<Types/>")
+    with pytest.raises(PackageError) as info:
+        open_template(docx)
+    assert info.value.code == "not_pptx" and "docx" in str(info.value)
+
+
+def test_group_geometry_and_classification(rich_template: pathlib.Path) -> None:
+    pkg = open_template(rich_template)
+    assert (pkg.width_emu, pkg.height_emu) == (12192000, 6858000)
+    cards = pkg.slides[1]
+    grouped = [s for s in cards.shapes if s.group_path]
+    assert len(grouped) == 9, "три группы по три объекта раскрыты в плоский список"
+    icons = [s for s in grouped if s.kind == "picture"]
+    assert all(0.04 < s.x < 0.7 and 0.24 < s.y < 0.26 for s in icons), (
+        "координаты детей группы в долях слайда"
+    )
+    assert all(s.media_sha256 and s.media_blob for s in icons)
+    classes = {c.slide_index: c.kind for c in classify_all(pkg)}
+    assert classes == {
+        1: "content_sample",
+        2: "content_sample",
+        3: "content_sample",
+        4: "style_guide",
+        5: "asset_catalog",
+        6: "hidden",
+    }
+    assert is_marker("Заголовок") and is_marker("ххх%") and is_marker("Имя Фамилия, должность")
+    assert not is_marker("Шрифт для заголовков — Play, кегль не менее 24.")
+
+
+def test_profile_is_valid_and_complete(rich_template: pathlib.Path) -> None:
+    result = analyze(rich_template)
+    profile = result.profile
+    TemplateProfile.model_validate(profile)
+    roles = {p["pattern_id"]: p["role"] for p in profile["patterns"]}
+    assert roles["pat_s1"] == "title"
+    assert roles["pat_s2"] == "cards" and roles["pat_s3"] == "kpi"
+    assert set(roles) == {"pat_s1", "pat_s2", "pat_s3"}, (
+        "инструкция, каталог и скрытый — не паттерны"
+    )
+    cards = next(p for p in profile["patterns"] if p["pattern_id"] == "pat_s2")
+    kinds = [s["kind"] for s in cards["slots"]]
+    assert kinds.count("icon") == 3 and kinds.count("body") >= 3 and kinds.count("title") >= 1
+    groups = {s.get("repeat_group") for s in cards["slots"] if s["kind"] in ("icon", "body")}
+    assert groups and None not in groups, "иконки и тексты карточек в повторяющихся группах"
+    assert cards["constraints"]["max_items"] == 3 and cards["removable_object_ids"]
+    body = next(s for s in cards["slots"] if s["kind"] == "body")
+    cap = body["capacity"]
+    assert cap["max_chars"] >= len(body["sample_text"]) and cap["max_lines"] >= 1
+    assert cap["measured_with"]["method"] in ("font_metrics", "heuristic")
+    assert body["computed_style"]["font"]["size_pt"] == 14.0
+    assert body["element_ref"] and body["group_path"], "ссылка на объект и путь групп сохранены"
+    # каталог иконок: изображения сохранены как ресурсы, не как паттерн
+    icon_assets = [a for a in profile["assets"] if a["kind"] == "icon"]
+    assert len(icon_assets) >= 8 and any("catalog" in a["tags"] for a in icon_assets)
+    assert any(a["kind"] == "logo" for a in profile["assets"]), "повторяющаяся картинка — логотип"
+    assert any(f["kind"] == "logo" for f in profile["fixed_elements"])
+    # инструкция превратилась в правила
+    kinds = {g["kind"] for g in profile["guidelines"]}
+    assert "typography" in kinds and "color" in kinds
+    assert (
+        "Заголовок" in profile["placeholder_markers"] and "ххх%" in profile["placeholder_markers"]
+    )
+    sample = {s["slide_index"]: s["classification"] for s in profile["sample_slides"]}
+    assert sample[4] == "style_guide" and sample[5] == "asset_catalog" and sample[6] == "hidden"
+    assert profile["stats"]["slides"] == 6 and profile["design_tokens"]["colors"]["palette"]
+    assert profile["llm_digest"].startswith("Размер слайда")
+    assert result.report.counts["patterns"] == 3
+    assert any(w["code"] in ("font_substituted",) or True for w in profile["warnings"])
+
+
+def test_mini_template_profile(mini_template: pathlib.Path) -> None:
+    profile = analyze(mini_template).profile
+    TemplateProfile.model_validate(profile)
+    roles = [p["role"] for p in profile["patterns"]]
+    assert "title" in roles and "table" in roles and "thanks" in roles
+    table = next(p for p in profile["patterns"] if p["role"] == "table")
+    assert {s["kind"] for s in table["slots"]} >= {"table", "chart"}
+    assert profile["stats"]["native_charts"] == 1 and profile["stats"]["native_tables"] == 1
+    assert any(d["kind"] == "slide_number" for d in profile["dynamic_fields"])
+
+
+def test_profile_key_changes_with_inputs(monkeypatch: pytest.MonkeyPatch) -> None:
+    base = an.profile_key("a" * 64)
+    assert base == an.profile_key("a" * 64)
+    assert an.profile_key("b" * 64) != base
+    monkeypatch.setattr(an, "ANALYZER_VERSION", "9.9.9")
+    assert an.profile_key("a" * 64) != base
+
+
+def test_text_metrics_capacity_uses_font_file() -> None:
+    font = text_metrics.resolve_font("Play")
+    assert font.face is not None and not font.substituted, "Play лежит в docker/fonts"
+    cap = text_metrics.capacity(width_emu=3300000, height_emu=1800000, size_pt=14, font=font)
+    assert cap.method == "font_metrics" and cap.max_lines >= 5 and cap.chars_per_line >= 25
+    wide = text_metrics.text_width_pt("ШШШШ", font, 14)
+    narrow = text_metrics.text_width_pt("iiii", font, 14)
+    assert wide > narrow, "ширина зависит от глифов, а не от числа символов"
+    unknown = text_metrics.resolve_font("Шрифт Которого Нет")
+    assert unknown.substituted

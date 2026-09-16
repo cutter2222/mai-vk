@@ -1,25 +1,37 @@
 # Манифест скилла по contracts/schemas/skill_manifest.schema.json
 schema_version: '1.1'
 name: template_analyzer
-version: 0.1.0
+version: 0.2.0
 stage: analyze
 description: Классифицирует образцы шаблона по роли и назначению по сгруппированным
-  миниатюрам; уточняет теги ресурсов
+  миниатюрам; размечает пиктограммы тегами назначения пакетами
 model_role: vlm
 response_format: json_schema
 reasoning:
-  mode: low
-  max_output_tokens: 4000
+  mode: 'off'
+  max_output_tokens: 1500
 prompts:
 - id: analyze.classify_samples
-  path: prompts/analyze.classify_samples.v0.1.0.md
+  path: prompts/analyze.classify_samples.v0.2.0.md
+  version: 0.2.0
+- id: analyze.tag_assets
+  path: prompts/analyze.tag_assets.v0.1.0.md
   version: 0.1.0
 params:
-  temperature: 0.2
+  temperature: 0.0
+  group_batch: 4         # образцов-представителей в одном запросе (≈ 6–10 с на запрос у провайдера)
+  image_max_px: 768      # миниатюры для классификации ролей (FRAMEWORKS §4: до 1024)
+  asset_batch: 24        # пиктограмм на одном листе
+  asset_tag_limit: 96    # больше пиктограмм за один анализ не размечается (время этапа)
+  time_budget_s: 75      # общий бюджет всех запросов VLM внутри этапа анализа (stage_analyze_s 180)
+  min_confidence: 0.7    # ниже — роль VLM не заменяет эвристику
 input_schema: template_profile
 output_schema: template_profile
 changelog:
+- version: 0.2.0
+  date: '2026-09-16'
+  note: 'этап 5: рабочие промпты классификации ролей по миниатюрам и тегов пиктограмм;
+    рассуждение выключено (провайдер делит бюджет ответа с рассуждением)'
 - version: 0.1.0
   date: '2026-09-15'
-  note: 'каркас: манифест и заглушка промпта; содержание промпта пишется на этапе
-    реализации слоя'
+  note: 'каркас: манифест и заглушка промпта'
