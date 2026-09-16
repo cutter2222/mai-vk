@@ -12,7 +12,7 @@ usage() {
 Использование: deploy/install.sh --target server|local
 
   server  установить Docker Engine и compose plugin, создать пользователя сервиса
-          и каталоги \$SERVER_DIR/{repo,data,artifacts,runs,backups} с .env сервера.
+          и каталоги \$SERVER_DIR/{repo,data,artifacts,runs,backups,releases} с .env сервера.
           Читает deploy/server.env. Повторный запуск безопасен.
   local   проверить Docker и compose plugin на этой машине, создать .env из config/.env.example.
 USAGE

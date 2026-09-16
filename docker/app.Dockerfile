@@ -1,7 +1,8 @@
-# syntax=docker/dockerfile:1
 # Образы API и воркера из одного Dockerfile: общая база с зависимостями Python,
 # цель api без LibreOffice, цель worker с LibreOffice, шрифтами и проверкой рендерера.
 # Контекст сборки — корень репозитория (см. .dockerignore). Сборка: docker compose build.
+# Без директивы syntax: встроенный frontend BuildKit покрывает нужное, а лишний образ
+# docker/dockerfile с Docker Hub считается в лимит анонимных запросов (10 в час на IP).
 
 FROM python:3.12.14-slim-bookworm AS base
 COPY --from=ghcr.io/astral-sh/uv:0.12.14 /uv /bin/uv
@@ -20,6 +21,8 @@ COPY config ./config
 COPY contracts ./contracts
 COPY skills ./skills
 COPY tests/fixtures/pptx ./tests/fixtures/pptx
+# Собственный контент-пакет для проб импорта и плана из контейнера (64 КБ).
+COPY examples/content ./examples/content
 RUN uv sync --frozen --no-dev \
     && rm -rf /root/.cache/uv \
     && mkdir -p /app/data /app/artifacts /app/runs \
@@ -30,12 +33,21 @@ EXPOSE 8000
 CMD ["python", "-m", "presentation_designer.api", "--host", "0.0.0.0", "--port", "8000"]
 
 FROM base AS worker
-# LibreOffice для конвертации в PDF и шрифты с открытыми лицензиями; профиль создаётся на каждую конвертацию.
+# LibreOffice для конвертации в PDF (версия из Debian bookworm, закреплена базовым образом)
+# и шрифты с открытыми лицензиями (docker/fonts/README.md). Каждая конвертация получает копию
+# подготовленного профиля /opt/lo-profile: реестр и кэш шрифтов уже созданы при сборке.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         libreoffice-impress libreoffice-calc \
         fonts-liberation fonts-dejavu-core fonts-crosextra-carlito fonts-noto-core \
     && rm -rf /var/lib/apt/lists/*
 COPY docker/fonts /usr/local/share/fonts/project
-RUN fc-cache -f
+RUN fc-cache -f \
+    && soffice -env:UserInstallation=file:///opt/lo-profile --headless --norestore \
+        --convert-to pdf --outdir /tmp/lo-warm tests/fixtures/pptx/mini_template.pptx \
+    && rm -rf /tmp/lo-warm /opt/lo-profile/.lock \
+    && chmod -R a+rX /opt/lo-profile \
+    && soffice --version > /opt/lo-profile/VERSION \
+    && cat /opt/lo-profile/VERSION
+ENV PD_LO_PROFILE_TEMPLATE=/opt/lo-profile
 CMD ["python", "-m", "presentation_designer.cli.worker", "--queues", "generation"]

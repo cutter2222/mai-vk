@@ -1,0 +1,82 @@
+# Прод-надстройка над docker/compose.yaml для сервера. Не заменяет базовый файл, а дополняет:
+#   docker compose -f docker/compose.yaml -f docker/compose.prod.yaml --env-file $SERVER_DIR/.env up -d
+# Лимиты памяти по замерам этапа 0A (docs/pptx-capabilities.md): LibreOffice берёт до 1,1 ГБ
+# на шаблоне ЛЦТ и 0,45–0,75 ГБ на шаблонах VK, python-pptx до 0,2 ГБ сверх интерпретатора.
+# На сервере 2 vCPU, 3,9 ГБ и swap 2 ГБ одновременных рендеров не больше двух (PD_RENDER_SLOTS),
+# поэтому пик: 2 × 1,1 ГБ рендера + три воркера в ожидании по ~0,2 ГБ + API + Valkey + Caddy ≈ 3,2 ГБ.
+# Пределы контейнеров — потолок, а не резерв: сумма пределов больше памяти сервера сознательно.
+# Логи — json-file с ротацией; Valkey — без вытеснения ключей (очередь не должна терять задания).
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+x-prod-env: &prod-env
+  # Один рычаг в .env сервера для слотов рендера и числа воркеров: приложение видит те же
+  # значения, что и compose (реплики), — их показывает /api/health и учитывает экспорт.
+  PD_RENDER__SLOTS: ${PD_RENDER_SLOTS:-2}
+  PD_QUEUE__GENERATION_WORKERS: ${PD_GENERATION_WORKERS:-3}
+
+x-worker-prod: &worker-prod
+  logging: *logging
+  # Воркеру дают завершить текущий этап: отмена RQ останавливает задачу на границе этапа.
+  stop_grace_period: 60s
+  environment: *prod-env
+  deploy:
+    resources:
+      limits:
+        memory: ${PD_WORKER_MEMORY:-1536M}
+        cpus: "1.5"
+
+services:
+  caddy:
+    logging: *logging
+    deploy:
+      resources:
+        limits:
+          memory: 192M
+          cpus: "0.5"
+
+  frontend:
+    logging: *logging
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: "0.25"
+
+  api:
+    logging: *logging
+    environment: *prod-env
+    deploy:
+      resources:
+        limits:
+          memory: ${PD_API_MEMORY:-512M}
+          cpus: "1.0"
+
+  worker-analysis:
+    <<: *worker-prod
+
+  worker-generation:
+    <<: *worker-prod
+
+  valkey:
+    logging: *logging
+    # AOF раз в секунду плюс снимок; при переполнении памяти запись отклоняется, а не теряется.
+    command:
+      - valkey-server
+      - --appendonly
+      - "yes"
+      - --save
+      - "60 1"
+      - --maxmemory
+      - 128mb
+      - --maxmemory-policy
+      - noeviction
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"

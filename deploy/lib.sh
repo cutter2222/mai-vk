@@ -64,11 +64,24 @@ load_server_env() {
 }
 
 # Выполняет локальный скрипт на сервере: bash читает его со stdin, аргументы экранированы.
+# Перед скриптом отправляются общие функции deploy/remote/lib.sh.
 remote_bash() {
   local script="$1"; shift
   local quoted=""
   [ $# -gt 0 ] && quoted="$(printf ' %q' "$@")"
-  ssh -o BatchMode=yes -o ConnectTimeout=15 "$SERVER_SSH" "bash -s --$quoted" < "$script"
+  cat "$DEPLOY_DIR/remote/lib.sh" "$script" \
+    | ssh -o BatchMode=yes -o ConnectTimeout=15 "$SERVER_SSH" "bash -s --$quoted"
+}
+
+# Тег выпуска для образов: commit, признак незакоммиченных изменений и время сборки.
+release_tag() {
+  local stamp
+  stamp="$(date -u +%Y%m%d-%H%M%S)"
+  if [ "$DIRTY" = yes ]; then
+    printf '%s-dirty-%s' "$COMMIT" "$stamp"
+  else
+    printf '%s-%s' "$COMMIT" "$stamp"
+  fi
 }
 
 # Состояние репозитория для отчёта выкладки: COMMIT, BRANCH и DIRTY (есть незакоммиченные изменения).
@@ -118,6 +131,33 @@ probe_url() {
   else
     curl -fs --max-time 10 -o /dev/null "$1"
   fi
+}
+
+fetch_url() {
+  if [ "${TARGET:-}" = server ]; then
+    ssh -o BatchMode=yes "$SERVER_SSH" "curl -fs --max-time 10 $(printf '%q' "$1")"
+  else
+    curl -fs --max-time 10 "$1"
+  fi
+}
+
+# Готовность после обновления: /api/health отвечает status ok — база, хранилище, Valkey,
+# все роли воркеров и проверка рендерера. HTTP 200 с degraded готовностью не считается.
+# Последний ответ остаётся в HEALTH_BODY для отчёта вызывающего скрипта.
+# shellcheck disable=SC2034
+wait_for_health_ok() {
+  local url="$1" attempts="${2:-60}" i body=""
+  for ((i = 1; i <= attempts; i++)); do
+    body="$(fetch_url "$url/api/health" 2>/dev/null || true)"
+    case "$body" in
+      *'"status":"ok"'*) echo; HEALTH_BODY="$body"; return 0 ;;
+    esac
+    printf '.'
+    sleep 3
+  done
+  echo
+  HEALTH_BODY="$body"
+  return 1
 }
 
 # Docker 29 не собирает образы, если в пути к контексту есть символы вне ASCII (ошибка BuildKit

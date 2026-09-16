@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Выполняется на сервере (Ubuntu/Debian) через deploy/install.sh --target server.
-# Ставит Docker Engine с compose plugin, создаёт пользователя сервиса и каталоги.
+# Ставит Docker Engine с compose plugin, создаёт пользователя сервиса и каталоги
+# repo, data, artifacts, runs, backups, releases и .env сервера.
 # Повторный запуск ничего не ломает: каждый шаг проверяет текущее состояние.
 # Аргументы: $1 — корень сервиса (SERVER_DIR), $2 — имя пользователя сервиса.
 # Скрипт приходит по stdin (bash -s), поэтому тело обёрнуто в main, а stdin команд закрыт:
@@ -71,6 +72,8 @@ main() {
   for sub in data artifacts runs backups; do
     $sudo install -d -m 2775 -o "$service_user" -g "$service_user" "$server_dir/$sub"
   done
+  # Копии репозитория выпусков для отката пишет пользователь выкладки.
+  $sudo install -d -m 0755 -o "$login_user" "$server_dir/releases"
 
   env_file="$server_dir/.env"
   if [ ! -f "$env_file" ]; then
@@ -82,6 +85,8 @@ main() {
       echo "PD_UID=$(id -u "$service_user")"
       echo "PD_GID=$(id -g "$service_user")"
       echo "PD_GENERATION_WORKERS=3"
+      echo "# Одновременных конвертаций LibreOffice: по замерам на 3,9 ГБ памяти не больше двух."
+      echo "PD_RENDER_SLOTS=2"
     } | $sudo tee "$env_file" >/dev/null
   fi
 

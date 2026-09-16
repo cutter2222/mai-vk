@@ -1,8 +1,10 @@
 # Стек сервиса. Переменные из .env (корень репозитория для make up, $SERVER_DIR/.env на сервере):
 #   docker compose -f docker/compose.yaml --env-file .env up -d
+# На сервере добавляется прод-надстройка: -f docker/compose.yaml -f docker/compose.prod.yaml.
 # Пути ниже относительны каталогу docker/. Вход Caddy, статический интерфейс, API, воркер анализа
 # и исправлений, воркеры генерации, Valkey. Данные — в каталогах PD_DATA_DIR, PD_ARTIFACTS_DIR,
-# PD_RUNS_DIR (на сервере вне репозитория), файл окружения контейнеров — PD_ENV_FILE.
+# PD_RUNS_DIR, PD_BACKUPS_DIR (на сервере вне репозитория), файл окружения контейнеров — PD_ENV_FILE.
+# Тег образов PD_IMAGE_TAG (deploy.sh: commit и время) и PD_BUILD_COMMIT попадают в /api/health.
 name: presentation-designer
 
 x-app: &app
@@ -17,25 +19,39 @@ x-app: &app
     PD_PATHS__DATA_DIR: /app/data
     PD_PATHS__ARTIFACTS_DIR: /app/artifacts
     PD_PATHS__RUNS_DIR: /app/runs
+    PD_PATHS__BACKUPS_DIR: /app/backups
     PD_PATHS__ORGANIZERS_DIR: /app/data/organizers
+    PD_IMAGE_TAG: ${PD_IMAGE_TAG:-latest}
+    PD_BUILD_COMMIT: ${PD_BUILD_COMMIT:-}
   volumes:
     # Каталог данных с SQLite: на сервере — путь на диске (PD_DATA_DIR), локально — том Docker:
     # WAL SQLite требует разделяемой памяти, которой нет у bind-mount Docker Desktop.
     - ${PD_DATA_DIR:-app_data}:/app/data
     - ${PD_ARTIFACTS_DIR:-../artifacts}:/app/artifacts
     - ${PD_RUNS_DIR:-../runs}:/app/runs
+    # Резервные копии: их пишет и проверяет CLI обслуживания в контейнере API
+    # (docker compose run --rm api python -m presentation_designer.cli.maintenance …).
+    - ${PD_BACKUPS_DIR:-../backups}:/app/backups
   depends_on:
     valkey:
       condition: service_healthy
+
+# Воркер жив, если его регистрация в Valkey не истекла (RQ продлевает ключ при heartbeat).
+x-worker-health: &worker-health
+  test: ["CMD", "python", "-m", "presentation_designer.cli.worker", "--healthcheck"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 120s
 
 services:
   caddy:
     image: caddy:2.11.4-alpine
     restart: unless-stopped
+    # Только TCP: HTTP/3 выключен в Caddyfile (h1, h2), UDP 443 наружу не публикуется.
     ports:
       - "${PD_HTTP_PORT:-80}:80"
       - "${PD_HTTPS_PORT:-443}:443"
-      - "${PD_HTTPS_PORT:-443}:443/udp"
     environment:
       PD_SITE_ADDRESS: ${PD_SITE_ADDRESS:-http://localhost}
       PD_PUBLIC_URL: ${PD_PUBLIC_URL:-http://localhost}
@@ -64,10 +80,10 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:8080/"]
-      interval: 10s
+      interval: 5s
       timeout: 3s
       retries: 5
-      start_period: 5s
+      start_period: 2s
 
   api:
     <<: *app
@@ -76,12 +92,14 @@ services:
       dockerfile: docker/app.Dockerfile
       target: api
     image: presentation-designer/api:${PD_IMAGE_TAG:-latest}
+    # Частые проверки при старте: Caddy ждёт готовности API, и от интервала зависит,
+    # когда интерфейс станет доступен после холодного запуска (docs/evaluation.md).
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5)"]
-      interval: 10s
+      interval: 5s
       timeout: 6s
-      retries: 6
-      start_period: 10s
+      retries: 12
+      start_period: 3s
 
   worker-analysis:
     <<: *app
@@ -91,6 +109,7 @@ services:
       target: worker
     image: presentation-designer/worker:${PD_IMAGE_TAG:-latest}
     command: ["python", "-m", "presentation_designer.cli.worker", "--queues", "analysis", "repair", "--skip-render-check"]
+    healthcheck: *worker-health
 
   worker-generation:
     <<: *app
@@ -100,6 +119,7 @@ services:
       target: worker
     image: presentation-designer/worker:${PD_IMAGE_TAG:-latest}
     command: ["python", "-m", "presentation_designer.cli.worker", "--queues", "generation"]
+    healthcheck: *worker-health
     deploy:
       replicas: ${PD_GENERATION_WORKERS:-3}
 
@@ -111,9 +131,9 @@ services:
       - valkey_data:/data
     healthcheck:
       test: ["CMD", "valkey-cli", "ping"]
-      interval: 5s
+      interval: 2s
       timeout: 3s
-      retries: 10
+      retries: 15
 
 configs:
   caddyfile:
