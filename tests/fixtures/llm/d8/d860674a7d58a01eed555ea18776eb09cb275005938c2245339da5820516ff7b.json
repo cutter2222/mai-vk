@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-16T22:26:17Z",
+ "entry_version": 1,
+ "key": "d860674a7d58a01eed555ea18776eb09cb275005938c2245339da5820516ff7b",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3283,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: compact. Компактная подача: слайдов ближе к нижней границе, один слайд может объединять два-три родственных тезиса одного раздела. Заголовок-вывод и два-три коротких пункта (до 8 слов) или по",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 14729,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t2\"\n      ],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"Отсутствие приоритизации приводит к потере внимания\",\n      \"message\": \"Высокий объем уведомлений без сортировки снижает эффективность коммуникации.\",\n      \"visual\": \"cards\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Пользователи пропускают до {fact:f1} важных уведомлений\",\n          \"sub\": \"Проблема\",\n          \"facts\": [\n            \"f1\"\n          ]\n        },\n        {\n          \"text\": \"В среднем {fact:f2} уведомлений в день\",\n          \"sub\": \"Объем потока\",\n          \"facts\": [\n            \"f2\"\n          ]\n        },\n        {\n          \"text\": \"Ключевые сообщения теряются в потоке\",\n          \"sub\": \"Последствие\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [\n        \"f1\",\n        \"f2\"\n      ],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t4\"\n      ],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"Единый центр и тихие часы упорядочивают поток\",\n      \"message\": \"Сервис объединяет каналы и управляет временем доставки для повышения релевантности.\",\n      \"visual\": \"cards\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Приоритизация по контексту\",\n          \"sub\": \"Важное наверх\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Единый центр вместо трёх каналов\",\n          \"sub\": \"Консолидация\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Тихие часы с отложенной доставкой\",\n          \"sub\": \"Управление временем\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"img_1\",\n      \"notes\": \"\"\n    }\n  ],\n  \"rationale\": \"Компактная подача: два слайда с карточками для краткого изложения проблемы и решения, без лишних деталей и таблиц.\"\n}",
+  "usage": {
+   "completion_tokens": 595,
+   "prompt_tokens": 2344,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-16T22:27:44Z",
+ "entry_version": 1,
+ "key": "0ecaccc04debca4f3697969631e9d447878ddfce116aa8ac4ff53c92a8307ae6",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3297,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: compact. Компактная подача: слайдов ближе к нижней границе, один слайд может объединять два-три родственных тезиса одного раздела. Заголовок-вывод и два-три коротких пункта (до 8 слов) или по",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 14348,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t10\"\n      ],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"План масштабирования на Q4\",\n      \"message\": \"Поэтапное расширение сервиса в течение четвёртого квартала.\",\n      \"visual\": \"cards\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Подключение новых продуктов\",\n          \"sub\": \"Октябрь\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Персональные тихие часы\",\n          \"sub\": \"Ноябрь\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Расширение на все регионы\",\n          \"sub\": \"Декабрь\",\n          \"facts\": [\n            \"f11\"\n          ]\n        }\n      ],\n      \"facts\": [\n        \"f11\"\n      ],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t11\",\n        \"t2\"\n      ],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"Пилот доказал эффективность\",\n      \"message\": \"Решение устраняет проблему пропусков и подтверждает окупаемость.\",\n      \"visual\": \"cards\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Рост метрик вовлеченности\",\n          \"sub\": \"Эффективность\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Снижение затрат на поддержку\",\n          \"sub\": \"Окупаемость\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Готовность к масштабированию\",\n          \"sub\": \"Вывод\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t12\"\n      ],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"Одобрить расширение пилота\",\n      \"message\": \"Необходимо решение для запуска плановых этапов в октябре.\",\n      \"visual\": \"cards\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Запуск плановых этапов\",\n          \"sub\": \"Октябрь\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Расширение на все продукты\",\n          \"sub\": \"Q4\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Принятие решения сейчас\",\n          \"sub\": \"Действие\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    }\n  ],\n  \"rationale\": \"Компактная подача объединяет план, вывод и призыв к действию в три слайда с карточками, сохраняя деловой тон и фокус на ключевых этапах и решении.\"\n}",
+  "usage": {
+   "completion_tokens": 793,
+   "prompt_tokens": 2336,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-16T22:28:07Z",
+ "entry_version": 1,
+ "key": "6af365a8379371e18c47c829ed8cc310f7b84673d4e55286b3385d88049fc416",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3108,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: balanced. Сбалансированная подача: один тезис на слайд, заголовок-вывод, короткое пояснение (одно-два предложения) и до четырёх пунктов или показателей. Ряды данных — диаграмма с подписями; т",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 16069,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t10\"\n      ],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"План расширения на Q4\",\n      \"message\": \"Поэтапное внедрение функций сервиса в течение квартала.\",\n      \"visual\": \"cards\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Подключение двух новых продуктов\",\n          \"sub\": \"Октябрь\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Внедрение персональных тихих часов\",\n          \"sub\": \"Ноябрь\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Масштабирование на все регионы, цель {fact:f11}\",\n          \"sub\": \"Декабрь\",\n          \"facts\": [\n            \"f11\"\n          ]\n        }\n      ],\n      \"facts\": [\n        \"f11\"\n      ],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t11\"\n      ],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"Пилот доказал эффективность\",\n      \"message\": \"Рост метрик и экономия подтверждают готовность к масштабированию.\",\n      \"visual\": \"text\",\n      \"text\": \"Рост метрик и снижение затрат подтверждают готовность к масштабированию.\",\n      \"items\": [],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t12\"\n      ],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"Одобрить расширение пилота\",\n      \"message\": \"Необходимо принять решение для запуска плановых этапов в октябре.\",\n      \"visual\": \"text\",\n      \"text\": \"Необходимо принять решение для запуска плановых этапов в октябре.\",\n      \"items\": [],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    }\n  ],\n  \"rationale\": \"Сбалансированная подача: каждый тезис вынесен на отдельный слайд с кратким выводом и пояснением, что соответствует стилю 'balanced' и бюджету пакета.\"\n}",
+  "usage": {
+   "completion_tokens": 608,
+   "prompt_tokens": 2289,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

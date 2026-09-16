@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-16T22:27:43Z",
+ "entry_version": 1,
+ "key": "291c4f00e6561beeb68ae39febd1366f1a58eb5a4dbbdf859f77175490e1b9a0",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3362,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: compact. Компактная подача: слайдов ближе к нижней границе, один слайд может объединять два-три родственных тезиса одного раздела. Заголовок-вывод и два-три коротких пункта (до 8 слов) или по",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 12180,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t2\"\n      ],\n      \"pattern\": \"pat_s3\",\n      \"title\": \"Отсутствие приоритизации снижает вовлеченность\",\n      \"message\": \"Высокий объем уведомлений приводит к пропуску важных сообщений.\",\n      \"visual\": \"number\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Пропуск важных уведомлений\",\n          \"sub\": \"\",\n          \"facts\": [\n            \"f1\"\n          ]\n        },\n        {\n          \"text\": \"Средний объем уведомлений в день\",\n          \"sub\": \"\",\n          \"facts\": [\n            \"f2\"\n          ]\n        }\n      ],\n      \"facts\": [\n        \"f1\",\n        \"f2\"\n      ],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t4\"\n      ],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"Единый центр управляет потоком\",\n      \"message\": \"Сервис структурирует доставку через приоритизацию и тихие часы.\",\n      \"visual\": \"cards\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Приоритизация по контексту\",\n          \"sub\": \"Важное наверх\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Единый центр уведомлений\",\n          \"sub\": \"Один канал\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Тихие часы\",\n          \"sub\": \"Отложенная доставка\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"img_1\",\n      \"notes\": \"\"\n    }\n  ],\n  \"rationale\": \"Компактная подача: первый слайд фокусируется на проблеме через ключевые метрики (t2), второй — на решении через карточки с визуальным акцентом (t4), соблюдая лимиты символов и избегая избыточного текста.\"\n}",
+  "usage": {
+   "completion_tokens": 549,
+   "prompt_tokens": 2380,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

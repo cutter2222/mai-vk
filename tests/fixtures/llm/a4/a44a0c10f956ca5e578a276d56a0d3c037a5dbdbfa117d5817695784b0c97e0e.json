@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-16T17:29:27Z",
+ "entry_version": 1,
+ "key": "a44a0c10f956ca5e578a276d56a0d3c037a5dbdbfa117d5817695784b0c97e0e",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 1917,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 107,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Make a product presentation about the new billing feature for enterprise customers in English, 12-15 slides",
+  "prompt": [
+   "brief.extract",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "brief_extractor",
+   "0.1.0"
+  ],
+  "stage": "brief"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 817,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"purpose\": \"product\",\n  \"title\": \"New billing feature\",\n  \"audience\": \"enterprise customers\",\n  \"language\": \"en\",\n  \"slide_count\": {\n    \"min\": 12,\n    \"max\": 15\n  },\n  \"intent\": \"generate\"\n}",
+  "usage": {
+   "completion_tokens": 75,
+   "prompt_tokens": 547,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

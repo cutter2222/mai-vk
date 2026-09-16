@@ -1,0 +1,26 @@
+# Манифест скилла по contracts/schemas/skill_manifest.schema.json
+schema_version: '1.1'
+name: brief_extractor
+version: 0.1.0
+stage: import
+description: 'Извлекает бриф и настройки из свободного сообщения чата: назначение, тема,
+  аудитория, цель, тон, язык, обязательное и нежелательное, число слайдов, набор вариантов
+  и намерение (generate, edit, none). Поля, которых нет в тексте, не заполняет'
+model_role: llm
+response_format: json_schema
+reasoning:
+  mode: 'off'
+  max_output_tokens: 500
+prompts:
+- id: brief.extract
+  path: prompts/brief.extract.v0.1.0.md
+  version: 0.1.0
+params:
+  temperature: 0.0
+  deadline_s: 8          # весь вызов с ожиданием квоты; дальше — эвристика с source: heuristic
+input_schema: brief_extract
+output_schema: brief_extract
+changelog:
+- version: 0.1.0
+  date: '2026-09-16'
+  note: 'этап 6: короткий вызов без рассуждения по схеме brief_extract, резерв — эвристика'

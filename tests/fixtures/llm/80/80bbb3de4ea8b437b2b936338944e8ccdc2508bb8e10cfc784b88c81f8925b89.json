@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-16T17:30:11Z",
+ "entry_version": 1,
+ "key": "80bbb3de4ea8b437b2b936338944e8ccdc2508bb8e10cfc784b88c81f8925b89",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3190,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 4174,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Бриф: назначение — product; тема — «Запуск сервиса умных уведомлений»; аудитория — руководители продуктовых направлений; цель — получить одобрение на расширение пилота; тон — деловой, без технических ",
+  "prompt": [
+   "story.outline",
+   "0.2.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "story_planner",
+   "0.2.0"
+  ],
+  "stage": "story"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 16297,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"key_takeaway\": \"Пилот умных уведомлений показал рост открываемости до 44% и экономию 12,5 млн ₽, что обосновывает расширение на все продукты в четвёртом квартале.\",\n  \"theses\": [\n    {\n      \"id\": \"t1\",\n      \"kind\": \"section\",\n      \"statement\": \"Запуск сервиса умных уведомлений: итоги пилота\",\n      \"explanation\": \"Обзор результатов тестирования и обоснование следующего шага.\",\n      \"required\": true,\n      \"source_refs\": [\n        \"b1\"\n      ],\n      \"fact_refs\": [],\n      \"dataset_refs\": [],\n      \"asset_refs\": [\n        \"img_3\"\n      ],\n      \"visual\": \"text\",\n      \"covers\": []\n    },\n    {\n      \"id\": \"t2\",\n      \"kind\": \"context\",\n      \"statement\": \"Пользователи пропускают до {fact:f1} важных уведомлений из-за отсутствия приоритизации.\",\n      \"explanation\": \"В среднем каждый пользователь получает {fact:f2} уведомлений в день, что приводит к потере внимания к ключевым сообщениям.\",\n      \"required\": true,\n      \"source_refs\": [\n        \"b2\",\n        \"b3\"\n      ],\n      \"fact_refs\": [\n        \"f1\",\n        \"f2\"\n      ],\n      \"dataset_refs\": [],\n      \"asset_refs\": [],\n      \"visual\": \"number\",\n      \"covers\": []\n    },\n    {\n      \"id\": \"t3\",\n      \"kind\": \"section\",\n      \"statement\": \"Решение: приоритизация и единый центр уведомлений\",\n      \"explanation\": \"Ключевые функции сервиса, направленные на снижение информационного шума.\",\n      \"required\": false,\n      \"source_refs\": [\n        \"b4\"\n      ],\n      \"fact_refs\": [],\n      \"dataset_refs\": [],\n      \"asset_refs\": [],\n      \"visual\": \"text\",\n      \"covers\": []\n    },\n    {\n      \"id\": \"t4\",\n      \"kind\": \"evidence\",\n      \"statement\": \"Сервис объединяет каналы и вводит тихие часы для управления потоком.\",\n      \"explanation\": \"Важные уведомления поднимаются наверх, а доставка откладывается в нерабочее время.\",\n      \"required\": false,\n      \"source_refs\": [\n        \"b5\"\n      ],\n      \"fact_refs\": [],\n      \"dataset_refs\": [],\n      \"asset_refs\": [\n        \"img_1\"\n      ],\n      \"visual\": \"bullets\",\n      \"covers\": []\n    },\n    {\n      \"id\": \"t5\",\n      \"kind\": \"section\",\n      \"statement\": \"Результаты пилота: рост вовлеченности и экономия\",\n      \"explanation\": \"Данные за период с мая по июль 2026 года в трёх регионах.\",\n      \"required\": true,\n      \"source_refs\": [\n        \"b6\"\n      ],\n      \"fact_refs\": [],\n      \"dataset_refs\": [],\n      \"asset_refs\": [],\n      \"visual\": \"text\",\n      \"covers\": [\n        \"метрики пилота\"\n      ]\n    },\n    {\n      \"id\": \"t6\",\n      \"kind\": \"evidence\",\n      \"statement\": \"Открываемость выросла с {fact:f3} до {fact:f4} за три месяца пилота.\",\n      \"explanation\": \"Доля отписок снизилась с {fact:f5} до {fact:f6}, что свидетельствует о повышении качества коммуникации.\",\n      \"required\": true,\n      \"source_refs\": [\n        \"b7\"\n      ],\n      \"fact_refs\": [\n        \"f3\",\n        \"f4\",\n        \"f5\",\n        \"f6\"\n      ],\n      \"dataset_refs\": [\n        \"ds1\"\n      ],\n      \"asset_refs\": [\n        \"img_2\"\n      ],\n      \"visual\": \"chart\",\n      \"covers\": [\n        \"метрики пилота\"\n      ]\n    },\n    {\n      \"id\": \"t7\",\n      \"kind\": \"evidence\",\n      \"statement\": \"Экономия на поддержке составила {fact:f7} при затратах на пилот {fact:f8}.\",\n      \"explanation\": \"Ожидаемая экономия при полном масштабировании достигнет 31 млн ₽.\",\n      \"required\": true,\n      \"source_refs\": [\n        \"b7\",\n        \"b13\"\n      ],\n      \"fact_refs\": [\n        \"f7\",\n        \"f8\",\n        \"f22\"\n      ],\n      \"dataset_refs\": [\n        \"ds2\"\n      ],\n      \"asset_refs\": [],\n      \"visual\": \"table\",\n      \"covers\": [\n        \"метрики пилота\"\n      ]\n    },\n    {\n      \"id\": \"t8\",\n      \"kind\": \"evidence\",\n      \"statement\": \"«Впервые уведомления стали помогать, а не отвлекать».\",\n      \"explanation\": \"Отзыв руководителя службы поддержки региона «Север» подтверждает улучшение пользовательского опыта.\",\n      \"required\": false,\n      \"source_refs\": [\n        \"b8\"\n      ],\n      \"fact_refs\": [],\n      \"dataset_refs\": [],\n      \"asset_refs\": [],\n      \"visual\": \"quote\",\n      \"covers\": []\n    },\n    {\n      \"id\": \"t9\",\n      \"kind\": \"section\",\n      \"statement\": \"План на четвёртый квартал\",\n      \"explanation\": \"Этапы расширения сервиса и целевые показатели.\",\n      \"required\": true,\n      \"source_refs\": [\n        \"b9\"\n      ],\n      \"fact_refs\": [],\n      \"dataset_refs\": [],\n      \"asset_refs\": [],\n      \"visual\": \"text\",\n      \"covers\": [\n        \"план на квартал\"\n      ]\n    },\n    {\n      \"id\": \"t10\",\n      \"kind\": \"evidence\",\n      \"statement\": \"В декабре планируется расширение на все регионы с целью {fact:f11} открываемости.\",\n      \"explanation\": \"Октябрь: подключение новых продуктов; Ноябрь: персональные тихие часы; Декабрь: масштабирование.\",\n      \"required\": true,\n      \"source_refs\": [\n        \"b10\"\n      ],\n      \"fact_refs\": [\n        \"f11\"\n      ],\n      \"dataset_refs\": [],\n      \"asset_refs\": [],\n      \"visual\": \"timeline\",\n      \"covers\": [\n        \"план на квартал\"\n      ]\n    },\n    {\n      \"id\": \"t11\",\n      \"kind\": \"conclusion\",\n      \"statement\": \"Пилот доказал эффективность и окупаемость решения.\",\n      \"explanation\": \"Рост метрик и снижение затрат подтверждают готовность к масштабированию.\",\n      \"required\": true,\n      \"source_refs\": [\n        \"b7\",\n        \"b13\"\n      ],\n      \"fact_refs\": [],\n      \"dataset_refs\": [],\n      \"asset_refs\": [],\n      \"visual\": \"text\",\n      \"covers\": []\n    },\n    {\n      \"id\": \"t12\",\n      \"kind\": \"call_to_action\",\n      \"statement\": \"Одобрить расширение пилота на все продукты в четвёртом квартале.\",\n      \"explanation\": \"Необходимо принять решение для запуска плановых этапов в октябре.\",\n      \"required\": true,\n      \"source_refs\": [\n        \"b18\",\n        \"b19\"\n      ],\n      \"fact_refs\": [],\n      \"dataset_refs\": [],\n      \"asset_refs\": [],\n      \"visual\": \"text\",\n      \"covers\": []\n    }\n  ],\n  \"allowed_reductions\": [\n    {\n      \"thesis_id\": \"t4\",\n      \"reduction\": \"drop_entirely\"\n    },\n    {\n      \"thesis_id\": \"t8\",\n      \"reduction\": \"drop_entirely\"\n    },\n    {\n      \"thesis_id\": \"t7\",\n      \"reduction\": \"table_to_chart\"\n    }\n  ],\n  \"assumptions\": [\n    \"Данные по ожидаемой экономии при масштабировании (31 млн ₽) являются прогнозными и основаны на текущих показателях пилота.\",\n    \"Цель в 60% открываемости к декабрю достижима при условии успешного подключения новых продуктов в октябре.\"\n  ]\n}",
+  "usage": {
+   "completion_tokens": 2020,
+   "prompt_tokens": 2539,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}
