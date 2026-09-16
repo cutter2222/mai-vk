@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://presentation-designer.local/contracts/content_package.schema.json",
   "title": "ContentPackage",
-  "description": "Результат слоя импорта содержания. Два входа: контент-пакет (файлы) и краткий бриф с назначением. Факты и наборы данных извлекаются детерминированно до вызова модели. Версия 1.2: источник ссылается на файл проекта (file_id), вид pptx для материалов-презентаций, неполный бриф дополняется умолчаниями с предупреждением brief_incomplete. Версия 1.1: контекст факта (показатель, период, субъект, единица, исходный фрагмент или ячейка), производные показатели с формулой, отметка неопределённости.",
+  "description": "Результат слоя импорта содержания. Два входа: контент-пакет (файлы) и краткий бриф с назначением. Факты и наборы данных извлекаются детерминированно до вызова модели. Версия 1.3 (этап 6): import_meta с версиями парсеров, ключом кэша и вызовами модели; у источников parser и число единиц (страниц, листов, слайдов); у блоков source_location и caption; у ресурсов sha256 и mime; у наборов данных source_location, total_rows и truncated. Версия 1.2: источник ссылается на файл проекта (file_id), вид pptx для материалов-презентаций, неполный бриф дополняется умолчаниями с предупреждением brief_incomplete. Версия 1.1: контекст факта (показатель, период, субъект, единица, исходный фрагмент или ячейка), производные показатели с формулой, отметка неопределённости.",
   "type": "object",
   "required": [
     "schema_version",
@@ -17,7 +17,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.2"
+      "const": "1.3"
     },
     "package_id": {
       "$ref": "common.schema.json#/$defs/id"
@@ -142,6 +142,41 @@
           "file_id": {
             "$ref": "common.schema.json#/$defs/id",
             "description": "файл проекта, из которого извлечён источник; отсутствует у брифа и внешних ссылок"
+          },
+          "parser": {
+            "$ref": "common.schema.json#/$defs/version_ref",
+            "description": "парсер, разобравший файл: имя и версия входят в ключ кэша импорта"
+          },
+          "units": {
+            "type": "object",
+            "description": "сколько единиц содержания разобрано: страниц, листов, слайдов, таблиц, изображений",
+            "additionalProperties": false,
+            "properties": {
+              "pages": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "sheets": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "slides": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "tables": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "images": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "chars": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
           }
         },
         "required": [
@@ -209,6 +244,41 @@
             "items": {
               "type": "string"
             }
+          },
+          "source_location": {
+            "type": "object",
+            "description": "Место блока в источнике",
+            "additionalProperties": false,
+            "properties": {
+              "page": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "sheet": {
+                "type": "string"
+              },
+              "slide": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "номер слайда материала-презентации"
+              },
+              "cell_range": {
+                "type": "string",
+                "description": "например A1:C4"
+              },
+              "char_offset": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "notes": {
+                "type": "boolean",
+                "description": "текст из заметок докладчика"
+              }
+            }
+          },
+          "caption": {
+            "type": "string",
+            "description": "подпись таблицы или рисунка из источника"
           }
         },
         "required": [
@@ -410,6 +480,12 @@
           },
           "source_id": {
             "$ref": "common.schema.json#/$defs/id"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "mime": {
+            "type": "string"
           }
         },
         "required": [
@@ -476,6 +552,35 @@
           },
           "block_id": {
             "$ref": "common.schema.json#/$defs/id"
+          },
+          "source_location": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "page": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "sheet": {
+                "type": "string"
+              },
+              "slide": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "cell_range": {
+                "type": "string"
+              }
+            }
+          },
+          "total_rows": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "строк в источнике до усечения"
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "rows усечены до предела импорта; total_rows хранит полное число"
           }
         },
         "required": [
@@ -510,6 +615,75 @@
           "thesis_hint": {
             "type": "string"
           }
+        }
+      }
+    },
+    "import_meta": {
+      "type": "object",
+      "description": "Как был собран пакет: версии импортёра и парсеров, ключ кэша, попадания в кэш разбора файлов, вызовы модели для уточнения контекста фактов",
+      "additionalProperties": false,
+      "required": [
+        "importer",
+        "import_key"
+      ],
+      "properties": {
+        "importer": {
+          "$ref": "common.schema.json#/$defs/version_ref"
+        },
+        "parsers": {
+          "type": "object",
+          "description": "версия парсера по формату: docx, xlsx, csv, pdf, markdown, text, pptx, image",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "import_key": {
+          "type": "string",
+          "description": "sha256 от sha256 файлов в их порядке, параметров разбора и версий парсеров; бриф в ключ не входит — его смена не перечитывает файлы"
+        },
+        "cache": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "files_hit": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "files_missed": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/version_ref"
+          }
+        },
+        "prompts": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/version_ref"
+          }
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/model_ref"
+          }
+        },
+        "model_calls": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "запросов к модели для уточнения контекста фактов"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "created_at": {
+          "$ref": "common.schema.json#/$defs/timestamp"
         }
       }
     }

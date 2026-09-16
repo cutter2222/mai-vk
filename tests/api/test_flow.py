@@ -10,6 +10,8 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 from presentation_designer.contracts import models as m
+from presentation_designer.pipeline.gc import live_sets
+from presentation_designer.pipeline.jobs import Orchestrator
 
 PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -39,7 +41,7 @@ def test_health_and_capabilities(client: TestClient) -> None:
     assert health["status"] == "ok"
     assert health["workers"]["generation"] >= 1
     caps = client.get("/api/capabilities").json()
-    assert caps["contracts_version"] == "1.2"
+    assert caps["contracts_version"] == "1.5"
     assert caps["execution_mode"]["mode"] == "stub"
     assert caps["execution_mode"]["layers"]["brief"] == "stub"
     assert caps["limits"]["max_project_files"] > 0
@@ -372,6 +374,55 @@ def test_events_and_delete(client: TestClient) -> None:
     assert client.delete(f"/api/projects/{project_id}").status_code == 204
     assert client.get(f"/api/projects/{project_id}").status_code == 404
     assert client.get(f"/api/projects/{project_id}/events").status_code == 404
+
+
+def test_template_library_and_delete(
+    client: TestClient, orchestrator: Orchestrator, pptx_bytes: bytes
+) -> None:
+    """Список библиотеки несёт миниатюру и число композиций; удаление убирает строку
+    и миниатюры, проект и файл теряют ссылку, генерации остаются."""
+    project_id = _project(client)
+    tpl = _upload(client, project_id, "Корпоративный шаблон.pptx", pptx_bytes, PPTX_MIME)
+    template_id = client.post("/api/templates", json={"file_id": tpl["file_id"]}).json()[
+        "template_id"
+    ]
+    client.patch(f"/api/projects/{project_id}", json={"template_id": template_id})
+    client.post(
+        f"/api/projects/{project_id}/events",
+        json={"role": "assistant", "kind": "template_card", "template_id": template_id},
+    )
+
+    item = next(i for i in client.get("/api/templates").json() if i["template_id"] == template_id)
+    detail = client.get(f"/api/templates/{template_id}").json()
+    assert item["status"] == "succeeded"
+    assert item["pattern_count"] == len(detail["profile"]["patterns"])
+    assert item["preview"] in detail["previews"]
+    assert client.get(f"/api/templates/{template_id}/assets/{item['preview']}").status_code == 200
+    previews_dir = orchestrator.artifacts.template_dir(template_id)
+    assert previews_dir.is_dir()
+
+    assert client.delete(f"/api/templates/{template_id}").status_code == 204
+    assert client.get(f"/api/templates/{template_id}").status_code == 404
+    assert client.delete(f"/api/templates/{template_id}").status_code == 404
+    assert all(i["template_id"] != template_id for i in client.get("/api/templates").json())
+    assert not previews_dir.exists()
+    project = client.get(f"/api/projects/{project_id}").json()
+    assert project.get("template_id") is None
+    assert project["files"][0]["kind"] == "template"
+    assert project["files"][0].get("template_id") is None
+    # Лента проекта хранит историю: карточка шаблона остаётся, интерфейс покажет её удалённой.
+    assert project["events"][0]["template_id"] == template_id
+    # Задание анализа без шаблона — сирота для сборки мусора, байты файла живы через проект.
+    live = live_sets(orchestrator.state.gc_snapshot())
+    assert detail["job_id"] not in live["jobs"]
+    assert tpl["sha256"] in live["blobs"]
+
+    # Те же байты снова — новый шаблон с новым анализом, а не запись из кэша.
+    r = client.post("/api/templates", json={"file_id": tpl["file_id"]})
+    assert r.status_code == 202 and r.json()["cached"] is False
+    assert r.json()["template_id"] != template_id
+    files = client.get(f"/api/projects/{project_id}").json()["files"]
+    assert files[0]["template_id"] == r.json()["template_id"]
 
 
 def test_multipart_cli_paths(client: TestClient, pptx_bytes: bytes, xlsx_bytes: bytes) -> None:

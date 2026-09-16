@@ -13,7 +13,8 @@ data
 artifacts
 runs
 deploy
-examples
+examples/*
+!examples/content
 scripts
 tests/*
 !tests/fixtures

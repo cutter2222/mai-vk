@@ -2,13 +2,14 @@
 # например PD_LIMITS__MAX_UPLOAD_MB=200. Загрузчик: presentation_designer.shared.settings.
 app:
   name: presentation-designer
-  contracts_version: "1.2"
+  contracts_version: "1.5"
   language_default: ru
 
 paths:
   data_dir: data            # загрузки, состояние, кэш
   artifacts_dir: artifacts  # результаты заданий по ревизиям
   runs_dir: runs            # трассы и отчёты прогонов
+  backups_dir: backups      # резервные копии (deploy/backup.sh)
   organizers_dir: data/organizers
 
 limits:
@@ -31,6 +32,7 @@ timeouts:
   stage_audit_s: 180
   render_convert_s: 90      # одна конвертация LibreOffice
   llm_call_s: 90
+  brief_s: 8                # извлечение брифа из сообщения чата: модель без рассуждения, при ошибке эвристика
 
 budget:
   target_total_s: 240       # FRAMEWORKS.md §15: цель, не измеренный результат
@@ -47,14 +49,51 @@ queue:
   reconcile_interval_s: 60  # сверка заданий без живого исполнителя
 
 execution:
-  mode: stub                # stub | real: какие реализации слоёв подключены (этапы 4–10 включают real)
+  mode: real                # stub | real: real включает реализованные слои (этап 5: parsing.template),
+                            # остальные остаются заглушками с отметкой stub (режим mixed)
   stub_stage_delay_ms: 400  # заглушки имитируют работу этапа, чтобы прогресс был виден
 
+content_import:             # импорт содержания (parsing/content)
+  cache_dir: data/import-cache  # разбор каждого файла по sha256, версии парсера и параметрам; бриф в ключ не входит
+  max_block_chars: 2000     # длиннее абзацы делятся на несколько блоков
+  max_dataset_rows: 200     # строк набора данных в пакете; остальное — total_rows и truncated
+  max_facts: 300            # кандидатов фактов на пакет
+  max_assets: 40            # изображений на пакет
+  min_image_px: 64          # меньшие картинки (разделители, маркеры) в ресурсы не попадают
+  fact_context_model: true  # неоднозначный контекст фактов уточняет модель (скилл content_importer)
+  fact_context_budget_s: 20 # бюджет всех запросов модели внутри импорта (этап stage_story_s делится с планом)
+
+plan:                       # планы трёх вариантов (generation/variants)
+  cache_dir: data/plan-cache  # готовые SlidePlan по ключу: StoryPlan, профиль и шрифты, настройки, версии скилла
+  packet_theses: 5          # тезисов в одном запросе модели; пакеты варианта идут параллельно под лимитером
+  candidates_per_thesis: 3  # сколько композиций предлагать модели на тезис
+  max_candidates: 16        # предел списка композиций в запросе
+  min_font_ratio: 0.75      # лестница ёмкости: кегль уменьшается не более чем до этой доли исходного
+  min_body_pt: 12           # и не ниже этих кеглей по роли текста
+  min_title_pt: 20
+  table_max_rows: 7         # строк таблицы на слайде; большие наборы данных планировщик делит между слайдами
+  margin_ratio: 0.92        # запас измерения текста, как в анализе шаблона
+
+layout:                     # вёрстка PPTX (layout/compose)
+  prune_unused_layouts: false  # удалять макеты, которые не использует ни один слайд результата:
+                            # файл меньше, но набор макетов в PowerPoint у пользователя меняется
+
 render:
-  slots: 2                  # одновременных конвертаций LibreOffice на сервере
+  slots: 2                  # одновременных конвертаций LibreOffice: по замерам 0A LibreOffice берёт
+                            # до 1,1 ГБ на шаблоне ЛЦТ, на сервере с 3,9 ГБ третий слот не выделять
   thumbnail_width_px: 1280
   vlm_image_max_px: 1024
   mode: process_per_convert # или uno_pool, по замерам этапа 9
+
+retention:                  # сборка мусора: периодическая задача воркера анализа (pipeline/gc.py)
+  gc_interval_s: 3600       # как часто API ставит задачу сборки мусора в очередь analysis
+  upload_tmp_hours: 6       # обрывки незавершённых загрузок в data/uploads/tmp
+  unreferenced_uploads_hours: 24  # файлы без ссылок из проектов, шаблонов и пакетов
+  orphan_jobs_hours: 24     # задания, пакеты и их артефакты без ссылок из проектов
+                            # (срок считается с момента, когда сборка мусора впервые нашла сироту)
+
+backup:
+  keep: 7                   # сколько последних резервных копий хранить в backups/
 
 audit:
   contextual_enabled: true
@@ -72,9 +111,17 @@ audit:
     guide_tolerance: 0.005
 
 llm:
-  cache_mode: read_write    # off | read | record | replay | read_write
-  cache_dir: data/llm-cache
-  concurrency: 4            # одновременных запросов с одного воркера; общий лимит в Valkey
+  cache_mode: read_write    # эксплуатационный кэш: off | read | read_write; тестовые записи: record | replay
+  cache_dir: data/llm-cache # ключ = содержимое запроса и картинок, провайдер, модель и ревизия, версия промпта
+                            # и схемы, параметры; в резервную копию не входит, сборка мусора его не трогает
+  fixtures_dir: tests/fixtures/llm  # записи для replay в тестах; закрытые материалы сюда не попадают
+  concurrency: 4            # умолчания лимитера, пока в models.yaml нет измеренных limits провайдера
   rpm: 60
   tpm: 200000
-  max_retries: 3
+  max_retries: 3            # свои повторы (429, сеть, 5xx, негодный ответ); повторы SDK выключены
+  retry_base_s: 1.0
+  retry_max_s: 30.0
+  lease_ttl_s: 180          # аренда лимитера истекает сама, если воркер упал (>= llm_call_s + запас)
+  quota_wait_max_s: 120     # предел ожидания квоты одним запросом; deadline этапа может быть короче
+  chars_per_token: 3.0      # консервативная оценка токенов текста для резервирования до ответа
+  image_tokens: 1280        # оценка токенов одного изображения (миниатюра до 1024 px)

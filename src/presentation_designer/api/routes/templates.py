@@ -1,11 +1,11 @@
-"""Шаблоны: загрузка (multipart или file_id проекта), список, профиль, превью."""
+"""Шаблоны: загрузка (multipart или file_id проекта), список, профиль, превью, удаление."""
 
 from __future__ import annotations
 
 import json
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Response
 from fastapi.responses import FileResponse
 from starlette.datastructures import UploadFile
 
@@ -88,9 +88,18 @@ def list_templates(orch: Orch) -> list[dict[str, Any]]:
             "status": t["status"],
             "created_at": t["created_at"],
         }
-        stats = (t.get("profile") or {}).get("stats") or {}
+        profile = t.get("profile") or {}
+        stats = profile.get("stats") or {}
         if stats.get("slides"):
             item["slide_count"] = stats["slides"]
+        if profile.get("patterns") is not None:
+            item["pattern_count"] = len(profile["patterns"])
+        # Миниатюра для карточки библиотеки: первый образец профиля, иначе первый рендер файла.
+        previews = t.get("previews") or []
+        if t["status"] == "succeeded" and previews:
+            patterns = profile.get("patterns", [])
+            first = next((p["preview_path"] for p in patterns if p.get("preview_path")), None)
+            item["preview"] = first if first in previews else previews[0]
         out.append(item)
     return out
 
@@ -101,6 +110,17 @@ def get_template(template_id: str, orch: Orch) -> dict[str, Any]:
         return template_detail(orch.state, orch.state.get_template(template_id))
     except NotFound as e:
         raise ApiError(404, "template_not_found", "Шаблон не найден") from e
+
+
+@router.delete("/templates/{template_id}", status_code=204)
+def delete_template(template_id: str, orch: Orch) -> Response:
+    """Убирает шаблон из библиотеки. Проекты, которые на него ссылались, остаются без шаблона;
+    их генерации и файлы не трогаются."""
+    try:
+        orch.delete_template(template_id)
+    except NotFound as e:
+        raise ApiError(404, "template_not_found", "Шаблон не найден") from e
+    return Response(status_code=204)
 
 
 @router.get("/templates/{template_id}/assets/{name:path}")

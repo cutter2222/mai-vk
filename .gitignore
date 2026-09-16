@@ -45,6 +45,7 @@ test-results/
 /data/
 /artifacts/
 /runs/
+/backups/
 /logs/
 /tmp/
 .cache/

@@ -75,7 +75,7 @@ module = "presentation_designer.contracts.models"
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-module = ["pptx.*", "pdfplumber.*", "pypdfium2.*", "docx.*", "openpyxl.*", "markdown_it.*", "fontTools.*", "rq.*"]
+module = ["pptx.*", "lxml.*", "pdfplumber.*", "pypdfium2.*", "docx.*", "openpyxl.*", "markdown_it.*", "fontTools.*", "rq.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

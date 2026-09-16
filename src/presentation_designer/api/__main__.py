@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 
 import uvicorn
@@ -13,6 +14,11 @@ def main() -> None:
     parser.add_argument("--host", default=os.environ.get("PD_API_HOST", "0.0.0.0"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("PD_API_PORT", "8000")))
     args = parser.parse_args()
+    # Логи приложения (сверка, сборка мусора) — в stdout контейнера рядом с логами uvicorn.
+    logging.basicConfig(
+        level=os.environ.get("PD_LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
     uvicorn.run(
         "presentation_designer.api.app:create_app",
         factory=True,

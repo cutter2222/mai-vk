@@ -188,3 +188,37 @@ class ArtifactStore:
 
     def delete_job(self, job_id: str) -> None:
         shutil.rmtree(self.job_dir(job_id), ignore_errors=True)
+
+    # ---------- обход для сборки мусора и резервных копий ----------
+
+    KINDS = ("jobs", "templates", "packages")
+
+    def list_dirs(self, kind: str) -> list[str]:
+        """Имена опубликованных каталогов вида jobs/templates/packages; временные
+        (`.…tmp`) не считаются."""
+        base = self.root / kind
+        if not base.is_dir():
+            return []
+        return sorted(p.name for p in base.iterdir() if p.is_dir() and not p.name.startswith("."))
+
+    def delete_dir(self, kind: str, name: str) -> int:
+        """Удаляет каталог артефактов; возвращает освобождённые байты."""
+        if kind not in self.KINDS or not name or name.startswith(".") or "/" in name:
+            raise ValueError(f"{kind}/{name}")
+        path = self.root / kind / name
+        size = dir_size(path)
+        shutil.rmtree(path, ignore_errors=True)
+        return size
+
+
+def dir_size(path: pathlib.Path) -> int:
+    total = 0
+    if not path.exists():
+        return 0
+    for p in path.rglob("*"):
+        try:
+            if p.is_file() and not p.is_symlink():
+                total += p.stat().st_size
+        except OSError:
+            continue
+    return total

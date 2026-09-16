@@ -361,6 +361,33 @@ class FallbackElement(BaseModel):
     fallback: Literal["raster_from_render", "omitted"] | None = None
 
 
+class Font1(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    family: str
+    available_in_renderer: bool | None = None
+    fallback: str | None = None
+    embedded: bool | None = None
+
+
+class Stats(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    slides: int | None = None
+    objects: int | None = None
+    text_objects: int | None = None
+    pictures: int | None = None
+    tables: int | None = None
+    charts: int | None = None
+    diagrams: int | None = None
+    removed_objects: int | None = None
+    layouts_kept: int | None = None
+    layouts_removed: int | None = None
+    file_size_bytes: int | None = None
+
+
 class SlideCount1(BaseModel):
     min: int | None = Field(None, ge=1)
     max: int | None = Field(None, ge=1)
@@ -380,6 +407,22 @@ class Brief1(BaseModel):
     must_include: list[str] | None = None
     avoid: list[str] | None = None
     notes: str | None = None
+
+
+class Units(BaseModel):
+    """
+    сколько единиц содержания разобрано: страниц, листов, слайдов, таблиц, изображений
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    pages: int | None = Field(None, ge=0)
+    sheets: int | None = Field(None, ge=0)
+    slides: int | None = Field(None, ge=0)
+    tables: int | None = Field(None, ge=0)
+    images: int | None = Field(None, ge=0)
+    chars: int | None = Field(None, ge=0)
 
 
 class Source(BaseModel):
@@ -408,6 +451,39 @@ class Source(BaseModel):
     file_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
     файл проекта, из которого извлечён источник; отсутствует у брифа и внешних ссылок
+    """
+    parser: VersionRef | None = None
+    """
+    парсер, разобравший файл: имя и версия входят в ключ кэша импорта
+    """
+    units: Units | None = None
+    """
+    сколько единиц содержания разобрано: страниц, листов, слайдов, таблиц, изображений
+    """
+
+
+class SourceLocation(BaseModel):
+    """
+    Место блока в источнике
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    page: int | None = Field(None, ge=1)
+    sheet: str | None = None
+    slide: int | None = Field(None, ge=1)
+    """
+    номер слайда материала-презентации
+    """
+    cell_range: str | None = None
+    """
+    например A1:C4
+    """
+    char_offset: int | None = Field(None, ge=0)
+    notes: bool | None = None
+    """
+    текст из заметок докладчика
     """
 
 
@@ -438,6 +514,14 @@ class Block(BaseModel):
     """
     importance: Literal["must", "should", "could"] | None = None
     tags: list[str] | None = None
+    source_location: SourceLocation | None = None
+    """
+    Место блока в источнике
+    """
+    caption: str | None = None
+    """
+    подпись таблицы или рисунка из источника
+    """
 
 
 class Context(BaseModel):
@@ -467,7 +551,7 @@ class Context(BaseModel):
     """
 
 
-class SourceLocation(BaseModel):
+class SourceLocation1(BaseModel):
     """
     Точное место в источнике
     """
@@ -542,7 +626,7 @@ class Fact(BaseModel):
     """
     Что именно измеряет факт. «Рост выручки на 25 %» и «рост прибыли на 25 %» различаются контекстом, а не значением.
     """
-    source_location: SourceLocation | None = None
+    source_location: SourceLocation1 | None = None
     """
     Точное место в источнике
     """
@@ -570,12 +654,24 @@ class Asset1(BaseModel):
     """
     Стабильный идентификатор. Не содержит пробелов и путей.
     """
+    sha256: str | None = None
+    mime: str | None = None
 
 
 class Column(BaseModel):
     name: str
     type: Literal["string", "number", "date", "percent", "money"]
     unit: str | None = None
+
+
+class SourceLocation2(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    page: int | None = Field(None, ge=1)
+    sheet: str | None = None
+    slide: int | None = Field(None, ge=1)
+    cell_range: str | None = None
 
 
 class Dataset(BaseModel):
@@ -594,6 +690,15 @@ class Dataset(BaseModel):
     """
     Стабильный идентификатор. Не содержит пробелов и путей.
     """
+    source_location: SourceLocation2 | None = None
+    total_rows: int | None = Field(None, ge=0)
+    """
+    строк в источнике до усечения
+    """
+    truncated: bool | None = None
+    """
+    rows усечены до предела импорта; total_rows хранит полное число
+    """
 
 
 class MissingDatum(BaseModel):
@@ -605,12 +710,49 @@ class MissingDatum(BaseModel):
     thesis_hint: str | None = None
 
 
-class ContentPackage(BaseModel):
+class Cache(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    files_hit: int | None = Field(None, ge=0)
+    files_missed: int | None = Field(None, ge=0)
+
+
+class ImportMeta(BaseModel):
     """
-    Результат слоя импорта содержания. Два входа: контент-пакет (файлы) и краткий бриф с назначением. Факты и наборы данных извлекаются детерминированно до вызова модели. Версия 1.2: источник ссылается на файл проекта (file_id), вид pptx для материалов-презентаций, неполный бриф дополняется умолчаниями с предупреждением brief_incomplete. Версия 1.1: контекст факта (показатель, период, субъект, единица, исходный фрагмент или ячейка), производные показатели с формулой, отметка неопределённости.
+    Как был собран пакет: версии импортёра и парсеров, ключ кэша, попадания в кэш разбора файлов, вызовы модели для уточнения контекста фактов
     """
 
-    schema_version: Literal["1.2"]
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    importer: VersionRef
+    parsers: dict[str, str] | None = None
+    """
+    версия парсера по формату: docx, xlsx, csv, pdf, markdown, text, pptx, image
+    """
+    import_key: str
+    """
+    sha256 от sha256 файлов в их порядке, параметров разбора и версий парсеров; бриф в ключ не входит — его смена не перечитывает файлы
+    """
+    cache: Cache | None = None
+    skills: list[VersionRef] | None = None
+    prompts: list[VersionRef] | None = None
+    models: list[ModelRef] | None = None
+    model_calls: int | None = Field(None, ge=0)
+    """
+    запросов к модели для уточнения контекста фактов
+    """
+    duration_ms: int | None = Field(None, ge=0)
+    created_at: AwareDatetime | None = None
+
+
+class ContentPackage(BaseModel):
+    """
+    Результат слоя импорта содержания. Два входа: контент-пакет (файлы) и краткий бриф с назначением. Факты и наборы данных извлекаются детерминированно до вызова модели. Версия 1.3 (этап 6): import_meta с версиями парсеров, ключом кэша и вызовами модели; у источников parser и число единиц (страниц, листов, слайдов); у блоков source_location и caption; у ресурсов sha256 и mime; у наборов данных source_location, total_rows и truncated. Версия 1.2: источник ссылается на файл проекта (file_id), вид pptx для материалов-презентаций, неполный бриф дополняется умолчаниями с предупреждением brief_incomplete. Версия 1.1: контекст факта (показатель, период, субъект, единица, исходный фрагмент или ячейка), производные показатели с формулой, отметка неопределённости.
+    """
+
+    schema_version: Literal["1.3"]
     package_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
     Стабильный идентификатор. Не содержит пробелов и путей.
@@ -639,6 +781,10 @@ class ContentPackage(BaseModel):
     missing_data: list[MissingDatum] | None = None
     """
     Данные, которых не хватает для брифа: не выдумываются, а помечаются
+    """
+    import_meta: ImportMeta | None = None
+    """
+    Как был собран пакет: версии импортёра и парсеров, ключ кэша, попадания в кэш разбора файлов, вызовы модели для уточнения контекста фактов
     """
 
 
@@ -789,7 +935,7 @@ class CostEstimate(BaseModel):
     amount: float | None = None
 
 
-class Cache(BaseModel):
+class Cache1(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -815,7 +961,7 @@ class Timeline(BaseModel):
     all_variants_audited_ms: int | None = None
 
 
-class Font1(BaseModel):
+class Font2(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -835,7 +981,7 @@ class Versions(BaseModel):
     models: list[ModelRef]
     renderer: VersionRef | None = None
     analyzer: VersionRef | None = None
-    fonts: list[Font1] | None = None
+    fonts: list[Font2] | None = None
     contracts: str | None = None
     """
     версия контрактов, например 1.1
@@ -1022,7 +1168,7 @@ class Story(BaseModel):
 
 class SlideCount3(BaseModel):
     """
-    Требование к числу слайдов, унаследованное из запроса: точное число или диапазон; план обязан ему соответствовать
+    Требование к числу слайдов, унаследованное из запроса: точное число или диапазон; план обязан ему соответствовать. target — целевое число слайдов варианта внутри диапазона (compact ближе к min, detailed к max)
     """
 
     model_config = ConfigDict(
@@ -1031,6 +1177,7 @@ class SlideCount3(BaseModel):
     exact: int | None = Field(None, ge=1)
     min: int | None = Field(None, ge=1)
     max: int | None = Field(None, ge=1)
+    target: int | None = Field(None, ge=1)
 
 
 class CoveredItem(BaseModel):
@@ -1071,6 +1218,34 @@ class Comparison(BaseModel):
     text_chars_total: int | None = None
 
 
+class SlideCount4(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    exact: int | None = Field(None, ge=1)
+    min: int | None = Field(None, ge=1)
+    max: int | None = Field(None, ge=1)
+
+
+class EffectiveBrief(BaseModel):
+    """
+    бриф и явные настройки запроса, применённые до построения плана; смена любого поля меняет content_hash
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    purpose: Literal["feature", "product", "project", "initiative", "report", "other"] | None = None
+    title: str | None = None
+    audience: str | None = None
+    goal: str | None = None
+    language: str | None = None
+    tone: str | None = None
+    must_include: list[str] | None = None
+    avoid: list[str] | None = None
+    slide_count: SlideCount4 | None = None
+
+
 class AllowedReduction(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1094,6 +1269,37 @@ class AllowedReduction(BaseModel):
     note: str | None = None
 
 
+class MustKeepFacts(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    total: int = Field(..., ge=0)
+    covered: int = Field(..., ge=0)
+
+
+class MustIncludeItem(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    item: str
+    thesis_ids: list[Id]
+
+
+class Coverage2(BaseModel):
+    """
+    покрытие обязательного содержания тезисами: проверяется кодом до вёрстки
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    must_keep_facts: MustKeepFacts | None = None
+    must_include: list[MustIncludeItem] | None = None
+    """
+    пункты brief.must_include и тезисы, которые их раскрывают; пустой список тезисов — пункт не покрыт
+    """
+
+
 class SourceFile(BaseModel):
     name: str
     size_bytes: int
@@ -1109,7 +1315,7 @@ class Master(BaseModel):
     theme_name: str | None = None
 
 
-class Stats(BaseModel):
+class Stats1(BaseModel):
     slides: int
     layouts: int
     masters: int
@@ -1311,6 +1517,10 @@ class Event(BaseModel):
     """
     understood: list[str] | None = None
     missing_purpose: bool | None = None
+    brief_source: Literal["model", "heuristic"] | None = None
+    """
+    для brief_card: чем извлечён бриф из сообщения — моделью или детерминированными правилами (резерв)
+    """
 
 
 class SettingsDraft(BaseModel):
@@ -1606,6 +1816,9 @@ class Picture(BaseModel):
     crop: Crop | None = None
     natural_width_px: int | None = None
     natural_height_px: int | None = None
+    fit: Literal["cover", "contain", "as_is"] | None = None
+    origin: Literal["template", "content", "generated", "icon_library"] | None = None
+    recolored: bool | None = None
 
 
 class Table(BaseModel):
@@ -1619,6 +1832,11 @@ class Table(BaseModel):
     Стабильный идентификатор. Не содержит пробелов и путей.
     """
     header_row: bool | None = None
+    row_offset: int | None = Field(None, ge=0)
+    truncated: bool | None = None
+    """
+    набор данных не поместился целиком на этот слайд
+    """
 
 
 class Chart(BaseModel):
@@ -1636,6 +1854,11 @@ class Chart(BaseModel):
     has_axis_titles: bool | None = None
     has_data_labels: bool | None = None
     units: str | None = None
+    categories_count: int | None = None
+    built: Literal["replaced", "rebuilt", "added"] | None = None
+    """
+    replaced — данные подставлены в диаграмму образца; rebuilt — образец заменён новой; added — построена на месте картинки или плейсхолдера
+    """
 
 
 class Fill(BaseModel):
@@ -1661,48 +1884,31 @@ class Line(BaseModel):
     width_pt: float | None = None
 
 
-class Object(BaseModel):
+class Fit(BaseModel):
+    """
+    измерение из плана (blocks[].fit): выбранный кегль и действие лестницы ёмкости
+    """
+
     model_config = ConfigDict(
         extra="forbid",
     )
-    object_id: str
+    size_pt: float | None = None
+    slot_size_pt: float | None = None
+    lines: int | None = None
+    max_lines: int | None = None
+    action: str | None = None
+
+
+class Diagram(BaseModel):
     """
-    p:cNvPr@id внутри слайда
+    схема из фигур: группа-контейнер и её узлы (не SmartArt)
     """
-    name: str | None = None
-    kind: Literal[
-        "text",
-        "picture",
-        "table",
-        "chart",
-        "shape",
-        "connector",
-        "group",
-        "placeholder_empty",
-        "other",
-    ]
-    bbox: Bbox
-    rotation_deg: float | None = None
-    z_order: int
-    group_path: list[str] | None = None
-    """
-    идентификаторы групп от внешней к внутренней
-    """
-    slot_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
-    """
-    слот плана, из которого пришло содержимое
-    """
-    source_object_id: str | None = None
-    """
-    объект образцового слайда шаблона
-    """
-    role: Literal["content", "fixed", "decoration", "background"] | None = None
-    text: Text | None = None
-    picture: Picture | None = None
-    table: Table | None = None
-    chart: Chart | None = None
-    fill: Fill | None = None
-    line: Line | None = None
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: str | None = None
+    node_ids: list[str] | None = None
 
 
 class Number(BaseModel):
@@ -1724,6 +1930,10 @@ class Table1(BaseModel):
     columns: list[str] | None = None
     max_rows: int | None = None
     highlight_row: int | None = None
+    row_offset: int | None = Field(None, ge=0)
+    """
+    с какой строки набора данных начинается таблица этого слайда; большие наборы планировщик делит между слайдами
+    """
 
 
 class Chart1(BaseModel):
@@ -1766,6 +1976,29 @@ class Image(BaseModel):
     """
     fit: Literal["cover", "contain"] | None = None
     alt: str | None = None
+
+
+class Fit1(BaseModel):
+    """
+    Измерение текста блока по метрикам шрифта после подстановки фактов: выбранный кегль и что сделала лестница ёмкости
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    size_pt: float = Field(..., ge=1.0)
+    """
+    кегль, с которым текст помещается; равен кеглю слота, если уменьшать не пришлось
+    """
+    slot_size_pt: float | None = Field(None, ge=1.0)
+    lines: int = Field(..., ge=0)
+    max_lines: int = Field(..., ge=0)
+    chars: int | None = Field(None, ge=0)
+    action: Literal["as_is", "pattern_swap", "font_step", "shortened", "split", "overflow"]
+    """
+    overflow — текст не помещается и после лестницы; такой план не выдаётся при точном числе слайдов
+    """
+    note: str | None = None
 
 
 class RuleScope(BaseModel):
@@ -2190,7 +2423,7 @@ class Metrics1(BaseModel):
     суммарное ожидание лимитера провайдера
     """
     retries: int | None = None
-    cache: Cache | None = None
+    cache: Cache1 | None = None
     timeline: Timeline | None = None
     """
     ключевые моменты от принятия задания
@@ -2321,13 +2554,13 @@ class JobStatus(BaseModel):
 
 class Project(BaseModel):
     """
-    Проект — одна презентация: выбранный шаблон, файлы, бриф, настройки, задание генерации и лента событий чата. Серверная сущность: интерфейс восстанавливает проект по идентификатору из URL. Карточки ленты ссылаются на шаблоны, пакеты, задания и файлы по идентификаторам и не дублируют данные. Версия 1.2.
+    Проект — одна презентация: выбранный шаблон, файлы, бриф, настройки, задание генерации и лента событий чата. Серверная сущность: интерфейс восстанавливает проект по идентификатору из URL. Карточки ленты ссылаются на шаблоны, пакеты, задания и файлы по идентификаторам и не дублируют данные. Версия 1.3 (этап 6): карточка брифа хранит источник извлечения (модель или правила). Версия 1.2: серверная сущность проекта.
     """
 
     model_config = ConfigDict(
         extra="forbid",
     )
-    schema_version: Literal["1.2"]
+    schema_version: Literal["1.3"]
     project_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
     Стабильный идентификатор. Не содержит пробелов и путей.
@@ -2359,13 +2592,13 @@ class Project(BaseModel):
 
 class StoryPlan(BaseModel):
     """
-    Общий смысловой план презентации, создаётся один раз из ContentPackage и не зависит от шаблона и геометрии. Три SlidePlan ссылаются на него и обязаны покрыть все обязательные тезисы. Поля ограничены разделом 16 FRAMEWORKS.md; детали добавляются версией 1.2 на этапе 6.
+    Общий смысловой план презентации, создаётся один раз из ContentPackage и не зависит от шаблона и геометрии. Три SlidePlan ссылаются на него и обязаны покрыть все обязательные тезисы. Версия 1.2 (этап 6): effective_brief — бриф и явные настройки запроса, применённые до построения плана (язык, аудитория, цель, обязательные тезисы, ограничения, число слайдов); coverage — покрытие обязательных фактов и пунктов брифа тезисами; content_hash считается по нормализованному содержанию пакета, effective_brief, модели, промпту и схеме, без идентификаторов заданий и времени.
     """
 
     model_config = ConfigDict(
         extra="forbid",
     )
-    schema_version: Literal["1.1"]
+    schema_version: Literal["1.2"]
     story_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
     Стабильный идентификатор. Не содержит пробелов и путей.
@@ -2376,12 +2609,16 @@ class StoryPlan(BaseModel):
     """
     content_hash: str
     """
-    sha256 нормализованного содержания ContentPackage; ключ кэша StoryPlan вместе с версией промпта
+    sha256 нормализованного содержания ContentPackage вместе с effective_brief, моделью, версией скилла/промпта и схемой ответа; ключ кэша StoryPlan. Не зависит от package_id, job_id и времени
     """
     language: str
     purpose: Literal["feature", "product", "project", "initiative", "report", "other"]
     audience: str | None = None
     goal: str | None = None
+    effective_brief: EffectiveBrief | None = None
+    """
+    бриф и явные настройки запроса, применённые до построения плана; смена любого поля меняет content_hash
+    """
     key_takeaway: str
     """
     главный вывод всей презентации одним предложением
@@ -2395,40 +2632,12 @@ class StoryPlan(BaseModel):
     """
     допущения режима брифа, отделённые от подтверждённых данных
     """
+    coverage: Coverage2 | None = None
+    """
+    покрытие обязательного содержания тезисами: проверяется кодом до вёрстки
+    """
     generation_meta: GenerationMeta
     warnings: list[Warning] | None = None
-
-
-class Slide(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    slide_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
-    """
-    стабильный идентификатор из SlidePlan
-    """
-    index: int = Field(..., ge=0)
-    """
-    позиция в сохранённом файле
-    """
-    pptx_slide_part: str | None = None
-    """
-    например ppt/slides/slide3.xml
-    """
-    layout_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
-    """
-    Стабильный идентификатор. Не содержит пробелов и путей.
-    """
-    pattern_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
-    """
-    Стабильный идентификатор. Не содержит пробелов и путей.
-    """
-    source_slide_index: int | None = None
-    """
-    индекс образцового слайда шаблона, из которого клонирован
-    """
-    background: Background | None = None
-    objects: list[Object]
 
 
 class PaletteItem(BaseModel):
@@ -2454,7 +2663,7 @@ class Colors(BaseModel):
     palette: list[PaletteItem]
 
 
-class Font2(BaseModel):
+class Font3(BaseModel):
     family: str
     usage_count: int
     embedded: bool
@@ -2478,7 +2687,7 @@ class ScaleItem(BaseModel):
 
 class Typography(BaseModel):
     theme_fonts: ThemeFonts | None = None
-    fonts: list[Font2]
+    fonts: list[Font3]
     scale: list[ScaleItem]
     """
     типографическая шкала шаблона; кегли не из шкалы считаются нарушением
@@ -2551,6 +2760,70 @@ class Pattern(BaseModel):
     sequence_hints: SequenceHints | None = None
 
 
+class Object(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    object_id: str
+    """
+    p:cNvPr@id внутри слайда
+    """
+    name: str | None = None
+    kind: Literal[
+        "text",
+        "picture",
+        "table",
+        "chart",
+        "shape",
+        "connector",
+        "group",
+        "placeholder_empty",
+        "other",
+    ]
+    bbox: Bbox
+    rotation_deg: float | None = None
+    z_order: int
+    group_path: list[str] | None = None
+    """
+    идентификаторы групп от внешней к внутренней
+    """
+    slot_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    слот плана, из которого пришло содержимое
+    """
+    source_object_id: str | None = None
+    """
+    объект образцового слайда шаблона
+    """
+    role: Literal["content", "fixed", "decoration", "background"] | None = None
+    text: Text | None = None
+    picture: Picture | None = None
+    table: Table | None = None
+    chart: Chart | None = None
+    fill: Fill | None = None
+    line: Line | None = None
+    content_source: Literal["plan", "sample", "template", "generated"] | None = None
+    """
+    plan — содержимое из блока плана; sample — намеренно оставленный текст или картинка образца (крошечный слот, незаполненный слот изображения), аудит не считает его заглушкой; template — статика образца, макета или мастера; generated — объект, построенный композером (диаграмма, таблица, схема)
+    """
+    slot_kind: str | None = None
+    """
+    вид слота профиля, из которого пришёл объект
+    """
+    block_kind: str | None = None
+    """
+    вид блока плана; отличается от slot_kind у диаграммы в слоте image
+    """
+    fit: Fit | None = None
+    """
+    измерение из плана (blocks[].fit): выбранный кегль и действие лестницы ёмкости
+    """
+    diagram: Diagram | None = None
+    """
+    схема из фигур: группа-контейнер и её узлы (не SmartArt)
+    """
+
+
 class Item(BaseModel):
     text: str
     icon: Icon | None = None
@@ -2563,7 +2836,7 @@ class Item1(BaseModel):
     icon: Icon | None = None
 
 
-class Diagram(BaseModel):
+class Diagram1(BaseModel):
     """
     Схема из нативных фигур: замена SmartArt
     """
@@ -2577,7 +2850,7 @@ class Diagram(BaseModel):
 
 class BlockModel(BaseModel):
     """
-    Содержание одного слота. Ровно одно из полей содержания должно соответствовать kind слота.
+    Содержание одного слота. Ровно одно из полей содержания должно соответствовать kind слота; исключение — блок chart в слоте image паттерна с ролью chart.
     """
 
     slot_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
@@ -2616,23 +2889,151 @@ class BlockModel(BaseModel):
     """
     image: Image | None = None
     icon: Icon | None = None
-    diagram: Diagram | None = None
+    diagram: Diagram1 | None = None
     """
     Схема из нативных фигур: замена SmartArt
     """
     source_refs: list[Id] | None = None
     fact_refs: list[Id] | None = None
+    fit: Fit1 | None = None
+    """
+    Измерение текста блока по метрикам шрифта после подстановки фактов: выбранный кегль и что сделала лестница ёмкости
+    """
+
+
+class TemplateProfile(BaseModel):
+    """
+    Результат слоя парсинга: дизайн-система, фиксированные элементы, ресурсы и композиционные паттерны шаблона. Полный профиль читают вёрстка и аудит; в модель уходит только llm_digest и выдержки по выбранным паттернам. Версия 1.1: области действия правил, вычисленные стили с источником, геометрия групп и crop, ссылки на объекты слотов, статические и динамические элементы, параметры абзацев.
+    """
+
+    schema_version: Literal["1.1"]
+    template_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    template_hash: str
+    """
+    sha256 исходного файла; ключ кэша профиля вместе с analyzer.version
+    """
+    source_file: SourceFile
+    analyzer: VersionRef
+    created_at: AwareDatetime | None = None
+    slide_size: SlideSize
+    masters: list[Master] | None = None
+    layouts: list[Layout]
+    design_tokens: DesignTokens
+    guides: list[Guide] | None = None
+    fixed_elements: list[FixedElement]
+    assets: list[AssetModel]
+    patterns: list[Pattern]
+    guidelines: list[Guideline] | None = None
+    placeholder_markers: list[str] | None = None
+    """
+    Строки-заглушки, найденные в образцах шаблона: «Заголовок», «Текст», «Lorem ipsum», «ххх%», «Вставить фото». Используются при очистке и в проверке integrity.placeholder_text.
+    """
+    stats: Stats1
+    llm_digest: str | None = None
+    """
+    Компактное текстовое описание профиля для промптов: палитра, шрифты, шкала, список паттернов с ролями и ёмкостью. Ориентир не более 2000 токенов.
+    """
+    warnings: list[Warning] | None = None
+    sample_slides: list[SampleSlide] | None = None
+    """
+    Классификация каждого слайда шаблона: образец содержания, инструкция по оформлению, каталог ресурсов, пустой. Из паттернов исключаются все, кроме образцов.
+    """
+    dynamic_fields: list[DynamicField] | None = None
+    """
+    Поля, которые обновляются при смене порядка слайдов: номер слайда, дата, нумерация разделов
+    """
+
+
+class Slide(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    slide_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    стабильный идентификатор из SlidePlan
+    """
+    index: int = Field(..., ge=0)
+    """
+    позиция в сохранённом файле
+    """
+    pptx_slide_part: str | None = None
+    """
+    например ppt/slides/slide3.xml
+    """
+    layout_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    pattern_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    source_slide_index: int | None = None
+    """
+    индекс образцового слайда шаблона, из которого клонирован
+    """
+    background: Background | None = None
+    objects: list[Object]
+    title: str | None = None
+    """
+    заголовок слайда из плана
+    """
+    notes: str | None = None
+    source_slide_part: str | None = None
+    """
+    часть образца шаблона, из которой клонирован слайд
+    """
+    removed_object_ids: list[str] | None = None
+    """
+    объекты образца, удалённые при сборке: незаполненные карточки и слоты
+    """
+
+
+class SlideModel(BaseModel):
+    slide_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    order: int = Field(..., ge=1)
+    role: str | None = None
+    """
+    роль из TemplateProfile.pattern.role
+    """
+    pattern_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    title: str
+    """
+    заголовок-вывод, а не название темы
+    """
+    key_message: str | None = None
+    """
+    пересказ слайда одним предложением; используется аудитом
+    """
+    blocks: list[BlockModel]
+    notes: str | None = None
+    source_refs: list[Id] | None = None
+    fact_refs: list[Id] | None = None
+    thesis_refs: list[Id] | None = None
+    revision_note: str | None = None
+    """
+    что изменено исправлением относительно прошлой ревизии
+    """
 
 
 class ComposedDeck(BaseModel):
     """
-    Описание фактически собранного PPTX одного варианта: объекты, вычисленные стили, геометрия, порядок слоёв, ресурсы, связи со слотами плана и исходными слайдами шаблона. Строится слоем вёрстки по сохранённому файлу и используется аудитом, подсветкой и HTML-экспортом. Поля ограничены разделом 16 FRAMEWORKS.md; детали добавляются версией 1.2 на этапе 8.
+    Описание фактически собранного PPTX одного варианта: объекты, вычисленные стили, геометрия, порядок слоёв, ресурсы, связи со слотами плана и исходными слайдами шаблона. Строится слоем вёрстки по сохранённому файлу и используется аудитом, подсветкой и HTML-экспортом. Версия 1.2 (этап 8): composer и created_at, шрифты с подменой рендерера, статистика; у слайда заголовок, заметки, часть образца и удалённые объекты образца; у объекта content_source (содержимое из плана, оставленный текст образца, статика шаблона, построенный объект), вид слота и блока, fit из плана; у картинки режим вписывания и происхождение; у таблицы смещение строк и усечение; у диаграммы число категорий и способ построения.
     """
 
     model_config = ConfigDict(
         extra="forbid",
     )
-    schema_version: Literal["1.1"]
+    schema_version: Literal["1.2"]
     deck_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
     Стабильный идентификатор. Не содержит пробелов и путей.
@@ -2673,93 +3074,21 @@ class ComposedDeck(BaseModel):
     границы поддержки HTML-экспорта для этой колоды и причины резервного рендера
     """
     warnings: list[Warning] | None = None
-
-
-class TemplateProfile(BaseModel):
-    """
-    Результат слоя парсинга: дизайн-система, фиксированные элементы, ресурсы и композиционные паттерны шаблона. Полный профиль читают вёрстка и аудит; в модель уходит только llm_digest и выдержки по выбранным паттернам. Версия 1.1: области действия правил, вычисленные стили с источником, геометрия групп и crop, ссылки на объекты слотов, статические и динамические элементы, параметры абзацев.
-    """
-
-    schema_version: Literal["1.1"]
-    template_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
-    """
-    Стабильный идентификатор. Не содержит пробелов и путей.
-    """
-    template_hash: str
-    """
-    sha256 исходного файла; ключ кэша профиля вместе с analyzer.version
-    """
-    source_file: SourceFile
-    analyzer: VersionRef
+    composer: VersionRef | None = None
     created_at: AwareDatetime | None = None
-    slide_size: SlideSize
-    masters: list[Master] | None = None
-    layouts: list[Layout]
-    design_tokens: DesignTokens
-    guides: list[Guide] | None = None
-    fixed_elements: list[FixedElement]
-    assets: list[AssetModel]
-    patterns: list[Pattern]
-    guidelines: list[Guideline] | None = None
-    placeholder_markers: list[str] | None = None
+    fonts: list[Font1] | None = None
     """
-    Строки-заглушки, найденные в образцах шаблона: «Заголовок», «Текст», «Lorem ipsum», «ххх%», «Вставить фото». Используются при очистке и в проверке integrity.placeholder_text.
+    семейства шрифтов результата и подмена в рендерере (LibreOffice не использует встроенные шрифты)
     """
-    stats: Stats
-    llm_digest: str | None = None
-    """
-    Компактное текстовое описание профиля для промптов: палитра, шрифты, шкала, список паттернов с ролями и ёмкостью. Ориентир не более 2000 токенов.
-    """
-    warnings: list[Warning] | None = None
-    sample_slides: list[SampleSlide] | None = None
-    """
-    Классификация каждого слайда шаблона: образец содержания, инструкция по оформлению, каталог ресурсов, пустой. Из паттернов исключаются все, кроме образцов.
-    """
-    dynamic_fields: list[DynamicField] | None = None
-    """
-    Поля, которые обновляются при смене порядка слайдов: номер слайда, дата, нумерация разделов
-    """
-
-
-class SlideModel(BaseModel):
-    slide_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
-    """
-    Стабильный идентификатор. Не содержит пробелов и путей.
-    """
-    order: int = Field(..., ge=1)
-    role: str | None = None
-    """
-    роль из TemplateProfile.pattern.role
-    """
-    pattern_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
-    """
-    Стабильный идентификатор. Не содержит пробелов и путей.
-    """
-    title: str
-    """
-    заголовок-вывод, а не название темы
-    """
-    key_message: str | None = None
-    """
-    пересказ слайда одним предложением; используется аудитом
-    """
-    blocks: list[BlockModel]
-    notes: str | None = None
-    source_refs: list[Id] | None = None
-    fact_refs: list[Id] | None = None
-    thesis_refs: list[Id] | None = None
-    revision_note: str | None = None
-    """
-    что изменено исправлением относительно прошлой ревизии
-    """
+    stats: Stats | None = None
 
 
 class SlidePlan(BaseModel):
     """
-    План одного варианта презентации: порядок слайдов, выбранные паттерны и содержание каждого слота. Создаётся слоем генерации, проверяется по схеме и по ёмкости слотов до вёрстки. Версия 1.1: ссылка на StoryPlan, покрытие обязательных тезисов, точное число или диапазон слайдов, данные для сопоставления вариантов. Соответствие kind содержимому блока проверяется схемой (allOf/if) и валидаторами.
+    План одного варианта презентации: порядок слайдов, выбранные паттерны и содержание каждого слота. Создаётся слоем генерации, проверяется по схеме и по ёмкости слотов до вёрстки. Версия 1.2 (этап 7): у блоков fit — результат измерения текста по метрикам шрифта после подстановки фактов (выбранный кегль, строки, действие лестницы ёмкости); у таблиц row_offset — часть большого набора данных на этом слайде; у slide_count target — целевое число слайдов варианта внутри диапазона; блок chart допускается в слоте image паттерна с ролью chart (картинка диаграммы в образце заменяется нативной диаграммой). Версия 1.1: ссылка на StoryPlan, покрытие обязательных тезисов, точное число или диапазон слайдов, данные для сопоставления вариантов. Соответствие kind содержимому блока проверяется схемой (allOf/if) и валидаторами.
     """
 
-    schema_version: Literal["1.1"]
+    schema_version: Literal["1.2"]
     plan_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
     Стабильный идентификатор. Не содержит пробелов и путей.
@@ -2787,7 +3116,7 @@ class SlidePlan(BaseModel):
     """
     slide_count: SlideCount3
     """
-    Требование к числу слайдов, унаследованное из запроса: точное число или диапазон; план обязан ему соответствовать
+    Требование к числу слайдов, унаследованное из запроса: точное число или диапазон; план обязан ему соответствовать. target — целевое число слайдов варианта внутри диапазона (compact ближе к min, detailed к max)
     """
     coverage: Coverage1
     """

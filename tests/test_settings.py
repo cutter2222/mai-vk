@@ -8,7 +8,7 @@ from presentation_designer.shared import settings as s
 def test_settings_load_from_yaml() -> None:
     s.reset_cache()
     cfg = s.get_settings()
-    assert cfg.app.contracts_version == "1.2"
+    assert cfg.app.contracts_version == "1.5"
     assert cfg.limits.max_upload_mb == 100
     assert cfg.budget.hard_limit_s == 300
 
@@ -29,7 +29,8 @@ def test_models_config_roles_and_provider(monkeypatch: pytest.MonkeyPatch) -> No
     models = s.get_models_config()
     assert models.role("llm").license == "Apache-2.0"
     assert models.role("llm").params_b is not None and models.role("llm").params_b <= 35
-    assert models.role("llm").verified.by is None, "ориентир из ТЗ не выдаётся за проверенный"
+    assert models.role("llm").verified.by == "probe", "model ID подтверждён зондом 16.09.2026"
+    assert models.provider_for("llm").supports.json_schema is True
     provider = models.provider_for("llm")
     assert provider.base_url() == "https://example.invalid/v1"
     assert models.role("text_to_image").enabled is False

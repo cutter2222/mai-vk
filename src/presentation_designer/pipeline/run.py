@@ -87,12 +87,24 @@ class ImportInput:
 class ImportOutput:
     package: JsonDict
     warnings: list[JsonDict]
+    # Изображения пакета: путь из assets[].path → байты; публикуются в каталог пакета.
+    assets: dict[str, bytes] = field(default_factory=dict)
+    report: JsonDict = field(default_factory=dict)
 
 
 @dataclass
 class StoryInput:
     package: JsonDict
     settings: JsonDict
+
+
+@dataclass
+class BriefInput:
+    """Сообщение чата и текущий бриф/настройки проекта для извлечения брифа."""
+
+    text: str
+    brief: JsonDict | None = None
+    settings: JsonDict | None = None
 
 
 @dataclass
@@ -117,6 +129,8 @@ class ComposeInput:
     package: JsonDict
     story: JsonDict
     staging: Staging
+    # Каталог опубликованных ресурсов пакета (assets[].path относительно него); None — без картинок.
+    package_dir: pathlib.Path | None = None
 
 
 @dataclass
@@ -135,6 +149,8 @@ class ExportInput:
     slide_titles: list[str]
     deck_title: str
     slide_marks: dict[int, str] = field(default_factory=dict)
+    # ComposedDeck ревизии: текст слайдов для автономного HTML; заглушка его не читает.
+    composed_deck: JsonDict | None = None
 
 
 @dataclass
@@ -191,7 +207,19 @@ class Layers:
     def import_content(self, inp: ImportInput) -> ImportOutput:
         raise NotImplementedError
 
+    def import_version(self) -> str:
+        """Версия импортёра для идемпотентности пакета: смена парсеров даёт новый пакет."""
+        return "stub"
+
     def story(self, inp: StoryInput) -> JsonDict:
+        raise NotImplementedError
+
+    def story_key(self, inp: StoryInput) -> str:
+        """Смысловой ключ StoryPlan: по нему pipeline переиспользует готовый план."""
+        raise NotImplementedError
+
+    async def extract_brief(self, inp: BriefInput) -> JsonDict:
+        """Документ BriefExtract без schema_version; API вызывает с тайм-аутом."""
         raise NotImplementedError
 
     def plan(self, inp: PlanInput) -> JsonDict:
@@ -232,6 +260,7 @@ class VariantContext:
     staging: Staging
     revision: int = 1
     is_canceled: Callable[[], bool] = lambda: False
+    package_dir: pathlib.Path | None = None
 
 
 @dataclass
@@ -322,7 +351,9 @@ def run_variant(layers: Layers, ctx: VariantContext, emit: Emit) -> VariantOutco
                 resolve_slide_count(ctx.variant_id, ctx.settings),
             )
         )
-        outcome.stages.append(timer.done())
+        outcome.stages.append(
+            timer.done(cache_hit=bool((plan.get("generation_meta") or {}).get("cache_hit")))
+        )
 
         stage = "compose"
         _check_canceled(ctx, stage)
@@ -338,6 +369,7 @@ def run_variant(layers: Layers, ctx: VariantContext, emit: Emit) -> VariantOutco
                 ctx.package,
                 ctx.story,
                 ctx.staging,
+                package_dir=ctx.package_dir,
             )
         )
         outcome.slide_count = composed.slide_count
@@ -356,6 +388,7 @@ def run_variant(layers: Layers, ctx: VariantContext, emit: Emit) -> VariantOutco
                 ctx.staging,
                 composed.slide_titles,
                 outcome.deck_title,
+                composed_deck=composed.composed_deck,
             )
         )
         outcome.thumbnails = exported.thumbnails

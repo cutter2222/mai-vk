@@ -16,8 +16,9 @@ import os
 import pathlib
 import shutil
 import tempfile
+import time
 import zipfile
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from typing import BinaryIO, cast
 
@@ -142,6 +143,9 @@ class FileStore:
             final.parent.mkdir(parents=True, exist_ok=True)
             if final.exists():
                 tmp_path.unlink(missing_ok=True)
+                # Повторная загрузка тех же байтов обновляет время файла: это подсказка
+                # сборке мусора, что файл только что понадобился.
+                os.utime(final, None)
             else:
                 os.replace(tmp_path, final)
             return StoredFile(sha256=sha, size_bytes=size, path=final, format=fmt, check=check)
@@ -216,17 +220,44 @@ class FileStore:
             if bad is not None:
                 raise UploadError("zip_corrupt", f"Повреждён элемент архива: {bad}")
 
-    def remove(self, sha256: str) -> None:
-        self.path_for(sha256).unlink(missing_ok=True)
+    def remove(self, sha256: str) -> int:
+        """Удаляет файл хранилища; возвращает освобождённые байты."""
+        path = self.path_for(sha256)
+        try:
+            size = path.stat().st_size
+        except FileNotFoundError:
+            return 0
+        path.unlink(missing_ok=True)
+        return size
 
-    def cleanup_tmp(self) -> int:
-        """Удаляет обрывки неудачных загрузок; возвращает число удалённых файлов."""
+    def iter_blobs(self) -> Iterator[tuple[str, pathlib.Path]]:
+        """Все файлы хранилища (sha256, путь), без временного каталога."""
+        for bucket in sorted(self.root.iterdir()):
+            if not bucket.is_dir() or bucket.name == self.tmp.name or bucket.name.startswith("."):
+                continue
+            for path in sorted(bucket.iterdir()):
+                if path.is_file() and path.name.startswith(bucket.name):
+                    yield path.name, path
+
+    def cleanup_tmp(self, older_than_s: float | None = None) -> tuple[int, int]:
+        """Удаляет обрывки неудачных загрузок; при заданном сроке — только старше него.
+        Возвращает число удалённых файлов и освобождённые байты."""
         count = 0
+        freed = 0
+        threshold = time.time() - older_than_s if older_than_s is not None else None
         for item in self.tmp.iterdir():
-            if item.is_file():
-                item.unlink(missing_ok=True)
-                count += 1
-        return count
+            if not item.is_file():
+                continue
+            try:
+                stat = item.stat()
+            except FileNotFoundError:
+                continue
+            if threshold is not None and stat.st_mtime > threshold:
+                continue
+            item.unlink(missing_ok=True)
+            count += 1
+            freed += stat.st_size
+        return count, freed
 
     def copy_to(self, sha256: str, target: pathlib.Path) -> pathlib.Path:
         target.parent.mkdir(parents=True, exist_ok=True)

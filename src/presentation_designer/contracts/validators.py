@@ -69,6 +69,12 @@ def _fact_refs_in_text(text: str | None) -> set[str]:
     return set(FACT_REF.findall(text or ""))
 
 
+def _chart_in_image(pattern: m.Pattern, slot: m.Slot, block: m.BlockModel) -> bool:
+    """Картинка диаграммы в образце паттерна роли chart заменяется нативной диаграммой:
+    блок chart в слоте image допустим только там (slide_plan 1.2)."""
+    return pattern.role == "chart" and slot.kind == "image" and block.kind == "chart"
+
+
 # ----------------------------------------------------------------------------
 # GenerationRequest
 # ----------------------------------------------------------------------------
@@ -208,7 +214,11 @@ def check_slide_plan(
                         bpath,
                     )
                 )
-            elif pattern is not None and slots[sid].kind != b.kind:
+            elif (
+                pattern is not None
+                and slots[sid].kind != b.kind
+                and not _chart_in_image(pattern, slots[sid], b)
+            ):
                 out.append(
                     Violation(
                         "slot_kind_mismatch",

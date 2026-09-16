@@ -69,6 +69,7 @@ class EventCreate(BaseModel):
     job_id: str | None = None
     understood: list[str] | None = None
     missing_purpose: bool | None = None
+    brief_source: str | None = None
 
 
 class EventPatch(BaseModel):
@@ -83,7 +84,7 @@ class FilePatch(BaseModel):
 
 
 def _project_doc(project: dict[str, Any]) -> dict[str, Any]:
-    doc = {"schema_version": "1.2", **project}
+    doc = {"schema_version": "1.3", **project}
     return m.Project.model_validate(doc).model_dump(mode="json", exclude_none=True)
 
 

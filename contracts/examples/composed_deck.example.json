@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "deck_id": "deck_demo_balanced_r1",
   "job_id": "job_demo",
   "variant_id": "balanced",
@@ -70,6 +70,15 @@
               "bottom": 0.004
             },
             "autofit": "none"
+          },
+          "content_source": "plan",
+          "slot_kind": "title",
+          "fit": {
+            "size_pt": 32,
+            "slot_size_pt": 36,
+            "lines": 2,
+            "max_lines": 2,
+            "action": "font_step"
           }
         },
         {
@@ -105,7 +114,10 @@
             "fact_refs": [
               "f1"
             ]
-          }
+          },
+          "content_source": "plan",
+          "slot_kind": "number",
+          "block_kind": "number"
         },
         {
           "object_id": "5",
@@ -122,10 +134,19 @@
           "picture": {
             "asset_id": "asset_logo",
             "natural_width_px": 400,
-            "natural_height_px": 120
-          }
+            "natural_height_px": 120,
+            "origin": "template",
+            "fit": "as_is"
+          },
+          "content_source": "template"
         }
-      ]
+      ],
+      "source_slide_part": "ppt/slides/slide17.xml",
+      "removed_object_ids": [
+        "12",
+        "13"
+      ],
+      "title": "Пользователи теряют почти половину важных уведомлений"
     },
     {
       "slide_id": "s3",
@@ -154,7 +175,9 @@
               "f4",
               "f5"
             ]
-          }
+          },
+          "content_source": "plan",
+          "slot_kind": "title"
         },
         {
           "object_id": "20",
@@ -176,10 +199,17 @@
             "has_legend": false,
             "has_axis_titles": true,
             "has_data_labels": true,
-            "units": "%"
-          }
+            "units": "%",
+            "categories_count": 3,
+            "built": "added"
+          },
+          "content_source": "generated",
+          "slot_kind": "image",
+          "block_kind": "chart"
         }
-      ]
+      ],
+      "source_slide_part": "ppt/slides/slide47.xml",
+      "removed_object_ids": []
     },
     {
       "slide_id": "s3b",
@@ -204,7 +234,9 @@
           "text": {
             "plain": "Метрики пилота по месяцам",
             "autofit": "none"
-          }
+          },
+          "content_source": "plan",
+          "slot_kind": "title"
         },
         {
           "object_id": "30",
@@ -222,10 +254,16 @@
             "rows": 4,
             "cols": 3,
             "dataset_id": "ds_metrics",
-            "header_row": true
-          }
+            "header_row": true,
+            "row_offset": 0,
+            "truncated": false
+          },
+          "content_source": "generated",
+          "slot_kind": "table"
         }
-      ]
+      ],
+      "source_slide_part": "ppt/slides/slide37.xml",
+      "removed_object_ids": []
     },
     {
       "slide_id": "s5",
@@ -250,7 +288,9 @@
           "text": {
             "plain": "Пилот окупается за год",
             "autofit": "none"
-          }
+          },
+          "content_source": "plan",
+          "slot_kind": "title"
         },
         {
           "object_id": "13",
@@ -270,9 +310,13 @@
             "fact_refs": [
               "f2"
             ]
-          }
+          },
+          "content_source": "plan",
+          "slot_kind": "title"
         }
-      ]
+      ],
+      "source_slide_part": "ppt/slides/slide17.xml",
+      "removed_object_ids": []
     },
     {
       "slide_id": "s6",
@@ -297,9 +341,13 @@
           "text": {
             "plain": "Просим одобрить расширение пилота на все продукты в четвёртом квартале",
             "autofit": "none"
-          }
+          },
+          "content_source": "plan",
+          "slot_kind": "title"
         }
-      ]
+      ],
+      "source_slide_part": "ppt/slides/slide51.xml",
+      "removed_object_ids": []
     }
   ],
   "assets": [
@@ -323,5 +371,36 @@
     ],
     "fallback_elements": []
   },
-  "warnings": []
+  "warnings": [],
+  "composer": {
+    "name": "layout_composer",
+    "version": "0.1.0"
+  },
+  "created_at": "2026-09-16T20:15:00Z",
+  "fonts": [
+    {
+      "family": "Play",
+      "available_in_renderer": true,
+      "embedded": true
+    },
+    {
+      "family": "Consolas",
+      "available_in_renderer": false,
+      "fallback": "DejaVu Sans Mono",
+      "embedded": false
+    }
+  ],
+  "stats": {
+    "slides": 5,
+    "objects": 9,
+    "text_objects": 6,
+    "pictures": 1,
+    "tables": 1,
+    "charts": 1,
+    "diagrams": 0,
+    "removed_objects": 2,
+    "layouts_kept": 18,
+    "layouts_removed": 0,
+    "file_size_bytes": 2100000
+  }
 }

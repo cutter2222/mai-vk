@@ -46,7 +46,8 @@ def create_app(orchestrator: Orchestrator | None = None, *, reconcile: bool = Tr
             interval = max(5, orch.settings.queue.reconcile_interval_s)
 
             def loop() -> None:
-                # Периодическая сверка: задания без исполнителя и с истёкшим сроком получают ошибку.
+                # Периодическая сверка: задания без исполнителя и с истёкшим сроком получают ошибку;
+                # заодно раз в retention.gc_interval_s ставится сборка мусора.
                 while not stop.wait(interval):
                     try:
                         touched = orch.reconcile()
@@ -56,6 +57,11 @@ def create_app(orchestrator: Orchestrator | None = None, *, reconcile: bool = Tr
                             )
                     except Exception:
                         log.exception("сверка заданий не удалась")
+                    try:
+                        if orch.ensure_gc_scheduled():
+                            log.info("сборка мусора поставлена в очередь")
+                    except Exception:
+                        log.exception("не удалось поставить сборку мусора")
 
             thread = threading.Thread(target=loop, name="reconcile", daemon=True)
             thread.start()

@@ -155,7 +155,24 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX repairs_job ON repairs(job_id);
     """,
+    # Версия 2 (этап 3): отметки сборки мусора — когда объект впервые найден без ссылок.
+    # Совместима с кодом версии 1: старый код таблицу не читает.
+    """
+    CREATE TABLE gc_marks (
+        kind TEXT NOT NULL,
+        key TEXT NOT NULL,
+        marked_at TEXT NOT NULL,
+        PRIMARY KEY (kind, key)
+    );
+    """,
+    # 3: ключ профиля шаблона — версия анализатора, контрактов, скилла, модели и шрифтов;
+    # при смене ключа шаблон анализируется заново под тем же template_id.
+    """
+    ALTER TABLE templates ADD COLUMN profile_key TEXT;
+    """,
 ]
+
+LATEST_SCHEMA = len(MIGRATIONS)
 
 TERMINAL = frozenset({"succeeded", "needs_review", "failed", "canceled"})
 
@@ -183,10 +200,11 @@ class NotFound(LookupError):  # noqa: N818 - имя исключения чит�
 
 
 class State:
-    def __init__(self, db_path: pathlib.Path) -> None:
+    def __init__(self, db_path: pathlib.Path, *, migrate: bool = True) -> None:
         self.db_path = db_path
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.migrate()
+        if migrate:
+            self.migrate()
 
     # ---------- соединение и миграции ----------
 
@@ -221,13 +239,15 @@ class State:
         finally:
             conn.close()
 
-    def migrate(self) -> None:
+    def migrate(self) -> tuple[int, int]:
+        """Применяет недостающие миграции; возвращает версию схемы до и после."""
         conn = self._connect()
         try:
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY)"
             )
             applied = {row[0] for row in conn.execute("SELECT version FROM schema_migrations")}
+            before = max(applied, default=0)
             for version, script in enumerate(MIGRATIONS, start=1):
                 if version in applied:
                     continue
@@ -238,8 +258,64 @@ class State:
                     f"INSERT INTO schema_migrations(version) VALUES ({int(version)});\n"
                     "COMMIT;"
                 )
+            return before, LATEST_SCHEMA
         finally:
             conn.close()
+
+    def schema_version(self) -> int:
+        """Версия схемы в файле; 0 — база ещё не создана или без миграций."""
+        if not self.db_path.exists():
+            return 0
+        with self.read() as conn:
+            tables = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'"
+            ).fetchone()
+            if tables is None:
+                return 0
+            row = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()
+            return int(row[0] or 0)
+
+    def pending_migrations(self) -> list[int]:
+        return list(range(self.schema_version() + 1, LATEST_SCHEMA + 1))
+
+    def snapshot(self, dest: pathlib.Path) -> pathlib.Path:
+        """Согласованный снимок базы через backup API: живая база в WAL одним файлом
+        не копируется. Пишется во временный файл и переименовывается целиком."""
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_name(f".{dest.name}.tmp")
+        tmp.unlink(missing_ok=True)
+        src = self._connect()
+        try:
+            dst = sqlite3.connect(tmp)
+            try:
+                src.backup(dst)
+            finally:
+                dst.close()
+        finally:
+            src.close()
+        tmp.replace(dest)
+        return dest
+
+    def integrity_ok(self) -> bool:
+        with self.read() as conn:
+            row = conn.execute("PRAGMA integrity_check").fetchone()
+            return bool(row) and row[0] == "ok"
+
+    def counts(self) -> dict[str, int]:
+        """Число строк по таблицам — для сводки резервной копии и проверок."""
+        out: dict[str, int] = {}
+        with self.read() as conn:
+            for table in (
+                "projects",
+                "project_events",
+                "files",
+                "templates",
+                "packages",
+                "jobs",
+                "revisions",
+            ):
+                out[table] = int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+        return out
 
     # ---------- проекты ----------
 
@@ -541,6 +617,7 @@ class State:
             "profile": _loads(row["profile"]),
             "previews": _loads(row["previews"], []),
             "error": _loads(row["error"]),
+            "profile_key": row["profile_key"] if "profile_key" in row.keys() else None,
         }
 
     def get_or_create_template(
@@ -576,12 +653,33 @@ class State:
 
     def update_template(self, template_id: str, **fields: Any) -> None:
         json_fields = {"profile", "previews", "error"}
+        allowed = {"status", "profile", "previews", "error", "job_id", "profile_key", "name"}
+        unknown = set(fields) - allowed
+        if unknown:
+            raise ValueError(f"недопустимые поля шаблона: {sorted(unknown)}")
         with self.tx() as conn:
             for key, value in fields.items():
                 conn.execute(
                     f"UPDATE templates SET {key} = ? WHERE id = ?",
                     (_dumps(value) if key in json_fields else value, template_id),
                 )
+
+    def delete_template(self, template_id: str) -> JsonDict:
+        """Убирает шаблон из библиотеки: проекты и файлы теряют ссылку на него, задание
+        анализа и байты файла остаются сиротами для сборки мусора. Возвращает удалённую строку."""
+        with self.tx() as conn:
+            row = conn.execute("SELECT * FROM templates WHERE id = ?", (template_id,)).fetchone()
+            if row is None:
+                raise NotFound(template_id)
+            conn.execute(
+                "UPDATE projects SET template_id = NULL, updated_at = ? WHERE template_id = ?",
+                (now_iso(), template_id),
+            )
+            conn.execute(
+                "UPDATE files SET template_id = NULL WHERE template_id = ?", (template_id,)
+            )
+            conn.execute("DELETE FROM templates WHERE id = ?", (template_id,))
+            return self._template_row(row)
 
     # ---------- контент-пакеты ----------
 
@@ -833,14 +931,16 @@ class State:
                     (_dumps(value) if key in json_fields else value, job_id),
                 )
 
-    def find_story(self, package_id: str) -> JsonDict | None:
-        """Готовый StoryPlan для пакета из прошлых заданий: содержание не зависит от шаблона."""
+    def find_story(self, content_hash: str) -> JsonDict | None:
+        """Готовый StoryPlan с тем же смысловым хешем из прошлых заданий: содержание,
+        эффективный бриф, модель и промпт совпали — план не зависит от шаблона и job_id."""
         with self.read() as conn:
             row = conn.execute(
                 "SELECT g.story FROM generations g JOIN jobs j ON j.id = g.job_id"
-                " WHERE g.package_id = ? AND g.story IS NOT NULL AND j.status IN ('succeeded', 'needs_review')"  # noqa: E501
+                " WHERE g.story IS NOT NULL AND json_extract(g.story, '$.content_hash') = ?"
+                " AND j.status IN ('succeeded', 'needs_review')"
                 " ORDER BY j.created_at DESC LIMIT 1",
-                (package_id,),
+                (content_hash,),
             ).fetchone()
             return _loads(row["story"]) if row else None
 
@@ -1057,6 +1157,114 @@ class State:
                 (job_id, variant_id),
             ).fetchone()
             return self._repair_row(row) if row else None
+
+    # ---------- сборка мусора ----------
+
+    def gc_snapshot(self) -> JsonDict:
+        """Всё, что нужно сборке мусора, одним чтением: ссылки проектов и ленты, файлы,
+        шаблоны, пакеты, задания."""
+        with self.read() as conn:
+            projects = [
+                dict(r)
+                for r in conn.execute("SELECT id, template_id, package_id, job_id FROM projects")
+            ]
+            event_refs: dict[str, set[str]] = {
+                "job_id": set(),
+                "template_id": set(),
+                "package_id": set(),
+                "file_id": set(),
+            }
+            for row in conn.execute("SELECT payload FROM project_events"):
+                payload = _loads(row["payload"], {})
+                for key, bucket in event_refs.items():
+                    value = payload.get(key)
+                    if isinstance(value, str) and value:
+                        bucket.add(value)
+                for value in payload.get("file_ids") or []:
+                    if isinstance(value, str):
+                        event_refs["file_id"].add(value)
+            files = [
+                dict(r)
+                for r in conn.execute(
+                    "SELECT id, project_id, sha256, size_bytes, template_id, package_id, added_at"
+                    " FROM files"
+                )
+            ]
+            templates = [
+                dict(r) for r in conn.execute("SELECT id, sha256, job_id, previews FROM templates")
+            ]
+            packages = [
+                {**dict(r), "file_ids": _loads(r["file_ids"], [])}
+                for r in conn.execute("SELECT id, job_id, file_ids, status FROM packages")
+            ]
+            jobs = [
+                dict(r)
+                for r in conn.execute(
+                    "SELECT id, kind, status, created_at, parent_job_id FROM jobs"
+                )
+            ]
+            generations = [
+                dict(r)
+                for r in conn.execute("SELECT job_id, template_id, package_id FROM generations")
+            ]
+            repairs = [dict(r) for r in conn.execute("SELECT repair_job_id, job_id FROM repairs")]
+        return {
+            "projects": projects,
+            "event_refs": {k: sorted(v) for k, v in event_refs.items()},
+            "files": files,
+            "templates": templates,
+            "packages": packages,
+            "jobs": jobs,
+            "generations": generations,
+            "repairs": repairs,
+        }
+
+    def gc_marks(self) -> dict[tuple[str, str], str]:
+        with self.read() as conn:
+            return {
+                (r["kind"], r["key"]): r["marked_at"]
+                for r in conn.execute("SELECT kind, key, marked_at FROM gc_marks")
+            }
+
+    def gc_mark(self, kind: str, key: str, marked_at: str) -> None:
+        with self.tx() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO gc_marks(kind, key, marked_at) VALUES (?,?,?)",
+                (kind, key, marked_at),
+            )
+
+    def gc_unmark(self, kind: str, key: str) -> None:
+        with self.tx() as conn:
+            conn.execute("DELETE FROM gc_marks WHERE kind = ? AND key = ?", (kind, key))
+
+    def delete_jobs(self, job_ids: list[str]) -> int:
+        """Удаляет задания вместе с генерациями, вариантами, ревизиями и исправлениями."""
+        if not job_ids:
+            return 0
+        with self.tx() as conn:
+            marks = ",".join("?" for _ in job_ids)
+            conn.execute(f"DELETE FROM repairs WHERE job_id IN ({marks})", job_ids)
+            cur = conn.execute(f"DELETE FROM jobs WHERE id IN ({marks})", job_ids)
+            return int(cur.rowcount)
+
+    def delete_packages(self, package_ids: list[str]) -> int:
+        if not package_ids:
+            return 0
+        with self.tx() as conn:
+            marks = ",".join("?" for _ in package_ids)
+            conn.execute(
+                f"UPDATE files SET package_id = NULL WHERE package_id IN ({marks})", package_ids
+            )
+            cur = conn.execute(f"DELETE FROM packages WHERE id IN ({marks})", package_ids)
+            return int(cur.rowcount)
+
+    def delete_file_rows(self, file_ids: list[str]) -> int:
+        if not file_ids:
+            return 0
+        with self.tx() as conn:
+            marks = ",".join("?" for _ in file_ids)
+            cur = conn.execute(f"DELETE FROM files WHERE id IN ({marks})", file_ids)
+            return int(cur.rowcount)
 
 
 def _parse(ts: str) -> datetime:

@@ -24,15 +24,18 @@ from typing import Any, Protocol
 
 from presentation_designer import __version__
 from presentation_designer.contracts import CONTRACTS_VERSION
+from presentation_designer.llm import model_refs, version_refs
 from presentation_designer.pipeline.artifacts import ArtifactStore
 from presentation_designer.pipeline.files import FileStore, format_for
 from presentation_designer.pipeline.run import (
     VARIANT_AXIS,
     AnalyzeInput,
+    BriefInput,
     ImportInput,
     Layers,
     RepairInput,
     SourceFile,
+    StageError,
     StoryInput,
     VariantContext,
     audit_summary,
@@ -47,7 +50,7 @@ from presentation_designer.pipeline.state import (
     new_id,
     now_iso,
 )
-from presentation_designer.shared.settings import Settings, get_settings
+from presentation_designer.shared.settings import Settings, get_models_config, get_settings
 
 log = logging.getLogger(__name__)
 
@@ -98,6 +101,8 @@ class Executor(Protocol):
 
     def ping(self) -> bool: ...
 
+    def try_lock(self, key: str, ttl_s: int) -> bool: ...
+
 
 class InlineExecutor:
     """Выполняет задачу сразу при постановке. Порядок постановки повторяет порядок зависимостей."""
@@ -106,6 +111,7 @@ class InlineExecutor:
 
     def __init__(self) -> None:
         self.done: dict[str, str] = {}
+        self._locks: dict[str, float] = {}
 
     def enqueue(
         self,
@@ -136,6 +142,15 @@ class InlineExecutor:
         return None
 
     def ping(self) -> bool:
+        return True
+
+    def try_lock(self, key: str, ttl_s: int) -> bool:
+        import time
+
+        now = time.monotonic()
+        if self._locks.get(key, 0) > now:
+            return False
+        self._locks[key] = now + ttl_s
         return True
 
 
@@ -228,6 +243,14 @@ class RQExecutor:
         except Exception:
             return False
 
+    def try_lock(self, key: str, ttl_s: int) -> bool:
+        """Ключ с TTL: True у того, кто поставил его первым (SET NX)."""
+        try:
+            return bool(self.redis.set(key, "1", nx=True, ex=max(1, ttl_s)))
+        except Exception:
+            log.exception("не удалось взять блокировку %s", key)
+            return False
+
 
 # ---------- оркестратор ----------
 
@@ -257,8 +280,17 @@ class Orchestrator:
         template, cached = self.state.get_or_create_template(
             sha256=sha256, name=name, size_bytes=size_bytes, job_id=job_id
         )
+        key = self.template_profile_key(sha256)
         if cached:
-            if template["status"] == "failed":
+            degraded = {w.get("code") for w in (template.get("profile") or {}).get("warnings", [])}
+            stale = template["status"] == "succeeded" and (
+                template.get("profile_key") != key
+                # Прошлый анализ прошёл без рендерера: профиль без превью не считается готовым.
+                or "previews_unavailable" in degraded
+            )
+            if template["status"] == "failed" or stale:
+                # Ошибка прошлого анализа или устаревший ключ (сменились анализатор, контракты,
+                # модель, промпты или шрифты): тот же template_id анализируется заново.
                 self.state.update_template(
                     template["template_id"], status="queued", error=None, job_id=job_id
                 )
@@ -266,6 +298,7 @@ class Orchestrator:
                 cached = False
             else:
                 return template, True
+        self.state.update_template(template["template_id"], profile_key=key)
         job = self.state.create_job(
             kind="template_analysis",
             job_id=job_id,
@@ -287,6 +320,20 @@ class Orchestrator:
         self.state.update_job(job["job_id"], rq_ids=[rq_id])
         return template, cached
 
+    def delete_template(self, template_id: str) -> JsonDict:
+        """Убирает шаблон из библиотеки: строку, миниатюры и ссылки проектов на него.
+        Незавершённый анализ отменяется; его задание и байты файла подберёт сборка мусора."""
+        template = self.state.get_template(template_id)
+        if template["status"] in {"queued", "running"}:
+            try:
+                self.cancel_job(template["job_id"])
+            except NotFound:
+                pass
+        self.state.delete_template(template_id)
+        if self.artifacts.template_dir(template_id).exists():
+            self.artifacts.delete_dir("templates", template_id)
+        return template
+
     # ----- содержание -----
 
     def submit_package(
@@ -295,8 +342,14 @@ class Orchestrator:
         """sources: записи файлов проекта (file_id, name, sha256, size_bytes, check)."""
         file_ids = [s["file_id"] for s in sources]
         mode = "mixed" if sources and brief else "brief" if brief else "package"
+        # Ключ пакета: содержимое файлов в их порядке, бриф и версия импортёра; сам разбор
+        # файлов кэшируется слоем отдельно, поэтому смена брифа их не перечитывает.
         key_src = json.dumps(
-            {"files": sorted(s["sha256"] for s in sources), "brief": brief or {}},
+            {
+                "files": [s["sha256"] for s in sources],
+                "brief": brief or {},
+                "importer": self.layers.import_version(),
+            },
             sort_keys=True,
             ensure_ascii=False,
         )
@@ -510,15 +563,58 @@ class Orchestrator:
         self.state.update_job(repair_id, rq_ids=[rq_id])
         return self.state.get_job(repair_id)
 
+    # ----- бриф из сообщения -----
+
+    async def extract_brief(
+        self, text: str, brief: JsonDict | None = None, settings: JsonDict | None = None
+    ) -> JsonDict:
+        """Слой `brief` с тайм-аутом `timeouts.brief_s`: модель или эвристика (`source`)."""
+        import asyncio
+
+        from presentation_designer.parsing.content.brief import extract_brief as heuristic
+
+        try:
+            return await asyncio.wait_for(
+                self.layers.extract_brief(BriefInput(text, brief, settings)),
+                timeout=self.settings.timeouts.brief_s + 2,
+            )
+        except TimeoutError:
+            log.warning(
+                "извлечение брифа не уложилось в %s с: эвристика", self.settings.timeouts.brief_s
+            )
+        except Exception:
+            log.exception("слой brief завершился ошибкой: эвристика")
+        return heuristic(text, brief)
+
     # ----- служебное -----
 
+    def template_profile_key(self, sha256: str) -> str:
+        """Ключ кэша профиля: заглушки зависят только от файла и версии приложения."""
+        if self.layers.modes.get("parsing.template") != "real":
+            return f"stub:{__version__}:{sha256}"
+        from presentation_designer.parsing.template.analyzer import profile_key
+
+        skill = None
+        vlm_model = None
+        try:
+            from presentation_designer.llm.skills import get_skill
+
+            skill = get_skill("template_analyzer")
+            vlm_model = get_models_config().roles["vlm"].model
+        except Exception:
+            log.warning("скилл template_analyzer или конфиг моделей недоступны для ключа профиля")
+        return profile_key(sha256, settings=self.settings, skill=skill, vlm_model=vlm_model)
+
     def versions(self) -> JsonDict:
+        """Версии для воспроизведения: скиллы и промпты из skills/, модели из models.yaml.
+        Слои пока заглушечные, но версии записываются уже сейчас — их читает ключ кэша."""
+        skills, prompts = version_refs()
         return {
             "app": __version__,
             "contracts": CONTRACTS_VERSION,
-            "skills": [],
-            "prompts": [],
-            "models": [],
+            "skills": skills,
+            "prompts": prompts,
+            "models": model_refs(),
             "renderer": {"name": "stub", "version": __version__},
         }
 
@@ -567,6 +663,46 @@ class Orchestrator:
         except NotFound:
             return True
 
+    # ----- сборка мусора -----
+
+    GC_LOCK = "pd:gc:scheduled"
+
+    @property
+    def gc_report_path(self) -> pathlib.Path:
+        return self.settings.runs_dir / "gc" / "last.json"
+
+    def ensure_gc_scheduled(self) -> bool:
+        """Раз в `retention.gc_interval_s` ставит сборку мусора в очередь анализа.
+        Вызывается из периодической сверки API; ключ в Valkey не даёт поставить задачу дважды."""
+        interval = max(60, self.settings.retention.gc_interval_s)
+        if not self.executor.try_lock(self.GC_LOCK, interval):
+            return False
+        self.executor.enqueue(
+            self.settings.queue.analysis_queue,
+            task_gc,
+            (),
+            depends_on=[],
+            timeout=600,
+            description="gc",
+        )
+        return True
+
+    def collect_garbage(
+        self, *, dry_run: bool = False, grace_hours: float | None = None
+    ) -> JsonDict:
+        from presentation_designer.pipeline.gc import collect_garbage
+
+        report = collect_garbage(
+            self.state,
+            self.files,
+            self.artifacts,
+            self.settings.retention,
+            dry_run=dry_run,
+            grace_override=timedelta(hours=grace_hours) if grace_hours is not None else None,
+            report_path=self.gc_report_path,
+        )
+        return report.to_dict()
+
 
 _current: Orchestrator | None = None
 _lock = threading.Lock()
@@ -580,8 +716,8 @@ def set_current(orchestrator: Orchestrator) -> None:
 def build_orchestrator(
     settings: Settings | None = None, executor: Executor | None = None
 ) -> Orchestrator:
-    """Собирает оркестратор из настроек: SQLite, хранилища и заглушечные слои."""
-    from presentation_designer.pipeline.stubs import StubLayers
+    """Собирает оркестратор из настроек: SQLite, хранилища и слои по execution.mode."""
+    from presentation_designer.pipeline.real import build_layers
 
     settings = settings or get_settings()
     state = State(settings.db_path)
@@ -591,7 +727,7 @@ def build_orchestrator(
         max_unzipped_mb=settings.limits.max_unzipped_mb,
     )
     artifacts = ArtifactStore(settings.artifacts_dir)
-    layers = StubLayers(stage_delay_ms=settings.execution.stub_stage_delay_ms)
+    layers = build_layers(settings)
     if executor is None:
         import os
 
@@ -617,7 +753,11 @@ def get_orchestrator() -> Orchestrator:
 
 def task_analyze(template_id: str) -> None:
     o = get_orchestrator()
-    template = o.state.get_template(template_id)
+    try:
+        template = o.state.get_template(template_id)
+    except NotFound:
+        log.info("шаблон %s удалён до начала анализа", template_id)
+        return
     job_id = template["job_id"]
     o.state.job_started(job_id)
     o.state.update_template(template_id, status="running")
@@ -629,6 +769,11 @@ def task_analyze(template_id: str) -> None:
                 template_id, template["sha256"], template["name"], template["size_bytes"], path
             )
         )
+        try:
+            o.state.get_template(template_id)
+        except NotFound:
+            log.info("шаблон %s удалён во время анализа, результат не сохраняется", template_id)
+            return
         with o.artifacts.stage_dir(o.artifacts.template_dir(template_id)) as tmp:
             for name, data in out.previews.items():
                 target = tmp / name
@@ -659,12 +804,15 @@ def task_analyze(template_id: str) -> None:
         )
     except Exception as e:
         log.exception("анализ шаблона %s не удался", template_id)
-        error = {
-            "code": "analyze_failed",
-            "message": str(e) or e.__class__.__name__,
-            "stage": "analyze",
-            "retryable": True,
-        }
+        if isinstance(e, StageError):
+            error = e.as_dict("analyze")  # неподдерживаемый файл: код и текст из слоя
+        else:
+            error = {
+                "code": "analyze_failed",
+                "message": str(e) or e.__class__.__name__,
+                "stage": "analyze",
+                "retryable": True,
+            }
         o.state.update_template(template_id, status="failed", error=error)
         o.state.add_stage(
             job_id,
@@ -706,6 +854,12 @@ def task_import(package_id: str) -> None:
         out = o.layers.import_content(
             ImportInput(package_id, package["mode"], sources, package["brief"])
         )
+        if out.assets:
+            with o.artifacts.stage_dir(o.artifacts.package_dir(package_id)) as tmp:
+                for name, data in out.assets.items():
+                    target = tmp / name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(data)
         o.state.update_package(package_id, status="succeeded", package=out.package)
         pk = out.package
         o.state.add_stage(
@@ -727,12 +881,16 @@ def task_import(package_id: str) -> None:
         )
     except Exception as e:
         log.exception("импорт пакета %s не удался", package_id)
-        error = {
-            "code": "import_failed",
-            "message": str(e) or e.__class__.__name__,
-            "stage": "import",
-            "retryable": True,
-        }
+        error = (
+            e.as_dict("import")
+            if isinstance(e, StageError)
+            else {
+                "code": "import_failed",
+                "message": str(e) or e.__class__.__name__,
+                "stage": "import",
+                "retryable": True,
+            }
+        )
         o.state.update_package(package_id, status="failed", error=error)
         o.state.update_job(
             job_id, status="failed", stage="done", finished_at=now_iso(), error=error
@@ -804,19 +962,25 @@ def task_story(job_id: str) -> None:
         job_id, stage="story", progress={"percent": 5, "message": "Строится общий смысловой план"}
     )
     started = now_iso()
-    story = o.state.find_story(gen["package_id"])
-    hit = story is not None
+    story_input = StoryInput(package["package"], gen["request"].get("settings") or {})
+    story: JsonDict | None = None
+    hit = False
     try:
+        # Готовый план переиспользуется по смысловому ключу (содержание, эффективный бриф,
+        # модель, промпт), а не по package_id: смена языка или брифа даёт новый ключ.
+        if not story_input.settings.get("force_regenerate"):
+            story = o.state.find_story(o.layers.story_key(story_input))
+            hit = story is not None
         if story is None:
-            story = o.layers.story(
-                StoryInput(package["package"], gen["request"].get("settings") or {})
-            )
+            story = o.layers.story(story_input)
     except Exception as e:
         log.exception("смысловой план %s не удался", job_id)
         _fail_generation(
             o,
             job_id,
-            {
+            e.as_dict("story")
+            if isinstance(e, StageError)
+            else {
                 "code": "story_failed",
                 "message": str(e) or e.__class__.__name__,
                 "stage": "story",
@@ -915,6 +1079,7 @@ def task_variant(job_id: str, variant_id: str) -> None:
             staging=staging,
             revision=revision,
             is_canceled=lambda: o.is_canceled(job_id),
+            package_dir=o.artifacts.package_dir(gen["package_id"]),
         )
         outcome = run_variant(o.layers, ctx, emit)
         if outcome.status == "failed":
@@ -975,6 +1140,7 @@ def task_finalize(job_id: str) -> None:
                 "message": f"Вариант {', '.join(v['variant_id'] for v in failed)} не собран; доступны остальные варианты",  # noqa: E501
             }
         )
+    warnings.extend(_plan_distinctness(o, job_id, variants))
     if gen["canceled"]:
         status, error = (
             "canceled",
@@ -1005,6 +1171,27 @@ def task_finalize(job_id: str) -> None:
     )
 
 
+def _plan_distinctness(o: Orchestrator, job_id: str, variants: list[JsonDict]) -> list[JsonDict]:
+    """Различимость настоящих планов вариантов по последовательности композиций и
+    визуализации; пары без различий — предупреждение задания, а не переименование."""
+    if o.layers.modes.get("generation.plan") != "real":
+        return []
+    plans: dict[str, JsonDict] = {}
+    for v in variants:
+        if v["status"] in ("failed", "pending", "running"):
+            continue
+        path = o.artifacts.revision_dir(job_id, v["variant_id"], v["revision"]) / "plan.json"
+        try:
+            plans[v["variant_id"]] = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+    if len(plans) < 2:
+        return []
+    from presentation_designer.generation.variants import compare_plans, indistinct_warning
+
+    return [indistinct_warning(entry) for entry in compare_plans(plans)["indistinct"]]
+
+
 def task_repair(repair_job_id: str) -> None:
     o = get_orchestrator()
     repair = o.state.get_repair(repair_job_id)
@@ -1026,10 +1213,9 @@ def task_repair(repair_job_id: str) -> None:
         gen = o.state.get_generation(job_id)
         package = o.state.get_package(gen["package_id"])
         deck_title = (package["package"] or {}).get("brief", {}).get("title") or "Презентация"
-        count = int(plan.get("slide_count") or variant.get("slide_count") or 10)
-        from presentation_designer.pipeline.stubs import SLIDE_TITLES
+        from presentation_designer.pipeline.stubs import plan_slides
 
-        titles = (SLIDE_TITLES * 4)[:count]
+        _, titles = plan_slides(plan)
         new_rev = base + 1
         prefix = o.artifacts.prefix(variant_id, new_rev)
         with o.artifacts.stage_revision(job_id, variant_id, new_rev) as staging:
@@ -1101,6 +1287,15 @@ def task_repair(repair_job_id: str) -> None:
         )
 
 
+def task_gc() -> None:
+    """Периодическая сборка мусора на воркере анализа; сроки — из config/app.yaml."""
+    o = get_orchestrator()
+    try:
+        o.collect_garbage()
+    except Exception:
+        log.exception("сборка мусора не удалась")
+
+
 # ---------- вспомогательное ----------
 
 
@@ -1130,15 +1325,18 @@ def _final_message(variants: list[JsonDict]) -> str:
 def renderer_check(
     redis_url: str, worker_name: str, fixture: pathlib.Path | None = None, timeout_s: int = 90
 ) -> bool:
-    """Пробный рендер собственной фикстуры при старте воркера; результат читает /api/health."""
-    import shutil
-    import subprocess
+    """Пробный рендер собственной фикстуры при старте воркера; результат читает /api/health.
+
+    Использует тот же слой экспорта, что и конвертация результатов: отдельный процесс
+    LibreOffice с временным профилем и тайм-аутом, затем миниатюра первой страницы.
+    """
     import tempfile
 
     import redis
 
+    from presentation_designer.export import pdf, thumbnails
+
     ok = False
-    soffice = shutil.which("soffice") or shutil.which("libreoffice")
     fixture = (
         fixture
         or pathlib.Path(__file__).resolve().parents[3]
@@ -1147,31 +1345,29 @@ def renderer_check(
         / "pptx"
         / "mini_template.pptx"
     )
-    if soffice and fixture.is_file():
+    if fixture.is_file():
         with tempfile.TemporaryDirectory(prefix="render-check-") as tmp:
-            profile = pathlib.Path(tmp) / "profile"
             try:
-                subprocess.run(
-                    [
-                        soffice,
-                        f"-env:UserInstallation=file://{profile}",
-                        "--headless",
-                        "--norestore",
-                        "--convert-to",
-                        "pdf",
-                        "--outdir",
-                        tmp,
-                        str(fixture),
-                    ],
-                    check=True,
-                    timeout=timeout_s,
-                    capture_output=True,
+                result = pdf.convert_to_pdf(fixture, pathlib.Path(tmp), timeout_s=timeout_s)
+                thumbs = thumbnails.render_thumbnails(
+                    result.pdf_path, pathlib.Path(tmp), width_px=320, pages=[1]
                 )
-                ok = (pathlib.Path(tmp) / f"{fixture.stem}.pdf").is_file()
+                ok = bool(thumbs.paths)
+                log.info(
+                    "проверка рендерера: %s за %.1f с (профиль из образа: %s)",
+                    pdf.soffice_version() or "LibreOffice",
+                    result.seconds,
+                    result.profile_from_template,
+                )
             except Exception:
                 log.exception("проверка рендерера не прошла")
+    else:
+        log.error("нет фикстуры для проверки рендерера: %s", fixture)
     try:
-        redis.Redis.from_url(redis_url).set(f"pd:renderer:{worker_name}", "ok" if ok else "fail")
+        # Срок жизни отметки — неделя: после падения воркера ключ не остаётся навсегда.
+        redis.Redis.from_url(redis_url).set(
+            f"pd:renderer:{worker_name}", "ok" if ok else "fail", ex=7 * 24 * 3600
+        )
     except Exception:
         log.exception("не удалось записать результат проверки рендерера")
     return ok

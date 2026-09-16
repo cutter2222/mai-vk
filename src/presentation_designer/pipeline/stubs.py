@@ -19,10 +19,12 @@ import pathlib
 import time
 from typing import Any
 
+from presentation_designer.parsing.content.brief import extract_brief as heuristic_brief
 from presentation_designer.pipeline.run import (
     AnalyzeInput,
     AnalyzeOutput,
     AuditInput,
+    BriefInput,
     ComposeInput,
     ComposeOutput,
     ExportInput,
@@ -186,6 +188,17 @@ def build_html(title: str, slide_titles: list[str], subtitle: str) -> str:
     )
 
 
+def plan_slides(plan: dict[str, Any]) -> tuple[int, list[str]]:
+    """Число слайдов и заголовки по плану: настоящий план несёт свои слайды, заглушечный —
+    число слайдов и примерные заголовки."""
+    slides = plan.get("slides") or []
+    if slides and not isinstance(plan.get("slide_count"), int):
+        ordered = sorted(slides, key=lambda s: int(s.get("order", 0)))
+        return len(ordered), [str(s.get("title") or "Слайд") for s in ordered]
+    count = int(plan.get("slide_count") or len(slides) or 10)
+    return count, (SLIDE_TITLES * 4)[:count]
+
+
 class StubLayers(Layers):
     """Набор заглушек со временем этапа из настроек."""
 
@@ -282,11 +295,18 @@ class StubLayers(Layers):
 
     # ---------- смысловой план ----------
 
+    def story_key(self, inp: StoryInput) -> str:
+        return f"stub:{inp.package['package_id']}"
+
+    async def extract_brief(self, inp: BriefInput) -> dict[str, Any]:
+        return heuristic_brief(inp.text, inp.brief)
+
     def story(self, inp: StoryInput) -> dict[str, Any]:
         _pause(self.delay_ms)
         story = _example("story_plan")
         story["package_id"] = inp.package["package_id"]
         story["story_id"] = f"story_{inp.package['package_id']}"
+        story["content_hash"] = self.story_key(inp)
         brief = inp.package.get("brief", {})
         story["purpose"] = brief.get("purpose", story["purpose"])
         story["audience"] = brief.get("audience") or story["audience"]
@@ -327,8 +347,7 @@ class StubLayers(Layers):
                 "Не удалось клонировать образец slide29: битая ссылка на медиа",
                 retryable=True,
             )
-        count = int(inp.plan["slide_count"])
-        titles = (SLIDE_TITLES * 4)[:count]
+        count, titles = plan_slides(inp.plan)
         subtitle = f"Вариант {inp.variant_id}, ревизия {inp.revision}"
         title = (
             inp.story.get("theses", [{}])[0].get("statement", "Презентация")

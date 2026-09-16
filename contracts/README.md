@@ -1,6 +1,6 @@
 # Контракты между слоями
 
-Версия набора 1.2 от 16 сентября 2026 года: документы `project`, `project_file`, `brief_extract` и `content_package` имеют `schema_version` 1.2, остальные остаются 1.1 до изменений своих полей. Схемы в формате JSON Schema 2020-12 лежат в [schemas/](schemas/), примеры документов в [examples/](examples/), проверка примеров по схемам в [validate.py](validate.py). Схемы общие для Python-ядра и интерфейса на TypeScript: Pydantic-модели (`src/presentation_designer/contracts/models.py`) и TS-типы (`frontend/lib/api/types.ts`) генерируются командой `make gen-contracts`, руками не правятся. Проверки связей, которые схема выразить не может, живут в `src/presentation_designer/contracts/validators.py`. Схема меняется только вместе с примером и с повышением `schema_version`; изменение проверяет второй участник.
+Версия набора 1.5 от 16 сентября 2026 года: `composed_deck` имеет `schema_version` 1.2 (этап 8: `composer`, `created_at`, `fonts` с подменой рендерера, `stats`; у слайда `title`, `notes`, `source_slide_part`, `removed_object_ids`; у объекта `content_source` — plan/sample/template/generated, `slot_kind`, `block_kind`, `fit` из плана; у картинки `fit`, `origin`, `recolored`; у таблицы `row_offset`, `truncated`; у диаграммы `categories_count`, `built`; `diagram` у группы фигур), `slide_plan` — 1.2 (этап 7: `fit` у блоков — измерение текста по метрикам шрифта и действие лестницы ёмкости, `row_offset` у таблиц, `target` у числа слайдов, блок chart в слоте image паттерна роли chart), `content_package` и `project` — 1.3 (этап 6: метаданные импорта, места блоков в источнике, источник брифа в карточке), `story_plan` — 1.2 (эффективный бриф и покрытие обязательного содержания), `project_file` и `brief_extract` — 1.2, остальные остаются 1.1 до изменений своих полей. Схемы в формате JSON Schema 2020-12 лежат в [schemas/](schemas/), примеры документов в [examples/](examples/), проверка примеров по схемам в [validate.py](validate.py). Схемы общие для Python-ядра и интерфейса на TypeScript: Pydantic-модели (`src/presentation_designer/contracts/models.py`) и TS-типы (`frontend/lib/api/types.ts`) генерируются командой `make gen-contracts`, руками не правятся. Проверки связей, которые схема выразить не может, живут в `src/presentation_designer/contracts/validators.py`. Схема меняется только вместе с примером и с повышением `schema_version`; изменение проверяет второй участник.
 
 ТЗ требует прозрачное разделение слоёв: парсинг, генерация, вёрстка, аудит, экспорт. Каждый слой принимает и отдаёт документы по этим схемам, поэтому слои разрабатываются независимо и тестируются на примерах, не дожидаясь друг друга.
 
@@ -62,9 +62,9 @@
 | --- | --- | --- | --- |
 | `analyze` | PPTX | TemplateProfile | кэш по `template_hash` и `analyzer.version`; миниатюры образцов для превью и VLM |
 | `import` | файлы или бриф | ContentPackage | факты и наборы данных извлекаются детерминированно |
-| `story` | ContentPackage | StoryPlan | один раз на пакет; не зависит от шаблона, идёт параллельно `analyze` |
+| `story` | ContentPackage, явные настройки запроса | StoryPlan | кэш по `content_hash` (нормализованный пакет, эффективный бриф, модель, промпт, схема); не зависит от шаблона, идёт параллельно `analyze`; покрытие обязательных фактов и пунктов брифа проверяется кодом |
 | `plan` | StoryPlan, `llm_digest`, кандидаты-паттерны с ёмкостью | SlidePlan × число вариантов | проверка схемы, связей и ёмкости до вёрстки; отклонённые блоки возвращаются модели с причиной |
-| `compose` | SlidePlan, TemplateProfile, исходный PPTX, ContentPackage | PPTX, ComposedDeck | копия исходного пакета, клонирование образцов, подстановка фактов, нативные графики и таблицы, схемы из фигур, иконки |
+| `compose` | SlidePlan, TemplateProfile, исходный PPTX, ContentPackage (ресурсы по `assets[].path`) | PPTX, ComposedDeck | исходный пакет как основа, клонирование образцов по `element_ref`, подстановка фактов, явный кегль из `fit`, нативные графики и таблицы, схемы из фигур, иконки; незаполненные карточки убираются, статика остаётся; ComposedDeck строится по сохранённому файлу (`content_source` у объектов: `sample` — намеренно оставленный текст образца, аудит не считает его заглушкой) |
 | `export` | PPTX, ComposedDeck | PDF, HTML, миниатюры | PDF и миниатюры из сохранённого файла, HTML из ComposedDeck |
 | `audit` | ComposedDeck, PPTX, миниатюры, StoryPlan, ContentPackage | AuditReport | детерминированные проверки без токенов сразу после вёрстки; контекстные по уровням: StoryPlan один раз, каждый вариант по картинке, тексту и источникам |
 | `repair` | выбранные issues, `base_revision` | новая ревизия: SlidePlan, PPTX, ComposedDeck, AuditReport | проверка исходной ревизии; повтор `compose`, `export`, `audit` для затронутых слайдов и зависимостей |
@@ -88,12 +88,13 @@
 | `POST /api/projects/{id}/files` | multipart `files`: потоковая загрузка с проверкой типа, дедупликацией по sha256 и квотами проекта | `201 [ProjectFile]` |
 | `PATCH /api/projects/{id}/files/{file_id}` | вид файла: `template`, `material`, `other` | ProjectFile |
 | `DELETE /api/projects/{id}/files/{file_id}` | снять ссылку проекта на файл; байты без ссылок удаляет сборка мусора | `204` |
-| `POST /api/brief` | бриф из фразы: `{text, brief?, settings?}`; пока эвристика, `source: heuristic` | BriefExtract |
+| `POST /api/brief` | бриф из фразы: `{text, brief?, settings?}`; скилл `brief_extractor` на модели без рассуждения с тайм-аутом `timeouts.brief_s`, при недоступности модели — детерминированная эвристика с `source: heuristic` | BriefExtract |
 | `POST /api/templates` | JSON `{file_id}` из файлов проекта или multipart `file` (CLI); идемпотентна по sha256 | `202 {template_id, job_id, cached}` |
-| `GET /api/templates` | список шаблонов | `[{template_id, name, status, slide_count, created_at}]` |
+| `GET /api/templates` | список шаблонов библиотеки с миниатюрой первого образца | `[{template_id, name, status, slide_count?, pattern_count?, preview?, created_at}]` |
 | `GET /api/templates/{id}` | статус анализа, профиль, миниатюры образцов | `{status, job_id, profile?: TemplateProfile, previews: [name]}` |
 | `GET /api/templates/{id}/assets/{name}` | миниатюра образца или ресурс по манифесту профиля | файл |
-| `POST /api/content` | JSON `{file_ids, brief?}` из файлов проекта или multipart `files` + `brief` (CLI), до `max_content_files`; идемпотентна по набору sha256 и брифу | `202 {package_id, job_id, cached}` |
+| `DELETE /api/templates/{id}` | убрать шаблон из библиотеки: строка и миниатюры удаляются сразу, проекты и файлы теряют ссылку на него, генерации остаются; задание анализа и байты файла подбирает сборка мусора | `204` |
+| `POST /api/content` | JSON `{file_ids, brief?}` из файлов проекта или multipart `files` + `brief` (CLI), до `max_content_files`; идемпотентна по sha256 файлов в их порядке, брифу и версии импортёра; разбор каждого файла кэшируется отдельно, смена брифа файлы не перечитывает | `202 {package_id, job_id, cached}` |
 | `GET /api/content/{id}` | результат импорта | `{status, job_id, package?: ContentPackage}` |
 | `GET /api/content/{id}/assets/{name}` | изображение из пакета по манифесту | файл |
 | `POST /api/generations` | GenerationRequest; `idempotency_key` возвращает то же задание | `202 {job_id}` |

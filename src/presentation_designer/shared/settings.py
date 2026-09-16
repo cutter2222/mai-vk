@@ -29,6 +29,7 @@ class Paths(BaseModel):
     data_dir: pathlib.Path = pathlib.Path("data")
     artifacts_dir: pathlib.Path = pathlib.Path("artifacts")
     runs_dir: pathlib.Path = pathlib.Path("runs")
+    backups_dir: pathlib.Path = pathlib.Path("backups")
     organizers_dir: pathlib.Path = pathlib.Path("data/organizers")
 
 
@@ -53,6 +54,7 @@ class Timeouts(BaseModel):
     stage_audit_s: int = 180
     render_convert_s: int = 90
     llm_call_s: int = 90
+    brief_s: int = 8
 
 
 class Budget(BaseModel):
@@ -76,6 +78,40 @@ class Execution(BaseModel):
     stub_stage_delay_ms: int = 400
 
 
+class ContentImport(BaseModel):
+    """Импорт содержания: кэш разбора файлов и пределы пакета (parsing/content)."""
+
+    cache_dir: pathlib.Path = pathlib.Path("data/import-cache")
+    max_block_chars: int = 2000
+    max_dataset_rows: int = 200
+    max_facts: int = 300
+    max_assets: int = 40
+    min_image_px: int = 64
+    fact_context_model: bool = True
+    fact_context_budget_s: int = 20
+
+
+class Plan(BaseModel):
+    """Планы вариантов (generation/variants): кэш готовых планов, пакеты тезисов, лестница
+    ёмкости (минимальный кегль по роли текста и допустимое уменьшение)."""
+
+    cache_dir: pathlib.Path = pathlib.Path("data/plan-cache")
+    packet_theses: int = 5
+    candidates_per_thesis: int = 3
+    max_candidates: int = 16
+    min_font_ratio: float = 0.75
+    min_body_pt: float = 12.0
+    min_title_pt: float = 20.0
+    table_max_rows: int = 7
+    margin_ratio: float = 0.92
+
+
+class Layout(BaseModel):
+    """Вёрстка (layout): удалять ли неиспользуемые макеты из результата."""
+
+    prune_unused_layouts: bool = False
+
+
 class Render(BaseModel):
     slots: int = 2
     thumbnail_width_px: int = 1280
@@ -96,6 +132,19 @@ class AuditThresholds(BaseModel):
     guide_tolerance: float = 0.005
 
 
+class Retention(BaseModel):
+    """Сроки сборки мусора; отсчёт идёт с момента, когда объект впервые найден без ссылок."""
+
+    gc_interval_s: int = 3600
+    upload_tmp_hours: int = 6
+    unreferenced_uploads_hours: int = 24
+    orphan_jobs_hours: int = 24
+
+
+class Backup(BaseModel):
+    keep: int = 7
+
+
 class Audit(BaseModel):
     contextual_enabled: bool = True
     contextual_concurrency: int = 4
@@ -103,17 +152,26 @@ class Audit(BaseModel):
 
 
 class Llm(BaseModel):
+    """Адаптер моделей: кэш, умолчания лимитера, повторы и оценка токенов (llm/)."""
+
     cache_mode: str = "read_write"
     cache_dir: pathlib.Path = pathlib.Path("data/llm-cache")
+    fixtures_dir: pathlib.Path = pathlib.Path("tests/fixtures/llm")
     concurrency: int = 4
     rpm: int = 60
     tpm: int = 200_000
     max_retries: int = 3
+    retry_base_s: float = 1.0
+    retry_max_s: float = 30.0
+    lease_ttl_s: int = 180
+    quota_wait_max_s: int = 120
+    chars_per_token: float = 3.0
+    image_tokens: int = 1280
 
 
 class App(BaseModel):
     name: str = "presentation-designer"
-    contracts_version: str = "1.2"
+    contracts_version: str = "1.5"
     language_default: str = "ru"
 
 
@@ -125,7 +183,12 @@ class Settings(BaseModel):
     budget: Budget = Field(default_factory=Budget)
     queue: Queue = Field(default_factory=Queue)
     execution: Execution = Field(default_factory=Execution)
+    content_import: ContentImport = Field(default_factory=ContentImport)
+    plan: Plan = Field(default_factory=Plan)
+    layout: Layout = Field(default_factory=Layout)
     render: Render = Field(default_factory=Render)
+    retention: Retention = Field(default_factory=Retention)
+    backup: Backup = Field(default_factory=Backup)
     audit: Audit = Field(default_factory=Audit)
     llm: Llm = Field(default_factory=Llm)
 
@@ -146,12 +209,32 @@ class Settings(BaseModel):
         return self.resolve(self.paths.runs_dir)
 
     @property
+    def backups_dir(self) -> pathlib.Path:
+        return self.resolve(self.paths.backups_dir)
+
+    @property
     def db_path(self) -> pathlib.Path:
         return self.data_dir / "state.sqlite3"
 
     @property
     def uploads_dir(self) -> pathlib.Path:
         return self.data_dir / "uploads"
+
+    @property
+    def import_cache_dir(self) -> pathlib.Path:
+        return self.resolve(self.content_import.cache_dir)
+
+    @property
+    def plan_cache_dir(self) -> pathlib.Path:
+        return self.resolve(self.plan.cache_dir)
+
+    @property
+    def llm_cache_dir(self) -> pathlib.Path:
+        return self.resolve(self.llm.cache_dir)
+
+    @property
+    def llm_fixtures_dir(self) -> pathlib.Path:
+        return self.resolve(self.llm.fixtures_dir)
 
 
 class Verified(BaseModel):
@@ -196,6 +279,11 @@ class Provider(BaseModel):
     env_base_url: str
     env_api_key: str
     note: str | None = None
+    # Как endpoint принимает режим рассуждения: qwen_enable_thinking (extra_body с
+    # enable_thinking / thinking_budget), openai_reasoning_effort (reasoning_effort) или none.
+    reasoning_style: str = "none"
+    # Ревизия или checkpoint по данным зонда; входит в ключ кэша, чтобы смена весов сбросила кэш.
+    model_revision: str | None = None
     supports: ProviderSupports = Field(default_factory=ProviderSupports)
     limits: ProviderLimits = Field(default_factory=ProviderLimits)
 
@@ -204,6 +292,11 @@ class Provider(BaseModel):
 
     def api_key(self) -> str | None:
         return os.environ.get(self.env_api_key) or None
+
+    def configured(self) -> bool:
+        """Есть адрес и ключ, и это не значения-образцы из .env.example."""
+        url, key = self.base_url(), self.api_key()
+        return bool(url and key) and "example.invalid" not in (url or "") and key != "replace-me"
 
 
 class ModelsConfig(BaseModel):

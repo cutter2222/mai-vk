@@ -1,22 +1,28 @@
 # Роли моделей и провайдеры. Секреты только в окружении: имена переменных указаны в env_*.
 # Допуск по ТЗ: открытые веса, лицензия Apache 2.0 или MIT, до 35B (text-to-image до 20B).
 # Значения model для VK — ориентир из ТЗ (Qwen 3.8 27B). Точный model ID, endpoint и
-# возможности фиксируются после зонда (scripts/probe_llm.py) в docs/llm-capabilities.md;
-# конфиг не выдаёт ориентир за проверенный API.
+# возможности фиксируются после зонда (python -m presentation_designer.llm.probe, обёртка
+# scripts/probe_llm.py) в docs/llm-capabilities.md; конфиг не выдаёт ориентир за проверенный API.
+# Поля verified заполняются только по результату зонда: кто проверил, дата, источник.
 
 providers:
   qwen-api:
     kind: openai_compatible
     env_base_url: PD_QWEN_BASE_URL
     env_api_key: PD_QWEN_API_KEY
-    supports:              # заполняется по результатам зонда; до него значения null
-      json_schema: null
-      json_object: null
-      images: null
-      multi_image: null
-      usage: null
-    limits:
-      concurrency: null
+    # Зонд 16.09.2026 (docs/llm-capabilities.md): прокси LiteLLM над vLLM. reasoning_effort → 400,
+    # enable_thinking в теле игнорируется, работает chat_template_kwargs.enable_thinking; бюджет
+    # рассуждения не задаётся — рассуждение и ответ делят max_completion_tokens.
+    reasoning_style: vllm_chat_template
+    model_revision: null   # ревизия весов у провайдера не раскрывается; внутренний алиас qwen3.8-27b-dflash2
+    supports:              # по результатам зонда 16.09.2026
+      json_schema: true
+      json_object: true
+      images: true
+      multi_image: true
+      usage: true          # prompt/completion есть; reasoning_tokens не отдаётся, оценивается по тексту
+    limits:                # документированные квоты провайдером не сообщены: лимитер работает по
+      concurrency: null    # умолчаниям llm.* из app.yaml; зонд при одновременности 4 ошибок 429 не получил
       rpm: null
       tpm: null
   vk-inference:
@@ -24,6 +30,8 @@ providers:
     env_base_url: PD_VK_BASE_URL
     env_api_key: PD_VK_API_KEY
     note: "Обязателен для команд топ-10. Доступ и model ID подтверждаются организаторами."
+    reasoning_style: none
+    model_revision: null
     supports: { json_schema: null, json_object: null, images: null, multi_image: null, usage: null }
     limits: { concurrency: null, rpm: null, tpm: null }
 
@@ -32,22 +40,22 @@ active_provider: qwen-api
 roles:
   llm:
     provider: qwen-api
-    model: qwen3.8-27b       # ориентир по ТЗ; подтвердить точный ID у провайдера
+    model: qwen3.8-27b       # подтверждён зондом 16.09.2026: есть в /models, отвечает
     hf_url: https://huggingface.co/Qwen/Qwen3.8-27B
     license: Apache-2.0
     params_b: 27
     reasoning: { mode: low, max_output_tokens: 4000 }
     temperature: 0.2
-    verified: { by: null, date: null, source: null }
+    verified: { by: probe, date: "2026-09-16", source: "docs/llm-capabilities.md; в каталоге /models api-ai.mai.ru" }
   vlm:
     provider: qwen-api
-    model: qwen3.8-27b       # мультимодальный checkpoint той же линейки; подтвердить
+    model: qwen3.8-27b       # тот же checkpoint, изображения принимает (зонд 16.09.2026)
     hf_url: https://huggingface.co/Qwen/Qwen3.8-27B
     license: Apache-2.0
     params_b: 27
     reasoning: { mode: "off", max_output_tokens: 1500 }
     temperature: 0.0
-    verified: { by: null, date: null, source: null }
+    verified: { by: probe, date: "2026-09-16", source: "docs/llm-capabilities.md; одно и два изображения прочитаны" }
   text_to_image:
     enabled: false           # задача со звёздочкой, только топ-10 (этап 13)
     provider: null

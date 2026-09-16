@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "story_id": "story_demo",
   "package_id": "pkg_demo",
   "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
@@ -7,6 +7,24 @@
   "purpose": "product",
   "audience": "руководители продуктовых направлений",
   "goal": "получить одобрение на пилот",
+  "effective_brief": {
+    "purpose": "product",
+    "title": "Запуск сервиса умных уведомлений",
+    "audience": "руководители продуктовых направлений",
+    "goal": "получить одобрение на пилот",
+    "language": "ru",
+    "must_include": [
+      "метрики пилота",
+      "план на квартал"
+    ],
+    "avoid": [
+      "технические детали инфраструктуры"
+    ],
+    "slide_count": {
+      "min": 10,
+      "max": 15
+    }
+  },
   "key_takeaway": "Умные уведомления возвращают 40 % потерянного внимания пользователей",
   "theses": [
     {
@@ -96,17 +114,37 @@
   "assumptions": [
     "бюджет пилота в материалах отсутствует, слайд с планом не содержит сумм"
   ],
+  "coverage": {
+    "must_keep_facts": {
+      "total": 2,
+      "covered": 2
+    },
+    "must_include": [
+      {
+        "item": "метрики пилота",
+        "thesis_ids": [
+          "t5"
+        ]
+      },
+      {
+        "item": "план на квартал",
+        "thesis_ids": [
+          "t7"
+        ]
+      }
+    ]
+  },
   "generation_meta": {
     "skills": [
       {
         "name": "story_planner",
-        "version": "0.1.0"
+        "version": "0.2.0"
       }
     ],
     "prompts": [
       {
         "name": "story.outline",
-        "version": "0.1.0"
+        "version": "0.2.0"
       }
     ],
     "models": [
@@ -117,7 +155,7 @@
         "hf_url": "https://huggingface.co/Qwen/Qwen3.8-27B",
         "params_b": 27,
         "license": "Apache-2.0",
-        "reasoning_mode": "low"
+        "reasoning_mode": "off"
       }
     ],
     "seed": 42,
