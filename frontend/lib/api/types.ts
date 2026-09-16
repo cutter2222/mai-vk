@@ -42,9 +42,13 @@ export type Event = {
   job_id?: string;
   understood?: string[];
   missing_purpose?: boolean;
+  /**
+   * для brief_card: чем извлечён бриф из сообщения — моделью или детерминированными правилами (резерв)
+   */
+  brief_source?: "model" | "heuristic";
 };
 /**
- * Содержание одного слота. Ровно одно из полей содержания должно соответствовать kind слота.
+ * Содержание одного слота. Ровно одно из полей содержания должно соответствовать kind слота; исключение — блок chart в слоте image паттерна с ролью chart.
  */
 export type Block = {
   [k: string]: unknown;
@@ -112,6 +116,10 @@ export type Block = {
     columns?: string[];
     max_rows?: number;
     highlight_row?: number;
+    /**
+     * с какой строки набора данных начинается таблица этого слайда; большие наборы планировщик делит между слайдами
+     */
+    row_offset?: number;
   };
   /**
    * Нативная диаграмма PowerPoint; стиль берётся из палитры и правил шаблона
@@ -170,6 +178,24 @@ export type Block = {
   };
   source_refs?: string[];
   fact_refs?: string[];
+  /**
+   * Измерение текста блока по метрикам шрифта после подстановки фактов: выбранный кегль и что сделала лестница ёмкости
+   */
+  fit?: {
+    /**
+     * кегль, с которым текст помещается; равен кеглю слота, если уменьшать не пришлось
+     */
+    size_pt: number;
+    slot_size_pt?: number;
+    lines: number;
+    max_lines: number;
+    chars?: number;
+    /**
+     * overflow — текст не помещается и после лестницы; такой план не выдаётся при точном числе слайдов
+     */
+    action: "as_is" | "pattern_swap" | "font_step" | "shortened" | "split" | "overflow";
+    note?: string;
+  };
 };
 
 export interface Contracts {
@@ -476,10 +502,10 @@ export interface BriefExtract {
   model?: ModelRef;
 }
 /**
- * Описание фактически собранного PPTX одного варианта: объекты, вычисленные стили, геометрия, порядок слоёв, ресурсы, связи со слотами плана и исходными слайдами шаблона. Строится слоем вёрстки по сохранённому файлу и используется аудитом, подсветкой и HTML-экспортом. Поля ограничены разделом 16 FRAMEWORKS.md; детали добавляются версией 1.2 на этапе 8.
+ * Описание фактически собранного PPTX одного варианта: объекты, вычисленные стили, геометрия, порядок слоёв, ресурсы, связи со слотами плана и исходными слайдами шаблона. Строится слоем вёрстки по сохранённому файлу и используется аудитом, подсветкой и HTML-экспортом. Версия 1.2 (этап 8): composer и created_at, шрифты с подменой рендерера, статистика; у слайда заголовок, заметки, часть образца и удалённые объекты образца; у объекта content_source (содержимое из плана, оставленный текст образца, статика шаблона, построенный объект), вид слота и блока, fit из плана; у картинки режим вписывания и происхождение; у таблицы смещение строк и усечение; у диаграммы число категорий и способ построения.
  */
 export interface ComposedDeck {
-  schema_version: "1.1";
+  schema_version: "1.2";
   /**
    * Стабильный идентификатор. Не содержит пробелов и путей.
    */
@@ -550,6 +576,30 @@ export interface ComposedDeck {
     }[];
   };
   warnings?: Warning[];
+  composer?: VersionRef;
+  created_at?: string;
+  /**
+   * семейства шрифтов результата и подмена в рендерере (LibreOffice не использует встроенные шрифты)
+   */
+  fonts?: {
+    family: string;
+    available_in_renderer?: boolean;
+    fallback?: string;
+    embedded?: boolean;
+  }[];
+  stats?: {
+    slides?: number;
+    objects?: number;
+    text_objects?: number;
+    pictures?: number;
+    tables?: number;
+    charts?: number;
+    diagrams?: number;
+    removed_objects?: number;
+    layouts_kept?: number;
+    layouts_removed?: number;
+    file_size_bytes?: number;
+  };
 }
 /**
  * Размер слайда в EMU. В датасете встречаются 12192000×6858000 и 9144000×5143500, поэтому кегли сравниваются только внутри одного шаблона.
@@ -596,6 +646,19 @@ export interface Slide {
     asset_id?: string;
   };
   objects: Object[];
+  /**
+   * заголовок слайда из плана
+   */
+  title?: string;
+  notes?: string;
+  /**
+   * часть образца шаблона, из которой клонирован слайд
+   */
+  source_slide_part?: string;
+  /**
+   * объекты образца, удалённые при сборке: незаполненные карточки и слоты
+   */
+  removed_object_ids?: string[];
 }
 export interface Object {
   /**
@@ -652,6 +715,9 @@ export interface Object {
     };
     natural_width_px?: number;
     natural_height_px?: number;
+    fit?: "cover" | "contain" | "as_is";
+    origin?: "template" | "content" | "generated" | "icon_library";
+    recolored?: boolean;
   };
   table?: {
     rows?: number;
@@ -661,6 +727,11 @@ export interface Object {
      */
     dataset_id?: string;
     header_row?: boolean;
+    row_offset?: number;
+    /**
+     * набор данных не поместился целиком на этот слайд
+     */
+    truncated?: boolean;
   };
   chart?: {
     chart_part?: string;
@@ -674,6 +745,11 @@ export interface Object {
     has_axis_titles?: boolean;
     has_data_labels?: boolean;
     units?: string;
+    categories_count?: number;
+    /**
+     * replaced — данные подставлены в диаграмму образца; rebuilt — образец заменён новой; added — построена на месте картинки или плейсхолдера
+     */
+    built?: "replaced" | "rebuilt" | "added";
   };
   fill?: {
     kind?: "none" | "solid" | "gradient" | "image" | "inherited";
@@ -689,6 +765,35 @@ export interface Object {
      */
     color?: string;
     width_pt?: number;
+  };
+  /**
+   * plan — содержимое из блока плана; sample — намеренно оставленный текст или картинка образца (крошечный слот, незаполненный слот изображения), аудит не считает его заглушкой; template — статика образца, макета или мастера; generated — объект, построенный композером (диаграмма, таблица, схема)
+   */
+  content_source?: "plan" | "sample" | "template" | "generated";
+  /**
+   * вид слота профиля, из которого пришёл объект
+   */
+  slot_kind?: string;
+  /**
+   * вид блока плана; отличается от slot_kind у диаграммы в слоте image
+   */
+  block_kind?: string;
+  /**
+   * измерение из плана (blocks[].fit): выбранный кегль и действие лестницы ёмкости
+   */
+  fit?: {
+    size_pt?: number;
+    slot_size_pt?: number;
+    lines?: number;
+    max_lines?: number;
+    action?: string;
+  };
+  /**
+   * схема из фигур: группа-контейнер и её узлы (не SmartArt)
+   */
+  diagram?: {
+    kind?: string;
+    node_ids?: string[];
   };
 }
 /**
@@ -768,10 +873,10 @@ export interface Warning {
   slide_index?: number;
 }
 /**
- * Результат слоя импорта содержания. Два входа: контент-пакет (файлы) и краткий бриф с назначением. Факты и наборы данных извлекаются детерминированно до вызова модели. Версия 1.2: источник ссылается на файл проекта (file_id), вид pptx для материалов-презентаций, неполный бриф дополняется умолчаниями с предупреждением brief_incomplete. Версия 1.1: контекст факта (показатель, период, субъект, единица, исходный фрагмент или ячейка), производные показатели с формулой, отметка неопределённости.
+ * Результат слоя импорта содержания. Два входа: контент-пакет (файлы) и краткий бриф с назначением. Факты и наборы данных извлекаются детерминированно до вызова модели. Версия 1.3 (этап 6): import_meta с версиями парсеров, ключом кэша и вызовами модели; у источников parser и число единиц (страниц, листов, слайдов); у блоков source_location и caption; у ресурсов sha256 и mime; у наборов данных source_location, total_rows и truncated. Версия 1.2: источник ссылается на файл проекта (file_id), вид pptx для материалов-презентаций, неполный бриф дополняется умолчаниями с предупреждением brief_incomplete. Версия 1.1: контекст факта (показатель, период, субъект, единица, исходный фрагмент или ячейка), производные показатели с формулой, отметка неопределённости.
  */
 export interface ContentPackage {
-  schema_version: "1.2";
+  schema_version: "1.3";
   /**
    * Стабильный идентификатор. Не содержит пробелов и путей.
    */
@@ -814,6 +919,18 @@ export interface ContentPackage {
      * Стабильный идентификатор. Не содержит пробелов и путей.
      */
     file_id?: string;
+    parser?: VersionRef1;
+    /**
+     * сколько единиц содержания разобрано: страниц, листов, слайдов, таблиц, изображений
+     */
+    units?: {
+      pages?: number;
+      sheets?: number;
+      slides?: number;
+      tables?: number;
+      images?: number;
+      chars?: number;
+    };
   }[];
   /**
    * Содержание в порядке исходников. Планировщик ссылается на block_id, а не копирует текст без ссылки.
@@ -845,6 +962,30 @@ export interface ContentPackage {
     asset_id?: string;
     importance?: "must" | "should" | "could";
     tags?: string[];
+    /**
+     * Место блока в источнике
+     */
+    source_location?: {
+      page?: number;
+      sheet?: string;
+      /**
+       * номер слайда материала-презентации
+       */
+      slide?: number;
+      /**
+       * например A1:C4
+       */
+      cell_range?: string;
+      char_offset?: number;
+      /**
+       * текст из заметок докладчика
+       */
+      notes?: boolean;
+    };
+    /**
+     * подпись таблицы или рисунка из источника
+     */
+    caption?: string;
   }[];
   /**
    * Реестр фактов. В тексте планов факты подставляются через {fact:<fact_id>}; модель не переписывает значения.
@@ -946,6 +1087,8 @@ export interface ContentPackage {
      * Стабильный идентификатор. Не содержит пробелов и путей.
      */
     source_id?: string;
+    sha256?: string;
+    mime?: string;
   }[];
   /**
    * Табличные данные для таблиц и графиков
@@ -970,6 +1113,20 @@ export interface ContentPackage {
      * Стабильный идентификатор. Не содержит пробелов и путей.
      */
     block_id?: string;
+    source_location?: {
+      page?: number;
+      sheet?: string;
+      slide?: number;
+      cell_range?: string;
+    };
+    /**
+     * строк в источнике до усечения
+     */
+    total_rows?: number;
+    /**
+     * rows усечены до предела импорта; total_rows хранит полное число
+     */
+    truncated?: boolean;
   }[];
   warnings?: Warning[];
   /**
@@ -980,6 +1137,42 @@ export interface ContentPackage {
     why_needed?: string;
     thesis_hint?: string;
   }[];
+  /**
+   * Как был собран пакет: версии импортёра и парсеров, ключ кэша, попадания в кэш разбора файлов, вызовы модели для уточнения контекста фактов
+   */
+  import_meta?: {
+    importer: VersionRef;
+    /**
+     * версия парсера по формату: docx, xlsx, csv, pdf, markdown, text, pptx, image
+     */
+    parsers?: {
+      [k: string]: string;
+    };
+    /**
+     * sha256 от sha256 файлов в их порядке, параметров разбора и версий парсеров; бриф в ключ не входит — его смена не перечитывает файлы
+     */
+    import_key: string;
+    cache?: {
+      files_hit?: number;
+      files_missed?: number;
+    };
+    skills?: VersionRef[];
+    prompts?: VersionRef[];
+    models?: ModelRef[];
+    /**
+     * запросов к модели для уточнения контекста фактов
+     */
+    model_calls?: number;
+    duration_ms?: number;
+    created_at?: string;
+  };
+}
+/**
+ * Ссылка на версионируемый компонент: скилл, промпт, анализатор, рендерер
+ */
+export interface VersionRef1 {
+  name: string;
+  version: string;
 }
 /**
  * Тело POST /api/generations и вход CLI-команды generate. Версия 1.1. Приоритет: явные настройки запроса → бриф ContentPackage → умолчания config/app.yaml. Пути файлов от клиента не принимаются: только идентификаторы.
@@ -1388,10 +1581,10 @@ export interface JobStatus {
   warnings?: Warning[];
 }
 /**
- * Проект — одна презентация: выбранный шаблон, файлы, бриф, настройки, задание генерации и лента событий чата. Серверная сущность: интерфейс восстанавливает проект по идентификатору из URL. Карточки ленты ссылаются на шаблоны, пакеты, задания и файлы по идентификаторам и не дублируют данные. Версия 1.2.
+ * Проект — одна презентация: выбранный шаблон, файлы, бриф, настройки, задание генерации и лента событий чата. Серверная сущность: интерфейс восстанавливает проект по идентификатору из URL. Карточки ленты ссылаются на шаблоны, пакеты, задания и файлы по идентификаторам и не дублируют данные. Версия 1.3 (этап 6): карточка брифа хранит источник извлечения (модель или правила). Версия 1.2: серверная сущность проекта.
  */
 export interface Project {
-  schema_version: "1.2";
+  schema_version: "1.3";
   /**
    * Стабильный идентификатор. Не содержит пробелов и путей.
    */
@@ -1529,10 +1722,10 @@ export interface SkillManifest {
   response_format?: "json_schema" | "json_object" | "text";
 }
 /**
- * План одного варианта презентации: порядок слайдов, выбранные паттерны и содержание каждого слота. Создаётся слоем генерации, проверяется по схеме и по ёмкости слотов до вёрстки. Версия 1.1: ссылка на StoryPlan, покрытие обязательных тезисов, точное число или диапазон слайдов, данные для сопоставления вариантов. Соответствие kind содержимому блока проверяется схемой (allOf/if) и валидаторами.
+ * План одного варианта презентации: порядок слайдов, выбранные паттерны и содержание каждого слота. Создаётся слоем генерации, проверяется по схеме и по ёмкости слотов до вёрстки. Версия 1.2 (этап 7): у блоков fit — результат измерения текста по метрикам шрифта после подстановки фактов (выбранный кегль, строки, действие лестницы ёмкости); у таблиц row_offset — часть большого набора данных на этом слайде; у slide_count target — целевое число слайдов варианта внутри диапазона; блок chart допускается в слоте image паттерна с ролью chart (картинка диаграммы в образце заменяется нативной диаграммой). Версия 1.1: ссылка на StoryPlan, покрытие обязательных тезисов, точное число или диапазон слайдов, данные для сопоставления вариантов. Соответствие kind содержимому блока проверяется схемой (allOf/if) и валидаторами.
  */
 export interface SlidePlan {
-  schema_version: "1.1";
+  schema_version: "1.2";
   /**
    * Стабильный идентификатор. Не содержит пробелов и путей.
    */
@@ -1577,12 +1770,13 @@ export interface SlidePlan {
    */
   story_id: string;
   /**
-   * Требование к числу слайдов, унаследованное из запроса: точное число или диапазон; план обязан ему соответствовать
+   * Требование к числу слайдов, унаследованное из запроса: точное число или диапазон; план обязан ему соответствовать. target — целевое число слайдов варианта внутри диапазона (compact ближе к min, detailed к max)
    */
   slide_count: {
     exact?: number;
     min?: number;
     max?: number;
+    target?: number;
   };
   /**
    * Покрытие обязательных тезисов StoryPlan: заполняется планировщиком, проверяется валидатором
@@ -1669,10 +1863,10 @@ export interface GenerationMeta {
   created_at?: string;
 }
 /**
- * Общий смысловой план презентации, создаётся один раз из ContentPackage и не зависит от шаблона и геометрии. Три SlidePlan ссылаются на него и обязаны покрыть все обязательные тезисы. Поля ограничены разделом 16 FRAMEWORKS.md; детали добавляются версией 1.2 на этапе 6.
+ * Общий смысловой план презентации, создаётся один раз из ContentPackage и не зависит от шаблона и геометрии. Три SlidePlan ссылаются на него и обязаны покрыть все обязательные тезисы. Версия 1.2 (этап 6): effective_brief — бриф и явные настройки запроса, применённые до построения плана (язык, аудитория, цель, обязательные тезисы, ограничения, число слайдов); coverage — покрытие обязательных фактов и пунктов брифа тезисами; content_hash считается по нормализованному содержанию пакета, effective_brief, модели, промпту и схеме, без идентификаторов заданий и времени.
  */
 export interface StoryPlan {
-  schema_version: "1.1";
+  schema_version: "1.2";
   /**
    * Стабильный идентификатор. Не содержит пробелов и путей.
    */
@@ -1682,13 +1876,31 @@ export interface StoryPlan {
    */
   package_id: string;
   /**
-   * sha256 нормализованного содержания ContentPackage; ключ кэша StoryPlan вместе с версией промпта
+   * sha256 нормализованного содержания ContentPackage вместе с effective_brief, моделью, версией скилла/промпта и схемой ответа; ключ кэша StoryPlan. Не зависит от package_id, job_id и времени
    */
   content_hash: string;
   language: string;
   purpose: "feature" | "product" | "project" | "initiative" | "report" | "other";
   audience?: string;
   goal?: string;
+  /**
+   * бриф и явные настройки запроса, применённые до построения плана; смена любого поля меняет content_hash
+   */
+  effective_brief?: {
+    purpose?: "feature" | "product" | "project" | "initiative" | "report" | "other";
+    title?: string;
+    audience?: string;
+    goal?: string;
+    language?: string;
+    tone?: string;
+    must_include?: string[];
+    avoid?: string[];
+    slide_count?: {
+      exact?: number;
+      min?: number;
+      max?: number;
+    };
+  };
   /**
    * главный вывод всей презентации одним предложением
    */
@@ -1717,6 +1929,22 @@ export interface StoryPlan {
    * допущения режима брифа, отделённые от подтверждённых данных
    */
   assumptions?: string[];
+  /**
+   * покрытие обязательного содержания тезисами: проверяется кодом до вёрстки
+   */
+  coverage?: {
+    must_keep_facts?: {
+      total: number;
+      covered: number;
+    };
+    /**
+     * пункты brief.must_include и тезисы, которые их раскрывают; пустой список тезисов — пункт не покрыт
+     */
+    must_include?: {
+      item: string;
+      thesis_ids: string[];
+    }[];
+  };
   generation_meta: GenerationMeta;
   warnings?: Warning[];
 }

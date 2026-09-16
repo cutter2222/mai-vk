@@ -59,7 +59,7 @@ export default function ProjectsPage() {
           </Stack>
         ) : (
           <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing="lg" data-testid="projects-grid">
-            <button type="button" className="project-card-new" onClick={() => void create()} data-testid="new-project-card">
+            <button type="button" className="grid-card-new" onClick={() => void create()} data-testid="new-project-card">
               <IconPlus size={28} stroke={1.5} />
               <Text size="sm" fw={500}>Новая презентация</Text>
             </button>

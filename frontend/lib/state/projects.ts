@@ -19,7 +19,7 @@ export type ChatMessage =
   | { event_id: string; at: string; role: "assistant"; kind: "template_question"; file_id: string; resolved?: "template" | "material" }
   | { event_id: string; at: string; role: "assistant"; kind: "template_card"; template_id: string }
   | { event_id: string; at: string; role: "assistant"; kind: "content_card"; package_id: string; file_ids: string[] }
-  | { event_id: string; at: string; role: "assistant"; kind: "brief_card"; understood: string[]; missing_purpose: boolean }
+  | { event_id: string; at: string; role: "assistant"; kind: "brief_card"; understood: string[]; missing_purpose: boolean; brief_source?: "model" | "heuristic" }
   | { event_id: string; at: string; role: "assistant"; kind: "job_card"; job_id: string }
   | { event_id: string; at: string; role: "assistant"; kind: "audit_card"; job_id: string };
 

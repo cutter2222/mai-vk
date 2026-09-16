@@ -1,12 +1,9 @@
 "use client";
 
-import { Badge, Group, Loader, Progress, Stack, Text } from "@mantine/core";
-import { useState } from "react";
+import { Anchor, Badge, ColorSwatch, Group, Loader, Stack, Text, Tooltip } from "@mantine/core";
+import { IconExternalLink } from "@tabler/icons-react";
 
-import { api, type TemplateDetail } from "@/lib/api/client";
-import { PATTERN_ROLE_LABELS } from "@/lib/format";
-
-import { SlideViewer } from "./SlideViewer";
+import type { TemplateDetail } from "@/lib/api/client";
 
 interface Props {
   templateId: string;
@@ -14,66 +11,65 @@ interface Props {
   error: Error | null;
 }
 
-/** Оформление выбранного шаблона до генерации: образцы слайдов, палитра и шрифты. */
+/**
+ * Правая часть до генерации: пустой первый слайд, как в редакторе презентаций, и подпись «шаблон выбран».
+ * Сам шаблон здесь не показывается: достаточно понимать, что он есть и с ним можно работать,
+ * а что из него извлечено, видно в библиотеке шаблонов.
+ */
 export function TemplatePreview({ templateId, detail, error }: Props) {
-  const [index, setIndex] = useState(0);
   const profile = detail?.profile;
-
-  if (error) {
-    return (
-      <div className="preview-empty">
-        <Stack align="center" gap={6}>
-          <Text fw={600}>Не удалось получить профиль шаблона</Text>
-          <Text size="sm" c="dimmed">{error.message}</Text>
-        </Stack>
-      </div>
-    );
-  }
-
-  if (!profile) {
-    return (
-      <div className="preview-empty">
-        <Stack align="center" gap="xs" maw={420} data-testid="template-analyzing">
-          <Loader size="sm" />
-          <Text fw={600}>Шаблон анализируется</Text>
-          <Progress value={65} animated size="sm" w={260} />
-          <Text size="sm" c="dimmed" ta="center">Разбираем образцы, палитру и шрифты. Заполняйте содержание, ждать не нужно: генерация дождётся профиля сама.</Text>
-        </Stack>
-      </div>
-    );
-  }
-
-  const slides = profile.patterns.map((p) => ({
-    key: p.pattern_id,
-    src: p.preview_path ? api.templates.assetUrl(templateId, p.preview_path) : undefined,
-    label: `${PATTERN_ROLE_LABELS[p.role] ?? p.role}${p.name ? ` · ${p.name}` : ""}`,
-  }));
-  const current = profile.patterns[Math.min(index, slides.length - 1)];
+  const name = detail?.name?.replace(/\.pptx$/i, "") ?? templateId;
+  const fonts = profile ? [...new Set(profile.design_tokens.typography.fonts.map((f) => f.family))].slice(0, 2).join(", ") : "";
+  const palette = profile?.design_tokens.colors.palette.slice(0, 8) ?? [];
 
   return (
-    <>
-      <div className="preview-toolbar">
-        <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
-          <Text fw={600} size="sm">Образцы шаблона</Text>
-          <Text size="xs" c="dimmed">{profile.patterns.length} композиций · {profile.stats.slides} слайдов в файле</Text>
-        </Group>
+    <div className="viewer" data-testid={error ? "template-error" : profile ? "template-ready" : "template-analyzing"}>
+      <div className="filmstrip">
+        <button type="button" data-active="true" aria-label="Слайд 1" title="Слайд 1">
+          <span className="thumb-number">1</span>
+          <span className="thumb-image"><span className="slide-frame slide-blank" /></span>
+        </button>
       </div>
-      <SlideViewer
-          slides={slides}
-          index={index}
-          onIndex={setIndex}
-          caption={
-            current ? (
-              <>
-                <Badge color="gray">{PATTERN_ROLE_LABELS[current.role] ?? current.role}</Badge>
-                <Text size="sm">{current.name}</Text>
-                <Text size="xs" c="dimmed">{current.slots.length} слотов</Text>
-              </>
-            ) : null
-          }
-        >
-          <Text size="xs" c="dimmed" mt="md" ta="center">Так выглядят образцы шаблона. После генерации здесь появятся слайды презентации в трёх вариантах вёрстки.</Text>
-        </SlideViewer>
-    </>
+      <div className="viewer-main">
+        <div className="preview-stage">
+          <div className="slide-frame slide-blank" data-testid="slide-blank">
+            <Text size="sm" c="dimmed">Пока пусто</Text>
+          </div>
+        </div>
+        <Group justify="space-between" mt="sm" mb="xs" gap="xs" align="center" wrap="nowrap">
+          <Group gap="xs" style={{ flex: "1 1 auto", minWidth: 0 }} wrap="nowrap">
+            <Text size="sm" fw={500} truncate>{name}</Text>
+            {error ? (
+              <Badge size="xs" color="red" variant="light">профиль не получен</Badge>
+            ) : profile ? (
+              <Badge size="xs" color="green" variant="light">шаблон выбран</Badge>
+            ) : (
+              <Badge size="xs" color="gray" variant="light" leftSection={<Loader size={8} color="gray" />}>анализируется</Badge>
+            )}
+          </Group>
+          <Text size="sm" c="dimmed" style={{ flex: "0 0 auto" }}>Слайдов нет</Text>
+        </Group>
+        <Stack gap={6} mt="xs">
+          {error ? (
+            <Text size="xs" c="dimmed">{error.message}</Text>
+          ) : profile ? (
+            <Group gap="sm" wrap="nowrap" align="center">
+              <Group gap={4} wrap="nowrap">
+                {palette.map((c) => (
+                  <Tooltip key={`${c.hex}-${c.role}`} label={`${c.hex} · ${c.role}`}><ColorSwatch color={c.hex} size={12} /></Tooltip>
+                ))}
+              </Group>
+              <Text size="xs" c="dimmed" truncate>{profile.patterns.length} композиций{fonts ? ` · ${fonts}` : ""}</Text>
+              <Anchor href={`/templates?id=${encodeURIComponent(templateId)}`} target="_blank" rel="noreferrer" size="xs" style={{ flex: "0 0 auto" }} data-testid="template-open-library-preview">
+                <Group gap={4} wrap="nowrap"><IconExternalLink size={12} />Что извлечено</Group>
+              </Anchor>
+            </Group>
+          ) : (
+            <Text size="xs" c="dimmed">Разбираю образцы, палитру и шрифты. Ждать не нужно: добавляйте материалы и описывайте задачу в чате.</Text>
+          )}
+          <Text size="xs" c="dimmed">Слайды появятся здесь после генерации: три варианта вёрстки и находки аудита.</Text>
+        </Stack>
+      </div>
+    </div>
   );
 }

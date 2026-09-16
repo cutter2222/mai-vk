@@ -95,6 +95,99 @@ export const PATTERN_ROLE_LABELS: Record<string, string> = {
   freeform: "Свободный",
 };
 
+/** Классификация слайдов файла шаблона (TemplateProfile.sample_slides). */
+export const SLIDE_CLASS_LABELS: Record<string, string> = {
+  content_sample: "Образец содержания",
+  style_guide: "Инструкция по оформлению",
+  asset_catalog: "Каталог ресурсов",
+  empty: "Пустой",
+  hidden: "Скрытый",
+  other: "Другое",
+};
+
+export const SLOT_KIND_LABELS: Record<string, string> = {
+  title: "Заголовок",
+  subtitle: "Подзаголовок",
+  body: "Текст",
+  bullets: "Список",
+  number: "Число",
+  label: "Подпись",
+  caption: "Подпись к объекту",
+  date: "Дата",
+  name: "Имя",
+  position: "Должность",
+  image: "Изображение",
+  icon: "Иконка",
+  table: "Таблица",
+  chart: "График",
+  diagram: "Схема",
+  qr: "QR-код",
+  code: "Код",
+  footer: "Колонтитул",
+};
+
+export const FIXED_KIND_LABELS: Record<string, string> = {
+  logo: "Логотип",
+  footer: "Колонтитул",
+  page_number: "Номер слайда",
+  background: "Фон",
+  decoration: "Декор",
+  navigation_dots: "Навигация",
+  qr_placeholder: "Место под QR",
+};
+
+export const ASSET_KIND_LABELS: Record<string, string> = {
+  image: "Изображение",
+  icon: "Иконка",
+  logo: "Логотип",
+  photo: "Фото",
+  screenshot: "Скриншот",
+  mockup: "Мокап",
+  chart_image: "Картинка графика",
+  qr: "QR-код",
+  background: "Фон",
+};
+
+export const COLOR_ROLE_LABELS: Record<string, string> = {
+  primary: "основной",
+  secondary: "дополнительный",
+  accent: "акцент",
+  neutral: "нейтральный",
+  background: "фон",
+  text: "текст",
+  muted: "приглушённый",
+  warning: "предупреждение",
+};
+
+export const GUIDELINE_KIND_LABELS: Record<string, string> = {
+  typography: "Типографика",
+  color: "Цвет",
+  chart: "Графики",
+  table: "Таблицы",
+  icons: "Иконки",
+  layout: "Вёрстка",
+  general: "Общее",
+};
+
+export const ROLE_SOURCE_LABELS: Record<string, string> = {
+  heuristic: "эвристика",
+  vlm: "модель",
+  layout_name: "имя макета",
+  manual: "вручную",
+};
+
+export const DYNAMIC_FIELD_LABELS: Record<string, string> = {
+  slide_number: "Номер слайда",
+  date: "Дата",
+  section_index: "Номер раздела",
+  total_slides: "Всего слайдов",
+};
+
+/** Доля слайда в проценты: 0.054 → «5,4 %». */
+export function formatRatio(v: number): string {
+  return `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 }).format(v * 100)} %`;
+}
+
 export function formatDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";

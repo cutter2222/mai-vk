@@ -1,11 +1,11 @@
 "use client";
 
-import { Accordion, Badge, Button, ColorSwatch, Group, Loader, Stack, Text, Tooltip } from "@mantine/core";
+import { Accordion, Anchor, Badge, Button, ColorSwatch, Group, Loader, Stack, Text, Tooltip } from "@mantine/core";
 import { IconFile, IconFileTypePpt, IconRocket } from "@tabler/icons-react";
 
 import { ProgressPanel } from "@/components/workspace/ProgressPanel";
 import { MetricsPanel } from "@/components/workspace/MetricsPanel";
-import { api, type ContentDetail, type TemplateDetail } from "@/lib/api/client";
+import { api, ApiError, type ContentDetail, type TemplateDetail } from "@/lib/api/client";
 import { usePolling } from "@/lib/api/usePolling";
 import { STATUS_LABELS, VARIANT_LABELS } from "@/lib/format";
 import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
@@ -40,39 +40,50 @@ function Card({ title, aside, children, testId }: { title: React.ReactNode; asid
   );
 }
 
-export function TemplateQuestionCard({ m, ctx }: { m: Msg<"template_question">; ctx: CardContext }) {
-  const file = ctx.project.files.find((f) => f.file_id === m.file_id);
-  const name = file?.name ?? "файл";
+/** Вопрос о PPTX: шаблон оформления или материал. Один и тот же вид для файла в истории и для файла, который ещё грузится. */
+export function PptxQuestion({ name, resolved, uploading, onAnswer, testId }: { name: string; resolved?: "template" | "material"; uploading?: boolean; onAnswer: (answer: "template" | "material") => void; testId: string }) {
+  const text = resolved === "template"
+    ? uploading ? "Разберу как шаблон, как только файл загрузится." : "Разбираю как шаблон: палитра, шрифты и композиции слайдов."
+    : resolved === "material"
+      ? uploading ? "Считаю материалом: импортирую, как только файл загрузится." : "Считаю материалом: текст слайдов пойдёт в содержание."
+      : "Похоже на презентацию. Разобрать её как шаблон оформления или это материал с содержанием?";
   return (
-    <Card title={<Group gap={6} wrap="nowrap"><IconFileTypePpt size={16} />{name}</Group>} testId={`template-question-${m.event_id}`}>
-      <Text size="sm" c="dimmed" mb={m.resolved ? 0 : 8}>
-        {m.resolved === "template" ? "Разбираю как шаблон: палитра, шрифты и композиции слайдов." : m.resolved === "material" ? "Считаю материалом: текст слайдов пойдёт в содержание." : "Похоже на презентацию. Разобрать её как шаблон оформления или это материал с содержанием?"}
-      </Text>
-      {!m.resolved && (
+    <Card title={<Group gap={6} wrap="nowrap"><IconFileTypePpt size={16} />{name}</Group>} aside={uploading ? <Loader size={12} /> : undefined} testId={testId}>
+      <Text size="sm" c="dimmed" mb={resolved ? 0 : 8}>{text}</Text>
+      {!resolved && (
         <Group gap="xs">
-          <Button size="xs" onClick={() => ctx.onResolveTemplate(m.event_id, m.file_id, "template")} data-testid="answer-template">Разобрать как шаблон</Button>
-          <Button size="xs" variant="default" onClick={() => ctx.onResolveTemplate(m.event_id, m.file_id, "material")} data-testid="answer-material">Это материал</Button>
+          <Button size="xs" onClick={() => onAnswer("template")} data-testid="answer-template">Разобрать как шаблон</Button>
+          <Button size="xs" variant="default" onClick={() => onAnswer("material")} data-testid="answer-material">Это материал</Button>
         </Group>
       )}
     </Card>
   );
 }
 
+export function TemplateQuestionCard({ m, ctx }: { m: Msg<"template_question">; ctx: CardContext }) {
+  const file = ctx.project.files.find((f) => f.file_id === m.file_id);
+  return <PptxQuestion name={file?.name ?? "файл"} resolved={m.resolved} onAnswer={(answer) => ctx.onResolveTemplate(m.event_id, m.file_id, answer)} testId={`template-question-${m.event_id}`} />;
+}
+
 export function TemplateCard({ m, ctx }: { m: Msg<"template_card">; ctx: CardContext }) {
   const detail = usePolling<TemplateDetail>(() => api.templates.get(m.template_id), (d) => d.status === "succeeded" || d.status === "failed", [m.template_id]);
   const profile = detail.data?.profile;
   const current = ctx.project.template_id === m.template_id;
+  // Шаблон удалили из библиотеки: карточка остаётся в истории, но профиля у неё больше нет.
+  const gone = detail.error instanceof ApiError && detail.error.status === 404;
   return (
     <Card
       title="Шаблон"
-      aside={current ? <Badge color="green" size="xs">используется</Badge> : <Badge color="gray" size="xs">заменён</Badge>}
+      aside={gone ? <Badge color="gray" size="xs">удалён из библиотеки</Badge> : current ? <Badge color="green" size="xs">используется</Badge> : <Badge color="gray" size="xs">заменён</Badge>}
       testId="template-card"
     >
       <Group gap="sm" wrap="nowrap" align="flex-start">
         <IconFileTypePpt size={22} stroke={1.5} style={{ flex: "0 0 auto", marginTop: 2 }} />
         <div style={{ minWidth: 0, flex: 1 }}>
           <Text size="sm" fw={500} truncate>{detail.data?.name ?? m.template_id}</Text>
-          {!profile ? (
+          {gone ? (
+            <Text size="xs" c="dimmed" mt={4}>Шаблон удалён из библиотеки. Загрузите PPTX снова или выберите другой в шапке проекта.</Text>
+          ) : !profile ? (
             <Group gap={6} mt={4}><Loader size={12} /><Text size="xs" c="dimmed">{detail.error ? detail.error.message : "Анализирую образцы, палитру и шрифты. Ждать не нужно, можно добавлять материалы."}</Text></Group>
           ) : (
             <Stack gap={6} mt={4}>
@@ -82,7 +93,10 @@ export function TemplateCard({ m, ctx }: { m: Msg<"template_card">; ctx: CardCon
                   <Tooltip key={c.hex} label={`${c.hex} · ${c.role}`}><ColorSwatch color={c.hex} size={14} /></Tooltip>
                 ))}
               </Group>
-              <Text size="xs" c="dimmed">Из этих композиций будут собраны слайды. Образцы — справа; сменить шаблон можно в шапке проекта.</Text>
+              <Text size="xs" c="dimmed">
+                Из этих композиций будут собраны слайды; сменить шаблон можно в шапке проекта.{" "}
+                <Anchor href={`/templates?id=${encodeURIComponent(m.template_id)}`} target="_blank" rel="noreferrer" size="xs" data-testid="template-open-library">Что извлечено из шаблона</Anchor>
+              </Text>
             </Stack>
           )}
         </div>
@@ -153,6 +167,11 @@ export function BriefCard({ m, ctx }: { m: Msg<"brief_card">; ctx: CardContext }
             ))}
           </Group>
         </Stack>
+      )}
+      {m.understood.length > 0 && m.brief_source && (
+        <Text size="xs" c="dimmed" mt={6} data-testid="brief-source">
+          {m.brief_source === "model" ? "Поля из сообщения выделила модель; проверьте и поправьте при необходимости." : "Поля из сообщения выделены по правилам: модель была недоступна."}
+        </Text>
       )}
       <Stack gap={6} mt={10}>
         <Button size="sm" leftSection={<IconRocket size={15} />} disabled={!ready} loading={ctx.generating} onClick={ctx.onGenerate} data-testid="generate" w="fit-content">

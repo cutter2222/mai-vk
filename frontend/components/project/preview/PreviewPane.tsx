@@ -19,7 +19,7 @@ interface Props {
   onOpenTemplateTab: () => void;
 }
 
-/** Правая часть редактора: слайды задания, иначе образцы шаблона, иначе подсказка. */
+/** Правая часть редактора: слайды задания, иначе выбранный шаблон, иначе подсказка. */
 export function PreviewPane({ project, session, templateDetail, templateError, onChoose, onOpenTemplateTab }: Props) {
   if (project.job_id) {
     if (session.job.error && !session.result) {
@@ -53,7 +53,7 @@ export function PreviewPane({ project, session, templateDetail, templateError, o
       <Stack align="center" gap="xs" maw={440} data-testid="preview-empty">
         <IconLayoutDashboard size={44} stroke={1.2} color="var(--mantine-color-gray-5)" />
         <Text fw={600}>Здесь появятся слайды</Text>
-        <Text size="sm" c="dimmed" ta="center">Сначала образцы шаблона, как только вы его добавите в чат, потом — слайды презентации в трёх вариантах с находками аудита.</Text>
+        <Text size="sm" c="dimmed" ta="center">Добавьте в чат шаблон PPTX и материалы: после генерации здесь будут слайды презентации в трёх вариантах с находками аудита.</Text>
         <Button variant="default" mt="xs" onClick={onOpenTemplateTab}>Перейти в чат</Button>
       </Stack>
     </div>

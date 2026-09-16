@@ -162,6 +162,13 @@ export function seedDemoTemplate(): MockTemplate {
   return template;
 }
 
+/** Удаление из библиотеки: проекты заглушки теряют ссылку на шаблон, генерации остаются. */
+export function deleteTemplate(templateId: string): boolean {
+  if (!store.templates.delete(templateId)) return false;
+  persistStore();
+  return true;
+}
+
 export function templateStatus(t: MockTemplate): Status {
   return now() - t.startedAt >= t.durationMs ? "succeeded" : now() - t.startedAt < ms(800) ? "queued" : "running";
 }

@@ -14,6 +14,7 @@ import {
   createPackage,
   createRepair,
   createTemplate,
+  deleteTemplate,
   packageJobStatus,
   packageStatus,
   persistStore,
@@ -161,8 +162,18 @@ export const handlers = [
   http.get(base("/templates"), () => {
     seedDemoTemplate();
     return HttpResponse.json(
-      [...store.templates.values()].map((t) => ({ template_id: t.template_id, name: t.name, status: templateStatus(t), slide_count: t.profile.stats.slides, created_at: t.created_at })),
+      [...store.templates.values()].map((t) => {
+        const status = templateStatus(t);
+        const preview = status === "succeeded" ? t.profile.patterns.find((p) => p.preview_path)?.preview_path : undefined;
+        return { template_id: t.template_id, name: t.name, status, slide_count: t.profile.stats.slides, pattern_count: t.profile.patterns.length, ...(preview ? { preview } : {}), created_at: t.created_at };
+      }),
     );
+  }),
+
+  http.delete(base("/templates/:id"), ({ params }) => {
+    if (!deleteTemplate(String(params.id))) return err(404, "template_not_found", "Шаблон не найден");
+    projects.detachTemplate(String(params.id));
+    return new HttpResponse(null, { status: 204 });
   }),
 
   http.post(base("/templates"), async ({ request }) => {

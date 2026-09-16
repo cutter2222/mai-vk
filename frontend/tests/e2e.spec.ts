@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 
-import { attach, collectConsoleErrors, createProject, DOCX, DOCX_MIME, PPTX, PPTX_MIME, sendMaterialsAndBrief, sendMessage, speedUp, startGeneration, uploadTemplate, waitForAllVariantsDone } from "./helpers";
+import { attach, cleanupProjects, collectConsoleErrors, createProject, DOCX, DOCX_MIME, openBriefEditor, PPTX, PPTX_MIME, REAL_STACK, rememberProjectFromUrl, sendMaterialsAndBrief, sendMessage, speedUp, startGeneration, uploadTemplate, WAIT, waitForAllVariantsDone } from "./helpers";
 
 const SHOTS = process.env.SHOT_DIR;
 const shot = async (page: Page, name: string) => {
@@ -9,11 +9,16 @@ const shot = async (page: Page, name: string) => {
 };
 
 test.describe("сквозной сценарий в чате на заглушках", () => {
+  // Тесты создают проекты на сервере (в рабочем режиме) — после каждого они удаляются.
+  test.afterEach(async ({ page }) => {
+    await cleanupProjects(page);
+  });
+
   test("шаблон → материалы и задача → генерация → варианты → аудит → исправление → ревизия → скачивание", async ({ page, browserName }) => {
     await speedUp(page, 8);
     const errors = collectConsoleErrors(page);
 
-    await createProject(page);
+    const projectId = await createProject(page);
     await expect(page.getByTestId("health")).toContainText("Сервис работает");
     await expect(page.getByTestId("chat-intro")).toBeVisible();
     await expect(page.getByTestId("preview-empty")).toBeVisible();
@@ -24,7 +29,8 @@ test.describe("сквозной сценарий в чате на заглушк
     // Текущий шаблон виден в шапке, в списке он отмечен галочкой
     await expect(page.getByTestId("template-menu")).toContainText("Корпоративный шаблон");
     await page.getByTestId("template-menu").click();
-    await expect(page.locator('[data-testid^="template-option-"]').filter({ hasText: "Корпоративный шаблон" })).toBeVisible();
+    // В библиотеке сервера может быть несколько шаблонов с таким именем (другие байты файла) — достаточно первого.
+    await expect(page.locator('[data-testid^="template-option-"]').filter({ hasText: "Корпоративный шаблон" }).first()).toBeVisible();
     await page.keyboard.press("Escape");
 
     await sendMaterialsAndBrief(page);
@@ -32,16 +38,21 @@ test.describe("сквозной сценарий в чате на заглушк
     // Бриф понят из фразы: название проекта и поля карточки
     await expect(page.getByTestId("project-title")).toHaveValue("Запуск сервиса умных уведомлений");
     await expect(page.getByTestId("brief-card").last()).toContainText("Продукт");
-    await expect(page.getByTestId("brief-card").last()).toContainText("руководителей");
+    // На сервере поля выделяет модель и может поставить слово в другой падеж; в заглушках — правила.
+    await expect(page.getByTestId("brief-card").last()).toContainText(/руководител/);
+    await expect(page.getByTestId("brief-source").last()).toBeVisible();
     await expect(page.getByTestId("generate").last()).toBeEnabled({ timeout: 15000 });
 
-    // Профиль шаблона в карточке и образцы справа после анализа
-    await expect(page.getByTestId("template-profile").last()).toBeVisible({ timeout: 15000 });
-    await expect(page.getByTestId("thumb-strip")).toBeVisible();
+    // Профиль шаблона в карточке, справа — пустой первый слайд с подписью «шаблон выбран», без образцов шаблона.
+    // Настоящий анализ рендерит шаблон и спрашивает модель, поэтому на сервере это десятки секунд для нового файла.
+    await expect(page.getByTestId("template-profile").last()).toBeVisible({ timeout: 90000 });
+    await expect(page.getByTestId("template-ready")).toBeVisible();
+    await expect(page.getByTestId("slide-blank")).toBeVisible();
+    await expect(page.getByTestId("thumb-strip")).toHaveCount(0);
     await shot(page, "chat-ready");
 
     // Параметры: проверка границ диапазона слайдов
-    await page.getByTestId("edit-brief").last().click();
+    await openBriefEditor(page);
     await page.getByRole("tab", { name: "Параметры генерации" }).click();
     await page.getByTestId("slides-min").fill("20");
     await expect(page.getByText("Минимум больше максимума").first()).toBeVisible();
@@ -55,7 +66,7 @@ test.describe("сквозной сценарий в чате на заглушк
     await expect(page.getByTestId("preview-progress")).toBeVisible();
 
     // Файлы появляются раньше аудита
-    await expect(page.getByTestId("download-menu")).toBeEnabled({ timeout: 40000 });
+    await expect(page.getByTestId("download-menu")).toBeEnabled({ timeout: WAIT.files });
     await shot(page, "chat-running");
 
     // Сравнение вариантов рядом
@@ -65,7 +76,7 @@ test.describe("сквозной сценарий в чате на заглушк
     await page.getByTestId("layout-switch").getByText("Один вариант").click();
 
     await waitForAllVariantsDone(page);
-    await expect(page.getByTestId("audit-card")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId("audit-card")).toBeVisible({ timeout: WAIT.audit });
     await shot(page, "chat-done");
 
     // Скачивание PPTX: настоящий zip-пакет, а не JSON
@@ -113,9 +124,10 @@ test.describe("сквозной сценарий в чате на заглушк
     await expect(page.getByTestId("files-panel")).toContainText("Собрано сервисом");
     await shot(page, "chat-files");
 
-    // Проект с готовой презентацией виден в сетке
+    // Проект с готовой презентацией виден в сетке (карточка своего проекта: в рабочем режиме
+    // три браузера создают проекты одновременно, и первой может оказаться чужая карточка)
     await page.getByTestId("back-home").click();
-    await expect(page.locator('[data-testid^="project-card-"]').first()).toContainText("Запуск сервиса умных уведомлений");
+    await expect(page.getByTestId(`project-card-${projectId}`)).toContainText("Запуск сервиса умных уведомлений");
     await shot(page, "home-grid");
 
     expect(errors, errors.join("\n")).toEqual([]);
@@ -151,7 +163,6 @@ test.describe("сквозной сценарий в чате на заглушк
 
     // PPTX как материал, а не шаблон
     await attach(page, [{ name: "Старая презентация.pptx", mimeType: PPTX_MIME, buffer: PPTX() }]);
-    await sendMessage(page);
     await page.getByTestId("answer-material").last().click();
     await expect(page.getByTestId("import-summary").last()).toBeVisible({ timeout: 15000 });
 
@@ -186,9 +197,69 @@ test.describe("сквозной сценарий в чате на заглушк
     if ((await page.locator('[data-testid^="project-card-"]').count()) === 0) await expect(page.getByTestId("projects-empty")).toBeVisible();
   });
 
+  test("библиотека шаблонов: сетка, карточка шаблона и удаление", async ({ page }) => {
+    await speedUp(page, 8);
+    const errors = collectConsoleErrors(page);
+    // Свой шаблон в библиотеке: в заглушках он же демонстрационный, на сервере — из кэша по байтам.
+    const projectId = await createProject(page);
+    await uploadTemplate(page);
+    await expect(page.getByTestId("template-profile").last()).toBeVisible({ timeout: 90000 });
+    const templateId = (await page.getByTestId("template-open-library").last().getAttribute("href"))?.match(/id=([^&]+)/)?.[1] as string;
+    expect(templateId).toBeTruthy();
+
+    await page.getByTestId("nav-templates").click();
+    await expect(page.getByTestId("templates-grid")).toBeVisible();
+    const card = page.getByTestId(`template-card-${templateId}`);
+    await expect(card).toContainText("Корпоративный шаблон");
+    await expect(card).toContainText("Разобран");
+    await card.click();
+    await page.waitForURL(new RegExp(`/templates\\?id=${templateId}`));
+
+    // Карточка шаблона: композиции со слотами, слайды файла, дизайн-система, макеты, дайджест и JSON.
+    await expect(page.getByTestId("template-detail")).toContainText("Корпоративный шаблон");
+    await expect(page.getByTestId("template-tabs")).toBeVisible();
+    await page.locator('[data-testid^="pattern-card-"]').first().click();
+    await expect(page.getByTestId("pattern-modal")).toBeVisible();
+    await expect(page.getByTestId("slots-table")).toBeVisible();
+    await expect(page.locator('[data-testid^="issue-box-"]').first()).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.getByRole("tab", { name: /Слайды файла/ }).click();
+    await expect(page.locator('[data-testid^="sample-slide-"]').first()).toBeVisible();
+    await page.getByRole("tab", { name: "Дизайн-система" }).click();
+    await expect(page.getByTestId("design-palette")).toBeVisible();
+    await expect(page.getByTestId("frame-sketch")).toBeVisible();
+    await page.getByRole("tab", { name: "Макеты и ресурсы" }).click();
+    await expect(page.getByTestId("structure-layouts")).toBeVisible();
+    await page.getByRole("tab", { name: /Для модели/ }).click();
+    await expect(page.getByTestId("digest-text")).toBeVisible();
+    await page.getByRole("tab", { name: "JSON" }).click();
+    await expect(page.getByTestId("profile-json")).toContainText('"schema_version"');
+    await page.getByTestId("back-templates").click();
+    await expect(page.getByTestId("templates-grid")).toBeVisible();
+    expect(errors, errors.join("\n")).toEqual([]);
+
+    // Удаление из библиотеки: на сервере шаблон общий для параллельных прогонов, поэтому только в заглушках.
+    // После удаления запросы профиля отвечают 404 — это ожидаемо, браузер пишет их в консоль как ошибки загрузки.
+    if (!REAL_STACK) {
+      await page.getByTestId(`template-card-menu-${templateId}`).click();
+      await page.getByTestId(`template-delete-${templateId}`).click();
+      await page.getByTestId("confirm-template-delete").click();
+      await expect(card).toHaveCount(0);
+      await page.goto(`/templates?id=${templateId}`);
+      await expect(page.getByTestId("template-missing")).toBeVisible();
+      // Проект остался без шаблона, карточка в чате помечена.
+      await page.goto(`/project?id=${projectId}`);
+      await expect(page.getByTestId("template-card").last()).toContainText("удалён из библиотеки");
+      await expect(page.getByTestId("template-menu")).toContainText("Шаблон не выбран");
+      expect(errors.filter((e) => !/404/.test(e)), errors.join("\n")).toEqual([]);
+    }
+  });
+
   test("неизвестное задание, прежняя ссылка /workspace и /project без параметра", async ({ page }) => {
     await page.goto("/workspace?job=job_unknown");
     await page.waitForURL(/\/project\?id=/);
+    // Редирект создаёт проект «Задание job_unknown» на сервере — запоминаем его для уборки.
+    rememberProjectFromUrl(page);
     await expect(page.getByRole("heading", { name: "Задание не найдено" })).toBeVisible();
     await page.goto("/project");
     await expect(page.getByTestId("project-empty")).toBeVisible();
@@ -202,7 +273,7 @@ test.describe("сквозной сценарий в чате на заглушк
     await uploadTemplate(page, "Шаблон fail.pptx");
     await sendMaterialsAndBrief(page);
     const jobId = await startGeneration(page);
-    await expect(page.getByTestId("variant-progress-detailed").last().locator('[data-testid="status-failed"]')).toBeVisible({ timeout: 40000 });
+    await expect(page.getByTestId("variant-progress-detailed").last().locator('[data-testid="status-failed"]')).toBeVisible({ timeout: WAIT.variantFailed });
     await waitForAllVariantsDone(page);
     await expect(page.getByTestId("progress-panel").last()).toContainText("частичный результат");
     await expect(page.getByTestId("download-menu")).toBeEnabled();

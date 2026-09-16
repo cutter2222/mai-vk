@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "plan_id": "plan_demo_balanced",
   "template_id": "tpl_vk_education",
   "package_id": "pkg_demo",
@@ -32,7 +32,15 @@
         {
           "slot_id": "title",
           "kind": "title",
-          "text": "Умные уведомления: пилот и план запуска"
+          "text": "Умные уведомления: пилот и план запуска",
+          "fit": {
+            "size_pt": 36,
+            "slot_size_pt": 36,
+            "lines": 1,
+            "max_lines": 2,
+            "chars": 39,
+            "action": "as_is"
+          }
         },
         {
           "slot_id": "subtitle",
@@ -53,7 +61,15 @@
         {
           "slot_id": "title",
           "kind": "title",
-          "text": "Проблема"
+          "text": "Проблема",
+          "fit": {
+            "size_pt": 36,
+            "slot_size_pt": 36,
+            "lines": 1,
+            "max_lines": 2,
+            "chars": 8,
+            "action": "as_is"
+          }
         }
       ],
       "thesis_refs": [
@@ -71,7 +87,15 @@
         {
           "slot_id": "title",
           "kind": "title",
-          "text": "Пользователи теряют почти половину важных уведомлений"
+          "text": "Пользователи теряют почти половину важных уведомлений",
+          "fit": {
+            "size_pt": 36,
+            "slot_size_pt": 36,
+            "lines": 1,
+            "max_lines": 2,
+            "chars": 53,
+            "action": "as_is"
+          }
         },
         {
           "slot_id": "kpi_1_value",
@@ -101,7 +125,16 @@
           ],
           "fact_refs": [
             "f1"
-          ]
+          ],
+          "fit": {
+            "size_pt": 16,
+            "slot_size_pt": 18,
+            "lines": 3,
+            "max_lines": 3,
+            "chars": 96,
+            "action": "font_step",
+            "note": "кегль 18 → 16 из шкалы шаблона"
+          }
         }
       ],
       "source_refs": [
@@ -127,7 +160,15 @@
         {
           "slot_id": "title",
           "kind": "title",
-          "text": "Решение"
+          "text": "Решение",
+          "fit": {
+            "size_pt": 36,
+            "slot_size_pt": 36,
+            "lines": 1,
+            "max_lines": 2,
+            "chars": 7,
+            "action": "as_is"
+          }
         }
       ],
       "thesis_refs": [
@@ -145,7 +186,15 @@
         {
           "slot_id": "title",
           "kind": "title",
-          "text": "Три механизма возвращают внимание пользователей"
+          "text": "Три механизма возвращают внимание пользователей",
+          "fit": {
+            "size_pt": 36,
+            "slot_size_pt": 36,
+            "lines": 1,
+            "max_lines": 2,
+            "chars": 47,
+            "action": "as_is"
+          }
         },
         {
           "slot_id": "bullets",
@@ -185,7 +234,15 @@
         {
           "slot_id": "title",
           "kind": "title",
-          "text": "Как работает приоритизация: четыре шага"
+          "text": "Как работает приоритизация: четыре шага",
+          "fit": {
+            "size_pt": 36,
+            "slot_size_pt": 36,
+            "lines": 1,
+            "max_lines": 2,
+            "chars": 39,
+            "action": "as_is"
+          }
         },
         {
           "slot_id": "diagram",
@@ -231,7 +288,15 @@
         {
           "slot_id": "title",
           "kind": "title",
-          "text": "Открываемость выросла с 31 до 44 % за три месяца пилота"
+          "text": "Открываемость выросла с 31 до 44 % за три месяца пилота",
+          "fit": {
+            "size_pt": 36,
+            "slot_size_pt": 36,
+            "lines": 1,
+            "max_lines": 2,
+            "chars": 55,
+            "action": "as_is"
+          }
         },
         {
           "slot_id": "chart",
@@ -268,7 +333,15 @@
         {
           "slot_id": "title",
           "kind": "title",
-          "text": "Метрики пилота по месяцам"
+          "text": "Метрики пилота по месяцам",
+          "fit": {
+            "size_pt": 36,
+            "slot_size_pt": 36,
+            "lines": 1,
+            "max_lines": 2,
+            "chars": 25,
+            "action": "as_is"
+          }
         },
         {
           "slot_id": "table",
@@ -280,7 +353,8 @@
               "Открываемость",
               "Отписки"
             ],
-            "max_rows": 5
+            "max_rows": 5,
+            "row_offset": 0
           },
           "source_refs": [
             "b4"
@@ -305,7 +379,15 @@
         {
           "slot_id": "title",
           "kind": "title",
-          "text": "Пилот окупается за год"
+          "text": "Пилот окупается за год",
+          "fit": {
+            "size_pt": 36,
+            "slot_size_pt": 36,
+            "lines": 1,
+            "max_lines": 2,
+            "chars": 22,
+            "action": "as_is"
+          }
         },
         {
           "slot_id": "kpi_1_value",
@@ -353,7 +435,15 @@
         {
           "slot_id": "title",
           "kind": "title",
-          "text": "Просим одобрить расширение пилота на все продукты в четвёртом квартале"
+          "text": "Просим одобрить расширение пилота на все продукты в четвёртом квартале",
+          "fit": {
+            "size_pt": 36,
+            "slot_size_pt": 36,
+            "lines": 1,
+            "max_lines": 2,
+            "chars": 70,
+            "action": "as_is"
+          }
         }
       ],
       "thesis_refs": [
@@ -365,13 +455,13 @@
     "skills": [
       {
         "name": "variant_planner",
-        "version": "0.1.0"
+        "version": "0.2.0"
       }
     ],
     "prompts": [
       {
         "name": "plan.slides",
-        "version": "0.1.0"
+        "version": "0.2.0"
       }
     ],
     "models": [
@@ -382,7 +472,7 @@
         "hf_url": "https://huggingface.co/Qwen/Qwen3.8-27B",
         "params_b": 27,
         "license": "Apache-2.0",
-        "reasoning_mode": "low"
+        "reasoning_mode": "off"
       }
     ],
     "seed": 42,
@@ -395,7 +485,8 @@
   "story_id": "story_demo",
   "slide_count": {
     "min": 10,
-    "max": 15
+    "max": 15,
+    "target": 12
   },
   "coverage": {
     "required_thesis_ids": [

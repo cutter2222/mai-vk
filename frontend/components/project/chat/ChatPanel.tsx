@@ -1,22 +1,30 @@
 "use client";
 
-import { ActionIcon, Badge, CloseButton, FileButton, Group, Stack, Text, Textarea, Tooltip } from "@mantine/core";
+import { ActionIcon, Badge, CloseButton, FileButton, Group, Loader, Stack, Text, Textarea, Tooltip } from "@mantine/core";
 import { Dropzone } from "@mantine/dropzone";
 import { IconArrowUp, IconFile, IconPaperclip } from "@tabler/icons-react";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 
 import { formatBytes } from "@/lib/format";
 import type { ChatMessage } from "@/lib/state/projects";
 
-import { AuditCard, BriefCard, ContentCard, JobCard, TemplateCard, TemplateQuestionCard, type CardContext } from "./cards";
+import { AuditCard, BriefCard, ContentCard, JobCard, PptxQuestion, TemplateCard, TemplateQuestionCard, type CardContext } from "./cards";
+import type { StagedPptx } from "./useChat";
 
 interface Props {
   ctx: CardContext;
   onSend: (text: string, files: File[]) => Promise<void>;
+  /** Разбирает брошенные файлы: презентации забирает сразу, остальные возвращает как вложения к сообщению. */
+  onAttach: (files: File[]) => File[];
+  staged: StagedPptx[];
+  onAnswerStaged: (localId: string, answer: "template" | "material") => void;
 }
 
-/** Чат проекта: лента сообщений и карточек шагов, внизу поле ввода с вложениями; файлы можно бросать в любое место панели. */
-export function ChatPanel({ ctx, onSend }: Props) {
+/**
+ * Чат проекта: лента сообщений и карточек шагов, внизу поле ввода с вложениями; файлы можно бросать в любое место панели.
+ * PPTX не ждёт отправки: вопрос «шаблон или материал» появляется в ленте в момент броска, пока файл грузится.
+ */
+export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged }: Props) {
   const { project } = ctx;
   const [text, setText] = useState("");
   const [pending, setPending] = useState<File[]>([]);
@@ -24,7 +32,12 @@ export function ChatPanel({ ctx, onSend }: Props) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const resetRef = useRef<() => void>(null);
 
-  const count = project.events.length;
+  const addFiles = (files: File[]) => {
+    const rest = onAttach(files);
+    if (rest.length) setPending((p) => [...p, ...rest]);
+  };
+
+  const count = project.events.length + staged.length;
   useEffect(() => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -47,13 +60,13 @@ export function ChatPanel({ ctx, onSend }: Props) {
 
   return (
     <Dropzone
-      onDrop={(files) => setPending((p) => [...p, ...files])}
+      onDrop={addFiles}
       activateOnClick={false}
       styles={{ root: { border: 0, padding: 0, background: "transparent", borderRadius: 0, display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }, inner: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0, pointerEvents: "auto" } }}
       data-testid="chat-dropzone"
     >
       <div className="chat-list" ref={listRef} data-testid="chat-list">
-        {count === 0 && (
+        {count === 0 && pending.length === 0 && (
           <div className="chat-intro" data-testid="chat-intro">
             <Text fw={600} mb={6}>Соберём презентацию в фирменном стиле</Text>
             <Text size="sm" c="dimmed">Перетащите сюда PPTX-шаблон компании и материалы: документы, таблицы, картинки. Опишите задачу одной фразой — например, «сделай презентацию про запуск сервиса умных уведомлений для руководителей, чтобы одобрили пилот».</Text>
@@ -64,6 +77,16 @@ export function ChatPanel({ ctx, onSend }: Props) {
           <div key={m.event_id} className={`chat-msg chat-msg-${m.role}`} data-testid={`msg-${m.role}`}>
             {renderMessage(m, ctx)}
           </div>
+        ))}
+        {staged.map((s) => (
+          <Fragment key={s.local_id}>
+            <div className="chat-msg chat-msg-user" data-testid="msg-user">
+              <Badge color="gray" size="sm" leftSection={<IconFile size={11} />} rightSection={<Loader size={10} color="gray" />}>{s.name} · {formatBytes(s.size)}</Badge>
+            </div>
+            <div className="chat-msg chat-msg-assistant" data-testid="msg-assistant">
+              <PptxQuestion name={s.name} resolved={s.answer} uploading onAnswer={(answer) => onAnswerStaged(s.local_id, answer)} testId={`template-question-${s.local_id}`} />
+            </div>
+          </Fragment>
         ))}
       </div>
       <div className="chat-composer">
@@ -77,7 +100,7 @@ export function ChatPanel({ ctx, onSend }: Props) {
           </Group>
         )}
         <div className="chat-input">
-          <FileButton resetRef={resetRef} multiple onChange={(files) => setPending((p) => [...p, ...files])} accept=".pptx,.docx,.xlsx,.csv,.pdf,.md,.txt,.png,.jpg,.jpeg,.mp4,.mov">
+          <FileButton resetRef={resetRef} multiple onChange={addFiles} accept=".pptx,.docx,.xlsx,.csv,.pdf,.md,.txt,.png,.jpg,.jpeg,.mp4,.mov">
             {(props) => (
               <Tooltip label="Прикрепить шаблон или материалы">
                 <ActionIcon {...props} variant="subtle" color="gray" size="lg" aria-label="Прикрепить файлы" data-testid="chat-attach"><IconPaperclip size={18} /></ActionIcon>

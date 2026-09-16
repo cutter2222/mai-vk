@@ -21,7 +21,7 @@ interface Props {
   overlays?: Overlay[];
   activeOverlay?: string | null;
   onOverlayClick?: (id: string) => void;
-  /** Подпись слева от счётчика: «ревизия 2», «образцы шаблона». */
+  /** Подпись слева от счётчика: «ревизия 2». */
   caption?: React.ReactNode;
   /** Элементы справа от счётчика. */
   actions?: React.ReactNode;
@@ -33,7 +33,7 @@ interface Props {
 
 /**
  * Вертикальная лента миниатюр слева и крупный слайд справа, как в редакторах презентаций.
- * Общий для образцов шаблона и слайдов вариантов.
+ * Слайды вариантов генерации; образцы шаблона показываются в его карточке в библиотеке.
  */
 export function SlideViewer({ slides, index, onIndex, overlays, activeOverlay, onOverlayClick, caption, actions, children, aside }: Props) {
   const total = slides.length;

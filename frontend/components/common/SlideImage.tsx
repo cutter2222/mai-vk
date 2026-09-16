@@ -70,6 +70,7 @@ export function SlideImage({ src, alt, overlays = [], activeOverlay, onOverlayCl
             data-severity={o.severity}
             data-active={activeOverlay === o.id}
             data-testid={`issue-box-${o.id}`}
+            data-label={o.label}
             title={o.label}
             onClick={() => onOverlayClick?.(o.id)}
             style={{

@@ -103,6 +103,9 @@ export function ProjectHeader({ project, session, onTitle, onSelectTemplate, onU
           <FileButton onChange={(file) => file && onUploadTemplate(file)} accept=".pptx">
             {(props) => <Menu.Item {...props} leftSection={<IconUpload size={14} />} closeMenuOnClick data-testid="template-upload">Загрузить другой PPTX</Menu.Item>}
           </FileButton>
+          <Menu.Item component={Link} href={project.template_id ? `/templates?id=${encodeURIComponent(project.template_id)}` : "/templates"} leftSection={<IconTemplate size={14} />}>
+            {project.template_id ? "Что извлечено из шаблона" : "Библиотека шаблонов"}
+          </Menu.Item>
         </Menu.Dropdown>
       </Menu>
       {result && <StatusBadge status={result.status} />}

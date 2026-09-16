@@ -163,9 +163,9 @@ export function ProjectEditor({ project }: { project: Project }) {
 
         <aside className="editor-panel">
           {tab === "chat" ? (
-            <ChatPanel ctx={ctx} onSend={chat.send} />
+            <ChatPanel ctx={ctx} onSend={chat.send} onAttach={chat.attach} staged={chat.staged} onAnswerStaged={chat.answerStaged} />
           ) : (
-            <FilesPanel project={project} session={session} onAdd={(files) => void chat.send("", files)} onRemove={(fid) => void chat.removeFile(fid)} onSelectTemplate={chat.selectTemplate} />
+            <FilesPanel project={project} session={session} onAdd={(files) => { const rest = chat.attach(files); if (rest.length) void chat.send("", rest); }} onRemove={(fid) => void chat.removeFile(fid)} onSelectTemplate={chat.selectTemplate} />
           )}
         </aside>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { notifications } from "@mantine/notifications";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api, ApiError } from "@/lib/api/client";
 import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
@@ -25,6 +25,15 @@ const EDIT_RE = /поменя[йть]|перестав|местами|удали
 
 const isPptx = (f: ProjectFile) => f.check.format === "pptx";
 const isMaterial = (f: ProjectFile) => f.kind === "material";
+const isPptxFile = (f: File) => /\.pptx$/i.test(f.name);
+
+/** PPTX, брошенный в чат: вопрос «шаблон или материал» показан сразу, файл ещё едет на сервер. */
+export interface StagedPptx {
+  local_id: string;
+  name: string;
+  size: number;
+  answer?: "template" | "material";
+}
 
 /**
  * Оркестратор чата. Файлы уходят на сервер в момент добавления и дальше передаются по идентификаторам;
@@ -36,6 +45,9 @@ export function useChat(project: Project, session: GenerationSession, generate: 
   const current = useCallback(() => getProject(id) as Project, [id]);
 
   const say = useCallback((text: string) => appendMessage(id, { role: "assistant", kind: "text", text }), [id]);
+
+  const [staged, setStaged] = useState<StagedPptx[]>([]);
+  const stagedAnswers = useRef(new Map<string, "template" | "material">());
 
   /** Импорт всех материалов проекта в новый пакет по file_ids. Возвращает package_id или null. */
   const importMaterials = useCallback(async (): Promise<string | null> => {
@@ -69,11 +81,11 @@ export function useChat(project: Project, session: GenerationSession, generate: 
   }, [id, say, current]);
 
   /** После шага проверяет, всё ли готово к генерации, и показывает карточку брифа с кнопкой. */
-  const offerGeneration = useCallback((understood: string[] = []) => {
+  const offerGeneration = useCallback((understood: string[] = [], briefSource?: "model" | "heuristic") => {
     const p = current();
     const last = p.events[p.events.length - 1];
     if (last && last.role === "assistant" && last.kind === "brief_card") return;
-    appendMessage(id, { role: "assistant", kind: "brief_card", understood, missing_purpose: !p.brief.purpose });
+    appendMessage(id, { role: "assistant", kind: "brief_card", understood, missing_purpose: !p.brief.purpose, ...(briefSource ? { brief_source: briefSource } : {}) });
   }, [id, current]);
 
   const send = useCallback(async (text: string, files: File[]) => {
@@ -109,6 +121,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
 
     // 5. Текст: бриф извлекает сервер; поля, которых нет в сообщении, не трогаем.
     let understood: string[] = [];
+    let briefSource: "model" | "heuristic" | undefined;
     if (trimmed) {
       if (EDIT_RE.test(trimmed) && current().job_id) {
         say("Перестановка, удаление и переименование слайдов появятся вместе с серверной операцией правки плана. Пока можно скачать PPTX и поправить в PowerPoint или изменить бриф и сгенерировать заново.");
@@ -116,6 +129,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
       try {
         const res = await api.brief.extract(trimmed, { ...current().brief });
         understood = res.understood;
+        briefSource = res.source;
         if (understood.length) {
           updateProject(id, (p) => {
             const brief: BriefDraft = { ...p.brief, ...res.brief } as BriefDraft;
@@ -148,7 +162,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
 
     // 7. Карточка брифа с кнопкой, когда есть что показать; явная команда запускает генерацию.
     if (understood.length || (current().template_id && current().package_id)) {
-      offerGeneration(understood);
+      offerGeneration(understood, understood.length ? briefSource : undefined);
     }
     const ready = current().template_id && current().package_id && current().brief.purpose;
     if (trimmed && GENERATE_RE.test(trimmed) && ready && !current().job_id) {
@@ -156,8 +170,15 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     }
   }, [id, importMaterials, offerGeneration, say, generate, current]);
 
-  const resolveTemplateQuestion = useCallback(async (messageId: string, fileId: string, answer: "template" | "material") => {
-    void patchMessage(id, messageId, { resolved: answer });
+  /** Шаблон из библиотеки, выбранный в шапке: карточка в чате, чтобы история отражала смену оформления. */
+  const selectTemplate = useCallback((templateId: string) => {
+    if (current().template_id === templateId) return;
+    updateProject(id, { template_id: templateId });
+    appendMessage(id, { role: "assistant", kind: "template_card", template_id: templateId });
+  }, [id, current]);
+
+  /** Действие по ответу на вопрос о PPTX: разбор как шаблона или импорт как материала. */
+  const applyTemplateAnswer = useCallback(async (fileId: string, answer: "template" | "material") => {
     if (answer === "template") {
       await uploadTemplate(fileId);
     } else {
@@ -167,6 +188,53 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     }
     if (current().template_id && current().package_id) offerGeneration();
   }, [id, uploadTemplate, importMaterials, offerGeneration, say, current]);
+
+  const resolveTemplateQuestion = useCallback(async (messageId: string, fileId: string, answer: "template" | "material") => {
+    void patchMessage(id, messageId, { resolved: answer });
+    await applyTemplateAnswer(fileId, answer);
+  }, [id, applyTemplateAnswer]);
+
+  /**
+   * PPTX из чата: вопрос появляется в ленте в момент броска, файл тем временем грузится на сервер.
+   * Когда загрузка завершилась, сообщение и вопрос записываются в историю уже с ответом, если он был дан.
+   */
+  const stagePptx = useCallback((file: File) => {
+    const localId = `stg_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    setStaged((s) => [...s, { local_id: localId, name: file.name, size: file.size }]);
+    void (async () => {
+      let row: ProjectFile | undefined;
+      try {
+        row = (await addProjectFiles(id, [file]))[0];
+      } catch (e) {
+        say(`Не удалось загрузить «${file.name}»: ${e instanceof ApiError ? e.message : "неизвестная ошибка"}.`);
+      }
+      const answer = stagedAnswers.current.get(localId);
+      stagedAnswers.current.delete(localId);
+      setStaged((s) => s.filter((x) => x.local_id !== localId));
+      if (!row) return;
+      appendMessage(id, { role: "user", kind: "message", text: "", file_ids: [row.file_id] });
+      if (row.kind === "template") {
+        // Те же байты уже разобраны как шаблон этого проекта: вопрос не нужен.
+        if (row.template_id && current().template_id !== row.template_id) selectTemplate(row.template_id);
+        else say(`«${row.name}» уже используется как шаблон проекта.`);
+        return;
+      }
+      appendMessage(id, { role: "assistant", kind: "template_question", file_id: row.file_id, ...(answer ? { resolved: answer } : {}) });
+      if (answer) await applyTemplateAnswer(row.file_id, answer);
+    })();
+  }, [id, say, current, applyTemplateAnswer, selectTemplate]);
+
+  /** Ответ на вопрос о PPTX, который ещё грузится: запоминается и применяется после загрузки. */
+  const answerStaged = useCallback((localId: string, answer: "template" | "material") => {
+    stagedAnswers.current.set(localId, answer);
+    setStaged((s) => s.map((x) => (x.local_id === localId ? { ...x, answer } : x)));
+  }, []);
+
+  /** Файлы из дропзоны или скрепки: презентации уходят в работу сразу, остальные возвращаются как вложения к сообщению. */
+  const attach = useCallback((files: File[]): File[] => {
+    files.filter(isPptxFile).forEach(stagePptx);
+    return files.filter((f) => !isPptxFile(f));
+  }, [stagePptx]);
 
   const setPurpose = useCallback(async (purpose: BriefDraft["purpose"]) => {
     updateProject(id, (p) => ({ brief: { ...p.brief, purpose } }));
@@ -191,13 +259,6 @@ export function useChat(project: Project, session: GenerationSession, generate: 
       }
     }
   }, [id, importMaterials, say, current]);
-
-  /** Шаблон из библиотеки, выбранный в шапке: карточка в чате, чтобы история отражала смену оформления. */
-  const selectTemplate = useCallback((templateId: string) => {
-    if (current().template_id === templateId) return;
-    updateProject(id, { template_id: templateId });
-    appendMessage(id, { role: "assistant", kind: "template_card", template_id: templateId });
-  }, [id, current]);
 
   /** PPTX, выбранный в шапке как шаблон: без вопроса «шаблон или материал». */
   const addTemplate = useCallback(async (file: File) => {
@@ -235,7 +296,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
 
   const notifyError = (title: string, e: unknown) => notifications.show({ color: "red", title, message: e instanceof ApiError ? e.message : "Неизвестная ошибка" });
 
-  return { send, resolveTemplateQuestion, setPurpose, removeFile, importMaterials, selectTemplate, addTemplate, notifyError };
+  return { send, attach, staged, answerStaged, resolveTemplateQuestion, setPurpose, removeFile, importMaterials, selectTemplate, addTemplate, notifyError };
 }
 
 export type Chat = ReturnType<typeof useChat>;

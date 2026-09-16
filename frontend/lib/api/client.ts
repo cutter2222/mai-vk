@@ -36,6 +36,9 @@ export interface TemplateListItem {
   name: string;
   status: "queued" | "running" | "succeeded" | "failed";
   slide_count?: number;
+  pattern_count?: number;
+  /** Имя миниатюры первого образца для карточки библиотеки (см. templates.assetUrl). */
+  preview?: string;
   created_at: string;
 }
 
@@ -45,6 +48,7 @@ export interface TemplateDetail {
   name: string;
   profile?: TemplateProfile;
   previews: string[];
+  error?: ApiErrorBody["error"];
 }
 
 export interface ContentDetail {
@@ -150,7 +154,11 @@ export const api = {
     get: (id: string) => request<TemplateDetail>(`/templates/${encodeURIComponent(id)}`),
     /** Шаблон из уже загруженного файла проекта: байты второй раз не пересылаются. */
     upload: (fileId: string) => request<{ template_id: string; job_id: string; cached: boolean }>("/templates", json({ file_id: fileId })),
+    /** Убирает шаблон из библиотеки; проекты, которые им пользовались, остаются без шаблона. */
+    delete: (id: string) => request<void>(`/templates/${encodeURIComponent(id)}`, { method: "DELETE" }),
     assetUrl: (id: string, name: string) => `${API_BASE}/templates/${encodeURIComponent(id)}/assets/${name}`,
+    /** Адрес профиля целиком: открыть JSON в новой вкладке. */
+    detailUrl: (id: string) => `${API_BASE}/templates/${encodeURIComponent(id)}`,
   },
 
   /** Бриф из свободного сообщения чата. Поля, которых нет в тексте, сервер не заполняет. */

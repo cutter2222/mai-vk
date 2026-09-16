@@ -25,6 +25,14 @@ body {
   object-fit: contain;
 }
 
+/* Пустой слайд до генерации: белый лист с пунктирной рамкой, подпись по центру. */
+.slide-blank {
+  display: grid;
+  place-items: center;
+  border-style: dashed;
+  border-color: var(--mantine-color-gray-3);
+}
+
 .issue-box {
   position: absolute;
   border: 1.5px solid var(--mantine-color-red-6);
@@ -46,6 +54,119 @@ body {
 
 .issue-box[data-active="true"] {
   box-shadow: 0 0 0 3px rgba(77, 119, 187, 0.35);
+}
+
+/* Слоты композиции поверх образца шаблона: рамка и подпись с именем слота. */
+.issue-box[data-severity="slot"] {
+  border: 1px dashed var(--mantine-color-blue-6);
+  background: rgba(77, 119, 187, 0.06);
+  cursor: default;
+}
+
+.issue-box[data-severity="slot"]::after {
+  content: attr(data-label);
+  position: absolute;
+  left: 0;
+  top: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 14px;
+  color: #fff;
+  background: var(--mantine-color-blue-6);
+  border-bottom-right-radius: 3px;
+}
+
+/* Эскиз слайда: поля, направляющие и постоянные элементы в долях слайда. */
+.frame-sketch {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--mantine-color-gray-3);
+  border-radius: var(--mantine-radius-xs);
+  background: #fff;
+  overflow: hidden;
+}
+
+.frame-sketch .sketch-margins {
+  position: absolute;
+  border: 1px dashed var(--mantine-color-gray-4);
+}
+
+.frame-sketch .sketch-guide {
+  position: absolute;
+  background: var(--mantine-color-blue-4);
+}
+
+.frame-sketch .sketch-guide[data-orientation="vertical"] {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.frame-sketch .sketch-guide[data-orientation="horizontal"] {
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+
+.frame-sketch .sketch-fixed {
+  position: absolute;
+  min-width: 2px;
+  min-height: 2px;
+  background: rgba(44, 47, 55, 0.35);
+  border: 1px solid rgba(44, 47, 55, 0.6);
+  border-radius: 1px;
+}
+
+.frame-sketch .sketch-fixed[data-kind="logo"] { background: rgba(250, 82, 82, 0.35); border-color: var(--mantine-color-red-6); }
+.frame-sketch .sketch-fixed[data-kind="footer"],
+.frame-sketch .sketch-fixed[data-kind="page_number"] { background: rgba(250, 176, 5, 0.35); border-color: var(--mantine-color-yellow-7); }
+.frame-sketch .sketch-fixed[data-kind="background"] { background: rgba(77, 119, 187, 0.08); border-color: var(--mantine-color-blue-3); }
+
+/* Сетка образцов и слайдов шаблона: кнопка-карточка с миниатюрой. */
+.sample-card {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--mantine-radius-sm);
+}
+
+.sample-card .slide-frame {
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.sample-card:hover .slide-frame,
+.sample-card:focus-visible .slide-frame {
+  border-color: var(--mantine-color-gray-4);
+  box-shadow: 0 0 0 3px var(--mantine-color-gray-1);
+}
+
+.sample-card:focus-visible {
+  outline: none;
+}
+
+/* Дайджест и JSON профиля: моноширинный текст с переносами. */
+.profile-pre {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--mantine-color-gray-2);
+  border-radius: var(--mantine-radius-md);
+  background: var(--mantine-color-gray-0);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
 }
 
 /* ---------- Просмотрщик: вертикальная лента миниатюр и слайд ---------- */
@@ -137,14 +258,14 @@ body {
   padding: 24px 28px 28px;
 }
 
-/* ---------- Сетка проектов ---------- */
+/* ---------- Сетки карточек: проекты и шаблоны ---------- */
 
 .page-surface {
   min-height: calc(100dvh - 56px);
   background: var(--mantine-color-body);
 }
 
-.project-card {
+.grid-card {
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -158,13 +279,13 @@ body {
   transition: border-color 140ms ease;
 }
 
-.project-card:hover,
-.project-card:focus-visible {
+.grid-card:hover,
+.grid-card:focus-visible {
   border-color: var(--mantine-color-gray-4);
   outline: none;
 }
 
-.project-card .project-thumb {
+.grid-card .grid-card-thumb {
   position: relative;
   aspect-ratio: 16 / 9;
   background: var(--mantine-color-gray-0);
@@ -172,7 +293,7 @@ body {
   overflow: hidden;
 }
 
-.project-card .project-thumb img {
+.grid-card .grid-card-thumb img {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -180,7 +301,7 @@ body {
   object-fit: cover;
 }
 
-.project-card .project-thumb-empty {
+.grid-card .grid-card-thumb-empty {
   position: absolute;
   inset: 0;
   display: grid;
@@ -189,7 +310,7 @@ body {
   background: var(--mantine-color-gray-0);
 }
 
-.project-card .project-menu {
+.grid-card .grid-card-menu {
   position: absolute;
   top: 8px;
   right: 8px;
@@ -197,16 +318,16 @@ body {
   transition: opacity 120ms ease;
 }
 
-.project-card:hover .project-menu,
-.project-card:focus-within .project-menu {
+.grid-card:hover .grid-card-menu,
+.grid-card:focus-within .grid-card-menu {
   opacity: 1;
 }
 
-.project-card .project-body {
+.grid-card .grid-card-body {
   padding: 12px 16px 14px;
 }
 
-.project-card-new {
+.grid-card-new {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -222,8 +343,8 @@ body {
   transition: border-color 140ms ease, color 140ms ease;
 }
 
-.project-card-new:hover,
-.project-card-new:focus-visible {
+.grid-card-new:hover,
+.grid-card-new:focus-visible {
   border-color: var(--mantine-color-gray-5);
   color: var(--mantine-color-graphite-8);
   outline: none;

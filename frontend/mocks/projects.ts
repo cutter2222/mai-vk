@@ -43,7 +43,7 @@ export const DEFAULT_SETTINGS: Project["settings"] = { mode: "range", min: 10, m
 export function createProject(body: { title?: string; job_id?: string } = {}): Project {
   const now = iso();
   const project: Project = {
-    schema_version: "1.2",
+    schema_version: "1.3",
     project_id: nextId("prj"),
     title: body.title?.trim() || "Новая презентация",
     created_at: now,
@@ -79,6 +79,17 @@ export function deleteProject(id: string): boolean {
   projectStore.projects = projectStore.projects.filter((p) => p.project_id !== id);
   save();
   return projectStore.projects.length < before;
+}
+
+/** Шаблон удалён из библиотеки: проекты и их файлы теряют ссылку, как на сервере. */
+export function detachTemplate(templateId: string): void {
+  for (const p of projectStore.projects) {
+    if (p.template_id === templateId) Object.assign(p, { template_id: null, updated_at: iso() });
+    p.files.forEach((f) => {
+      if (f.template_id === templateId) delete f.template_id;
+    });
+  }
+  save();
 }
 
 export function appendEvent(id: string, payload: Omit<Event, "event_id" | "at">): Event | undefined {

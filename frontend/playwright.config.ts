@@ -11,7 +11,9 @@ const externalBaseURL = process.env.PLAYWRIGHT_BASE_URL;
 
 export default defineConfig({
   testDir: "./tests",
-  timeout: 60_000,
+  // Настоящий анализ шаблона на сервере (рендер + модель) занимает десятки секунд для нового
+  // файла, планы трёх вариантов моделью при трёх параллельных заданиях — минуты (helpers.WAIT).
+  timeout: externalBaseURL ? 600_000 : 120_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,

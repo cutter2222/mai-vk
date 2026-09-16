@@ -22,17 +22,17 @@ export function ProjectCard({ item, onOpen, onRename, onDelete }: Props) {
   const statusLabel = status ? (STATUS_LABELS[status] ?? status) : "Черновик";
 
   return (
-    <div className="project-card" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => e.key === "Enter" && onOpen()} data-testid={`project-card-${item.project_id}`}>
-      <div className="project-thumb">
+    <div className="grid-card" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => e.key === "Enter" && onOpen()} data-testid={`project-card-${item.project_id}`}>
+      <div className="grid-card-thumb">
         {src ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={src} alt="" />
         ) : (
-          <div className="project-thumb-empty">
+          <div className="grid-card-thumb-empty">
             <IconPresentation size={36} stroke={1.2} />
           </div>
         )}
-        <div className="project-menu">
+        <div className="grid-card-menu">
           <Menu withinPortal position="bottom-end" shadow="md">
             <Menu.Target>
               <ActionIcon variant="default" size="sm" aria-label="Действия" onClick={(e) => e.stopPropagation()} data-testid={`project-menu-${item.project_id}`}>
@@ -46,7 +46,7 @@ export function ProjectCard({ item, onOpen, onRename, onDelete }: Props) {
           </Menu>
         </div>
       </div>
-      <div className="project-body">
+      <div className="grid-card-body">
         <Text fw={600} size="sm" truncate title={item.title}>{item.title}</Text>
         <Group gap={6} wrap="nowrap" mt={4} style={{ minWidth: 0 }}>
           <span className="quiet-status" data-tone={tone} style={{ fontSize: 12 }} data-testid={status ? `status-${status}` : undefined}><i />{statusLabel}</span>

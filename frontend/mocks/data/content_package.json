@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "package_id": "pkg_demo",
   "mode": "mixed",
   "created_at": "2026-09-15T12:00:00Z",
@@ -26,7 +26,11 @@
       "source_id": "src_brief",
       "kind": "user_input",
       "name": "бриф",
-      "extracted": true
+      "extracted": true,
+      "parser": {
+        "name": "brief",
+        "version": "0.1.0"
+      }
     },
     {
       "source_id": "src_doc",
@@ -35,7 +39,17 @@
       "sha256": "…",
       "size_bytes": 48211,
       "extracted": true,
-      "file_id": "file_doc"
+      "file_id": "file_doc",
+      "parser": {
+        "name": "docx",
+        "version": "0.1.0"
+      },
+      "units": {
+        "pages": 0,
+        "tables": 0,
+        "images": 1,
+        "chars": 640
+      }
     },
     {
       "source_id": "src_data",
@@ -44,7 +58,16 @@
       "sha256": "…",
       "size_bytes": 12000,
       "extracted": true,
-      "file_id": "file_data"
+      "file_id": "file_data",
+      "parser": {
+        "name": "xlsx",
+        "version": "0.1.0"
+      },
+      "units": {
+        "sheets": 2,
+        "tables": 2,
+        "images": 0
+      }
     }
   ],
   "blocks": [
@@ -62,7 +85,10 @@
       "order": 2,
       "kind": "paragraph",
       "text": "Пользователи пропускают до 40 % важных уведомлений, потому что получают их без приоритизации.",
-      "importance": "must"
+      "importance": "must",
+      "source_location": {
+        "char_offset": 0
+      }
     },
     {
       "block_id": "b3",
@@ -82,7 +108,12 @@
       "order": 4,
       "kind": "table",
       "dataset_id": "ds_metrics",
-      "importance": "must"
+      "importance": "must",
+      "source_location": {
+        "sheet": "Метрики",
+        "cell_range": "A1:C4"
+      },
+      "caption": "Метрики пилота по месяцам"
     }
   ],
   "facts": [
@@ -204,7 +235,9 @@
       "width_px": 1600,
       "height_px": 1000,
       "caption": "Центр уведомлений",
-      "source_id": "src_doc"
+      "source_id": "src_doc",
+      "sha256": "3b1f5d2c9e8a7f6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b",
+      "mime": "image/png"
     }
   ],
   "datasets": [
@@ -245,7 +278,13 @@
         ]
       ],
       "source_id": "src_data",
-      "block_id": "b4"
+      "block_id": "b4",
+      "source_location": {
+        "sheet": "Метрики",
+        "cell_range": "A1:C4"
+      },
+      "total_rows": 3,
+      "truncated": false
     }
   ],
   "warnings": [],
@@ -255,5 +294,46 @@
       "why_needed": "для слайда с планом на квартал",
       "thesis_hint": "план"
     }
-  ]
+  ],
+  "import_meta": {
+    "importer": {
+      "name": "content_importer",
+      "version": "0.1.0"
+    },
+    "parsers": {
+      "docx": "0.1.0",
+      "xlsx": "0.1.0"
+    },
+    "import_key": "sha256:7a5c1d9e3b2f4a6c8e0d2f4b6a8c0e2d4f6a8c0e2d4f6a8c0e2d4f6a8c0e2d4f",
+    "cache": {
+      "files_hit": 1,
+      "files_missed": 1
+    },
+    "skills": [
+      {
+        "name": "content_importer",
+        "version": "0.1.0"
+      }
+    ],
+    "prompts": [
+      {
+        "name": "import.fact_context",
+        "version": "0.1.0"
+      }
+    ],
+    "models": [
+      {
+        "role": "llm",
+        "name": "qwen3.8-27b",
+        "provider": "qwen-api",
+        "hf_url": "https://huggingface.co/Qwen/Qwen3.8-27B",
+        "params_b": 27,
+        "license": "Apache-2.0",
+        "reasoning_mode": "off"
+      }
+    ],
+    "model_calls": 1,
+    "duration_ms": 1840,
+    "created_at": "2026-09-15T12:00:00Z"
+  }
 }
