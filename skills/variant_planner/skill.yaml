@@ -1,24 +1,35 @@
 # Манифест скилла по contracts/schemas/skill_manifest.schema.json
 schema_version: '1.1'
 name: variant_planner
-version: 0.1.0
+version: 0.3.0
 stage: plan
-description: Строит SlidePlan одного варианта из StoryPlan и кандидатов-паттернов
-  с ёмкостью слотов
+description: 'Строит SlidePlan одного варианта из общего StoryPlan: модель получает тезисы пакета,
+  факты и данные, короткий список композиций с ёмкостью и правила оси плотности; выбирает
+  группировку, композиции и формулировки; слоты, измерение ёмкости и покрытие собирает код'
 model_role: llm
 response_format: json_schema
 reasoning:
-  mode: low
-  max_output_tokens: 4000
+  mode: 'off'            # провайдер делит бюджет ответа с рассуждением; пакет из 3–6 слайдов и так длинный
+  max_output_tokens: 3500
 prompts:
 - id: plan.slides
-  path: prompts/plan.slides.v0.1.0.md
-  version: 0.1.0
+  path: prompts/plan.slides.v0.3.0.md
+  version: 0.3.0
 params:
   temperature: 0.2
+  time_budget_s: 100     # все пакеты варианта параллельно с ожиданием квоты и повторами (stage_plan_s 120)
 input_schema: story_plan
 output_schema: slide_plan
 changelog:
+- version: 0.3.0
+  date: '2026-09-17'
+  note: 'плотность слайда: композиция по объёму содержания (не меньше N−1 пунктов на N
+    карточек), без слайдов из одного пункта, раскрытие тезиса по сторонам вместо деления
+    списка, sub только при слоте подписи карточки; повтор пакета с подсказкой о пустых слайдах'
+- version: 0.2.0
+  date: '2026-09-16'
+  note: 'этап 7: рабочий промпт по пакетам тезисов с кандидатами-композициями и ёмкостью;
+    рассуждение выключено, бюджет времени на вариант'
 - version: 0.1.0
   date: '2026-09-15'
   note: 'каркас: манифест и заглушка промпта; содержание промпта пишется на этапе

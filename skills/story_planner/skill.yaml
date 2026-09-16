@@ -1,25 +1,31 @@
 # Манифест скилла по contracts/schemas/skill_manifest.schema.json
 schema_version: '1.1'
 name: story_planner
-version: 0.1.0
+version: 0.2.0
 stage: story
 description: 'Строит общий смысловой план StoryPlan из ContentPackage: тезисы, выводы,
-  обязательность, ссылки на факты'
+  обязательность, ссылки на факты, наборы данных и изображения, допустимые сокращения,
+  допущения; значения фактов подставляет код'
 model_role: llm
 response_format: json_schema
 reasoning:
-  mode: low
-  max_output_tokens: 4000
+  mode: 'off'            # провайдер делит бюджет ответа с рассуждением; план и так длинный
+  max_output_tokens: 3500
 prompts:
 - id: story.outline
-  path: prompts/story.outline.v0.1.0.md
-  version: 0.1.0
+  path: prompts/story.outline.v0.2.0.md
+  version: 0.2.0
 params:
   temperature: 0.2
+  time_budget_s: 90      # один вызов с ожиданием квоты и повторами (stage_story_s 120 делится с импортом)
+  max_digest_chars: 14000
 input_schema: content_package
 output_schema: story_plan
 changelog:
+- version: 0.2.0
+  date: '2026-09-16'
+  note: 'этап 6: рабочий промпт плана по выдержке содержания с идентификаторами; рассуждение
+    выключено, бюджет времени'
 - version: 0.1.0
   date: '2026-09-15'
-  note: 'каркас: манифест и заглушка промпта; содержание промпта пишется на этапе
-    реализации слоя'
+  note: 'каркас: манифест и заглушка промпта'
