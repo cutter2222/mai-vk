@@ -1,0 +1,28 @@
+# Внешний вход стека: TLS и маршрутизация. Адрес берётся из .env сервера (PD_SITE_ADDRESS),
+# в образы он не зашит. Для https://… Caddy сам получает и продлевает сертификат;
+# для http://localhost работает без TLS, браузер считает localhost защищённым контекстом.
+
+{$PD_SITE_ADDRESS} {
+	# Один канонический адрес: имена с www. (если перечислены в PD_SITE_ADDRESS) ведут на PD_PUBLIC_URL.
+	@www header_regexp Host ^www\.
+	redir @www {$PD_PUBLIC_URL}{uri} permanent
+
+	encode zstd gzip
+
+	# Согласовано с limits.max_upload_mb в config/app.yaml: несколько файлов в одном запросе
+	# помещаются в этот предел, точные квоты проверяет API.
+	request_body {
+		max_size 256MB
+	}
+
+	# API подключается на этапе 2 (reverse_proxy api:8000). Сейчас запросы к /api/*
+	# перехватывает service worker режима заглушек в браузере; до сервера они не доходят.
+	handle /api/* {
+		header Content-Type application/json
+		respond `{"error":{"code":"api_unavailable","message":"API ещё не развёрнут"}}` 503
+	}
+
+	handle {
+		reverse_proxy frontend:8080
+	}
+}

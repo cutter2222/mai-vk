@@ -326,7 +326,9 @@ export function buildResult(g: MockGeneration): GenerationResult {
       stages,
     };
   });
-  const allDone = variants.every((v) => ["ready", "needs_review", "failed"].includes(v.status));
+  // Файлы варианта появляются раньше аудита: задание завершено, только когда у каждого варианта
+  // аудит закончен или вариант упал (FRAMEWORKS §1), иначе клиент прекратит опрос на «аудит идёт».
+  const allDone = variants.every((v) => v.status === "failed" || Boolean(v.audited_at));
   const anyFailed = variants.some((v) => v.status === "failed");
   const anyReview = variants.some((v) => v.status === "needs_review" || (v.audit && !v.audit.coverage_complete));
   let status: GenerationResult["status"] = "running";

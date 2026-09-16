@@ -1,0 +1,44 @@
+# Стек сервиса. Переменные из .env (корень репозитория для make up, $SERVER_DIR/.env на сервере):
+#   docker compose -f docker/compose.yaml --env-file .env up -d
+# Пути ниже относительны каталогу docker/. Сейчас в стеке вход Caddy и статический интерфейс
+# в режиме заглушек; API, воркеры и Valkey добавляются на следующем этапе.
+name: presentation-designer
+
+services:
+  caddy:
+    image: caddy:2.11.4-alpine
+    restart: unless-stopped
+    ports:
+      - "${PD_HTTP_PORT:-80}:80"
+      - "${PD_HTTPS_PORT:-443}:443"
+      - "${PD_HTTPS_PORT:-443}:443/udp"
+    environment:
+      PD_SITE_ADDRESS: ${PD_SITE_ADDRESS:-http://localhost}
+      PD_PUBLIC_URL: ${PD_PUBLIC_URL:-http://localhost}
+    volumes:
+      - ../deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_healthy
+
+  frontend:
+    image: presentation-designer/frontend:${PD_IMAGE_TAG:-latest}
+    build:
+      context: ../frontend
+      dockerfile: ../docker/frontend.Dockerfile
+      args:
+        # mock — интерфейс работает на заглушках без API; real — обращается к /api того же origin.
+        API_MODE: ${PD_FRONTEND_API_MODE:-mock}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  caddy_data:
+  caddy_config:

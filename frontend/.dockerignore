@@ -1,0 +1,10 @@
+# Контекст сборки docker/frontend.Dockerfile: только исходники и lock-файл.
+node_modules
+.next
+out
+playwright-report
+test-results
+tests
+*.tsbuildinfo
+.env*
+.DS_Store

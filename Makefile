@@ -1,5 +1,5 @@
 # Цели проекта. Запуск из корня репозитория.
-.PHONY: setup gen-contracts check test lint typecheck fixtures organizer-data dev dev-real build build-mock e2e up down clean
+.PHONY: setup gen-contracts check test lint typecheck fixtures organizer-data dev dev-real build build-mock e2e up down deploy clean
 
 setup: ## установить зависимости Python и frontend
 	uv sync
@@ -32,7 +32,6 @@ fixtures: ## пересоздать собственные тестовые фа
 organizer-data: ## скопировать материалы организаторов в data/organizers с манифестом
 	uv run python scripts/organizer_data.py
 
-# Ниже цели, которые подключаются на этапах 1–3. До этого они сообщают о статусе.
 dev: ## интерфейс в режиме заглушек (без backend)
 	pnpm -C frontend dev:mock
 
@@ -48,11 +47,14 @@ build-mock: ## статический экспорт в режиме заглу�
 e2e: build-mock ## сквозные тесты интерфейса в Chromium, Firefox и WebKit
 	pnpm -C frontend test:e2e
 
-up:
-	@echo "make up: Docker Compose подключается на этапе 2."; exit 1
+up: ## собрать и поднять стек Docker Compose на этой машине (http://localhost:8080)
+	./deploy/deploy.sh --target local
 
-down:
-	@echo "make down: Docker Compose подключается на этапе 2."; exit 1
+down: ## остановить локальный стек; тома остаются
+	./deploy/deploy.sh --target local --down
+
+deploy: ## выложить на сервер из deploy/server.env
+	./deploy/deploy.sh --target server
 
 clean:
 	rm -rf .pytest_cache .mypy_cache .ruff_cache frontend/.next frontend/out
