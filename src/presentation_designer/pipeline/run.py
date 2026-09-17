@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import logging
 import pathlib
 import time
 from collections.abc import Callable
@@ -16,6 +17,8 @@ from typing import Any
 
 from presentation_designer.pipeline.artifacts import Staging
 from presentation_designer.pipeline.state import now_iso
+
+log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 Emit = Callable[[str, JsonDict], None]
@@ -466,6 +469,7 @@ def run_variant(layers: Layers, ctx: VariantContext, emit: Emit) -> VariantOutco
         outcome.status = "failed"
         outcome.error = e.as_dict(stage)
     except Exception as e:
+        log.exception("вариант %s/%s: этап %s упал", ctx.job_id, ctx.variant_id, stage)
         outcome.status = "failed"
         outcome.error = {
             "code": f"{stage}_error",
@@ -630,6 +634,7 @@ def run_edit(layers: Layers, ctx: EditContext, emit: Emit) -> EditOutcome:
         outcome.status = "failed"
         outcome.error = e.as_dict(stage)
     except Exception as e:
+        log.exception("правка %s/%s: этап %s упал", ctx.job_id, ctx.variant_id, stage)
         code = getattr(e, "code", f"{stage}_error")
         outcome.status = "failed"
         outcome.error = {

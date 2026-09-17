@@ -54,7 +54,7 @@ from presentation_designer.shared.settings import Settings, get_settings
 log = logging.getLogger(__name__)
 
 ANALYZER_NAME = "template_analyzer"
-ANALYZER_VERSION = "0.2.1"
+ANALYZER_VERSION = "0.2.2"
 PREVIEW_DIR = "previews"
 
 

@@ -308,6 +308,26 @@ def _slot_kind(
     return "body"
 
 
+def _single_title(slots: list[Slot]) -> None:
+    """В паттерне один заголовок: планировщик и вёрстка рассчитаны ровно на один слот kind
+    «title», и только он обязателен. Остальные крупные надписи — подписи карточек: у
+    шаблонов вне партнёрских встречаются номера шагов и заголовки карточек тем же кеглем,
+    что и заголовок слайда (или крупнее). Остаётся плейсхолдер заголовка, а без него —
+    самая верхняя и широкая надпись."""
+    titles = [sl for sl in slots if sl.kind == "title"]
+    if len(titles) <= 1:
+        return
+    keep = next(
+        (sl for sl in titles if sl.shape.placeholder_type in ("title", "ctrTitle")),
+        None,
+    )
+    if keep is None:
+        keep = min(titles, key=lambda sl: (round(sl.shape.y, 2), -sl.shape.width))
+    for sl in titles:
+        if sl is not keep:
+            sl.kind = "label"
+
+
 def _capacity(slot: Slot, pkg: TemplatePackage, margin_ratio: float) -> dict[str, Any] | None:
     style, shape = slot.style, slot.shape
     if style is None or shape.width_emu <= 0 or shape.height_emu <= 0:
@@ -548,6 +568,7 @@ def build_pattern(
         per_card[g] = max(sizes.values()) if sizes else len(members)
     repeat_counts = {g: per_card.get(g, n) for g, n in repeat_counts.items()}
 
+    _single_title(slots)
     slots.sort(key=lambda sl: (round(sl.shape.y, 2), sl.shape.x))
     counters: collections.Counter[str] = collections.Counter()
     for slot in slots:

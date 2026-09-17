@@ -126,7 +126,7 @@ def test_groups_and_tone(variety_template: pathlib.Path) -> None:
     заливки слайда с источником; style_key — тон, семейство макета и plain."""
     profile = analyze(variety_template).profile
     TemplateProfile.model_validate(profile)
-    assert profile["schema_version"] == "1.2" and profile["analyzer"]["version"] == "0.2.1"
+    assert profile["schema_version"] == "1.2" and profile["analyzer"]["version"] == "0.2.2"
     by_id = {p["pattern_id"]: p for p in profile["patterns"]}
     assert by_id["pat_s1"]["group_id"] == by_id["pat_s2"]["group_id"], "титулы одного состава"
     assert by_id["pat_s3"]["group_id"] == by_id["pat_s4"]["group_id"], "разделители"
@@ -185,3 +185,37 @@ def test_text_metrics_capacity_uses_font_file() -> None:
     assert wide > narrow, "ширина зависит от глифов, а не от числа символов"
     unknown = text_metrics.resolve_font("Шрифт Которого Нет")
     assert unknown.substituted
+
+
+def test_single_title_per_pattern(tmp_path: pathlib.Path) -> None:
+    """Заголовки карточек кеглем крупнее заголовка слайда (шаблон ЛЦТ-2026: пустые
+    плейсхолдеры номеров шагов 28 pt при заголовке 20 pt) не становятся обязательными
+    заголовками: заголовок в паттерне один — плейсхолдер заголовка, остальные крупные
+    надписи — подписи карточек."""
+    from pptx import Presentation
+    from pptx.util import Emu, Pt
+
+    prs = Presentation()
+    prs.slide_width, prs.slide_height = Emu(12192000), Emu(6858000)
+    slide = prs.slides.add_slide(prs.slide_layouts[5])  # Title Only
+    slide.shapes.title.text = "Четыре шага"
+    slide.shapes.title.text_frame.paragraphs[0].runs[0].font.size = Pt(20)
+    for i in range(4):
+        x = 400000 + i * 2950000
+        num = slide.shapes.add_textbox(Emu(x), Emu(1800000), Emu(700000), Emu(450000))
+        num.text_frame.text = "Шаг"
+        num.text_frame.paragraphs[0].runs[0].font.size = Pt(28)
+        body = slide.shapes.add_textbox(Emu(x), Emu(2400000), Emu(2400000), Emu(2500000))
+        body.text_frame.text = f"Описание шага {i + 1}: что делаем и зачем"
+        body.text_frame.paragraphs[0].runs[0].font.size = Pt(14)
+    path = tmp_path / "steps.pptx"
+    prs.save(path)
+
+    profile = analyze(path).profile
+    TemplateProfile.model_validate(profile)
+    pattern = profile["patterns"][0]
+    kinds = [(s["slot_id"], s["kind"], s["required"]) for s in pattern["slots"]]
+    titles = [k for k in kinds if k[1] == "title"]
+    assert titles == [("title_1", "title", True)], kinds
+    assert [k[0] for k in kinds if k[1] == "label"] == ["label_1", "label_2", "label_3", "label_4"]
+    assert not any(k[2] for k in kinds if k[1] == "label"), "подписи карточек не обязательны"

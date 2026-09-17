@@ -299,7 +299,8 @@ class PatternInfo:
             if "number" in cards.by_kind:
                 inner.append("число")
             for kind in cards.text_kinds:
-                inner.append(f"{_KIND_LABEL[kind]} ≤{cards.by_kind[kind][0].max_chars}")
+                label = _KIND_LABEL.get(kind, "текст")
+                inner.append(f"{label} ≤{cards.by_kind[kind][0].max_chars}")
             if "icon" in cards.by_kind:
                 inner.append("иконка")
             word = _plural(cards.count, "карточка", "карточки", "карточек")
@@ -314,6 +315,7 @@ class PatternInfo:
 
 
 _KIND_LABEL = {
+    "title": "заголовок",
     "body": "текст",
     "label": "подпись",
     "subtitle": "подзаголовок",
@@ -372,6 +374,11 @@ def _slot_info(raw: JsonDict) -> SlotInfo:
 def pattern_info(raw: JsonDict) -> PatternInfo:
     slots = [_slot_info(s) for s in raw.get("slots", [])]
     title = next((s for s in slots if s.kind == "title"), None)
+    # Профили старых анализаторов могли пометить заголовками несколько надписей (номера
+    # карточек тем же кеглем); заголовок в паттерне один, остальные — подписи.
+    for s in slots:
+        if s.kind == "title" and s is not title:
+            s.kind = "label"
     singles: dict[str, list[SlotInfo]] = collections.defaultdict(list)
     grouped: dict[str, list[SlotInfo]] = collections.defaultdict(list)
     for s in slots:
