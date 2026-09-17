@@ -19,6 +19,7 @@ import logging
 import pathlib
 from typing import Any
 
+from presentation_designer.generation.edit import EditError, edit_slide
 from presentation_designer.generation.story import (
     StoryError,
     build_story,
@@ -41,6 +42,8 @@ from presentation_designer.pipeline.run import (
     BriefInput,
     ComposeInput,
     ComposeOutput,
+    EditInput,
+    EditOutput,
     ExportInput,
     ExportOutput,
     ImportInput,
@@ -69,6 +72,7 @@ class RealLayers(StubLayers):
         self.modes["generation.story"] = "real"
         self.modes["generation.plan"] = "real"
         self.modes["layout"] = "real"
+        self.modes["generation.edit"] = "real"
         # Экспорт настоящий там, где его выполняет воркер с LibreOffice; на машине разработчика
         # со встроенной очередью без рендерера остаётся заглушка, и execution_mode это показывает.
         self.renderer_available = _renderer_available()
@@ -419,6 +423,54 @@ class RealLayers(StubLayers):
             result.report["timings_ms"].get("render_slot_wait", 0),
         )
         return ExportOutput(thumbnails=result.thumbnails)
+
+    # ----- правка слайда по запросу (этап 20) -----
+
+    def edit(self, inp: EditInput) -> EditOutput:
+        client = self.llm_client()
+        skill = self.skill("slide_editor")
+        if client is None or skill is None:
+            raise StageError(
+                "edit_llm_not_configured",
+                "Провайдер моделей не настроен: правка слайда невозможна",
+                stage="plan",
+            )
+        try:
+            result = edit_slide(
+                inp.plan,
+                inp.story,
+                inp.template_profile,
+                inp.package,
+                slide_index=inp.slide_index,
+                instruction=inp.instruction,
+                client=client,
+                skill=skill,
+                settings=inp.settings,
+                app_settings=self.settings,
+                deadline_s=min(
+                    float((skill.manifest.params or {}).get("time_budget_s", 60)),
+                    float(self.settings.timeouts.stage_plan_s) - 10,
+                ),
+                nonce=inp.nonce,
+            )
+        except EditError as e:
+            raise StageError(e.code, str(e), retryable=e.retryable, stage="plan") from e
+        log.info(
+            "правка %s/%s слайд %d: %s, %d мс",
+            inp.job_id,
+            inp.variant_id,
+            inp.slide_index + 1,
+            "применена" if result.changed else f"отклонена ({result.reason})",
+            result.report.get("total_ms", 0),
+        )
+        return EditOutput(
+            plan=result.plan,
+            changed=result.changed,
+            slide_id=result.slide_id,
+            change_note=result.change_note,
+            reason=result.reason,
+            report=result.report,
+        )
 
     # ----- исправления (этап 10) -----
 

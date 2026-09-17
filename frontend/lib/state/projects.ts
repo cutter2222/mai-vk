@@ -13,15 +13,24 @@ import type { BriefDraft, Event, Project as ProjectDoc, ProjectFile, SettingsDra
 export type { BriefDraft, ProjectFile, SettingsDraft };
 
 /** Сообщение чата: событие ленты с сужением по виду карточки. Карточки читают состояние по идентификаторам. */
+/** Слайд, к которому обращено сообщение: чип в поле ввода, метка в ленте. */
+export interface SlideRef {
+  job_id: string;
+  variant_id: string;
+  revision: number;
+  slide_index: number;
+}
+
 export type ChatMessage =
-  | { event_id: string; at: string; role: "user"; kind: "message"; text: string; file_ids: string[] }
+  | { event_id: string; at: string; role: "user"; kind: "message"; text: string; file_ids: string[]; slide_ref?: SlideRef }
   | { event_id: string; at: string; role: "assistant"; kind: "text"; text: string }
   | { event_id: string; at: string; role: "assistant"; kind: "template_question"; file_id: string; resolved?: "template" | "material" }
   | { event_id: string; at: string; role: "assistant"; kind: "template_card"; template_id: string }
   | { event_id: string; at: string; role: "assistant"; kind: "content_card"; package_id: string; file_ids: string[] }
   | { event_id: string; at: string; role: "assistant"; kind: "brief_card"; understood: string[]; missing_purpose: boolean; brief_source?: "model" | "heuristic" }
   | { event_id: string; at: string; role: "assistant"; kind: "job_card"; job_id: string }
-  | { event_id: string; at: string; role: "assistant"; kind: "audit_card"; job_id: string };
+  | { event_id: string; at: string; role: "assistant"; kind: "audit_card"; job_id: string }
+  | { event_id: string; at: string; role: "assistant"; kind: "edit_card"; job_id: string; variant_id: string; edit_job_id: string; slide_index: number };
 
 export type Project = Omit<ProjectDoc, "events" | "template_id" | "package_id" | "job_id" | "chosen_variant"> & {
   template_id: string | null;

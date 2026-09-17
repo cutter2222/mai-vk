@@ -19,6 +19,15 @@ def _v1_database(path: pathlib.Path) -> None:
         "INSERT INTO projects(id, title, created_at, updated_at, brief, settings)"
         " VALUES ('prj_1', 'Старый', 't', 't', '{}', '{}')"
     )
+    # Исправление, записанное до миграции 4: после неё читается как kind=repair.
+    conn.execute(
+        "INSERT INTO jobs(id, kind, status, stage, created_at)"
+        " VALUES ('rep_1', 'repair', 'succeeded', 'done', 't')"
+    )
+    conn.execute(
+        "INSERT INTO repairs(repair_job_id, job_id, variant_id, base_revision, issue_ids, result)"
+        " VALUES ('rep_1', 'job_1', 'balanced', 1, '[\"i1\"]', 'applied')"
+    )
     conn.commit()
     conn.close()
 
@@ -34,6 +43,11 @@ def test_pending_migrations_and_upgrade(tmp_path: pathlib.Path) -> None:
     assert state.pending_migrations() == []
     assert state.get_project("prj_1")["title"] == "Старый"
     assert state.gc_marks() == {}
+    old_repair = state.get_repair("rep_1")
+    assert old_repair["kind"] == "repair" and old_repair["issue_ids"] == ["i1"]
+    assert old_repair["instruction"] is None and old_repair["slide_index"] is None
+    assert state.list_repairs("job_1", kind="edit") == []
+    assert [r["repair_job_id"] for r in state.list_repairs("job_1", kind="repair")] == ["rep_1"]
     # Повторный запуск ничего не меняет.
     assert State(db).migrate() == (LATEST_SCHEMA, LATEST_SCHEMA)
 

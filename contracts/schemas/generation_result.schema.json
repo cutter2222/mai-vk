@@ -19,7 +19,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.1"
+      "const": "1.2"
     },
     "job_id": {
       "$ref": "common.schema.json#/$defs/id"
@@ -535,6 +535,68 @@
     "partial": {
       "type": "boolean",
       "description": "часть вариантов не готова или завершилась ошибкой; готовые доступны"
+    },
+    "edits": {
+      "type": "array",
+      "description": "правки слайдов по запросу из чата: каждая применённая правка создаёт ревизию варианта, как исправление",
+      "items": {
+        "type": "object",
+        "required": [
+          "edit_job_id",
+          "variant_id",
+          "base_revision",
+          "slide_index",
+          "instruction",
+          "result"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "edit_job_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "variant_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "base_revision": {
+            "$ref": "common.schema.json#/$defs/revision"
+          },
+          "slide_index": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "индекс слайда в ревизии, с нуля, как в миниатюрах и отчёте аудита"
+          },
+          "slide_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "instruction": {
+            "type": "string"
+          },
+          "result": {
+            "enum": [
+              "applied",
+              "unchanged",
+              "failed"
+            ]
+          },
+          "change_note": {
+            "type": "string",
+            "description": "что изменено (applied) или почему слайд оставлен как есть (unchanged)"
+          },
+          "message": {
+            "type": "string",
+            "description": "сообщение об ошибке для failed"
+          },
+          "new_revision": {
+            "$ref": "common.schema.json#/$defs/revision"
+          },
+          "changed_slide_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "common.schema.json#/$defs/id"
+            }
+          }
+        }
+      }
     }
   }
 }

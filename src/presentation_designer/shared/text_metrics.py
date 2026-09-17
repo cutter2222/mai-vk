@@ -50,6 +50,16 @@ FALLBACKS: dict[str, tuple[str, ...]] = {
     "roboto": ("Noto Sans", "DejaVu Sans", "Liberation Sans"),
 }
 GENERIC_FALLBACK = ("Noto Sans", "DejaVu Sans", "Liberation Sans", "Arial", "Helvetica")
+# Клоны с теми же ширинами глифов: измерение по ним совпадает с оригиналом, рендер отличается
+# только рисунком букв, а в PPTX остаётся исходное имя — PowerPoint покажет оригинал.
+METRIC_EQUIVALENTS: dict[str, tuple[str, ...]] = {
+    "arial": ("Liberation Sans", "Arimo"),
+    "helvetica": ("Liberation Sans", "Arimo"),
+    "times new roman": ("Liberation Serif", "Tinos"),
+    "courier new": ("Liberation Mono", "Cousine"),
+    "calibri": ("Carlito",),
+    "cambria": ("Caladea",),
+}
 
 FONT_DIRS = (
     ROOT / "docker" / "fonts",
@@ -96,6 +106,15 @@ class ResolvedFont:
     @property
     def file(self) -> str | None:
         return str(self.face.path) if self.face else None
+
+    @property
+    def metric_equivalent(self) -> bool:
+        """Замена метрически совместимым клоном (Arial → Liberation Sans): ширины те же."""
+        return (
+            self.substituted
+            and self.face is not None
+            and self.face.family in METRIC_EQUIVALENTS.get(self.requested.lower(), ())
+        )
 
 
 @dataclass(frozen=True)
@@ -303,7 +322,7 @@ def capacity(
     max_lines = max(max_lines, 0)
     chars_per_line = max(chars_per_line, 0)
     notes: list[str] = []
-    if font.substituted:
+    if font.substituted and not font.metric_equivalent:
         notes.append(f"шрифт {font.requested} заменён на {font.family}")
     return Capacity(
         max_lines=max_lines,
@@ -314,7 +333,8 @@ def capacity(
         method=metrics.method,
         margin_ratio=margin_ratio,
         line_height_pt=round(line_h, 2),
-        substituted=font.substituted,
+        # Метрически совместимый клон подменой не считается: ширины совпадают с оригиналом.
+        substituted=font.substituted and not font.metric_equivalent,
         notes=notes,
     )
 

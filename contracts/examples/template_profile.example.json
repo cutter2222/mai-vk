@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "template_id": "tpl_vk_education",
   "template_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
   "source_file": {
@@ -9,7 +9,7 @@
   },
   "analyzer": {
     "name": "template-analyzer",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "created_at": "2026-09-15T12:00:00Z",
   "slide_size": {
@@ -604,7 +604,14 @@
       "sequence_hints": {
         "typical_position": "middle",
         "max_consecutive": 2
-      }
+      },
+      "tone": {
+        "background": "light",
+        "luminance": 0.892,
+        "source": "theme"
+      },
+      "style_key": "light|2 фактоида + текст|plain",
+      "group_id": "grp_3"
     },
     {
       "pattern_id": "pat_title",
@@ -670,7 +677,14 @@
       "sequence_hints": {
         "typical_position": "first",
         "max_consecutive": 1
-      }
+      },
+      "tone": {
+        "background": "dark",
+        "luminance": 0.104,
+        "source": "slide_fill"
+      },
+      "style_key": "dark|титульный слайд|plain",
+      "group_id": "grp_1"
     },
     {
       "pattern_id": "pat_section",
@@ -713,7 +727,13 @@
       "sequence_hints": {
         "typical_position": "any",
         "max_consecutive": 1
-      }
+      },
+      "tone": {
+        "background": "dark",
+        "luminance": 0.118,
+        "source": "layout_fill"
+      },
+      "style_key": "dark|титульный слайд раздела|plain"
     },
     {
       "pattern_id": "pat_bullets_4",
@@ -784,7 +804,13 @@
       "sequence_hints": {
         "typical_position": "middle",
         "max_consecutive": 2
-      }
+      },
+      "tone": {
+        "background": "light",
+        "luminance": 0.892,
+        "source": "theme"
+      },
+      "style_key": "light|заголовок|plain"
     },
     {
       "pattern_id": "pat_text",
@@ -847,7 +873,13 @@
       "sequence_hints": {
         "typical_position": "middle",
         "max_consecutive": 2
-      }
+      },
+      "tone": {
+        "background": "light",
+        "luminance": 0.892,
+        "source": "theme"
+      },
+      "style_key": "light|заголовок + текст|plain"
     },
     {
       "pattern_id": "pat_chart",
@@ -932,7 +964,13 @@
       "sequence_hints": {
         "typical_position": "middle",
         "max_consecutive": 2
-      }
+      },
+      "tone": {
+        "background": "light",
+        "luminance": 0.892,
+        "source": "theme"
+      },
+      "style_key": "light|заголовок|plain"
     },
     {
       "pattern_id": "pat_table",
@@ -992,7 +1030,13 @@
       ],
       "preview_path": "previews/slide38.png",
       "confidence": 0.9,
-      "role_source": "heuristic"
+      "role_source": "heuristic",
+      "tone": {
+        "background": "light",
+        "luminance": 0.892,
+        "source": "theme"
+      },
+      "style_key": "light|заголовок|plain"
     },
     {
       "pattern_id": "pat_timeline_4",
@@ -1055,7 +1099,13 @@
       ],
       "preview_path": "previews/slide44.png",
       "confidence": 0.8,
-      "role_source": "vlm"
+      "role_source": "vlm",
+      "tone": {
+        "background": "light",
+        "luminance": 0.892,
+        "source": "theme"
+      },
+      "style_key": "light|заголовок|plain"
     },
     {
       "pattern_id": "pat_thanks_qr",
@@ -1139,7 +1189,13 @@
       "sequence_hints": {
         "typical_position": "last",
         "max_consecutive": 1
-      }
+      },
+      "tone": {
+        "background": "dark",
+        "luminance": 0.104,
+        "source": "slide_fill"
+      },
+      "style_key": "dark|финальный с qr + подпись|plain"
     }
   ],
   "guidelines": [

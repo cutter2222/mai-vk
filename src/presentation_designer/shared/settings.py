@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import pathlib
 from functools import lru_cache
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -93,7 +93,9 @@ class ContentImport(BaseModel):
 
 class Plan(BaseModel):
     """Планы вариантов (generation/variants): кэш готовых планов, пакеты тезисов, лестница
-    ёмкости (минимальный кегль по роли текста и допустимое уменьшение)."""
+    ёмкости (минимальный кегль по роли текста и допустимое уменьшение), политика стилей
+    служебных слайдов (`per_variant` — единый стиль внутри колоды и разные у вариантов,
+    `first` — первый паттерн пула роли)."""
 
     cache_dir: pathlib.Path = pathlib.Path("data/plan-cache")
     packet_theses: int = 5
@@ -104,6 +106,8 @@ class Plan(BaseModel):
     min_title_pt: float = 20.0
     table_max_rows: int = 7
     margin_ratio: float = 0.92
+    style_policy: Literal["per_variant", "first"] = "per_variant"
+    photo_dividers_for_image_sections: bool = True
 
 
 class Layout(BaseModel):
@@ -171,7 +175,7 @@ class Llm(BaseModel):
 
 class App(BaseModel):
     name: str = "presentation-designer"
-    contracts_version: str = "1.5"
+    contracts_version: str = "1.7"
     language_default: str = "ru"
 
 

@@ -36,10 +36,18 @@ FROM base AS worker
 # LibreOffice для конвертации в PDF (версия из Debian bookworm, закреплена базовым образом)
 # и шрифты с открытыми лицензиями (docker/fonts/README.md). Каждая конвертация получает копию
 # подготовленного профиля /opt/lo-profile: реестр и кэш шрифтов уже созданы при сборке.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
+# Шрифты Microsoft (Arial, Times New Roman, Courier New, Verdana, Georgia, Trebuchet…) ставятся
+# пакетом contrib ttf-mscorefonts-installer: он скачивает оригинальные дистрибутивы Microsoft
+# при сборке (лицензия разрешает их распространение в неизменном виде); без них LibreOffice
+# рендерил Arial метрически совместимым Liberation Sans, а профиль предупреждал о подмене.
+RUN sed -i 's/^Components: main$/Components: main contrib/' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
+    && echo 'ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true' \
+        | debconf-set-selections \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         libreoffice-impress libreoffice-calc \
-        fonts-liberation fonts-dejavu-core fonts-crosextra-carlito fonts-noto-core \
+        fonts-liberation fonts-dejavu-core fonts-crosextra-carlito fonts-crosextra-caladea \
+        fonts-noto-core cabextract ttf-mscorefonts-installer \
     && rm -rf /var/lib/apt/lists/*
 COPY docker/fonts /usr/local/share/fonts/project
 RUN fc-cache -f \

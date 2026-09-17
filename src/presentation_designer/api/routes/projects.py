@@ -57,6 +57,13 @@ class ProjectPatch(BaseModel):
     settings: m.SettingsDraft | None = None
 
 
+class SlideRef(BaseModel):
+    job_id: str
+    variant_id: str
+    revision: int = Field(..., ge=1)
+    slide_index: int = Field(..., ge=0)
+
+
 class EventCreate(BaseModel):
     role: str
     kind: str
@@ -70,6 +77,10 @@ class EventCreate(BaseModel):
     understood: list[str] | None = None
     missing_purpose: bool | None = None
     brief_source: str | None = None
+    slide_ref: SlideRef | None = None
+    variant_id: str | None = None
+    edit_job_id: str | None = None
+    slide_index: int | None = Field(None, ge=0)
 
 
 class EventPatch(BaseModel):
@@ -84,7 +95,7 @@ class FilePatch(BaseModel):
 
 
 def _project_doc(project: dict[str, Any]) -> dict[str, Any]:
-    doc = {"schema_version": "1.3", **project}
+    doc = {"schema_version": "1.4", **project}
     return m.Project.model_validate(doc).model_dump(mode="json", exclude_none=True)
 
 

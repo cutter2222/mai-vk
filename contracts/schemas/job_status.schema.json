@@ -2,14 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://presentation-designer.local/contracts/job_status.schema.json",
   "title": "JobStatus",
-  "description": "Общее состояние любого задания: анализ шаблона, импорт содержания, генерация, исправление. Отдаётся GET /api/jobs/{id}. Ссылка на результат ведёт на документ своего вида; задания анализа и импорта не заполняют GenerationResult.",
+  "description": "Общее состояние любого задания: анализ шаблона, импорт содержания, генерация, исправление, правка слайда по запросу. Отдаётся GET /api/jobs/{id}. Ссылка на результат ведёт на документ своего вида; задания анализа и импорта не заполняют GenerationResult.",
   "type": "object",
   "required": ["schema_version", "job_id", "kind", "status", "created_at"],
   "additionalProperties": false,
   "properties": {
-    "schema_version": { "const": "1.1" },
+    "schema_version": { "const": "1.2" },
     "job_id": { "$ref": "common.schema.json#/$defs/id" },
-    "kind": { "enum": ["template_analysis", "content_import", "generation", "repair"] },
+    "kind": { "enum": ["template_analysis", "content_import", "generation", "repair", "slide_edit"] },
     "status": { "$ref": "common.schema.json#/$defs/job_state" },
     "stage": { "$ref": "common.schema.json#/$defs/stage" },
     "stages": {
@@ -23,7 +23,7 @@
     "finished_at": { "$ref": "common.schema.json#/$defs/timestamp" },
     "queue_wait_ms": { "type": "integer", "description": "ожидание свободного воркера" },
     "depends_on": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/id" } },
-    "parent_job_id": { "$ref": "common.schema.json#/$defs/id", "description": "для исправлений: задание генерации" },
+    "parent_job_id": { "$ref": "common.schema.json#/$defs/id", "description": "для исправлений и правок слайда: задание генерации" },
     "result": {
       "type": "object",
       "description": "ссылка на результат своего вида; заполняется по мере готовности",
@@ -34,7 +34,9 @@
         "generation_result_url": { "type": "string" },
         "template_profile_url": { "type": "string" },
         "content_package_url": { "type": "string" },
-        "revision": { "$ref": "common.schema.json#/$defs/revision" }
+        "revision": { "$ref": "common.schema.json#/$defs/revision" },
+        "unchanged": { "type": "boolean", "description": "для правки слайда: просьба отклонена, ревизия не создана" },
+        "change_note": { "type": "string", "description": "для правки слайда: что изменено или почему слайд оставлен как есть" }
       }
     },
     "error": { "$ref": "common.schema.json#/$defs/error" },

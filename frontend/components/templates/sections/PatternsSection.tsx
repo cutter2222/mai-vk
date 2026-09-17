@@ -11,6 +11,29 @@ import { formatRatio, PATTERN_ROLE_LABELS, ROLE_SOURCE_LABELS, SLOT_KIND_LABELS 
 import { countBy, FilterChips, KeyValues, percent } from "./common";
 
 const POSITION_LABELS: Record<string, string> = { first: "первый", early: "в начале", middle: "в середине", late: "ближе к концу", last: "последний", any: "любое" };
+const TONE_LABELS: Record<string, string> = { light: "светлый", dark: "тёмный", unknown: "тон не определён" };
+const TONE_SOURCE_LABELS: Record<string, string> = { slide_fill: "заливка слайда", slide_picture: "картинка слайда", slide_shape: "фигура слайда", layout_fill: "заливка макета", layout_picture: "картинка макета", layout_shape: "фигура макета", master_fill: "заливка мастера", master_picture: "картинка мастера", theme: "цвет темы", none: "не найден" };
+
+/** Бейдж тона фона образца: по нему планировщик держит титул, разделители и финал в один тон. */
+function ToneBadge({ pattern }: { pattern: Pattern }) {
+  const tone = pattern.tone?.background;
+  if (!tone || tone === "unknown") return null;
+  return (
+    <Badge size="xs" variant="outline" color={tone === "dark" ? "dark" : "gray"} data-testid={`pattern-tone-${pattern.pattern_id}`}>
+      {TONE_LABELS[tone]}
+    </Badge>
+  );
+}
+
+/** Бейдж группы взаимозаменяемых образцов (одна роль, состав слотов и число карточек). */
+function GroupBadge({ pattern, count }: { pattern: Pattern; count: number }) {
+  if (!pattern.group_id || count < 2) return null;
+  return (
+    <Badge size="xs" variant="dot" color="blue" title={`группа ${pattern.group_id}: ${count} образца(ов) одной композиции`} data-testid={`pattern-group-${pattern.pattern_id}`}>
+      ×{count}
+    </Badge>
+  );
+}
 
 interface Props {
   templateId: string;
@@ -22,6 +45,7 @@ export function PatternsSection({ templateId, profile }: Props) {
   const [role, setRole] = useState<string | null>(null);
   const [selected, setSelected] = useState<Pattern | null>(null);
   const counts = countBy(profile.patterns, (p) => p.role);
+  const groupSizes = countBy(profile.patterns.filter((p) => p.group_id), (p) => p.group_id ?? "");
   const shown = role ? profile.patterns.filter((p) => p.role === role) : profile.patterns;
   const src = (p: Pattern) => (p.preview_path ? api.templates.assetUrl(templateId, p.preview_path) : undefined);
 
@@ -35,6 +59,8 @@ export function PatternsSection({ templateId, profile }: Props) {
             <SlideImage src={src(p)} alt={p.name ?? p.role} />
             <Group gap={4} mt={6} wrap="nowrap">
               <Badge size="xs" variant="light">{PATTERN_ROLE_LABELS[p.role] ?? p.role}</Badge>
+              <ToneBadge pattern={p} />
+              <GroupBadge pattern={p} count={groupSizes[p.group_id ?? ""] ?? 0} />
               <Text size="xs" truncate title={p.name}>{p.name ?? p.pattern_id}</Text>
             </Group>
             <Text size="xs" c="dimmed">{p.slots.length} слотов · уверенность {percent(p.confidence)}{p.source.slide_index != null ? ` · слайд ${p.source.slide_index}` : ""}</Text>
@@ -90,6 +116,8 @@ export function PatternModal({ pattern, src, onClose }: { pattern: Pattern | nul
             ["Ограничения", c ? [c.min_items != null || c.max_items != null ? `элементов ${c.min_items ?? "…"}–${c.max_items ?? "…"}` : null, c.supports?.length ? `поддерживает: ${c.supports.join(", ")}` : "без вставок"].filter(Boolean).join(" · ") : "—"],
             ["Место в колоде", hints ? [hints.typical_position ? POSITION_LABELS[hints.typical_position] ?? hints.typical_position : null, hints.max_consecutive != null ? `подряд не более ${hints.max_consecutive}` : null].filter(Boolean).join(" · ") || "—" : "—"],
             ["Объекты образца", `постоянных ${pattern.static_object_ids?.length ?? 0} · удаляемых ${pattern.removable_object_ids?.length ?? 0}`],
+            ...(pattern.tone ? [["Тон фона", `${TONE_LABELS[pattern.tone.background] ?? pattern.tone.background}${pattern.tone.luminance != null ? ` · яркость ${formatRatio(pattern.tone.luminance)}` : ""} · ${TONE_SOURCE_LABELS[pattern.tone.source] ?? pattern.tone.source}`] as [string, React.ReactNode]] : []),
+            ...(pattern.style_key ? [["Стиль", `${pattern.style_key}${pattern.group_id ? ` · группа ${pattern.group_id}` : ""}`] as [string, React.ReactNode]] : []),
             ...(pattern.tags?.length ? [["Теги", pattern.tags.join(", ")] as [string, React.ReactNode]] : []),
             ...(pattern.notes ? [["Заметка", pattern.notes] as [string, React.ReactNode]] : []),
           ]}

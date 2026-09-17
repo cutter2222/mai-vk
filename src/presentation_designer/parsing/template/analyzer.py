@@ -54,7 +54,7 @@ from presentation_designer.shared.settings import Settings, get_settings
 log = logging.getLogger(__name__)
 
 ANALYZER_NAME = "template_analyzer"
-ANALYZER_VERSION = "0.1.1"
+ANALYZER_VERSION = "0.2.1"
 PREVIEW_DIR = "previews"
 
 
@@ -428,14 +428,26 @@ def _assemble_profile(
             }
         )
     for font in tokens["typography"]["fonts"]:
-        if font["usage_count"] and not font["available_in_renderer"]:
+        if not font["usage_count"] or font["available_in_renderer"]:
+            continue
+        if text_metrics.resolve_font(font["family"]).metric_equivalent:
+            # Клон с теми же ширинами: миниатюры и PDF отличаются рисунком букв, измерение
+            # текста точное, в PPTX остаётся исходное имя — это заметка, а не предупреждение.
             warnings.append(
                 {
-                    "code": "font_substituted",
-                    "message": f"шрифт {font['family']} недоступен в рендерере"
-                    + (f", подмена {font['fallback']}" if font.get("fallback") else ""),
+                    "code": "font_metric_equivalent",
+                    "message": f"шрифт {font['family']} в миниатюрах и PDF показан метрически "
+                    f"совместимым {font['fallback']}; в PPTX остаётся {font['family']}",
                 }
             )
+            continue
+        warnings.append(
+            {
+                "code": "font_substituted",
+                "message": f"шрифт {font['family']} недоступен в рендерере"
+                + (f", подмена {font['fallback']}" if font.get("fallback") else ""),
+            }
+        )
     if report.vlm and report.vlm.get("errors"):
         warnings.append({"code": "vlm_partial", "message": "; ".join(report.vlm["errors"])[:300]})
 
@@ -478,7 +490,7 @@ def _assemble_profile(
         sample_slides.append(entry)
 
     profile: dict[str, Any] = {
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "template_id": template_id,
         "template_hash": f"sha256:{sha256}",
         "source_file": {"name": name, "size_bytes": size_bytes, "format": "pptx"},

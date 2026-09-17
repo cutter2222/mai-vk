@@ -193,6 +193,36 @@ class RepairOutput:
     thumbnails: list[JsonDict]
 
 
+@dataclass
+class EditInput:
+    """Правка одного слайда по инструкции: план базовой ревизии и входы сборки новой."""
+
+    job_id: str
+    variant_id: str
+    revision: int
+    base_revision: int
+    plan: JsonDict
+    slide_index: int
+    instruction: str
+    template_profile: JsonDict
+    package: JsonDict
+    story: JsonDict
+    settings: JsonDict
+    nonce: str | None = None
+
+
+@dataclass
+class EditOutput:
+    """Ответ слоя правки: новый план или отказ с причиной."""
+
+    plan: JsonDict | None
+    changed: bool
+    slide_id: str
+    change_note: str = ""
+    reason: str = ""
+    report: JsonDict = field(default_factory=dict)
+
+
 class Layers:
     """Реализации слоёв. Заглушки и настоящие слои наследуют и заполняют `modes`."""
 
@@ -235,6 +265,9 @@ class Layers:
         raise NotImplementedError
 
     def repair(self, inp: RepairInput) -> RepairOutput:
+        raise NotImplementedError
+
+    def edit(self, inp: EditInput) -> EditOutput:
         raise NotImplementedError
 
     def execution_mode(self) -> JsonDict:
@@ -450,6 +483,164 @@ def run_variant(layers: Layers, ctx: VariantContext, emit: Emit) -> VariantOutco
 def _stages_after(stage: str) -> list[str]:
     order = ["plan", "compose", "export", "audit"]
     return order[order.index(stage) + 1 :] if stage in order else []
+
+
+@dataclass
+class EditContext:
+    """Входы правки слайда: план базовой ревизии и всё для сборки новой ревизии."""
+
+    job_id: str
+    variant_id: str
+    revision: int
+    base_revision: int
+    plan: JsonDict
+    slide_index: int
+    instruction: str
+    template_profile: JsonDict
+    template_path: pathlib.Path | None
+    package: JsonDict
+    story: JsonDict
+    settings: JsonDict
+    staging: Staging
+    package_dir: pathlib.Path | None = None
+    nonce: str | None = None
+
+
+@dataclass
+class EditOutcome:
+    """Итог правки: applied — новая ревизия собрана и проверена; unchanged — просьба
+    отклонена, ревизии нет; failed — ошибка этапа."""
+
+    status: str
+    slide_id: str = ""
+    change_note: str = ""
+    reason: str = ""
+    slide_count: int | None = None
+    slide_titles: list[str] = field(default_factory=list)
+    audit: JsonDict | None = None
+    report: JsonDict | None = None
+    error: JsonDict | None = None
+    stages: list[JsonDict] = field(default_factory=list)
+    thumbnails: list[JsonDict] = field(default_factory=list)
+    edit_report: JsonDict = field(default_factory=dict)
+
+
+def run_edit(layers: Layers, ctx: EditContext, emit: Emit) -> EditOutcome:
+    """Правка слайда → сборка → экспорт → аудит новой ревизии; отказ модели останавливает
+    цепочку после первого этапа без ревизии."""
+    outcome = EditOutcome(status="running")
+    stage = "plan"
+    try:
+        timer = _Timer(emit, "plan", ctx.variant_id)
+        edited = layers.edit(
+            EditInput(
+                ctx.job_id,
+                ctx.variant_id,
+                ctx.revision,
+                ctx.base_revision,
+                ctx.plan,
+                ctx.slide_index,
+                ctx.instruction,
+                ctx.template_profile,
+                ctx.package,
+                ctx.story,
+                ctx.settings,
+                nonce=ctx.nonce,
+            )
+        )
+        outcome.slide_id = edited.slide_id
+        outcome.edit_report = edited.report
+        outcome.stages.append(timer.done())
+        if not edited.changed or edited.plan is None:
+            outcome.status = "unchanged"
+            outcome.reason = edited.reason
+            return outcome
+        outcome.change_note = edited.change_note
+
+        stage = "compose"
+        timer = _Timer(emit, "compose", ctx.variant_id)
+        composed = layers.compose(
+            ComposeInput(
+                ctx.job_id,
+                ctx.variant_id,
+                ctx.revision,
+                edited.plan,
+                ctx.template_profile,
+                ctx.template_path,
+                ctx.package,
+                ctx.story,
+                ctx.staging,
+                package_dir=ctx.package_dir,
+            )
+        )
+        outcome.slide_count = composed.slide_count
+        outcome.slide_titles = composed.slide_titles
+        deck_title = ctx.package.get("brief", {}).get("title") or "Презентация"
+        outcome.stages.append(timer.done())
+
+        stage = "export"
+        timer = _Timer(emit, "export", ctx.variant_id)
+        exported = layers.export(
+            ExportInput(
+                ctx.job_id,
+                ctx.variant_id,
+                ctx.revision,
+                ctx.staging,
+                composed.slide_titles,
+                deck_title,
+                composed_deck=composed.composed_deck,
+            )
+        )
+        outcome.thumbnails = exported.thumbnails
+        outcome.stages.append(timer.done())
+
+        stage = "audit"
+        timer = _Timer(emit, "audit", ctx.variant_id)
+        contextual = bool((ctx.settings or {}).get("run_contextual_audit", True))
+        report = layers.audit(
+            AuditInput(
+                ctx.job_id,
+                ctx.variant_id,
+                ctx.revision,
+                ctx.staging,
+                composed.slide_count,
+                contextual,
+                composed.composed_deck,
+                ctx.story,
+                ctx.package,
+                exported.thumbnails,
+            )
+        )
+        # Отчёт уже записан слоем аудита; область повторной проверки дописывается и файл
+        # ревизии перезаписывается, чтобы интерфейс видел изменённый слайд.
+        rechecked = report.get("rechecked_after_repair") or {}
+        report["rechecked_after_repair"] = {
+            "base_revision": ctx.base_revision,
+            "changed_slide_ids": [edited.slide_id],
+            "dependent_slide_ids": list(rechecked.get("dependent_slide_ids") or []),
+            "deck_checks_rerun": list(rechecked.get("deck_checks_rerun") or []),
+        }
+        ctx.staging.write_json("audit.json", report)
+        outcome.report = report
+        outcome.audit = audit_summary(report)
+        outcome.stages.append(timer.done())
+        outcome.status = "applied"
+        return outcome
+    except StageError as e:
+        outcome.status = "failed"
+        outcome.error = e.as_dict(stage)
+    except Exception as e:
+        code = getattr(e, "code", f"{stage}_error")
+        outcome.status = "failed"
+        outcome.error = {
+            "code": code,
+            "message": str(e) or e.__class__.__name__,
+            "stage": stage,
+            "retryable": bool(getattr(e, "retryable", True)),
+        }
+    outcome.stages.append({"stage": stage, "variant_id": ctx.variant_id, "status": "failed"})
+    emit("stage", {"stage": stage, "variant_id": ctx.variant_id, "status": "failed"})
+    return outcome
 
 
 def run_repair(layers: Layers, inp: RepairInput, emit: Emit) -> RepairOutput:

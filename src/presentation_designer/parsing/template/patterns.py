@@ -20,9 +20,11 @@ from typing import Any
 from presentation_designer.parsing.template.assets import Asset
 from presentation_designer.parsing.template.classify import Classification, is_marker
 from presentation_designer.parsing.template.geometry import ShapeInfo, normalize_text
+from presentation_designer.parsing.template.layouts import layout_family
 from presentation_designer.parsing.template.package import SlideInfo, TemplatePackage
 from presentation_designer.parsing.template.styles import ResolvedText, StyleResolver
 from presentation_designer.parsing.template.tokens import text_role_for
+from presentation_designer.parsing.template.tone import UNKNOWN, Tone, slide_tone
 from presentation_designer.shared import text_metrics
 
 log = logging.getLogger(__name__)
@@ -156,10 +158,19 @@ class Pattern:
     tags: list[str] = field(default_factory=list)
     preview_path: str | None = None
     layout_kind: str = "sample_slide"
+    tone: Tone = field(default_factory=lambda: UNKNOWN)
+    layout_name: str = ""
 
     def signature(self) -> tuple[Any, ...]:
         kinds = tuple(sorted(collections.Counter(s.kind for s in self.slots).items()))
         return (self.role, kinds, tuple(sorted(self.repeat_counts.values())))
+
+    @property
+    def style_key(self) -> str:
+        """Стиль служебного слайда: тон | семейство макета | photo или plain. Образцы одного
+        стиля взаимозаменяемы внутри колоды; `photo` появится у образцов с фотослотом макета
+        (этап 16), пока все образцы `plain`."""
+        return f"{self.tone.background}|{layout_family(self.layout_name)}|plain"
 
     def as_dict(self, pkg: TemplatePackage) -> dict[str, Any]:
         supports = sorted(
@@ -188,7 +199,11 @@ class Pattern:
             "static_object_ids": self.static_ids,
             "removable_object_ids": self.removable_ids,
             "sequence_hints": sequence_hints(self.role),
+            "tone": self.tone.as_dict(),
+            "style_key": self.style_key,
         }
+        if self.group_id:
+            out["group_id"] = self.group_id
         if self.preview_path:
             out["preview_path"] = self.preview_path
         if self.notes:
@@ -568,6 +583,8 @@ def build_pattern(
         repeat_counts=repeat_counts,
         notes=notes,
         layout_kind=layout_kind,
+        tone=slide_tone(slide, layout, pkg.master(slide.master_id), assets_by_sha, pkg=pkg),
+        layout_name=layout.name if layout else "",
     )
 
 

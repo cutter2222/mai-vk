@@ -7,6 +7,7 @@
     python -m presentation_designer.cli.maintenance restore ARCHIVE [--only-db] [--valkey MODE]
     python -m presentation_designer.cli.maintenance gc [--dry-run] [--grace-hours H]
     python -m presentation_designer.cli.maintenance list-backups [--dir DIR]
+    python -m presentation_designer.cli.maintenance reanalyze-templates [--all] [--wait S]
 
 Человекочитаемые сообщения идут в stderr (логи), результат — строками `ключ=значение`
 в stdout, чтобы скрипты deploy/ разбирали его без jq.
@@ -20,6 +21,7 @@ import logging
 import os
 import pathlib
 import sys
+import time
 from datetime import timedelta
 
 from presentation_designer.pipeline import backup as bk
@@ -170,6 +172,42 @@ def cmd_gc(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
+def cmd_reanalyze(args: argparse.Namespace, settings: Settings) -> int:
+    """Повторный анализ шаблонов библиотеки с устаревшим ключом профиля (после выкладки с
+    новым анализатором, контрактами, скиллом или шрифтами) без повторной загрузки файлов;
+    задания уходят в очередь анализа, `--wait` ждёт их завершения."""
+    from presentation_designer.pipeline.jobs import build_orchestrator
+
+    orchestrator = build_orchestrator(settings)
+    entries = orchestrator.reanalyze_templates(force=args.all)
+    for e in entries:
+        log.info("%s «%s»: %s", e["template_id"], e["name"], e["action"])
+    queued = [e for e in entries if e["action"] == "queued"]
+    failed = 0
+    if queued and args.wait:
+        deadline = time.monotonic() + float(args.wait)
+        pending = {e["template_id"] for e in queued}
+        while pending and time.monotonic() < deadline:
+            time.sleep(3)
+            for tid in list(pending):
+                t = orchestrator.state.get_template(tid)
+                if t["status"] in ("succeeded", "failed"):
+                    pending.discard(tid)
+                    version = ((t.get("profile") or {}).get("analyzer") or {}).get("version")
+                    log.info("%s «%s»: %s, анализатор %s", tid, t["name"], t["status"], version)
+                    failed += t["status"] == "failed"
+        if pending:
+            log.warning("не дождались: %s", ", ".join(sorted(pending)))
+            failed += len(pending)
+    _emit(
+        templates=len(entries),
+        queued=len(queued),
+        up_to_date=sum(1 for e in entries if e["action"] == "up_to_date"),
+        failed=failed,
+    )
+    return 1 if failed else 0
+
+
 def cmd_list(args: argparse.Namespace, settings: Settings) -> int:
     out_dir = pathlib.Path(args.dir) if args.dir else settings.backups_dir
     for path in bk.list_backups(out_dir):
@@ -225,6 +263,14 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("list-backups", help="список резервных копий")
     p.add_argument("--dir")
     p.set_defaults(func=cmd_list)
+
+    p = sub.add_parser(
+        "reanalyze-templates",
+        help="повторный анализ шаблонов библиотеки с устаревшим ключом профиля (--all — всех)",
+    )
+    p.add_argument("--all", action="store_true", help="переанализировать даже актуальные")
+    p.add_argument("--wait", type=float, default=0, help="ждать завершения не дольше секунд")
+    p.set_defaults(func=cmd_reanalyze)
     return parser
 
 

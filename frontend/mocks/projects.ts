@@ -43,7 +43,7 @@ export const DEFAULT_SETTINGS: Project["settings"] = { mode: "range", min: 10, m
 export function createProject(body: { title?: string; job_id?: string } = {}): Project {
   const now = iso();
   const project: Project = {
-    schema_version: "1.3",
+    schema_version: "1.4",
     project_id: nextId("prj"),
     title: body.title?.trim() || "Новая презентация",
     created_at: now,

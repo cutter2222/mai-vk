@@ -1,4 +1,5 @@
-"""Генерация: запуск задания, результат, смысловой план, отчёты аудита, исправления, артефакты."""
+"""Генерация: запуск задания, результат, смысловой план, отчёты аудита, исправления,
+правки слайдов по запросу, артефакты."""
 
 from __future__ import annotations
 
@@ -27,6 +28,12 @@ ATTACHMENT_SUFFIXES = (".pptx", ".pdf", ".html")
 class RepairRequest(BaseModel):
     base_revision: int = Field(..., ge=1)
     issue_ids: list[str]
+
+
+class EditRequest(BaseModel):
+    base_revision: int = Field(..., ge=1)
+    slide_index: int = Field(..., ge=0)
+    instruction: str = Field("", max_length=2000)
 
 
 def _generation(orch: Orchestrator, job_id: str) -> dict[str, Any]:
@@ -111,6 +118,24 @@ def create_repair(job_id: str, variant_id: str, body: RepairRequest, orch: Orch)
     except NotFound as e:
         raise ApiError(404, "variant_not_found", "Вариант не найден") from e
     return {"repair_job_id": job["job_id"]}
+
+
+@router.post("/generations/{job_id}/variants/{variant_id}/edits", status_code=202)
+def create_edit(job_id: str, variant_id: str, body: EditRequest, orch: Orch) -> dict[str, Any]:
+    """Правка одного слайда по инструкции из чата: новая ревизия варианта, как у исправления."""
+    _generation(orch, job_id)
+    instruction = " ".join(body.instruction.split())
+    if not instruction:
+        raise ApiError(422, "instruction_required", "Напишите, что изменить на слайде")
+    # Конфликты (устаревшая ревизия, идущая правка, слайд вне диапазона) отдаёт обработчик
+    # ConflictError в app.py: 409 для ревизии и занятости, 422 для остального.
+    try:
+        job = orch.submit_edit(
+            job_id, variant_id, body.base_revision, body.slide_index, instruction
+        )
+    except NotFound as e:
+        raise ApiError(404, "variant_not_found", "Вариант не найден") from e
+    return {"edit_job_id": job["job_id"]}
 
 
 @router.get("/generations/{job_id}/artifacts/{name:path}")

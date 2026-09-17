@@ -141,6 +141,30 @@ def test_three_plans_on_organizer_profile(
         }
     comparison = vr.compare_plans(plans)
     report["comparison"] = comparison
+    # Стили служебных слайдов (этап 14): внутри колоды разделители одного паттерна; у VK
+    # Education разделители balanced и detailed разного стиля (светлый и тёмный тон); у VK Tech
+    # три финала (два тёмных и светлый) — у трёх вариантов разные образцы.
+    by_id = {p["pattern_id"]: p for p in profile["patterns"]}
+    divider_styles: dict[str, set[str]] = {}
+    for variant_id, plan in plans.items():
+        dividers = {s["pattern_id"] for s in plan["slides"] if s["role"] == "section_divider"}
+        assert len(dividers) <= 1, (variant_id, dividers)
+        divider_styles[variant_id] = {by_id[d]["style_key"] for d in dividers}
+    report["service_styles"] = {
+        v: {
+            "divider_styles": sorted(divider_styles[v]),
+            "title": plans[v]["slides"][0]["pattern_id"],
+            "final": plans[v]["slides"][-1]["pattern_id"],
+        }
+        for v in plans
+    }
+    if name.startswith("Шаблон презентации VK Education"):
+        assert divider_styles["balanced"] and divider_styles["detailed"]
+        assert divider_styles["balanced"] != divider_styles["detailed"]
+    if name.startswith("VK Tech"):
+        finals = {plans[v]["slides"][-1]["pattern_id"] for v in plans}
+        assert all(by_id[f]["role"] == "thanks" for f in finals)
+        assert len(finals) == 3, finals
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     (REPORT_DIR / f"{name.split('.')[0]}.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8"

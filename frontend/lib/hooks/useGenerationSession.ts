@@ -13,6 +13,14 @@ type Issue = AuditReport["issues"][number];
 
 export type PreviewLayout = "single" | "side";
 
+/** Адрес правки: выбранный слайд выбранного варианта в его текущей ревизии. */
+export interface SlideTarget {
+  jobId: string;
+  variantId: string;
+  revision: number;
+  slideIndex: number;
+}
+
 /**
  * Состояние задания генерации для редактора проекта: опрос результата, выбранный вариант и слайд,
  * отчёт аудита нужной ревизии, выбор находок, исправления, отмена и повтор.
@@ -29,6 +37,9 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
   const [repairJob, setRepairJob] = useState<string | null>(null);
   const [showHowBuilt, setShowHowBuilt] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
+  const [editJob, setEditJob] = useState<string | null>(null);
+  // Крестик на чипе снимает адресацию для этого слайда; следующий выбор слайда возвращает чип.
+  const [dismissedTarget, setDismissedTarget] = useState<number | null>(null);
 
   const job = usePolling<GenerationResult>(jobId ? () => api.generations.get(jobId) : null, (r) => TERMINAL_STATES.has(r.status) && !repairJob, [jobId, repairJob]);
   const result = job.data;
@@ -43,6 +54,8 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
     setSelectedIssues(new Set());
     setActiveIssue(null);
     setRepairJob(null);
+    setEditJob(null);
+    setDismissedTarget(null);
     setLayout("single");
   }
 
@@ -75,8 +88,9 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
   );
 
   // Опрос задания исправления: по завершении обновляем результат и отчёт.
+  // Состояние опроса переживает смену задания: завершённым считается только ответ по текущему заданию.
   const repairStatus = usePolling(repairJob ? () => api.jobs.get(repairJob) : null, (s) => TERMINAL_STATES.has(s.status), [repairJob]);
-  const repairDone = Boolean(repairJob && repairStatus.data && TERMINAL_STATES.has(repairStatus.data.status));
+  const repairDone = Boolean(repairJob && repairStatus.data?.job_id === repairJob && TERMINAL_STATES.has(repairStatus.data.status));
   const [handledRepair, setHandledRepair] = useState<string | null>(null);
   useEffect(() => {
     if (!repairDone || handledRepair === repairJob) return;
@@ -89,6 +103,28 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repairDone, repairJob, handledRepair]);
+
+  // Опрос задания правки слайда: по завершении обновляем результат, ревизия сбрасывается на текущую.
+  const editStatus = usePolling(editJob ? () => api.jobs.get(editJob) : null, (s) => TERMINAL_STATES.has(s.status), [editJob]);
+  const editDone = Boolean(editJob && editStatus.data?.job_id === editJob && TERMINAL_STATES.has(editStatus.data.status));
+  const [handledEdit, setHandledEdit] = useState<string | null>(null);
+  useEffect(() => {
+    if (!editDone || handledEdit === editJob) return;
+    const status = editStatus.data;
+    queueMicrotask(() => {
+      setHandledEdit(editJob);
+      setEditJob(null);
+      job.refresh();
+      if (status?.status === "succeeded" && status.result?.unchanged) {
+        notifications.show({ color: "gray", title: "Слайд оставлен как есть", message: status.result.change_note ?? "" });
+      } else if (status?.status === "succeeded") {
+        notifications.show({ color: "green", title: "Слайд изменён", message: `Создана ревизия ${status.result?.revision ?? ""}. ${status.result?.change_note ?? ""}`.trim() });
+      } else if (status?.status === "failed") {
+        notifications.show({ color: "red", title: "Правка не применена", message: status.error?.message ?? "" });
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editDone, editJob, handledEdit]);
 
   const maxSlides = useMemo(() => Math.max(1, ...(result?.variants.map((v) => v.artifacts?.thumbnails?.length ?? v.slide_count ?? 0) ?? [1])), [result]);
 
@@ -165,6 +201,25 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
     }
   };
 
+  /** Правка выбранного слайда по инструкции; ошибки (устаревшая ревизия, идущая правка) отдаются вызывающему. */
+  const requestEdit = async (target: SlideTarget, instruction: string): Promise<string> => {
+    setBusy(true);
+    try {
+      const res = await api.generations.edit(target.jobId, target.variantId, target.revision, target.slideIndex, instruction);
+      setEditJob(res.edit_job_id);
+      setHandledEdit(null);
+      return res.edit_job_id;
+    } catch (e) {
+      if (e instanceof ApiError && e.code === "revision_stale") {
+        setRevision(null);
+        job.refresh();
+      }
+      throw e;
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const toggleIssue = useCallback((id: string) => {
     setSelectedIssues((s) => {
       const n = new Set(s);
@@ -186,6 +241,16 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
   const thumb = variant?.artifacts?.thumbnails?.find((t) => t.slide_index === slideIndex);
   const thumbName = thumb && viewRevision !== currentRevision ? thumb.name.replace(`/r${currentRevision}/`, `/r${viewRevision}/`) : thumb?.name;
   const terminal = Boolean(result && TERMINAL_STATES.has(result.status));
+
+  // Адрес правки: выбранный слайд собранного варианта, пока задание завершено и чип не снят.
+  const editable = terminal && variant !== null && (variant.status === "ready" || variant.status === "needs_review") && Boolean(thumb);
+  const slideTarget: SlideTarget | null =
+    jobId && variant && editable && dismissedTarget !== slideIndex ? { jobId, variantId: variant.variant_id, revision: currentRevision, slideIndex } : null;
+  const dismissTarget = useCallback(() => setDismissedTarget(slideIndex), [slideIndex]);
+  const selectSlide = useCallback((i: number) => {
+    setSlideIndex(i);
+    setDismissedTarget(null);
+  }, []);
 
   return {
     jobId,
@@ -222,6 +287,12 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
     setAuditOpen,
     overlays,
     thumbName,
+    slideTarget,
+    dismissTarget,
+    selectSlide,
+    requestEdit,
+    editJob,
+    editStatus: editStatus.data,
   };
 }
 

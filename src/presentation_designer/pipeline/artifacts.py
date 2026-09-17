@@ -58,6 +58,8 @@ class Staging:
     final: pathlib.Path
     prefix: str
     manifest: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Ревизия не нужна (правка отклонена): каталог удаляется при выходе без публикации.
+    discard: bool = False
 
     @property
     def published(self) -> bool:
@@ -133,6 +135,9 @@ class ArtifactStore:
         staging = Staging(dir=tmp, final=final, prefix=self.prefix(variant_id, revision))
         try:
             yield staging
+            if staging.discard and not staging.published:
+                shutil.rmtree(tmp, ignore_errors=True)
+                return
             self.publish(staging)
         except BaseException:
             if not staging.published:

@@ -26,6 +26,7 @@ from presentation_designer.parsing.template.analyzer import analyze_template
 from presentation_designer.pipeline.run import resolve_slide_count
 from presentation_designer.shared.settings import Settings, get_settings
 from tests.fixtures.rich_template import build_rich_template
+from tests.fixtures.variety_template import build_variety_template
 from tests.parsing.content.conftest import EXAMPLES
 
 EXAMPLE_FILES = ("overview.docx", "metrics.xlsx", "notes.md", "openrate_chart.png", "logo.png")
@@ -60,6 +61,16 @@ def mini_profile() -> dict[str, Any]:
 def rich_profile(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
     return own_profile(
         build_rich_template(tmp_path_factory.mktemp("tpl") / "rich_template.pptx"), "tpl_rich"
+    )
+
+
+@pytest.fixture(scope="module")
+def variety_profile(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
+    """Два титула, два разделителя и два финала разного тона, два карточных образца одной
+    группы (tests/fixtures/variety_template.py)."""
+    return own_profile(
+        build_variety_template(tmp_path_factory.mktemp("tpl") / "variety_template.pptx"),
+        "tpl_variety",
     )
 
 
@@ -794,6 +805,120 @@ def test_bad_packet_is_retried_with_hint_only_for_that_packet(
     hint_call = [c for c in stub.calls if is_first(c)][1]
     assert "не прошёл проверку" in hint_call.messages[-1].text
     _assert_valid(result.plan, mini_profile, example_package, example_story)
+
+
+# ---------- стили служебных слайдов и братья по группе ----------
+
+
+def _with_style_policy(policy: str) -> Settings:
+    app = get_settings()
+    return app.model_copy(update={"plan": app.plan.model_copy(update={"style_policy": policy})})
+
+
+def test_style_policy_per_variant(
+    example_story: dict[str, Any], variety_profile: dict[str, Any], example_package: dict[str, Any]
+) -> None:
+    """Три плана без модели: титул, разделители и финал выбираются из пулов ролей единым стилем
+    внутри колоды и разным между вариантами (per_variant); first даёт прежнее поведение —
+    первый паттерн пула у всех вариантов."""
+    by_id = {p["pattern_id"]: p for p in variety_profile["patterns"]}
+    results = _plans(
+        example_story,
+        variety_profile,
+        example_package,
+        None,
+        app_settings=_with_style_policy("per_variant"),
+    )
+    titles: dict[str, str] = {}
+    finals: dict[str, str] = {}
+    divider_styles: dict[str, str] = {}
+    for variant_id, result in results.items():
+        plan = result.plan
+        _assert_valid(plan, variety_profile, example_package, example_story)
+        assert plan["coverage"]["missing"] == []
+        titles[variant_id] = plan["slides"][0]["pattern_id"]
+        finals[variant_id] = plan["slides"][-1]["pattern_id"]
+        dividers = {s["pattern_id"] for s in plan["slides"] if s["role"] == "section_divider"}
+        assert len(dividers) <= 1, f"{variant_id}: разделители в одной колоде одного стиля"
+        if dividers:
+            divider_styles[variant_id] = by_id[dividers.pop()]["style_key"]
+        styles = result.report["structure"]["service_styles"]
+        assert styles["title"]["pattern_id"] == titles[variant_id]
+        assert result.report["structure"]["style_policy"] == "per_variant"
+        assert result.report["structure"]["pools"]["divider"] == ["pat_s3", "pat_s4"]
+    # compact и balanced — первые варианты своего тона: титул и финал в тон разделителя
+    # (у compact разделитель светлый pat_s3, у balanced тёмный pat_s4).
+    assert (titles["compact"], finals["compact"]) == ("pat_s1", "pat_s9")
+    assert (titles["balanced"], finals["balanced"]) == ("pat_s2", "pat_s8")
+    assert divider_styles == {
+        "balanced": "dark|section header|plain",
+        "detailed": "light|section header|plain",
+    }
+    # detailed — второй светлый вариант: светлый титул и финал в фикстуре по одному, поэтому он
+    # берёт следующие по пулу образцы, а не повторяет compact.
+    assert (titles["detailed"], finals["detailed"]) == ("pat_s2", "pat_s8")
+    assert len(set(titles.values())) >= 2, titles
+    # Сравнение видит одинаковое содержание за разными разделителями.
+    comparison = vr.compare_plans({v: r.plan for v, r in results.items()})
+    for entry in comparison["pairs"]:
+        assert "same_content_sequence" in entry
+
+    first = _plans(
+        example_story,
+        variety_profile,
+        example_package,
+        None,
+        app_settings=_with_style_policy("first"),
+    )
+    for result in first.values():
+        plan = result.plan
+        assert plan["slides"][0]["pattern_id"] == "pat_s1"
+        assert plan["slides"][-1]["pattern_id"] == "pat_s8"
+        assert {s["pattern_id"] for s in plan["slides"] if s["role"] == "section_divider"} <= {
+            "pat_s3"
+        }
+    # Политика входит в ключ кэша планов.
+    assert results["balanced"].report["plan_key"] != first["balanced"].report["plan_key"]
+
+
+def test_series_uses_group_siblings(
+    example_story: dict[str, Any], variety_profile: dict[str, Any], example_package: dict[str, Any]
+) -> None:
+    """Серия одинаковых карточек длиннее max_consecutive разбавляется братом по группе (тот же
+    состав, другой образец) раньше, чем кандидатами другой композиции."""
+    ctx = vr.build_context(
+        example_story,
+        variety_profile,
+        example_package,
+        "balanced",
+        {"language": "ru"},
+        get_settings(),
+        12,
+    )
+    cards = next(p for p in ctx.patterns if p.pattern_id == "pat_s5")
+    bullets = next(p for p in ctx.patterns if p.pattern_id == "pat_s7")
+    assert mt.siblings_of(ctx.patterns, cards)[0].pattern_id == "pat_s6"
+    deck = [
+        vr.fit_draft(
+            ctx,
+            vr.Draft(
+                kind="content",
+                theses=["t5"],
+                pattern=cards,
+                title=f"Слайд {i}",
+                visual="cards",
+                items=[{"text": "Первый"}, {"text": "Второй"}, {"text": "Третий"}],
+                candidates=[bullets],
+            ),
+        )
+        for i in range(5)
+    ]
+    out = vr._limit_series(ctx, deck)
+    sequence = [d.pattern.pattern_id for d in out]
+    assert sequence[:3] == ["pat_s5"] * 3
+    assert sequence[3] == "pat_s6", sequence
+    assert all(not d.overflow for d in out)
+    assert any("брат по группе" in f["message"] for f in ctx.fixes if f["code"] == "series_limited")
 
 
 def test_compare_plans_reports_indistinct_pairs() -> None:

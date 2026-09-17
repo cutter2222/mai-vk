@@ -188,6 +188,12 @@ export const api = {
         `/generations/${encodeURIComponent(jobId)}/variants/${encodeURIComponent(variantId)}/repairs`,
         json({ base_revision: baseRevision, issue_ids: issueIds }),
       ),
+    /** Правка одного слайда по инструкции из чата: новая ревизия варианта, как у исправления. */
+    edit: (jobId: string, variantId: string, baseRevision: number, slideIndex: number, instruction: string) =>
+      request<{ edit_job_id: string }>(
+        `/generations/${encodeURIComponent(jobId)}/variants/${encodeURIComponent(variantId)}/edits`,
+        json({ base_revision: baseRevision, slide_index: slideIndex, instruction }),
+      ),
     artifactUrl: (jobId: string, name: string) => `${API_BASE}/generations/${encodeURIComponent(jobId)}/artifacts/${name}`,
   },
 

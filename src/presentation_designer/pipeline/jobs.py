@@ -31,6 +31,7 @@ from presentation_designer.pipeline.run import (
     VARIANT_AXIS,
     AnalyzeInput,
     BriefInput,
+    EditContext,
     ImportInput,
     Layers,
     RepairInput,
@@ -39,6 +40,7 @@ from presentation_designer.pipeline.run import (
     StoryInput,
     VariantContext,
     audit_summary,
+    run_edit,
     run_repair,
     run_variant,
 )
@@ -320,6 +322,44 @@ class Orchestrator:
         self.state.update_job(job["job_id"], rq_ids=[rq_id])
         return template, cached
 
+    def reanalyze_templates(self, *, force: bool = False) -> list[JsonDict]:
+        """Ставит в очередь повторный анализ шаблонов библиотеки, чей ключ профиля устарел
+        (сменились анализатор, контракты, скилл, модель или шрифты) или чей анализ упал; с
+        `force` — всех. Тот же путь, что при повторной загрузке файла (`submit_template`),
+        только без загрузки: файл уже в хранилище по sha256."""
+        out: list[JsonDict] = []
+        for t in self.state.list_templates():
+            entry: JsonDict = {
+                "template_id": t["template_id"],
+                "name": t["name"],
+                "status": t["status"],
+            }
+            if t["status"] in ("queued", "running"):
+                entry["action"] = "in_progress"
+                out.append(entry)
+                continue
+            key = self.template_profile_key(t["sha256"])
+            stale = t.get("profile_key") != key or t["status"] == "failed"
+            if not stale and not force:
+                entry["action"] = "up_to_date"
+                out.append(entry)
+                continue
+            if not self.files.exists(t["sha256"]):
+                entry["action"] = "file_missing"
+                out.append(entry)
+                continue
+            if not stale:
+                # Ключ совпадает, но анализ запрошен явно: ключ сбрасывается, чтобы
+                # submit_template счёл профиль устаревшим.
+                self.state.update_template(t["template_id"], profile_key=None)
+            template, cached = self.submit_template(
+                sha256=t["sha256"], name=t["name"], size_bytes=t["size_bytes"]
+            )
+            entry["action"] = "kept" if cached else "queued"
+            entry["job_id"] = template.get("job_id")
+            out.append(entry)
+        return out
+
     def delete_template(self, template_id: str) -> JsonDict:
         """Убирает шаблон из библиотеки: строку, миниатюры и ссылки проектов на него.
         Незавершённый анализ отменяется; его задание и байты файла подберёт сборка мусора."""
@@ -562,6 +602,73 @@ class Orchestrator:
         )
         self.state.update_job(repair_id, rq_ids=[rq_id])
         return self.state.get_job(repair_id)
+
+    # ----- правка слайда по запросу -----
+
+    def submit_edit(
+        self,
+        job_id: str,
+        variant_id: str,
+        base_revision: int,
+        slide_index: int,
+        instruction: str,
+    ) -> JsonDict:
+        """Правка одного слайда варианта по инструкции: то же задание ревизии, что и
+        исправление, с видом `edit`; одна правка ревизии за раз."""
+        variant = self.state.get_variant(job_id, variant_id)
+        if variant["revision"] != base_revision:
+            raise ConflictError(
+                "revision_stale",
+                f"Ревизия {base_revision} устарела: текущая ревизия {variant['revision']}. Обновите результат и повторите просьбу.",  # noqa: E501
+                {"current_revision": variant["revision"]},
+            )
+        if variant["status"] in {"failed", "pending", "running"}:
+            raise ConflictError("variant_failed", "Вариант ещё не собран, править нечего")
+        active = self.state.active_repair(job_id, variant_id)
+        if active:
+            raise ConflictError(
+                "repair_in_progress",
+                "Предыдущая правка этой ревизии ещё применяется",
+                {"repair_job_id": active["repair_job_id"]},
+            )
+        count = int(variant.get("slide_count") or 0)
+        if count and not 0 <= slide_index < count:
+            raise ConflictError(
+                "slide_index_out_of_range",
+                f"В варианте {count} слайдов, слайда с номером {slide_index + 1} нет",
+            )
+        edit_id = new_id("edit")
+        self.state.create_job(
+            kind="slide_edit",
+            job_id=edit_id,
+            stage="queued",
+            parent_job_id=job_id,
+            result={"generation_result_url": f"/api/generations/{job_id}"},
+            progress={"percent": 0, "message": f"Правка слайда {slide_index + 1}"},
+        )
+        self.state.create_repair(
+            repair_job_id=edit_id,
+            job_id=job_id,
+            variant_id=variant_id,
+            base_revision=base_revision,
+            issue_ids=[],
+            kind="edit",
+            slide_index=slide_index,
+            instruction=instruction,
+        )
+        rq_id = self.executor.enqueue(
+            self.settings.queue.repair_queue,
+            task_edit,
+            (edit_id,),
+            depends_on=[],
+            timeout=self.settings.timeouts.stage_plan_s
+            + self.settings.timeouts.stage_compose_s
+            + self.settings.timeouts.stage_export_s
+            + self.settings.timeouts.stage_audit_s,
+            description=f"edit {edit_id}",
+        )
+        self.state.update_job(edit_id, rq_ids=[rq_id])
+        return self.state.get_job(edit_id)
 
     # ----- бриф из сообщения -----
 
@@ -1284,6 +1391,176 @@ def task_repair(repair_job_id: str) -> None:
             stage="done",
             finished_at=now_iso(),
             error={"code": code, "message": message, "stage": "repair", "retryable": True},
+        )
+
+
+def task_edit(edit_job_id: str) -> None:
+    """Правка слайда: план базовой ревизии → модель → сборка, экспорт и аудит новой ревизии.
+    Отказ модели завершает задание успешно без ревизии (`result.unchanged`)."""
+    o = get_orchestrator()
+    edit = o.state.get_repair(edit_job_id)
+    job_id, variant_id = edit["job_id"], edit["variant_id"]
+    slide_index = int(edit["slide_index"] or 0)
+    o.state.job_started(edit_job_id)
+    o.state.update_job(
+        edit_job_id,
+        stage="plan",
+        progress={"percent": 10, "message": f"Переделываю слайд {slide_index + 1}"},
+    )
+    try:
+        variant = o.state.get_variant(job_id, variant_id)
+        base = edit["base_revision"]
+        if variant["revision"] != base:
+            raise ConflictError("revision_stale", "Ревизия устарела до начала правки")
+        base_dir = o.artifacts.revision_dir(job_id, variant_id, base)
+        plan_path = base_dir / "plan.json"
+        if not plan_path.is_file():
+            raise StageError("plan_missing", "План базовой ревизии не найден", stage="plan")
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        gen = o.state.get_generation(job_id)
+        template = o.state.get_template(gen["template_id"])
+        package = o.state.get_package(gen["package_id"])
+        if template["profile"] is None or gen["story"] is None:
+            raise StageError(
+                "inputs_missing", "Профиль шаблона или смысловой план недоступны", stage="plan"
+            )
+        template_path = o.files.path_for(template["sha256"])
+        new_rev = base + 1
+        prefix = o.artifacts.prefix(variant_id, new_rev)
+        progress = {"plan": 15, "compose": 45, "export": 65, "audit": 85}
+
+        def emit(event: str, data: JsonDict) -> None:
+            if event == "stage":
+                o.state.add_stage(edit_job_id, {k: v for k, v in data.items() if k != "variant_id"})
+                if data.get("status") == "running":
+                    o.state.update_job(
+                        edit_job_id,
+                        stage=data["stage"],
+                        progress={
+                            "percent": progress.get(data["stage"], 10),
+                            "message": {
+                                "plan": f"Переделываю слайд {slide_index + 1}",
+                                "compose": "Собираю новую ревизию",
+                                "export": "Экспортирую PDF и миниатюры",
+                                "audit": "Проверяю изменённый слайд",
+                            }.get(data["stage"], ""),
+                        },
+                    )
+
+        with o.artifacts.stage_revision(job_id, variant_id, new_rev) as staging:
+            ctx = EditContext(
+                job_id=job_id,
+                variant_id=variant_id,
+                revision=new_rev,
+                base_revision=base,
+                plan=plan,
+                slide_index=slide_index,
+                instruction=str(edit["instruction"] or ""),
+                template_profile=template["profile"],
+                template_path=template_path if template_path.is_file() else None,
+                package=package["package"] or {},
+                story=gen["story"],
+                settings=gen["request"].get("settings") or {},
+                staging=staging,
+                package_dir=o.artifacts.package_dir(gen["package_id"]),
+                nonce=edit_job_id,
+            )
+            outcome = run_edit(o.layers, ctx, emit)
+            if outcome.status == "failed":
+                raise StageError(
+                    str((outcome.error or {}).get("code") or "edit_failed"),
+                    str((outcome.error or {}).get("message") or "Правка не выполнена"),
+                    retryable=bool((outcome.error or {}).get("retryable", True)),
+                    stage=str((outcome.error or {}).get("stage") or "plan"),
+                )
+            if outcome.status == "unchanged":
+                # Ревизия не создаётся: незавершённый каталог staging удаляется без публикации.
+                staging.discard = True
+        if outcome.status == "unchanged":
+            o.state.update_repair(
+                edit_job_id,
+                result="unchanged",
+                slide_id=outcome.slide_id,
+                change_note=outcome.reason,
+            )
+            o.state.update_job(
+                edit_job_id,
+                status="succeeded",
+                stage="done",
+                finished_at=now_iso(),
+                result={
+                    "unchanged": True,
+                    "change_note": outcome.reason,
+                    "generation_result_url": f"/api/generations/{job_id}",
+                },
+                progress={"percent": 100, "message": "Слайд оставлен без изменений"},
+            )
+            return
+        manifest = o.artifacts.read_manifest(job_id, variant_id, new_rev)
+        o.state.add_revision(
+            job_id=job_id,
+            variant_id=variant_id,
+            revision=new_rev,
+            artifacts_prefix=prefix,
+            manifest=manifest,
+            repair_job_id=edit_job_id,
+            changed_slide_ids=[outcome.slide_id],
+            pptx_hash=_pptx_hash(manifest, prefix),
+        )
+        summary = dict(outcome.audit or {})
+        summary["report_artifact"] = f"{prefix}audit.json"
+        status = (
+            "needs_review"
+            if summary.get("issues_total", 0) > 0 or not summary.get("coverage_complete")
+            else "ready"
+        )
+        o.state.update_variant(
+            job_id,
+            variant_id,
+            status=status,
+            slide_count=outcome.slide_count,
+            audited_at=now_iso(),
+            audit=summary,
+        )
+        o.state.update_repair(
+            edit_job_id,
+            result="applied",
+            new_revision=new_rev,
+            slide_id=outcome.slide_id,
+            change_note=outcome.change_note,
+            changed_slide_ids=[outcome.slide_id],
+        )
+        o.state.update_job(
+            edit_job_id,
+            status="succeeded",
+            stage="done",
+            finished_at=now_iso(),
+            result={
+                "revision": new_rev,
+                "change_note": outcome.change_note,
+                "generation_result_url": f"/api/generations/{job_id}",
+            },
+            progress={
+                "percent": 100,
+                "message": f"Слайд {slide_index + 1} изменён, ревизия {new_rev} собрана",
+            },
+        )
+    except Exception as e:
+        log.exception("правка %s не удалась", edit_job_id)
+        message = str(e) or e.__class__.__name__
+        code = getattr(e, "code", "edit_failed")
+        o.state.update_repair(edit_job_id, result="failed", message=message)
+        o.state.update_job(
+            edit_job_id,
+            status="failed",
+            stage="done",
+            finished_at=now_iso(),
+            error={
+                "code": code,
+                "message": message,
+                "stage": getattr(e, "stage", None) or "plan",
+                "retryable": bool(getattr(e, "retryable", True)),
+            },
         )
 
 

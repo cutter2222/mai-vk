@@ -42,9 +42,11 @@ from presentation_designer.generation.matching import (
     SlotInfo,
     candidates_for,
     fallback_visual,
-    fixed_pattern,
+    fixed_pattern_pool,
+    pick_style,
     profile_patterns,
     sequence_ok,
+    siblings_of,
 )
 from presentation_designer.shared import text_metrics
 from presentation_designer.shared.settings import Settings, get_settings
@@ -53,7 +55,7 @@ log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 
-PLAN_VERSION = "0.2.0"
+PLAN_VERSION = "0.3.0"
 PLAN_SCHEMA_VERSION = "1.2"
 VARIANTS = ("compact", "balanced", "detailed")
 DEFAULT_RANGE = (10, 15)
@@ -384,15 +386,119 @@ class Structure:
     dropped: list[Thesis]
     packets: list[Packet]
     content_budget: int
+    # Пулы служебных ролей: весь упорядоченный набор паттернов, из которого выбран стиль.
+    title_pool: list[PatternInfo] = field(default_factory=list)
+    divider_pool: list[PatternInfo] = field(default_factory=list)
+    final_pool: list[PatternInfo] = field(default_factory=list)
+    agenda_pool: list[PatternInfo] = field(default_factory=list)
+
+    def service_styles(self) -> JsonDict:
+        """Стили служебных слайдов колоды для отчёта: паттерн и его style_key по ролям."""
+
+        def entry(p: PatternInfo | None) -> JsonDict | None:
+            return {"pattern_id": p.pattern_id, "style_key": p.style_key} if p else None
+
+        return {
+            "title": entry(self.title_pattern),
+            "divider": entry(self.divider_pattern),
+            "final": entry(self.final_pattern),
+        }
+
+
+def _service_order(
+    pool: list[PatternInfo], policy: str, tone: str | None, rank: int
+) -> list[PatternInfo]:
+    """Порядок паттернов служебной роли для варианта: паттерны в тон разделителя идут первыми,
+    остальные за ними; список повёрнут на `rank` — порядковый номер варианта среди вариантов с
+    тем же тоном разделителя, поэтому два варианта одного тона получают разные образцы (если
+    образец этого тона один, второй вариант берёт следующий по пулу — различие вариантов
+    важнее тона). Политика `first` — прежнее поведение, порядок пула."""
+    if not pool:
+        return []
+    if policy != "per_variant":
+        return list(pool)
+    toned = [p for p in pool if tone and tone != "unknown" and p.tone == tone]
+    ordered = toned + [p for p in pool if p not in toned]
+    shift = rank % len(ordered)
+    return ordered[shift:] + ordered[:shift]
+
+
+def _service_pattern(
+    pool: list[PatternInfo], policy: str, tone: str | None, rank: int
+) -> PatternInfo | None:
+    ordered = _service_order(pool, policy, tone, rank)
+    return ordered[0] if ordered else None
+
+
+def _first_fitting(
+    ctx: Context, ordered: list[PatternInfo], title: str, message: str
+) -> PatternInfo | None:
+    """Первый паттерн порядка, в который заголовок и подпись помещаются без переполнения после
+    лестницы ёмкости; если не помещаются никуда — первый (переполнение запишет план)."""
+    for p in ordered:
+        draft = fit_draft(
+            ctx, Draft(kind="title", theses=[], pattern=p, title=title, message=message)
+        )
+        _drop_overflowing_optional(draft)
+        if not draft.overflow:
+            return p
+    return ordered[0] if ordered else None
+
+
+def _roomy_pool(pool: list[PatternInfo], ratio: float = 0.5) -> list[PatternInfo]:
+    """Паттерны пула, чей заголовок вмещает не меньше `ratio` от самого вместительного: узкий
+    заголовок «паттерн + фото» (18 символов при 42 у остальных разделителей VK Education) стиль
+    колоды не задаёт — названия разделов в него не помещаются. Пустой результат — весь пул."""
+    best = max((p.title.max_chars for p in pool if p.title is not None), default=0)
+    if not best:
+        return pool
+    roomy = [p for p in pool if p.title is None or p.title.max_chars >= ratio * best]
+    return roomy or pool
+
+
+def _style_anchor(
+    divider_pool: list[PatternInfo], variant_id: str, policy: str
+) -> tuple[PatternInfo | None, str | None, int]:
+    """Разделитель варианта, его тон и номер варианта среди вариантов с тем же тоном."""
+    chosen = {v: pick_style(divider_pool, v, policy) for v in VARIANTS}
+    divider = chosen.get(variant_id) or pick_style(divider_pool, variant_id, policy)
+    tone = divider.tone if divider is not None else None
+    before = VARIANTS[: VARIANTS.index(variant_id)] if variant_id in VARIANTS else ()
+    rank = 0
+    for v in before:
+        other = chosen[v]
+        if (other.tone if other is not None else None) == tone:
+            rank += 1
+    return divider, tone, rank
 
 
 def deck_structure(ctx: Context, *, use_agenda: bool | None = None) -> Structure:
     variant = ctx.variant_id
     has_ds = ctx.has_datasets
-    title_pattern = fixed_pattern(ctx.patterns, "title", has_datasets=has_ds)
-    divider_pattern = fixed_pattern(ctx.patterns, "section_divider", has_datasets=has_ds)
-    final_pattern = fixed_pattern(ctx.patterns, "thanks", has_datasets=has_ds)
-    agenda_pattern = fixed_pattern(ctx.patterns, "agenda", has_datasets=has_ds)
+    policy = str(ctx.app.plan.style_policy)
+    title_pool = fixed_pattern_pool(ctx.patterns, "title", has_datasets=has_ds)
+    divider_pool = fixed_pattern_pool(ctx.patterns, "section_divider", has_datasets=has_ds)
+    final_pool = fixed_pattern_pool(ctx.patterns, "thanks", has_datasets=has_ds)
+    agenda_pool = fixed_pattern_pool(ctx.patterns, "agenda", has_datasets=has_ds)
+    # Разделитель задаёт стиль колоды: единый внутри неё, разный у вариантов (per_variant);
+    # титул, финал и оглавление берутся в тон разделителя своим номером среди вариантов
+    # этого тона. Образцы с заголовком вдвое уже лучшего в пуле стиль не задают.
+    divider_pattern, tone, rank = _style_anchor(_roomy_pool(divider_pool), variant, policy)
+    # Титул: первый по порядку стиля образец, в который тема и подпись помещаются (у VK
+    # Education второй титул уже первого, длинная тема в него не входит).
+    brief = ctx.story.get("effective_brief") or {}
+    title_pattern = _first_fitting(
+        ctx,
+        _service_order(title_pool, policy, tone, rank),
+        _clean(brief.get("title") or ctx.story.get("key_takeaway"), 160),
+        _clean(
+            (brief.get("audience") and f"Для: {brief['audience']}")
+            or ctx.story.get("key_takeaway"),
+            200,
+        ),
+    )
+    final_pattern = _service_pattern(final_pool, policy, tone, rank)
+    agenda_pattern = _service_pattern(agenda_pool, policy, tone, rank)
     if title_pattern is None:
         raise PlanError(
             "plan_no_title_pattern",
@@ -462,6 +568,10 @@ def deck_structure(ctx: Context, *, use_agenda: bool | None = None) -> Structure
         dropped=dropped,
         packets=packets,
         content_budget=content_budget,
+        title_pool=title_pool,
+        divider_pool=divider_pool,
+        final_pool=final_pool,
+        agenda_pool=agenda_pool,
     )
 
 
@@ -1821,8 +1931,10 @@ def _title_draft(ctx: Context, structure: Structure) -> Draft:
     return d
 
 
-def _divider_draft(ctx: Context, structure: Structure, section: Thesis) -> Draft:
-    p = structure.divider_pattern
+def _divider_draft(
+    ctx: Context, structure: Structure, section: Thesis, pattern: PatternInfo | None = None
+) -> Draft:
+    p = pattern or structure.divider_pattern
     assert p is not None
     return Draft(
         kind="divider",
@@ -2319,7 +2431,11 @@ def _add_agenda(
 ) -> bool:
     if (ctx.variant_id == "compact" and not force) or any(d.kind == "agenda" for d in deck):
         return False
-    p = fixed_pattern(ctx.patterns, "agenda", has_datasets=ctx.has_datasets)
+    policy = str(ctx.app.plan.style_policy)
+    _divider, tone, rank = _style_anchor(
+        _roomy_pool(structure.divider_pool), ctx.variant_id, policy
+    )
+    p = _service_pattern(structure.agenda_pool, policy, tone, rank)
     if p is None or len(structure.sections) < 2:
         return False
     structure.agenda_pattern = p
@@ -2550,24 +2666,29 @@ def _neighbour(ctx: Context, deck: list[Draft], t: Thesis) -> Draft | None:
 
 
 def _limit_series(ctx: Context, deck: list[Draft]) -> list[Draft]:
-    """Серии одинаковых композиций не длиннее max_consecutive, если есть замена."""
+    """Серии одинаковых композиций не длиннее max_consecutive, если есть замена: сначала
+    братья по группе образцов (та же композиция, другой образец), затем кандидаты тезиса;
+    замена принимается только без переполнений по измерению."""
     sequence: list[str] = []
     for d in deck:
         if not sequence_ok(sequence, d.pattern) and d.kind == "content":
-            for alt in d.candidates:
+            for alt in siblings_of(ctx.patterns, d.pattern) + d.candidates:
                 if not sequence_ok(sequence, alt):
                     continue
                 trial = copy.deepcopy(d)
                 trial.pattern = alt
                 trial.overflow = []
                 fit_draft(ctx, trial)
-                if not trial.overflow:
-                    ctx.fix(
-                        "series_limited",
-                        f"«{d.title[:40]}»: {d.pattern.pattern_id} → {alt.pattern_id}",
-                    )
-                    d.pattern, d.blocks, d.overflow = alt, trial.blocks, []
-                    break
+                if trial.overflow or not sequence_ok(sequence, trial.pattern):
+                    continue
+                sibling = bool(alt.group_id) and alt.group_id == d.pattern.group_id
+                ctx.fix(
+                    "series_limited",
+                    f"«{d.title[:40]}»: {d.pattern.pattern_id} → {trial.pattern.pattern_id}"
+                    + (" (брат по группе)" if sibling else ""),
+                )
+                d.pattern, d.blocks, d.overflow = trial.pattern, trial.blocks, []
+                break
         sequence.append(d.pattern.pattern_id)
     return deck
 
@@ -2593,6 +2714,46 @@ def _visual_kind(d: Draft) -> str:
     return d.visual if d.visual in ("quote", "cards", "text") else "text"
 
 
+def slide_from_draft(ctx: Context, d: Draft, *, slide_id: str, order: int) -> JsonDict:
+    """Слайд плана из измеренного черновика: факты собираются из блоков, чисел и пунктов."""
+    fact_refs: list[str] = []
+    for b in d.blocks:
+        fact_refs.extend(b.get("fact_refs") or [])
+        if b.get("number"):
+            fact_refs.append(b["number"]["fact_id"])
+        for it in b.get("items") or []:
+            fact_refs.extend(it.get("fact_refs") or [])
+    slide: JsonDict = {
+        "slide_id": slide_id,
+        "order": order,
+        "role": d.pattern.role,
+        "pattern_id": d.pattern.pattern_id,
+        "title": cap.substitute_facts(d.title, ctx.facts),
+        "key_message": cap.substitute_facts(d.message or d.title, ctx.facts)[:300],
+        "blocks": d.blocks,
+        "thesis_refs": list(dict.fromkeys(d.theses)),
+    }
+    if d.notes:
+        slide["notes"] = d.notes
+    if d.source_refs:
+        slide["source_refs"] = d.source_refs
+    if fact_refs:
+        slide["fact_refs"] = list(dict.fromkeys(fact_refs))
+    return slide
+
+
+def slide_chars(ctx: Context, blocks: list[JsonDict]) -> int:
+    """Объём текста слайда для сравнения вариантов."""
+    total = 0
+    for b in blocks:
+        text = _block_text(ctx, b)
+        if isinstance(text, list):
+            total += sum(len(t) for t in text)
+        elif text:
+            total += len(text)
+    return total
+
+
 def build_document(
     ctx: Context,
     deck: list[Draft],
@@ -2605,36 +2766,8 @@ def build_document(
     slides: list[JsonDict] = []
     chars_total = 0
     for i, d in enumerate(deck, start=1):
-        sid = f"s{i}"
-        fact_refs: list[str] = []
-        for b in d.blocks:
-            fact_refs.extend(b.get("fact_refs") or [])
-            if b.get("number"):
-                fact_refs.append(b["number"]["fact_id"])
-            for it in b.get("items") or []:
-                fact_refs.extend(it.get("fact_refs") or [])
-            text = _block_text(ctx, b)
-            if isinstance(text, list):
-                chars_total += sum(len(t) for t in text)
-            elif text:
-                chars_total += len(text)
-        slide: JsonDict = {
-            "slide_id": sid,
-            "order": i,
-            "role": d.pattern.role,
-            "pattern_id": d.pattern.pattern_id,
-            "title": cap.substitute_facts(d.title, ctx.facts),
-            "key_message": cap.substitute_facts(d.message or d.title, ctx.facts)[:300],
-            "blocks": d.blocks,
-            "thesis_refs": list(dict.fromkeys(d.theses)),
-        }
-        if d.notes:
-            slide["notes"] = d.notes
-        if d.source_refs:
-            slide["source_refs"] = d.source_refs
-        if fact_refs:
-            slide["fact_refs"] = list(dict.fromkeys(fact_refs))
-        slides.append(slide)
+        slides.append(slide_from_draft(ctx, d, slide_id=f"s{i}", order=i))
+        chars_total += slide_chars(ctx, d.blocks)
     required = [t.id for t in ctx.theses if t.required]
     covered: list[JsonDict] = []
     missing: list[str] = []
@@ -2701,6 +2834,9 @@ def profile_digest(profile: JsonDict) -> str:
                 "role": p.get("role"),
                 "confidence": p.get("confidence"),
                 "constraints": p.get("constraints"),
+                "group_id": p.get("group_id"),
+                "tone": (p.get("tone") or {}).get("background"),
+                "style_key": p.get("style_key"),
                 "slots": [
                     {
                         k: s.get(k)
@@ -2835,20 +2971,37 @@ def compare_plans(plans: dict[str, JsonDict]) -> JsonDict:
             same_patterns = ca.get("pattern_sequence") == cb.get("pattern_sequence")
             same_visuals = ca.get("visual_kinds") == cb.get("visual_kinds")
             same_count = len(plans[a].get("slides", [])) == len(plans[b].get("slides", []))
+            same_content = _content_sequence(plans[a]) == _content_sequence(plans[b])
             chars_a = int(ca.get("text_chars_total") or 0)
             chars_b = int(cb.get("text_chars_total") or 0)
             entry = {
                 "variants": [a, b],
                 "same_pattern_sequence": same_patterns,
                 "same_visual_kinds": same_visuals,
+                # Одинаковые содержательные композиции при разных служебных слайдах: разные
+                # стили разделителей не маскируют одинаковое содержание.
+                "same_content_sequence": same_content,
                 "same_slide_count": same_count,
                 "text_chars": [chars_a, chars_b],
-                "distinct": not (same_patterns and same_visuals),
+                "distinct": not ((same_patterns or same_content) and same_visuals),
             }
             pairs.append(entry)
             if not entry["distinct"]:
                 indistinct.append(entry)
     return {"pairs": pairs, "indistinct": indistinct, "all_distinct": not indistinct}
+
+
+def _content_sequence(plan: JsonDict) -> list[str]:
+    """Композиции содержательных слайдов без титула, оглавления, разделителей и финала; у
+    плана без ролей у слайдов — вся последовательность из comparison."""
+    slides = plan.get("slides", [])
+    if not all(isinstance(s, dict) and s.get("pattern_id") and s.get("role") for s in slides):
+        return list((plan.get("comparison") or {}).get("pattern_sequence") or [])
+    return [
+        str(s["pattern_id"])
+        for s in slides
+        if s["role"] not in ("title", "agenda", "section_divider", "thanks", "qr")
+    ]
 
 
 def indistinct_warning(entry: JsonDict) -> JsonDict:
@@ -2942,6 +3095,14 @@ def build_variant_plan(
         "content_budget": structure.content_budget,
         "slide_count": ctx.spec.as_dict(),
         "candidates": sorted({c.pattern_id for c in all_candidates(ctx, structure.packets)}),
+        "style_policy": str(ctx.app.plan.style_policy),
+        "service_styles": structure.service_styles(),
+        "pools": {
+            "title": [p.pattern_id for p in structure.title_pool],
+            "divider": [p.pattern_id for p in structure.divider_pool],
+            "final": [p.pattern_id for p in structure.final_pool],
+            "agenda": [p.pattern_id for p in structure.agenda_pool],
+        },
     }
     meta: JsonDict = {"skills": [], "prompts": [], "models": [], "created_at": now_iso()}
     rationale = ""

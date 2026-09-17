@@ -1,7 +1,8 @@
 """Сборка документов GenerationResult и JobStatus из состояния SQLite и манифестов ревизий.
 
 Документы собираются при чтении: состояние хранится по частям (задание, генерация,
-варианты, ревизии, исправления), а контракт отдаёт единый снимок на любом этапе.
+варианты, ревизии, исправления и правки слайдов), а контракт отдаёт единый снимок на
+любом этапе.
 """
 
 from __future__ import annotations
@@ -34,7 +35,8 @@ def build_generation_result(state: State, job_id: str) -> JsonDict:
     gen = state.get_generation(job_id)
     variants_rows = state.get_variants(job_id)
     revisions = state.list_revisions(job_id)
-    repairs = state.list_repairs(job_id)
+    repairs = state.list_repairs(job_id, kind="repair")
+    edits = state.list_repairs(job_id, kind="edit")
     revisions_by_variant: dict[str, list[JsonDict]] = {}
     for rev in revisions:
         revisions_by_variant.setdefault(rev["variant_id"], []).append(rev)
@@ -155,7 +157,7 @@ def build_generation_result(state: State, job_id: str) -> JsonDict:
         "timeline": timeline,
     }
     result: JsonDict = {
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "job_id": job_id,
         "status": status,
         "stage": stage,
@@ -188,6 +190,25 @@ def build_generation_result(state: State, job_id: str) -> JsonDict:
             }
             for r in repairs
             if r["result"]
+        ],
+        "edits": [
+            _clean(
+                {
+                    "edit_job_id": e["repair_job_id"],
+                    "variant_id": e["variant_id"],
+                    "base_revision": e["base_revision"],
+                    "slide_index": int(e["slide_index"] or 0),
+                    "slide_id": e["slide_id"],
+                    "instruction": e["instruction"] or "",
+                    "result": e["result"],
+                    "change_note": e["change_note"],
+                    "message": e["message"],
+                    "new_revision": e["new_revision"],
+                    "changed_slide_ids": e["changed_slide_ids"] or None,
+                }
+            )
+            for e in edits
+            if e["result"]
         ],
         "warnings": gen["warnings"],
     }
@@ -246,7 +267,7 @@ def _progress_message(stage: str, variants: list[JsonDict]) -> str:
 def build_job_status(state: State, job_id: str) -> JsonDict:
     job = state.get_job(job_id)
     status: JsonDict = {
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "job_id": job_id,
         "kind": job["kind"],
         "status": job["status"],

@@ -11,7 +11,7 @@ def test_cli_version(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as info:
         main(["--version"])
     assert info.value.code == 0
-    assert "contracts 1.5" in capsys.readouterr().out
+    assert "contracts 1.7" in capsys.readouterr().out
 
 
 def test_cli_unimplemented_command_exits_2() -> None:
@@ -52,3 +52,24 @@ def test_cli_analyze_rejects_missing_file(tmp_path: pathlib.Path) -> None:
         )
         == 2
     )
+
+
+def test_cli_edit_slide_rejects_missing_inputs_and_bad_slide(tmp_path: pathlib.Path) -> None:
+    args = [
+        "edit-slide",
+        str(tmp_path / "plan.json"),
+        "--story",
+        str(tmp_path / "story.json"),
+        "--profile",
+        str(tmp_path / "profile.json"),
+        "--content",
+        str(tmp_path / "package.json"),
+        "--instruction",
+        "короче",
+        "--out",
+        str(tmp_path / "out"),
+    ]
+    assert main([*args, "--slide", "1"]) == 2
+    for name in ("plan", "story", "profile", "package"):
+        (tmp_path / f"{name}.json").write_text("{}", encoding="utf-8")
+    assert main([*args, "--slide", "0"]) == 2

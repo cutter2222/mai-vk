@@ -72,6 +72,10 @@ EXPECTED: dict[str, dict[str, Any]] = {
         "font_used": "Arial",
         "guideline_words": ("Перекрытие рядов",),
         "min_patterns": 45,
+        # Группы взаимозаменяемых образцов (этап 14): титулы, «титульные» без роли, тёмные и
+        # светлые «паттерн + фото» с разделителями, финалы; тон по заливке макета.
+        "groups": [{1, 2}, {4, 5}, {10, 12, 35, 36}, {16, 29, 37, 41}, {9, 11}, {53, 54, 55}],
+        "tones": {12: "dark", 10: "light", 1: "dark", 16: "light", 53: "dark", 54: "light"},
     },
     "ЛЦТ2026 Шаблон презентации.pptx": {
         "slide_size": (12192000, 6858000),
@@ -162,6 +166,15 @@ def test_organizer_template_profile(organizer_dir: pathlib.Path, name: str) -> N
         and profile["design_tokens"]["typography"]["scale"]
     )
     assert profile["fixed_elements"], "логотипы/номера страниц не найдены"
+    by_slide = {p["source"]["slide_index"]: p for p in profile["patterns"]}
+    for members in exp.get("groups", ()):
+        ids = {by_slide[i]["group_id"] for i in members}
+        assert len(ids) == 1, f"образцы {sorted(members)} должны быть одной группой: {ids}"
+        others = {i for i, p in by_slide.items() if p["group_id"] in ids} - members
+        assert not others, f"в группу {ids} попали лишние образцы {sorted(others)}"
+    for index, tone in exp.get("tones", {}).items():
+        assert by_slide[index]["tone"]["background"] == tone, (index, by_slide[index]["tone"])
+    assert all(p["style_key"] for p in profile["patterns"])
 
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     report = {

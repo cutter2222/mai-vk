@@ -145,6 +145,10 @@ class PatternInfo:
     max_consecutive: int
     typical_position: str
     slots: dict[str, SlotInfo] = field(default_factory=dict)
+    group_id: str = ""
+    tone: str = "unknown"
+    style_key: str = ""
+    slide_index: int = 0
 
     # ----- состав -----
 
@@ -168,6 +172,12 @@ class PatternInfo:
 
     def required_table_or_chart(self) -> bool:
         return any(s.kind in ("table", "chart") for s in self.required_singles)
+
+    @property
+    def service_safe(self) -> bool:
+        """Годится для служебного слайда: нет обязательных слотов внутри повторяющихся групп
+        (заголовки карточек), которые титул, разделитель, оглавление и финал не заполняют."""
+        return not any(s.required and s.group for s in self.slots.values())
 
     def fillable(self, *, has_datasets: bool, has_code: bool = False) -> bool:
         """Все обязательные одиночные слоты заполняются из тезиса: текстовые всегда, таблица и
@@ -379,6 +389,7 @@ def pattern_info(raw: JsonDict) -> PatternInfo:
         count = max(len(v) for v in by_kind.values())
         groups.append(CardGroup(gid, count, dict(by_kind)))
     hints = raw.get("sequence_hints") or {}
+    tone = raw.get("tone") or {}
     return PatternInfo(
         pattern_id=str(raw["pattern_id"]),
         role=str(raw.get("role", "freeform")),
@@ -391,6 +402,10 @@ def pattern_info(raw: JsonDict) -> PatternInfo:
         max_consecutive=int(hints.get("max_consecutive") or 3),
         typical_position=str(hints.get("typical_position") or "any"),
         slots={s.slot_id: s for s in slots},
+        group_id=str(raw.get("group_id") or ""),
+        tone=str(tone.get("background") or "unknown"),
+        style_key=str(raw.get("style_key") or ""),
+        slide_index=int((raw.get("source") or {}).get("slide_index") or 0),
     )
 
 
@@ -401,23 +416,78 @@ def profile_patterns(profile: JsonDict) -> list[PatternInfo]:
 # ---------- фиксированные слайды по ролям ----------
 
 
+FIXED_FALLBACK_ROLES: dict[str, tuple[str, ...]] = {
+    "title": ("title", "section_divider", "text"),
+    "section_divider": ("section_divider",),
+    "thanks": ("thanks", "qr"),
+    "agenda": ("agenda",),
+}
+STYLE_POLICIES = ("per_variant", "first")
+
+
+def fixed_pattern_pool(
+    patterns: list[PatternInfo], role: str, *, has_datasets: bool = False
+) -> list[PatternInfo]:
+    """Весь пул роли для служебного слайда в порядке предпочтения: заполняемые паттерны первой
+    роли из цепочки резервов без обязательных слотов в карточках (`service_safe`; если таких
+    нет — все заполняемые), по возрастанию числа обязательных слотов (титульный слайд не
+    должен требовать таблицу), по убыванию уверенности, затем по порядку образцов в шаблоне
+    (`slide_index`, при равенстве — идентификатор)."""
+    for r in FIXED_FALLBACK_ROLES.get(role, (role,)):
+        pool = [p for p in patterns if p.role == r and p.fillable(has_datasets=has_datasets)]
+        pool = [p for p in pool if p.service_safe] or pool
+        if pool:
+            pool.sort(
+                key=lambda p: (
+                    len(p.required_singles),
+                    -p.confidence,
+                    p.slide_index,
+                    p.pattern_id,
+                )
+            )
+            return pool
+    return []
+
+
 def fixed_pattern(
     patterns: list[PatternInfo], role: str, *, has_datasets: bool = False
 ) -> PatternInfo | None:
-    """Лучший паттерн роли: заполняемый, с наибольшей уверенностью и наименьшим числом
-    обязательных слотов (титульный слайд не должен требовать таблицу)."""
-    fallback_roles = {
-        "title": ("title", "section_divider", "text"),
-        "section_divider": ("section_divider",),
-        "thanks": ("thanks", "qr"),
-        "agenda": ("agenda",),
-    }.get(role, (role,))
-    for r in fallback_roles:
-        pool = [p for p in patterns if p.role == r and p.fillable(has_datasets=has_datasets)]
-        if pool:
-            pool.sort(key=lambda p: (len(p.required_singles), -p.confidence, p.pattern_id))
-            return pool[0]
-    return None
+    """Лучший паттерн роли — первый элемент пула."""
+    pool = fixed_pattern_pool(patterns, role, has_datasets=has_datasets)
+    return pool[0] if pool else None
+
+
+def siblings_of(patterns: list[PatternInfo], p: PatternInfo) -> list[PatternInfo]:
+    """Члены той же группы взаимозаменяемых образцов (без самого паттерна) в порядке образцов."""
+    if not p.group_id:
+        return []
+    return sorted(
+        (q for q in patterns if q.group_id == p.group_id and q.pattern_id != p.pattern_id),
+        key=lambda q: (q.slide_index, q.pattern_id),
+    )
+
+
+def pick_style(
+    pool: list[PatternInfo], variant_id: str, policy: str = "per_variant"
+) -> PatternInfo | None:
+    """Паттерн служебного слайда для варианта. `per_variant`: различные `style_key` в порядке
+    пула, вариант берёт стиль с индексом `VARIANTS.index(variant_id) % len(styles)`; когда
+    стилей меньше, чем вариантов, варианты одного стиля берут разные образцы этого стиля
+    (`index // len(styles)` по кругу), чтобы три финала не совпадали при двух тонах.
+    `first` — прежнее поведение, первый элемент пула. Тон `unknown` остаётся стилем сам по
+    себе: порядок задают `slide_index`, источник тона записан в профиле."""
+    if not pool:
+        return None
+    if policy != "per_variant":
+        return pool[0]
+    styles: list[str] = []
+    for p in pool:
+        if p.style_key not in styles:
+            styles.append(p.style_key)
+    variants = ("compact", "balanced", "detailed")
+    index = variants.index(variant_id) if variant_id in variants else 0
+    members = [p for p in pool if p.style_key == styles[index % len(styles)]]
+    return members[(index // len(styles)) % len(members)]
 
 
 # ---------- кандидаты для содержательных слайдов ----------
@@ -567,8 +637,11 @@ __all__ = [
     "candidates_for",
     "fallback_visual",
     "fixed_pattern",
+    "fixed_pattern_pool",
     "pattern_info",
+    "pick_style",
     "profile_patterns",
     "score_pattern",
     "sequence_ok",
+    "siblings_of",
 ]

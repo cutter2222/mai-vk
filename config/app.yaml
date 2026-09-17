@@ -2,7 +2,7 @@
 # например PD_LIMITS__MAX_UPLOAD_MB=200. Загрузчик: presentation_designer.shared.settings.
 app:
   name: presentation-designer
-  contracts_version: "1.5"
+  contracts_version: "1.7"
   language_default: ru
 
 paths:
@@ -73,6 +73,9 @@ plan:                       # планы трёх вариантов (generation
   min_title_pt: 20
   table_max_rows: 7         # строк таблицы на слайде; большие наборы данных планировщик делит между слайдами
   margin_ratio: 0.92        # запас измерения текста, как в анализе шаблона
+  style_policy: per_variant # стиль титула, разделителей и финала (style_key паттерна): per_variant —
+                            # единый внутри колоды, у compact/balanced/detailed разные; first — первый пул роли
+  photo_dividers_for_image_sections: true  # разделитель с фотослотом для раздела с изображением (с этапа 16)
 
 layout:                     # вёрстка PPTX (layout/compose)
   prune_unused_layouts: false  # удалять макеты, которые не использует ни один слайд результата:

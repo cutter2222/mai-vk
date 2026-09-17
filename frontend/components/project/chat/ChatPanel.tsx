@@ -2,18 +2,19 @@
 
 import { ActionIcon, Badge, CloseButton, FileButton, Group, Loader, Stack, Text, Textarea, Tooltip } from "@mantine/core";
 import { Dropzone } from "@mantine/dropzone";
-import { IconArrowUp, IconFile, IconPaperclip } from "@tabler/icons-react";
+import { IconArrowUp, IconFile, IconPaperclip, IconSlideshow } from "@tabler/icons-react";
 import { Fragment, useEffect, useRef, useState } from "react";
 
-import { formatBytes } from "@/lib/format";
+import { formatBytes, VARIANT_LABELS } from "@/lib/format";
+import type { SlideTarget } from "@/lib/hooks/useGenerationSession";
 import type { ChatMessage } from "@/lib/state/projects";
 
-import { AuditCard, BriefCard, ContentCard, JobCard, PptxQuestion, TemplateCard, TemplateQuestionCard, type CardContext } from "./cards";
+import { AuditCard, BriefCard, ContentCard, EditCard, JobCard, PptxQuestion, TemplateCard, TemplateQuestionCard, type CardContext } from "./cards";
 import type { StagedPptx } from "./useChat";
 
 interface Props {
   ctx: CardContext;
-  onSend: (text: string, files: File[]) => Promise<void>;
+  onSend: (text: string, files: File[], target: SlideTarget | null) => Promise<void>;
   /** Разбирает брошенные файлы: презентации забирает сразу, остальные возвращает как вложения к сообщению. */
   onAttach: (files: File[]) => File[];
   staged: StagedPptx[];
@@ -25,7 +26,9 @@ interface Props {
  * PPTX не ждёт отправки: вопрос «шаблон или материал» появляется в ленте в момент броска, пока файл грузится.
  */
 export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged }: Props) {
-  const { project } = ctx;
+  const { project, session } = ctx;
+  // Выбранный справа слайд — адресат сообщения: чип над полем ввода, крестик снимает адресацию.
+  const target = session.slideTarget;
   const [text, setText] = useState("");
   const [pending, setPending] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
@@ -37,26 +40,34 @@ export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged }: Pro
     if (rest.length) setPending((p) => [...p, ...rest]);
   };
 
+  // Лента прокручивается вниз при новом сообщении и когда карточка правки получает результат.
   const count = project.events.length + staged.length;
+  const settledEdits = session.result?.edits?.length ?? 0;
   useEffect(() => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [count, ctx.session.result?.status]);
+  }, [count, session.result?.status, settledEdits]);
 
   const submit = async () => {
     if (sending || (!text.trim() && pending.length === 0)) return;
     setSending(true);
     const t = text;
     const f = pending;
+    const to = t.trim() ? target : null;
     setText("");
     setPending([]);
     resetRef.current?.();
     try {
-      await onSend(t, f);
+      await onSend(t, f, to);
     } finally {
       setSending(false);
     }
   };
+  const placeholder = target
+    ? `Что изменить на слайде ${target.slideIndex + 1}?`
+    : count === 0
+      ? "Опишите задачу или перетащите файлы…"
+      : "Напишите, что изменить, или добавьте файлы…";
 
   return (
     <Dropzone
@@ -90,6 +101,20 @@ export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged }: Pro
         ))}
       </div>
       <div className="chat-composer">
+        {target && (
+          <Group gap={6} mb={8} data-testid="slide-target">
+            <Badge
+              color="graphite"
+              variant="light"
+              size="sm"
+              leftSection={<IconSlideshow size={11} />}
+              rightSection={<CloseButton size={12} aria-label="Не относить к слайду" onClick={session.dismissTarget} data-testid="slide-target-dismiss" />}
+            >
+              Слайд {target.slideIndex + 1} · {VARIANT_LABELS[target.variantId] ?? target.variantId} · r{target.revision}
+            </Badge>
+            <Text size="xs" c="dimmed">правка создаст новую ревизию варианта</Text>
+          </Group>
+        )}
         {pending.length > 0 && (
           <Group gap={6} mb={8} data-testid="pending-files">
             {pending.map((f, i) => (
@@ -109,7 +134,7 @@ export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged }: Pro
           </FileButton>
           <Textarea
             variant="unstyled"
-            placeholder={count === 0 ? "Опишите задачу или перетащите файлы…" : "Напишите, что изменить, или добавьте файлы…"}
+            placeholder={placeholder}
             autosize
             minRows={1}
             maxRows={6}
@@ -142,6 +167,11 @@ function renderMessage(m: ChatMessage, ctx: CardContext) {
             {files.map((f) => <Badge key={f.file_id} color="gray" size="sm" leftSection={<IconFile size={11} />}>{f.name}</Badge>)}
           </Group>
         )}
+        {m.slide_ref && (
+          <Badge color="graphite" variant="light" size="sm" leftSection={<IconSlideshow size={11} />} data-testid="msg-slide-ref">
+            к слайду {m.slide_ref.slide_index + 1} · {VARIANT_LABELS[m.slide_ref.variant_id] ?? m.slide_ref.variant_id}
+          </Badge>
+        )}
         {m.text && <div className="chat-bubble">{m.text}</div>}
       </Stack>
     );
@@ -161,6 +191,8 @@ function renderMessage(m: ChatMessage, ctx: CardContext) {
       return <JobCard m={m} ctx={ctx} />;
     case "audit_card":
       return <AuditCard m={m} ctx={ctx} />;
+    case "edit_card":
+      return <EditCard m={m} ctx={ctx} />;
     default:
       return null;
   }

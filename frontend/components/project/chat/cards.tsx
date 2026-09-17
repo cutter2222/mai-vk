@@ -1,11 +1,13 @@
 "use client";
 
-import { Accordion, Anchor, Badge, Button, ColorSwatch, Group, Loader, Stack, Text, Tooltip } from "@mantine/core";
+import { Accordion, Anchor, Badge, Button, ColorSwatch, Group, Loader, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
 import { IconFile, IconFileTypePpt, IconRocket } from "@tabler/icons-react";
 
+import { SlideImage } from "@/components/common/SlideImage";
 import { ProgressPanel } from "@/components/workspace/ProgressPanel";
 import { MetricsPanel } from "@/components/workspace/MetricsPanel";
-import { api, ApiError, type ContentDetail, type TemplateDetail } from "@/lib/api/client";
+import { api, ApiError, TERMINAL_STATES, type ContentDetail, type TemplateDetail } from "@/lib/api/client";
+import type { JobStatus } from "@/lib/api/types";
 import { usePolling } from "@/lib/api/usePolling";
 import { STATUS_LABELS, VARIANT_LABELS } from "@/lib/format";
 import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
@@ -231,6 +233,75 @@ export function AuditCard({ m, ctx }: { m: Msg<"audit_card">; ctx: CardContext }
         <Button size="xs" variant="default" onClick={() => ctx.onOpenAudit(worst?.variant_id)} data-testid="open-audit">Показать находки</Button>
         {total > 0 && <Button size="xs" onClick={ctx.onRepairAll} data-testid="repair-all">Исправить всё исправимое</Button>}
       </Group>
+    </Card>
+  );
+}
+
+/**
+ * Правка слайда по запросу: ход задания, затем «до/после» и что изменено; отказ — с причиной.
+ * Карточка опрашивает своё задание сама, результат читает из живого GenerationResult по идентификатору.
+ */
+export function EditCard({ m, ctx }: { m: Msg<"edit_card">; ctx: CardContext }) {
+  const { session } = ctx;
+  const entry = session.result?.edits?.find((e) => e.edit_job_id === m.edit_job_id);
+  const settled = Boolean(entry && entry.result !== undefined);
+  const status = usePolling<JobStatus>(!settled ? () => api.jobs.get(m.edit_job_id) : null, (s) => TERMINAL_STATES.has(s.status), [m.edit_job_id, settled]);
+  const title = `Правка слайда ${m.slide_index + 1}`;
+  const variantLabel = VARIANT_LABELS[m.variant_id] ?? m.variant_id;
+  if (session.jobId !== m.job_id) {
+    return <Card title={title} aside={<Badge color="gray" size="xs">задание заменено</Badge>} />;
+  }
+  const failed = status.data?.status === "failed" || entry?.result === "failed";
+  if (failed) {
+    const message = entry?.message ?? status.data?.error?.message ?? "Правка не выполнена";
+    return (
+      <Card title={title} aside={<Badge color="red" size="xs">не применена</Badge>} testId="edit-card">
+        <Text size="sm">{message}</Text>
+        <Text size="xs" c="dimmed" mt={4}>Выберите слайд слева и повторите просьбу другими словами.</Text>
+      </Card>
+    );
+  }
+  if (entry?.result === "unchanged" || (status.data?.status === "succeeded" && status.data.result?.unchanged)) {
+    const reason = entry?.change_note ?? status.data?.result?.change_note ?? "";
+    return (
+      <Card title={title} aside={<Badge color="gray" size="xs">без изменений</Badge>} testId="edit-card">
+        <Text size="sm" data-testid="edit-reason">Оставил слайд как есть: {reason || "просьбу выполнить нельзя"}</Text>
+        <Text size="xs" c="dimmed" mt={4}>Данные не выдумываются: добавьте материалы или уточните просьбу.</Text>
+      </Card>
+    );
+  }
+  if (entry?.result === "applied" && entry.new_revision) {
+    const name = (rev: number) => `${m.variant_id}/r${rev}/thumbs/slide-${String(m.slide_index + 1).padStart(2, "0")}.png`;
+    const show = () => {
+      session.setSelectedVariant(m.variant_id);
+      session.setRevision(null);
+      session.setLayout("single");
+      session.selectSlide(m.slide_index);
+    };
+    return (
+      <Card title={title} aside={<Badge color="green" size="xs">ревизия {entry.new_revision}</Badge>} testId="edit-card">
+        <Text size="sm" mb={8} data-testid="edit-note">{entry.change_note || "Слайд переделан по просьбе"}</Text>
+        <SimpleGrid cols={2} spacing="xs" mb={8}>
+          <div>
+            <SlideImage src={api.generations.artifactUrl(m.job_id, name(entry.base_revision))} alt="до" />
+            <Text size="xs" ta="center" c="dimmed">до · r{entry.base_revision}</Text>
+          </div>
+          <div>
+            <SlideImage src={api.generations.artifactUrl(m.job_id, name(entry.new_revision))} alt="после" />
+            <Text size="xs" ta="center" c="dimmed">после · r{entry.new_revision}</Text>
+          </div>
+        </SimpleGrid>
+        <Group gap="xs">
+          <Button size="xs" variant="default" onClick={show} data-testid="edit-show">Показать слайд</Button>
+          <Text size="xs" c="dimmed">{variantLabel}: остальные слайды не менялись, прежняя ревизия доступна в панели ревизий.</Text>
+        </Group>
+      </Card>
+    );
+  }
+  const message = status.data?.progress?.message ?? `Переделываю слайд ${m.slide_index + 1}`;
+  return (
+    <Card title={title} aside={<Loader size={12} />} testId="edit-card">
+      <Text size="xs" c="dimmed">{status.error ? status.error.message : `${message}: план → сборка → экспорт → проверка.`}</Text>
     </Card>
   );
 }

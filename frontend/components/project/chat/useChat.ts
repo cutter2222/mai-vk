@@ -4,7 +4,7 @@ import { notifications } from "@mantine/notifications";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api, ApiError } from "@/lib/api/client";
-import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
+import type { GenerationSession, SlideTarget } from "@/lib/hooks/useGenerationSession";
 import {
   addProjectFiles,
   appendMessage,
@@ -88,9 +88,33 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     appendMessage(id, { role: "assistant", kind: "brief_card", understood, missing_purpose: !p.brief.purpose, ...(briefSource ? { brief_source: briefSource } : {}) });
   }, [id, current]);
 
-  const send = useCallback(async (text: string, files: File[]) => {
+  /** Сообщение, адресованное слайду: событие с адресом, запрос правки, карточка хода и результата. */
+  const editSlide = useCallback(async (text: string, target: SlideTarget) => {
+    const slideRef = { job_id: target.jobId, variant_id: target.variantId, revision: target.revision, slide_index: target.slideIndex };
+    appendMessage(id, { role: "user", kind: "message", text, file_ids: [], slide_ref: slideRef });
+    try {
+      const editJobId = await session.requestEdit(target, text);
+      appendMessage(id, { role: "assistant", kind: "edit_card", job_id: target.jobId, variant_id: target.variantId, edit_job_id: editJobId, slide_index: target.slideIndex });
+    } catch (e) {
+      const code = e instanceof ApiError ? e.code : "";
+      if (code === "revision_stale") say("Ревизия слайда устарела: справа уже новая. Обновил результат — повторите просьбу к актуальному слайду.");
+      else if (code === "repair_in_progress") say("Предыдущая правка этого варианта ещё применяется. Дождитесь её и повторите просьбу.");
+      else if (code === "variant_failed") say("Этот вариант не собран, править в нём нечего. Выберите другой вариант.");
+      else say(`Не удалось запустить правку: ${e instanceof ApiError ? e.message : "неизвестная ошибка"}.`);
+    }
+  }, [id, say, session]);
+
+  const send = useCallback(async (text: string, files: File[], target: SlideTarget | null = null) => {
     const trimmed = text.trim();
     if (!trimmed && files.length === 0) return;
+
+    // 0. Сообщение к выбранному слайду — правка, а не бриф; вложения при этом идут обычным путём.
+    const targeted = Boolean(trimmed && target);
+    if (targeted && target) {
+      await editSlide(trimmed, target);
+      if (files.length === 0) return;
+    }
+    const rest = targeted ? "" : trimmed;
 
     // 1. Файлы попадают на сервер сразу: проверка и дедупликация там, в проекте остаются записи.
     let rows: ProjectFile[] = [];
@@ -99,10 +123,10 @@ export function useChat(project: Project, session: GenerationSession, generate: 
         rows = await addProjectFiles(id, files);
       } catch (e) {
         say(`Не удалось загрузить файлы: ${e instanceof ApiError ? e.message : "неизвестная ошибка"}.`);
-        if (!trimmed) return;
+        if (!rest) return;
       }
     }
-    appendMessage(id, { role: "user", kind: "message", text: trimmed, file_ids: rows.map((r) => r.file_id) });
+    appendMessage(id, { role: "user", kind: "message", text: rest, file_ids: rows.map((r) => r.file_id) });
 
     // 2. PPTX может быть и шаблоном, и материалом: спрашиваем.
     rows.filter((r) => isPptx(r) && r.kind !== "template").forEach((r) => appendMessage(id, { role: "assistant", kind: "template_question", file_id: r.file_id }));
@@ -122,12 +146,12 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     // 5. Текст: бриф извлекает сервер; поля, которых нет в сообщении, не трогаем.
     let understood: string[] = [];
     let briefSource: "model" | "heuristic" | undefined;
-    if (trimmed) {
-      if (EDIT_RE.test(trimmed) && current().job_id) {
-        say("Перестановка, удаление и переименование слайдов появятся вместе с серверной операцией правки плана. Пока можно скачать PPTX и поправить в PowerPoint или изменить бриф и сгенерировать заново.");
+    if (rest) {
+      if (EDIT_RE.test(rest) && current().job_id) {
+        say("Чтобы изменить слайд, выберите его в ленте справа: в поле ввода появится метка слайда, и просьба применится к нему новой ревизией. Перестановка и удаление слайдов пока недоступны.");
       }
       try {
-        const res = await api.brief.extract(trimmed, { ...current().brief });
+        const res = await api.brief.extract(rest, { ...current().brief });
         understood = res.understood;
         briefSource = res.source;
         if (understood.length) {
@@ -148,7 +172,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
       } catch {
         /* сервер не ответил: бриф можно заполнить вручную через «Изменить» */
       }
-      if (!understood.length && !rows.length && !EDIT_RE.test(trimmed)) {
+      if (!understood.length && !rows.length && !EDIT_RE.test(rest)) {
         say("Не нашёл в сообщении ничего про презентацию. Опишите задачу одной фразой: «сделай презентацию про запуск сервиса умных уведомлений для руководителей, чтобы одобрили пилот» — и перетащите шаблон PPTX и материалы.");
         return;
       }
@@ -165,10 +189,10 @@ export function useChat(project: Project, session: GenerationSession, generate: 
       offerGeneration(understood, understood.length ? briefSource : undefined);
     }
     const ready = current().template_id && current().package_id && current().brief.purpose;
-    if (trimmed && GENERATE_RE.test(trimmed) && ready && !current().job_id) {
+    if (rest && GENERATE_RE.test(rest) && ready && !current().job_id) {
       await generate();
     }
-  }, [id, importMaterials, offerGeneration, say, generate, current]);
+  }, [id, importMaterials, offerGeneration, say, generate, current, editSlide]);
 
   /** Шаблон из библиотеки, выбранный в шапке: карточка в чате, чтобы история отражала смену оформления. */
   const selectTemplate = useCallback((templateId: string) => {

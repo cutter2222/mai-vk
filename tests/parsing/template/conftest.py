@@ -8,6 +8,7 @@ import pathlib
 import pytest
 
 from tests.fixtures.rich_template import build_rich_template
+from tests.fixtures.variety_template import build_variety_template
 from tests.llm.conftest import (  # noqa: F401  # фикстуры клиента моделей
     make_client,
     models,
@@ -24,6 +25,13 @@ def rich_template(tmp_path_factory: pytest.TempPathFactory) -> pathlib.Path:
     """Шаблон 16:9 из шести слайдов: титул, карточки с иконками в группах, показатели,
     слайд-инструкция, каталог иконок, скрытый слайд; логотип повторяется на всех слайдах."""
     return build_rich_template(tmp_path_factory.mktemp("tpl") / "rich_template.pptx")
+
+
+@pytest.fixture(scope="session")
+def variety_template(tmp_path_factory: pytest.TempPathFactory) -> pathlib.Path:
+    """Два титула одного состава на светлом и тёмном фоне, два разделителя разного тона, два
+    карточных образца одной сигнатуры, список, два финала разного тона."""
+    return build_variety_template(tmp_path_factory.mktemp("tpl") / "variety_template.pptx")
 
 
 @pytest.fixture(scope="session")

@@ -106,7 +106,7 @@ export function GenerationPreview({ session, chosenVariant, onChoose }: Props) {
                 chosen={v.variant_id === chosenVariant}
                 onSelect={() => session.setSelectedVariant(v.variant_id)}
                 onChoose={() => onChoose(chosenVariant === v.variant_id ? null : v.variant_id)}
-                onSlideChange={session.setSlideIndex}
+                onSlideChange={session.selectSlide}
               />
             ))}
           </SimpleGrid>
@@ -122,7 +122,7 @@ export function GenerationPreview({ session, chosenVariant, onChoose }: Props) {
         <SlideViewer
           slides={slides}
           index={session.slideIndex}
-          onIndex={session.setSlideIndex}
+          onIndex={session.selectSlide}
           overlays={session.overlays}
           activeOverlay={session.activeIssue}
           onOverlayClick={session.setActiveIssue}
@@ -161,7 +161,7 @@ export function GenerationPreview({ session, chosenVariant, onChoose }: Props) {
                   onToggle={session.toggleIssue}
                   onFocus={session.focusIssue}
                   onRepair={() => void session.repair()}
-                  repairing={session.busy || Boolean(session.repairJob)}
+                  repairing={session.busy || Boolean(session.repairJob) || Boolean(session.editJob)}
                 />
                 {(variant.revisions?.length ?? 0) > 1 && (
                   <div className="panel-section">

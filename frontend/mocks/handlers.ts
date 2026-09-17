@@ -10,6 +10,7 @@ import {
   buildAudit,
   buildJobStatus,
   buildResult,
+  createEdit,
   createGeneration,
   createPackage,
   createRepair,
@@ -21,6 +22,7 @@ import {
   repairJobStatus,
   seedDemoTemplate,
   settleRepairs,
+  slideTitleAt,
   store,
   templateJobStatus,
   templateStatus,
@@ -282,6 +284,23 @@ export const handlers = [
     return HttpResponse.json({ repair_job_id: result.repair_job_id }, { status: 202 });
   }),
 
+  http.post(base("/generations/:jobId/variants/:variantId/edits"), async ({ params, request }) => {
+    settleRepairs();
+    const g = store.generations.get(String(params.jobId));
+    if (!g) return err(404, "job_not_found", "Задание не найдено");
+    const variant = g.variants.find((v) => v.variant_id === String(params.variantId));
+    if (!variant) return err(404, "variant_not_found", "Вариант не найден");
+    const body = (await request.json()) as { base_revision: number; slide_index: number; instruction?: string };
+    const instruction = (body.instruction ?? "").trim().replace(/\s+/g, " ");
+    if (!instruction) return err(422, "instruction_required", "Напишите, что изменить на слайде");
+    if (body.slide_index < 0 || body.slide_index >= variant.slideCount) return err(422, "slide_index_out_of_range", `В варианте ${variant.slideCount} слайдов, слайда с номером ${body.slide_index + 1} нет`);
+    const result = createEdit(g, variant.variant_id, body.base_revision, body.slide_index, instruction);
+    if ("conflict" in result) return err(409, "revision_stale", `Ревизия ${body.base_revision} устарела: текущая ревизия ${result.conflict}. Обновите результат и повторите просьбу.`, { current_revision: result.conflict });
+    if ("busy" in result) return err(409, "repair_in_progress", "Предыдущая правка этой ревизии ещё применяется", { repair_job_id: result.busy });
+    await delay(200);
+    return HttpResponse.json({ edit_job_id: result.repair_job_id }, { status: 202 });
+  }),
+
   http.get(base("/generations/:jobId/artifacts/*"), async ({ params, request }) => {
     settleRepairs();
     const g = store.generations.get(String(params.jobId));
@@ -303,7 +322,8 @@ export const handlers = [
       const hasIssue = audit?.issues.some((i) => i.slide_index === idx) ?? false;
       const fixedMark = revision > 1 && (variant?.revisions.some((r) => r.revision <= revision && r.changed_slide_ids.includes(`s${idx + 1}`)) ?? false);
       const subtitle = hasIssue ? "На этом слайде есть находки аудита" : fixedMark ? "Слайд исправлен в новой ревизии" : `Вариант ${variantId}, ревизия ${revision}`;
-      const png = await slidePng(`${g.job_id}:${name}:${hasIssue}`, SLIDE_TITLES[idx] ?? `Слайд ${idx + 1}`, subtitle, variantId === "compact" ? "#0077FF" : variantId === "balanced" ? "#FF3885" : "#520977");
+      const title = slideTitleAt(variant, revision, idx, SLIDE_TITLES[idx] ?? `Слайд ${idx + 1}`);
+      const png = await slidePng(`${g.job_id}:${name}:${hasIssue}:${title}`, title, subtitle, variantId === "compact" ? "#0077FF" : variantId === "balanced" ? "#FF3885" : "#520977");
       return new HttpResponse(png, { headers: { "Content-Type": "image/png" } });
     }
     if (name.endsWith("plan.json")) return HttpResponse.json(g.plan);

@@ -121,6 +121,52 @@ def test_mini_template_profile(mini_template: pathlib.Path) -> None:
     assert any(d["kind"] == "slide_number" for d in profile["dynamic_fields"])
 
 
+def test_groups_and_tone(variety_template: pathlib.Path) -> None:
+    """Образцы одной сигнатуры попадают в одну группу независимо от тона; тон читается из
+    заливки слайда с источником; style_key — тон, семейство макета и plain."""
+    profile = analyze(variety_template).profile
+    TemplateProfile.model_validate(profile)
+    assert profile["schema_version"] == "1.2" and profile["analyzer"]["version"] == "0.2.1"
+    by_id = {p["pattern_id"]: p for p in profile["patterns"]}
+    assert by_id["pat_s1"]["group_id"] == by_id["pat_s2"]["group_id"], "титулы одного состава"
+    assert by_id["pat_s3"]["group_id"] == by_id["pat_s4"]["group_id"], "разделители"
+    assert by_id["pat_s5"]["group_id"] == by_id["pat_s6"]["group_id"], "карточки одной сигнатуры"
+    assert by_id["pat_s8"]["group_id"] == by_id["pat_s9"]["group_id"], "финалы"
+    assert by_id["pat_s1"]["group_id"] != by_id["pat_s3"]["group_id"]
+    tones = {pid: p["tone"]["background"] for pid, p in by_id.items()}
+    assert tones["pat_s1"] == "light" and tones["pat_s2"] == "dark"
+    assert tones["pat_s3"] == "light" and tones["pat_s4"] == "dark"
+    assert tones["pat_s8"] == "dark" and tones["pat_s9"] == "light"
+    assert all(p["tone"]["source"] == "slide_fill" for p in by_id.values())
+    assert 0 <= by_id["pat_s2"]["tone"]["luminance"] < 0.5 <= by_id["pat_s1"]["tone"]["luminance"]
+    assert by_id["pat_s1"]["style_key"] == "light|title slide|plain"
+    assert by_id["pat_s2"]["style_key"] == "dark|title slide|plain"
+    assert by_id["pat_s4"]["style_key"] == "dark|section header|plain"
+    # Группа записана и в sample_slides, и у паттерна.
+    sample = {s["slide_index"]: s.get("group_id") for s in profile["sample_slides"]}
+    assert sample[1] == by_id["pat_s1"]["group_id"]
+    # Тон без собственной заливки слайда — из темы (белый lt1 у шаблона python-pptx).
+    mini = analyze(
+        pathlib.Path(__file__).resolve().parents[2] / "fixtures" / "pptx" / "mini_template.pptx"
+    ).profile
+    assert {p["tone"]["source"] for p in mini["patterns"]} <= {
+        "theme",
+        "master_fill",
+        "layout_fill",
+    }
+    assert all(p["tone"]["background"] == "light" for p in mini["patterns"])
+
+
+def test_layout_family() -> None:
+    from presentation_designer.parsing.template.layouts import layout_family
+
+    assert layout_family("2_Титульный слайд") == "титульный слайд"
+    assert layout_family("12. Разделитель тёмный") == "разделитель тёмный"
+    assert layout_family("Section Header") == "section header"
+    assert layout_family("Карточки (2)") == "карточки"
+    assert layout_family("") == "layout" and layout_family(None) == "layout"
+
+
 def test_profile_key_changes_with_inputs(monkeypatch: pytest.MonkeyPatch) -> None:
     base = an.profile_key("a" * 64)
     assert base == an.profile_key("a" * 64)

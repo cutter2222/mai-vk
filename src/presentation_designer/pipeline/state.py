@@ -170,6 +170,15 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE templates ADD COLUMN profile_key TEXT;
     """,
+    # 4 (этап 20): правка слайда по запросу из чата — то же задание ревизии, что и
+    # исправление, с видом `edit`, слайдом и инструкцией. Старый код колонки не читает.
+    """
+    ALTER TABLE repairs ADD COLUMN kind TEXT NOT NULL DEFAULT 'repair';
+    ALTER TABLE repairs ADD COLUMN slide_index INTEGER;
+    ALTER TABLE repairs ADD COLUMN slide_id TEXT;
+    ALTER TABLE repairs ADD COLUMN instruction TEXT;
+    ALTER TABLE repairs ADD COLUMN change_note TEXT;
+    """,
 ]
 
 LATEST_SCHEMA = len(MIGRATIONS)
@@ -1103,6 +1112,11 @@ class State:
             "new_revision": row["new_revision"],
             "message": row["message"],
             "changed_slide_ids": _loads(row["changed_slide_ids"], []),
+            "kind": row["kind"] or "repair",
+            "slide_index": row["slide_index"],
+            "slide_id": row["slide_id"],
+            "instruction": row["instruction"],
+            "change_note": row["change_note"],
         }
 
     def create_repair(
@@ -1113,11 +1127,26 @@ class State:
         variant_id: str,
         base_revision: int,
         issue_ids: list[str],
+        kind: str = "repair",
+        slide_index: int | None = None,
+        instruction: str | None = None,
     ) -> None:
+        """Задание ревизии: исправление по находкам (`repair`) или правка слайда по
+        инструкции (`edit`); обе создают новую ревизию варианта и делят блокировку."""
         with self.tx() as conn:
             conn.execute(
-                "INSERT INTO repairs(repair_job_id, job_id, variant_id, base_revision, issue_ids) VALUES (?,?,?,?,?)",  # noqa: E501
-                (repair_job_id, job_id, variant_id, base_revision, _dumps(issue_ids)),
+                "INSERT INTO repairs(repair_job_id, job_id, variant_id, base_revision, issue_ids,"
+                " kind, slide_index, instruction) VALUES (?,?,?,?,?,?,?,?)",
+                (
+                    repair_job_id,
+                    job_id,
+                    variant_id,
+                    base_revision,
+                    _dumps(issue_ids),
+                    kind,
+                    slide_index,
+                    instruction,
+                ),
             )
 
     def get_repair(self, repair_job_id: str) -> JsonDict:
@@ -1138,18 +1167,18 @@ class State:
                     (_dumps(value) if key in json_fields else value, repair_job_id),
                 )
 
-    def list_repairs(self, job_id: str) -> list[JsonDict]:
+    def list_repairs(self, job_id: str, kind: str | None = None) -> list[JsonDict]:
+        """Задания ревизий генерации в порядке создания; `kind` сужает до исправлений или
+        правок."""
         with self.read() as conn:
+            rows = conn.execute("SELECT * FROM repairs WHERE job_id = ? ORDER BY rowid", (job_id,))
             return [
-                self._repair_row(r)
-                for r in conn.execute(
-                    "SELECT * FROM repairs WHERE job_id = ? ORDER BY rowid", (job_id,)
-                )
+                self._repair_row(r) for r in rows if kind is None or (r["kind"] or "repair") == kind
             ]
 
     def active_repair(self, job_id: str, variant_id: str) -> JsonDict | None:
-        """Незавершённое исправление варианта: две несовместимые правки одной ревизии
-        не допускаются."""
+        """Незавершённое исправление или правка слайда варианта: две несовместимые правки
+        одной ревизии не допускаются."""
         with self.read() as conn:
             row = conn.execute(
                 "SELECT r.* FROM repairs r JOIN jobs j ON j.id = r.repair_job_id"

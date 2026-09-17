@@ -14,7 +14,7 @@ test.describe("сквозной сценарий в чате на заглушк
     await cleanupProjects(page);
   });
 
-  test("шаблон → материалы и задача → генерация → варианты → аудит → исправление → ревизия → скачивание", async ({ page, browserName }) => {
+  test("шаблон → материалы и задача → генерация → варианты → аудит → исправление → ревизия → правка слайда → скачивание", async ({ page, browserName }) => {
     await speedUp(page, 8);
     const errors = collectConsoleErrors(page);
 
@@ -116,6 +116,37 @@ test.describe("сквозной сценарий в чате на заглушк
     await expect(page.getByTestId("slide-counter")).toHaveText(/Слайд 1 из/);
     await page.keyboard.press("ArrowDown");
     await expect(page.getByTestId("slide-counter")).toHaveText(/Слайд 2 из/);
+
+    // Правка слайда по запросу: выбранный слайд — чип в поле ввода, просьба создаёт ревизию 3
+    await page.locator('[data-testid="thumb-strip"] button').nth(2).click();
+    await expect(page.getByTestId("slide-counter")).toHaveText(/Слайд 3 из/);
+    await expect(page.getByTestId("slide-target")).toContainText("Слайд 3");
+    await expect(page.getByTestId("chat-input")).toHaveAttribute("placeholder", /слайде 3/);
+    await page.getByTestId("slide-target-dismiss").click();
+    await expect(page.getByTestId("slide-target")).toHaveCount(0);
+    await page.locator('[data-testid="thumb-strip"] button').nth(2).click();
+    await expect(page.getByTestId("slide-target")).toContainText("Слайд 3");
+    await sendMessage(page, "Заголовок короче: пилот окупается");
+    await expect(page.getByTestId("msg-slide-ref").last()).toContainText("к слайду 3");
+    await expect(page.getByTestId("edit-card").last()).toBeVisible();
+    await expect(page.getByTestId("edit-note").last()).toBeVisible({ timeout: 30000 });
+    await expect(page.getByTestId("edit-card").last()).toContainText("ревизия 3");
+    await expect(page.getByText("Слайд изменён")).toHaveCount(1);
+    await expect(page.getByTestId("slide-target")).toContainText("r3");
+    await expect(page.getByTestId("preview-pane")).toContainText("ревизия 3");
+    await page.getByTestId("edit-show").last().click();
+    await expect(page.getByTestId("slide-counter")).toHaveText(/Слайд 3 из/);
+    // Невыполнимая просьба: отказ с причиной, ревизия прежняя
+    await sendMessage(page, "Добавь то, что невозможно найти в материалах");
+    await expect(page.getByTestId("edit-reason").last()).toBeVisible({ timeout: 30000 });
+    await expect(page.getByText("Слайд оставлен как есть")).toBeVisible();
+    await expect(page.getByTestId("slide-target")).toContainText("r3");
+    await shot(page, "chat-edit");
+    // Вторая применённая правка того же слайда: ревизия 4, состояние опроса прежнего задания не мешает
+    await sendMessage(page, "Ещё короче");
+    await expect(page.getByTestId("edit-card").last()).toContainText("ревизия 4", { timeout: 30000 });
+    await expect(page.getByTestId("slide-target")).toContainText("r4");
+    await expect(page.getByTestId("preview-pane")).toContainText("ревизия 4");
 
     // Файлы проекта: загруженное и собранное
     await page.getByTestId("tab-files").click();

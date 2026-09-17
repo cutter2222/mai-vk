@@ -20,6 +20,7 @@ from typing import Any
 from presentation_designer.parsing.template.classify import Classification
 from presentation_designer.parsing.template.geometry import ShapeInfo, normalize_text
 from presentation_designer.parsing.template.package import TemplatePackage
+from presentation_designer.parsing.template.tone import relative_luminance
 
 log = logging.getLogger(__name__)
 
@@ -41,6 +42,8 @@ class Asset:
     reusable: bool = True
     monochrome: bool | None = None
     transparent: bool | None = None
+    mean_luminance: float | None = None
+    color_bins: int | None = None
     occurrences: int = 1
     blob: bytes | None = field(default=None, repr=False)
 
@@ -64,8 +67,21 @@ class Asset:
         return out
 
 
-def _image_props(blob: bytes) -> tuple[int | None, int | None, bool | None, bool | None]:
-    """Размер, монохромность (≤ 2 значимых цвета) и наличие прозрачности."""
+@dataclass
+class ImageProps:
+    """Признаки картинки по уменьшенной копии: размер, монохромность (≤ 2 значимых цвета),
+    прозрачность, средняя относительная яркость непрозрачных пикселей и число цветовых корзин
+    (5 бит на канал) — по ним анализатор отличает пиктограмму от фото и оценивает тон фона."""
+
+    width: int | None = None
+    height: int | None = None
+    monochrome: bool | None = None
+    transparent: bool | None = None
+    mean_luminance: float | None = None
+    color_bins: int | None = None
+
+
+def _image_props(blob: bytes) -> ImageProps:
     try:
         from PIL import Image
 
@@ -76,15 +92,19 @@ def _image_props(blob: bytes) -> tuple[int | None, int | None, bool | None, bool
             raw: Any = getattr(small, "get_flattened_data", small.getdata)()
             pixels = list(raw)
     except Exception:
-        return None, None, None, None
+        return ImageProps()
     opaque = [(r // 32, g // 32, b // 32) for r, g, b, a in pixels if a > 40]
     transparent = any(a <= 40 for _, _, _, a in pixels)
     if not opaque:
-        return width, height, None, transparent
+        return ImageProps(width, height, None, transparent, None, 0)
     counter = collections.Counter(opaque)
     top = counter.most_common(3)
     share = sum(n for _, n in top[:2]) / len(opaque)
-    return width, height, share >= 0.9, transparent
+    bins = len({(r // 8, g // 8, b // 8) for r, g, b, a in pixels if a > 40})
+    luminance = sum(
+        relative_luminance(f"#{r:02X}{g:02X}{b:02X}") for r, g, b, a in pixels if a > 40
+    ) / len(opaque)
+    return ImageProps(width, height, share >= 0.9, transparent, round(luminance, 3), bins)
 
 
 def _kind_for(
@@ -154,29 +174,31 @@ def index_assets(
                 existing.kind = "logo"
             return
         blob = shape.media_blob
-        width, height, mono, transparent = _image_props(blob) if blob else (None, None, None, None)
+        props = _image_props(blob) if blob else ImageProps()
         kind = _kind_for(
             shape,
-            (mono, transparent),
+            (props.monochrome, props.transparent),
             on_master=on_master,
             catalog=catalog,
             ext=shape.media_ext,
             nearby_text=nearby_text,
-            pixel_size=(width, height),
+            pixel_size=(props.width, props.height),
         )
         asset = Asset(
             asset_id=f"asset_{len(order) + 1}",
             kind=kind,
             media_path=shape.media_part.lstrip("/"),
             sha256=sha,
-            width_px=width,
-            height_px=height,
+            width_px=props.width,
+            height_px=props.height,
             source_slide_index=slide_index,
             bbox_on_source=shape.bbox,
             reusable=kind
             in ("icon", "logo", "photo", "image", "mockup", "background", "screenshot"),
-            monochrome=mono,
-            transparent=transparent,
+            monochrome=props.monochrome,
+            transparent=props.transparent,
+            mean_luminance=props.mean_luminance,
+            color_bins=props.color_bins,
             blob=blob,
         )
         if catalog:

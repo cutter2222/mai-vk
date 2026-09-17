@@ -18,7 +18,7 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "const": "1.3"
+      "const": "1.4"
     },
     "project_id": {
       "$ref": "common.schema.json#/$defs/id"
@@ -253,7 +253,8 @@
             "content_card",
             "brief_card",
             "job_card",
-            "audit_card"
+            "audit_card",
+            "edit_card"
           ]
         },
         "text": {
@@ -298,6 +299,42 @@
             "heuristic"
           ],
           "description": "для brief_card: чем извлечён бриф из сообщения — моделью или детерминированными правилами (резерв)"
+        },
+        "slide_ref": {
+          "type": "object",
+          "description": "для сообщения пользователя: слайд, к которому обращена просьба (чип в поле ввода)",
+          "required": [
+            "job_id",
+            "variant_id",
+            "revision",
+            "slide_index"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "job_id": {
+              "$ref": "common.schema.json#/$defs/id"
+            },
+            "variant_id": {
+              "$ref": "common.schema.json#/$defs/id"
+            },
+            "revision": {
+              "$ref": "common.schema.json#/$defs/revision"
+            },
+            "slide_index": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "variant_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "edit_job_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "slide_index": {
+          "type": "integer",
+          "minimum": 0
         }
       },
       "additionalProperties": false,
@@ -408,6 +445,23 @@
           "then": {
             "required": [
               "job_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "edit_card"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "job_id",
+              "variant_id",
+              "edit_job_id",
+              "slide_index"
             ]
           }
         }

@@ -1,0 +1,28 @@
+# Манифест скилла по contracts/schemas/skill_manifest.schema.json
+schema_version: '1.1'
+name: slide_editor
+version: 0.1.0
+stage: plan
+description: 'Переделывает один слайд готового плана по инструкции из чата: модель получает
+  инструкцию, текущий слайд, соседей, тезисы и факты пакета и список композиций шаблона с
+  ёмкостью; отвечает в формате планировщика для одного слайда или отклоняет просьбу с
+  причиной. Слоты, измерение ёмкости и новая ревизия — код'
+model_role: llm
+response_format: json_schema
+reasoning:
+  mode: 'off'            # один слайд: короткий ответ, рассуждение только съедает бюджет
+  max_output_tokens: 1500
+prompts:
+- id: edit.slide
+  path: prompts/edit.slide.v0.1.0.md
+  version: 0.1.0
+params:
+  temperature: 0.2
+  time_budget_s: 60      # запрос и один повтор по переполнению с ожиданием квоты
+input_schema: slide_plan
+output_schema: slide_plan
+changelog:
+- version: 0.1.0
+  date: '2026-09-17'
+  note: 'этап 20: правка слайда по запросу из чата — один слайд, композиции из списка,
+    факты только ссылками, отказ с причиной вместо выдуманных данных'

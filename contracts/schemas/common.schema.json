@@ -488,7 +488,7 @@
               "skipped"
             ]
           },
-          "description": "ключи: parsing.template, parsing.content, generation.story, generation.plan, layout, export, audit.deterministic, audit.contextual"
+          "description": "ключи: parsing.template, parsing.content, brief, generation.story, generation.plan, generation.edit, layout, export, audit.deterministic, audit.contextual"
         }
       },
       "required": [

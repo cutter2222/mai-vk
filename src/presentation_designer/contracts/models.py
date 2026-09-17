@@ -326,7 +326,7 @@ class ExecutionMode(BaseModel):
     mode: Literal["real", "mixed", "stub"]
     layers: dict[str, Literal["real", "stub", "replay", "skipped"]]
     """
-    ключи: parsing.template, parsing.content, generation.story, generation.plan, layout, export, audit.deterministic, audit.contextual
+    ключи: parsing.template, parsing.content, brief, generation.story, generation.plan, generation.edit, layout, export, audit.deterministic, audit.contextual
     """
 
 
@@ -1015,6 +1015,47 @@ class Repair(BaseModel):
     changed_slide_ids: list[Id] | None = None
 
 
+class Edit(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    edit_job_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    variant_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    base_revision: int = Field(..., ge=1)
+    """
+    Номер ревизии результата варианта. Растёт после каждого исправления; находки аудита и запросы исправлений привязаны к ревизии.
+    """
+    slide_index: int = Field(..., ge=0)
+    """
+    индекс слайда в ревизии, с нуля, как в миниатюрах и отчёте аудита
+    """
+    slide_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    instruction: str
+    result: Literal["applied", "unchanged", "failed"]
+    change_note: str | None = None
+    """
+    что изменено (applied) или почему слайд оставлен как есть (unchanged)
+    """
+    message: str | None = None
+    """
+    сообщение об ошибке для failed
+    """
+    new_revision: int | None = Field(None, ge=1)
+    """
+    Номер ревизии результата варианта. Растёт после каждого исправления; находки аудита и запросы исправлений привязаны к ревизии.
+    """
+    changed_slide_ids: list[Id] | None = None
+
+
 class Result1(BaseModel):
     """
     ссылка на результат своего вида; заполняется по мере готовности
@@ -1037,6 +1078,14 @@ class Result1(BaseModel):
     revision: int | None = Field(None, ge=1)
     """
     Номер ревизии результата варианта. Растёт после каждого исправления; находки аудита и запросы исправлений привязаны к ревизии.
+    """
+    unchanged: bool | None = None
+    """
+    для правки слайда: просьба отклонена, ревизия не создана
+    """
+    change_note: str | None = None
+    """
+    для правки слайда: что изменено или почему слайд оставлен как есть
     """
 
 
@@ -1472,6 +1521,29 @@ class BriefDraft(BaseModel):
     avoid: list[str]
 
 
+class SlideRef(BaseModel):
+    """
+    для сообщения пользователя: слайд, к которому обращена просьба (чип в поле ввода)
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    job_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    variant_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    revision: int = Field(..., ge=1)
+    """
+    Номер ревизии результата варианта. Растёт после каждого исправления; находки аудита и запросы исправлений привязаны к ревизии.
+    """
+    slide_index: int = Field(..., ge=0)
+
+
 class Event(BaseModel):
     """
     Событие ленты чата: сообщение пользователя или карточка шага. Карточка хранит только идентификаторы и читает живое состояние
@@ -1495,6 +1567,7 @@ class Event(BaseModel):
         "brief_card",
         "job_card",
         "audit_card",
+        "edit_card",
     ]
     text: str | None = None
     file_ids: list[Id] | None = None
@@ -1521,6 +1594,19 @@ class Event(BaseModel):
     """
     для brief_card: чем извлечён бриф из сообщения — моделью или детерминированными правилами (резерв)
     """
+    slide_ref: SlideRef | None = None
+    """
+    для сообщения пользователя: слайд, к которому обращена просьба (чип в поле ввода)
+    """
+    variant_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    edit_job_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    slide_index: int | None = Field(None, ge=0)
 
 
 class SettingsDraft(BaseModel):
@@ -1760,6 +1846,22 @@ class SequenceHints(BaseModel):
     )
     typical_position: Literal["first", "early", "middle", "late", "last", "any"] | None = None
     max_consecutive: int | None = None
+
+
+class Tone(BaseModel):
+    """
+    тон фона образца: заливка слайда, закрывающая картинка или фигура, фон макета, мастера или lt1 темы; порог относительной яркости 0,5
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    background: Literal["light", "dark", "unknown"]
+    luminance: float | None = Field(None, ge=0.0, le=1.0)
+    source: str
+    """
+    slide_fill, slide_picture, slide_shape, layout_fill, layout_picture, layout_shape, master_fill, master_picture, theme, none
+    """
 
 
 class Paragraph(BaseModel):
@@ -2435,7 +2537,7 @@ class GenerationResult(BaseModel):
     Результат задания генерации. Отдаётся по ссылке из JobStatus и напрямую GET /api/generations/{id}; пока задание идёт, поля вариантов заполняются по мере готовности. Версия 1.1: ревизии, режим исполнения слоёв, частичные результаты, полнота аудита, версии рендерера и шрифтов, ожидание очереди и квоты, повторы, кэши, время первого и всех готовых вариантов.
     """
 
-    schema_version: Literal["1.1"]
+    schema_version: Literal["1.2"]
     job_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
     Стабильный идентификатор. Не содержит пробелов и путей.
@@ -2491,22 +2593,26 @@ class GenerationResult(BaseModel):
     """
     часть вариантов не готова или завершилась ошибкой; готовые доступны
     """
+    edits: list[Edit] | None = None
+    """
+    правки слайдов по запросу из чата: каждая применённая правка создаёт ревизию варианта, как исправление
+    """
 
 
 class JobStatus(BaseModel):
     """
-    Общее состояние любого задания: анализ шаблона, импорт содержания, генерация, исправление. Отдаётся GET /api/jobs/{id}. Ссылка на результат ведёт на документ своего вида; задания анализа и импорта не заполняют GenerationResult.
+    Общее состояние любого задания: анализ шаблона, импорт содержания, генерация, исправление, правка слайда по запросу. Отдаётся GET /api/jobs/{id}. Ссылка на результат ведёт на документ своего вида; задания анализа и импорта не заполняют GenerationResult.
     """
 
     model_config = ConfigDict(
         extra="forbid",
     )
-    schema_version: Literal["1.1"]
+    schema_version: Literal["1.2"]
     job_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
     Стабильный идентификатор. Не содержит пробелов и путей.
     """
-    kind: Literal["template_analysis", "content_import", "generation", "repair"]
+    kind: Literal["template_analysis", "content_import", "generation", "repair", "slide_edit"]
     status: Literal["queued", "running", "succeeded", "needs_review", "failed", "canceled"]
     """
     succeeded: обязательные проверки завершены и блокирующих проблем нет; needs_review: результат пригоден к просмотру, но есть находки или неполный аудит
@@ -2542,7 +2648,7 @@ class JobStatus(BaseModel):
     depends_on: list[Id] | None = None
     parent_job_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
-    для исправлений: задание генерации
+    для исправлений и правок слайда: задание генерации
     """
     result: Result1 | None = None
     """
@@ -2560,7 +2666,7 @@ class Project(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    schema_version: Literal["1.3"]
+    schema_version: Literal["1.4"]
     project_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
     Стабильный идентификатор. Не содержит пробелов и путей.
@@ -2758,6 +2864,18 @@ class Pattern(BaseModel):
     объекты образца, удаляемые при незаполненных слотах, например лишние карточки
     """
     sequence_hints: SequenceHints | None = None
+    group_id: str | None = None
+    """
+    группа образцов одной сигнатуры (роль, состав слотов, число карточек): члены взаимозаменяемы, планировщик подставляет их в сериях одинаковых композиций
+    """
+    tone: Tone | None = None
+    """
+    тон фона образца: заливка слайда, закрывающая картинка или фигура, фон макета, мастера или lt1 темы; порог относительной яркости 0,5
+    """
+    style_key: str | None = None
+    """
+    стиль служебного слайда вида «тон|семейство макета|photo или plain»: внутри колоды титул, разделители и финал берутся одного стиля, варианты — разных
+    """
 
 
 class Object(BaseModel):
@@ -2903,10 +3021,10 @@ class BlockModel(BaseModel):
 
 class TemplateProfile(BaseModel):
     """
-    Результат слоя парсинга: дизайн-система, фиксированные элементы, ресурсы и композиционные паттерны шаблона. Полный профиль читают вёрстка и аудит; в модель уходит только llm_digest и выдержки по выбранным паттернам. Версия 1.1: области действия правил, вычисленные стили с источником, геометрия групп и crop, ссылки на объекты слотов, статические и динамические элементы, параметры абзацев.
+    Результат слоя парсинга: дизайн-система, фиксированные элементы, ресурсы и композиционные паттерны шаблона. Полный профиль читают вёрстка и аудит; в модель уходит только llm_digest и выдержки по выбранным паттернам. Версия 1.1: области действия правил, вычисленные стили с источником, геометрия групп и crop, ссылки на объекты слотов, статические и динамические элементы, параметры абзацев. Версия 1.2 (этап 14): у паттерна group_id (группа взаимозаменяемых образцов), tone (светлый или тёмный фон с источником) и style_key (тон | семейство макета | photo или plain) — по ним планировщик выбирает стиль служебных слайдов единым внутри колоды и разным у вариантов.
     """
 
-    schema_version: Literal["1.1"]
+    schema_version: Literal["1.2"]
     template_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
     Стабильный идентификатор. Не содержит пробелов и путей.

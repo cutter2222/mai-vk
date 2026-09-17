@@ -1,4 +1,5 @@
-"""Сквозной путь через HTTP на заглушках: проект, файлы, бриф, задание, скачивание, исправление."""
+"""Сквозной путь через HTTP на заглушках: проект, файлы, бриф, задание, скачивание, исправление,
+правка слайда по запросу."""
 
 from __future__ import annotations
 
@@ -41,7 +42,7 @@ def test_health_and_capabilities(client: TestClient) -> None:
     assert health["status"] == "ok"
     assert health["workers"]["generation"] >= 1
     caps = client.get("/api/capabilities").json()
-    assert caps["contracts_version"] == "1.5"
+    assert caps["contracts_version"] == "1.7"
     assert caps["execution_mode"]["mode"] == "stub"
     assert caps["execution_mode"]["layers"]["brief"] == "stub"
     assert caps["limits"]["max_project_files"] > 0
@@ -222,6 +223,123 @@ def test_full_flow(client: TestClient, pptx_bytes: bytes, xlsx_bytes: bytes) -> 
     retried = client.get(f"/api/generations/{new_job}").json()
     assert retried["metrics"]["cache"]["story_hit"] is True
     assert retried["metrics"]["stages"][0]["cache_hit"] is True
+
+
+def test_slide_edit_flow(client: TestClient, pptx_bytes: bytes, xlsx_bytes: bytes) -> None:
+    """Правка слайда по инструкции: задание slide_edit, новая ревизия только с этим слайдом,
+    запись в edits[], событие ленты с slide_ref и карточкой; отказ — без ревизии; конфликты."""
+    from tests.pipeline.helpers import run_generation
+
+    run = run_generation(client, pptx_bytes, xlsx_bytes, title="Правка слайда")
+    job_id, project_id = run["job_id"], run["project_id"]
+    result = m.GenerationResult.model_validate(client.get(f"/api/generations/{job_id}").json())
+    balanced = next(v for v in result.variants if v.variant_id == "balanced")
+    assert balanced.revision == 1 and balanced.slide_count
+    thumbs_before = {
+        t.slide_index: client.get(f"/api/generations/{job_id}/artifacts/{t.name}").content
+        for t in (balanced.artifacts.thumbnails or [])
+    }
+    url = f"/api/generations/{job_id}/variants/balanced/edits"
+
+    # Проверки запроса: пустая инструкция, слайд вне диапазона, устаревшая ревизия.
+    empty = client.post(url, json={"base_revision": 1, "slide_index": 2, "instruction": "  "})
+    assert empty.status_code == 422 and empty.json()["error"]["code"] == "instruction_required"
+    far = client.post(url, json={"base_revision": 1, "slide_index": 99, "instruction": "короче"})
+    assert far.status_code == 422 and far.json()["error"]["code"] == "slide_index_out_of_range"
+    stale = client.post(url, json={"base_revision": 9, "slide_index": 2, "instruction": "короче"})
+    assert stale.status_code == 409 and stale.json()["error"]["code"] == "revision_stale"
+    missing = client.post(
+        f"/api/generations/{job_id}/variants/nope/edits",
+        json={"base_revision": 1, "slide_index": 2, "instruction": "короче"},
+    )
+    assert missing.status_code == 404
+
+    # Событие ленты: сообщение с адресом слайда и карточка правки проходят контракт.
+    ev = client.post(
+        f"/api/projects/{project_id}/events",
+        json={
+            "role": "user",
+            "kind": "message",
+            "text": "Короче заголовок",
+            "file_ids": [],
+            "slide_ref": {
+                "job_id": job_id,
+                "variant_id": "balanced",
+                "revision": 1,
+                "slide_index": 2,
+            },
+        },
+    )
+    assert ev.status_code == 201 and ev.json()["slide_ref"]["slide_index"] == 2
+
+    # Правка: заглушка ставит заголовок из инструкции; ревизия 2 только с этим слайдом.
+    r = client.post(
+        url, json={"base_revision": 1, "slide_index": 2, "instruction": "Новый заголовок слайда"}
+    )
+    assert r.status_code == 202, r.text
+    edit_id = r.json()["edit_job_id"]
+    card = client.post(
+        f"/api/projects/{project_id}/events",
+        json={
+            "role": "assistant",
+            "kind": "edit_card",
+            "job_id": job_id,
+            "variant_id": "balanced",
+            "edit_job_id": edit_id,
+            "slide_index": 2,
+        },
+    )
+    assert card.status_code == 201
+    m.Project.model_validate(client.get(f"/api/projects/{project_id}").json())
+    status = client.get(f"/api/jobs/{edit_id}").json()
+    m.JobStatus.model_validate(status)
+    assert status["kind"] == "slide_edit" and status["status"] == "succeeded"
+    assert status["result"]["revision"] == 2 and status["result"]["change_note"]
+    assert [s["stage"] for s in status["stages"]] == ["plan", "compose", "export", "audit"]
+    raw2 = client.get(f"/api/generations/{job_id}").json()
+    m.GenerationResult.model_validate(raw2)
+    balanced2 = next(v for v in raw2["variants"] if v["variant_id"] == "balanced")
+    assert balanced2["revision"] == 2 and len(balanced2["revisions"]) == 2
+    rev2 = balanced2["revisions"][-1]
+    assert rev2["repair_job_id"] == edit_id and rev2["changed_slide_ids"] == ["s3"]
+    assert raw2["edits"] and raw2["edits"][0]["edit_job_id"] == edit_id
+    edit = raw2["edits"][0]
+    assert edit["result"] == "applied" and edit["new_revision"] == 2 and edit["slide_id"] == "s3"
+    assert edit["slide_index"] == 2 and edit["instruction"] == "Новый заголовок слайда"
+    assert edit["changed_slide_ids"] == ["s3"] and edit["change_note"]
+    assert not raw2["repairs"]
+    plan2 = client.get(f"/api/generations/{job_id}/artifacts/balanced/r2/plan.json").json()
+    slide = next(s for s in plan2["slides"] if s["slide_id"] == "s3")
+    assert slide["title"] == "Новый заголовок слайда" and slide["revision_note"]
+    assert slide["order"] == 3
+    # Остальные слайды плана не тронуты (миниатюры заглушки несут номер ревизии, поэтому
+    # неизменность страниц по байтам проверяется на настоящем экспорте, на сервере).
+    others2 = {s["slide_id"]: s["title"] for s in plan2["slides"] if s["slide_id"] != "s3"}
+    thumbs_after = {
+        t["slide_index"]: client.get(f"/api/generations/{job_id}/artifacts/{t['name']}").content
+        for t in balanced2["artifacts"]["thumbnails"]
+    }
+    assert set(thumbs_after) == set(thumbs_before) and len(others2) == len(thumbs_before) - 1
+    assert thumbs_after[2] != thumbs_before[2]
+    audit2 = client.get(f"/api/generations/{job_id}/variants/balanced/audit").json()
+    assert audit2["revision"] == 2
+    assert audit2["rechecked_after_repair"]["changed_slide_ids"] == ["s3"]
+
+    # Отказ: заглушка отклоняет инструкцию со словом «невозможно» — ревизии нет.
+    r = client.post(
+        url, json={"base_revision": 2, "slide_index": 2, "instruction": "Это невозможно сделать"}
+    )
+    assert r.status_code == 202
+    status = client.get(f"/api/jobs/{r.json()['edit_job_id']}").json()
+    assert status["status"] == "succeeded" and status["result"]["unchanged"] is True
+    assert status["result"]["change_note"]
+    raw3 = client.get(f"/api/generations/{job_id}").json()
+    m.GenerationResult.model_validate(raw3)
+    balanced3 = next(v for v in raw3["variants"] if v["variant_id"] == "balanced")
+    assert balanced3["revision"] == 2 and len(balanced3["revisions"]) == 2
+    assert [e["result"] for e in raw3["edits"]] == ["applied", "unchanged"]
+    assert raw3["edits"][1]["change_note"] and "new_revision" not in raw3["edits"][1]
+    assert "balanced/r3/deck.pptx" not in raw3["artifacts_manifest"]
 
 
 def test_partial_failure_and_cancel(
@@ -423,6 +541,31 @@ def test_template_library_and_delete(
     assert r.json()["template_id"] != template_id
     files = client.get(f"/api/projects/{project_id}").json()["files"]
     assert files[0]["template_id"] == r.json()["template_id"]
+
+
+def test_reanalyze_templates_requeues_only_stale(
+    client: TestClient, orchestrator: Orchestrator, pptx_bytes: bytes
+) -> None:
+    """Обслуживание после выкладки: шаблон с актуальным ключом профиля не трогается, с
+    устаревшим — анализируется заново под тем же template_id; --all переанализирует все."""
+    r = client.post("/api/templates", files={"file": ("lib.pptx", pptx_bytes, PPTX_MIME)})
+    template_id = r.json()["template_id"]
+    before = client.get(f"/api/templates/{template_id}").json()
+    assert before["status"] == "succeeded"
+
+    entries = orchestrator.reanalyze_templates()
+    assert {e["template_id"]: e["action"] for e in entries}[template_id] == "up_to_date"
+
+    orchestrator.state.update_template(template_id, profile_key="stale")
+    entries = orchestrator.reanalyze_templates()
+    entry = next(e for e in entries if e["template_id"] == template_id)
+    assert entry["action"] == "queued" and entry["job_id"] != before["job_id"]
+    after = client.get(f"/api/templates/{template_id}").json()
+    assert after["status"] == "succeeded" and after["job_id"] == entry["job_id"]
+    assert orchestrator.state.get_template(template_id)["profile_key"] not in (None, "stale")
+
+    entries = orchestrator.reanalyze_templates(force=True)
+    assert next(e for e in entries if e["template_id"] == template_id)["action"] == "queued"
 
 
 def test_multipart_cli_paths(client: TestClient, pptx_bytes: bytes, xlsx_bytes: bytes) -> None:

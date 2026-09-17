@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "job_id": "job_demo",
   "status": "needs_review",
   "stage": "done",
@@ -879,5 +879,21 @@
       "audit.deterministic": "real",
       "audit.contextual": "real"
     }
-  }
+  },
+  "edits": [
+    {
+      "edit_job_id": "edit_demo",
+      "variant_id": "balanced",
+      "base_revision": 1,
+      "slide_index": 2,
+      "slide_id": "s3",
+      "instruction": "Сделай заголовок короче и вынеси 40 % в показатель",
+      "result": "applied",
+      "change_note": "Заголовок сокращён до вывода, показатель 40 % вынесен в число",
+      "new_revision": 2,
+      "changed_slide_ids": [
+        "s3"
+      ]
+    }
+  ]
 }

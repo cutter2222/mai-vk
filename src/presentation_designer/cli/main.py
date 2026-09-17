@@ -8,6 +8,7 @@ import sys
 from presentation_designer import __version__
 from presentation_designer.cli import analyze as analyze_cmd
 from presentation_designer.cli import compose as compose_cmd
+from presentation_designer.cli import edit as edit_cmd
 from presentation_designer.cli import import_content as import_cmd
 from presentation_designer.cli import plan as plan_cmd
 from presentation_designer.cli import story as story_cmd
@@ -33,6 +34,9 @@ def build_parser() -> argparse.ArgumentParser:
     compose_cmd.build_parser(
         sub.add_parser("compose", help="PPTX и ComposedDeck по плану варианта")
     )
+    edit_cmd.build_parser(
+        sub.add_parser("edit-slide", help="правка одного слайда плана по инструкции")
+    )
     for name in PLANNED:
         sub.add_parser(name, help="подключается на этапе реализации соответствующего слоя")
     return parser
@@ -54,6 +58,8 @@ def main(argv: list[str] | None = None) -> int:
         return plan_cmd.run(args)
     if args.command == "compose":
         return compose_cmd.run(args)
+    if args.command == "edit-slide":
+        return edit_cmd.run(args)
     print(
         f"Команда {args.command!r} ещё не реализована: см. IMPLEMENTATION_PLAN.md", file=sys.stderr
     )

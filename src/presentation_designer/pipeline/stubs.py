@@ -27,6 +27,8 @@ from presentation_designer.pipeline.run import (
     BriefInput,
     ComposeInput,
     ComposeOutput,
+    EditInput,
+    EditOutput,
     ExportInput,
     ExportOutput,
     ImportInput,
@@ -210,6 +212,7 @@ class StubLayers(Layers):
             "brief": "stub",
             "generation.story": "stub",
             "generation.plan": "stub",
+            "generation.edit": "stub",
             "layout": "stub",
             "export": "stub",
             "audit.deterministic": "stub",
@@ -526,3 +529,61 @@ class StubLayers(Layers):
         )
         inp.staging.write_json("audit.json", report)
         return RepairOutput(report=report, changed_slide_ids=changed, thumbnails=thumbnails)
+
+    # ---------- правка слайда по запросу ----------
+
+    def edit(self, inp: EditInput) -> EditOutput:
+        """Детерминированная правка: заголовок слайда — из инструкции. Инструкция со словом
+        «невозможно» отклоняется, как отказ модели по нехватке данных. План заглушки без
+        явного списка слайдов сначала получает его по своим примерным заголовкам, чтобы
+        заголовок новой ревизии был виден на миниатюре."""
+        _pause(self.delay_ms)
+        plan = copy.deepcopy(inp.plan)
+        count, titles = plan_slides(plan)
+        if inp.slide_index < 0 or inp.slide_index >= count:
+            raise StageError(
+                "slide_index_out_of_range",
+                f"В плане {count} слайдов, слайда с номером {inp.slide_index + 1} нет",
+                stage="plan",
+            )
+        if isinstance(plan.get("slide_count"), int) or len(plan.get("slides") or []) != count:
+            sample = (plan.get("slides") or [{}])[0]
+            plan["slides"] = [
+                {
+                    "slide_id": f"s{i + 1}",
+                    "order": i + 1,
+                    "role": "title" if i == 0 else "bullets",
+                    "pattern_id": sample.get("pattern_id", "pat_title"),
+                    "title": title,
+                    "key_message": title,
+                    "blocks": [{"slot_id": "title", "kind": "title", "text": title}],
+                    "thesis_refs": [],
+                }
+                for i, title in enumerate(titles)
+            ]
+            plan["slide_count"] = {"target": count}
+        slide = sorted(plan["slides"], key=lambda s: int(s.get("order", 0)))[inp.slide_index]
+        slide_id = str(slide["slide_id"])
+        instruction = " ".join(inp.instruction.split())
+        if "невозможно" in instruction.lower():
+            return EditOutput(
+                plan=None,
+                changed=False,
+                slide_id=slide_id,
+                reason="В материалах нет данных для такой правки; выдумывать не буду",
+                report={"stub": True},
+            )
+        title = instruction[:80].rstrip(" .")
+        slide["title"] = title
+        slide["key_message"] = title
+        for block in slide.get("blocks") or []:
+            if block.get("kind") == "title":
+                block["text"] = title
+        slide["revision_note"] = "Заголовок заменён по просьбе"
+        return EditOutput(
+            plan=plan,
+            changed=True,
+            slide_id=slide_id,
+            change_note="Заголовок заменён по просьбе",
+            report={"stub": True},
+        )
