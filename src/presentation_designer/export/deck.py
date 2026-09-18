@@ -11,16 +11,20 @@ from __future__ import annotations
 
 import base64
 import html
+import logging
 import pathlib
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from presentation_designer.export.html import build_html as native_html
 from presentation_designer.export.pdf import ConversionError, RendererUnavailableError
 from presentation_designer.export.pdf import convert_to_pdf as _convert_to_pdf
 from presentation_designer.export.pdf import find_soffice as _find_soffice
 from presentation_designer.export.thumbnails import render_thumbnails
 from presentation_designer.shared.settings import Settings
+
+log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 
@@ -90,14 +94,22 @@ def export_revision(
 
     html_started = time.perf_counter()
     html_path = out_dir / "deck.html"
-    html_path.write_text(
-        build_html(deck_title, composed_deck, thumbs.paths, slide_titles or []),
-        encoding="utf-8",
-    )
+    # Нативная страница из описания собранного файла; снимки — только если
+    # описания нет (режим заглушек). ТЗ п.2.7: слайд-картинка не засчитывается.
+    kind = "native_objects"
+    try:
+        if not composed_deck or not composed_deck.get("slides"):
+            raise ValueError("нет описания собранной колоды")
+        markup = native_html(deck_title, composed_deck, pptx_path, slide_titles or [])
+    except Exception:
+        log.warning("нативный html не построен, остаются снимки", exc_info=True)
+        markup = build_html(deck_title, composed_deck, thumbs.paths, slide_titles or [])
+        kind = "images_with_text"
+    html_path.write_text(markup, encoding="utf-8")
     report["timings_ms"]["html"] = int((time.perf_counter() - html_started) * 1000)
     report["timings_ms"]["total"] = int((time.perf_counter() - started) * 1000)
     report["pages"] = len(thumbnails)
-    report["html"] = "images_with_text"
+    report["html"] = kind
     return ExportResult(pdf_path, html_path, thumbnails, report)
 
 

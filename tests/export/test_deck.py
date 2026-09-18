@@ -8,6 +8,7 @@ import io
 import json
 import pathlib
 import stat
+import zipfile
 from typing import Any
 
 import pytest
@@ -84,18 +85,22 @@ def test_export_revision_writes_pdf_thumbnails_and_html(
     assert (result.thumbnails[0]["width_px"], result.thumbnails[0]["height_px"]) == (640, 360)
     assert (out / "thumbs" / "slide-03.png").is_file()
     html = result.html_path.read_text(encoding="utf-8")
-    assert html.startswith("<!doctype html>") and "data:image/png;base64," in html
-    assert "Проверка экспорта" in html and "<h2>Второй</h2>" in html
-    # Текст слайдов ComposedDeck под картинкой выделяется: первый абзац из примера.
+    assert html.startswith("<!doctype html>")
+    assert "Проверка экспорта" in html
+    # Слайд собран объектами, а не выгружен картинкой (ТЗ п.2.7): у каждого
+    # объекта своя рамка в процентах холста, и текст на странице выделяется.
+    assert result.report["html"] == "native_objects"
+    assert html.count('<section class="slide"') == len(deck["slides"])
+    assert "class=\"o\" style=\"left:" in html
     first_text = next(
         p["text"]
         for o in deck["slides"][0]["objects"]
         if o.get("text")
         for p in o["text"].get("paragraphs", [])
     )
-    assert first_text.strip() in html or first_text.strip() in deck["slides"][0]["title"]
+    assert first_text.strip() in html
     assert "http://" not in html and "https://" not in html.replace("http://schemas", "")
-    assert result.report["pages"] == 3 and result.report["html"] == "images_with_text"
+    assert result.report["pages"] == 3
     assert set(result.report["timings_ms"]) >= {"pdf", "thumbnails", "html", "total"}
 
 
@@ -179,3 +184,60 @@ def test_without_renderer_export_stays_stub_and_says_so(
         staging.write_bytes("deck.pptx", FIXTURE.read_bytes())
         layers.export(ExportInput("job_n", "compact", 2, staging, ["Один"], "Колода"))
     assert e.value.code == "export_renderer_unavailable" and e.value.retryable
+
+
+def test_native_html_keeps_geometry_fonts_and_pictures(tmp_path: pathlib.Path) -> None:
+    """Страница строится из описания слайда: рамки, кегли, картинки из .pptx."""
+    from presentation_designer.export.html import build_html as native
+
+    deck = {
+        "slide_size": {"width_emu": 9144000, "height_emu": 5143500},
+        "assets": [{"asset_id": "a1", "media_path": "ppt/media/image1.png", "sha256": "x"}],
+        "slides": [
+            {
+                "slide_id": "s1",
+                "index": 0,
+                "layout_id": "l1",
+                "objects": [
+                    {
+                        "object_id": "1",
+                        "kind": "text",
+                        "z_order": 2,
+                        "bbox": {"x": 0.1, "y": 0.2, "width": 0.5, "height": 0.1},
+                        "text": {
+                            "plain": "Простой снижен на 34%",
+                            "paragraphs": [{"text": "Простой снижен на 34%", "align": "left"}],
+                            "computed_style": {
+                                "font": {"family": "Play", "size_pt": 24.0, "color": "#101010"}
+                            },
+                        },
+                    },
+                    {
+                        "object_id": "2",
+                        "kind": "picture",
+                        "z_order": 1,
+                        "bbox": {"x": 0.6, "y": 0.1, "width": 0.3, "height": 0.4},
+                        "picture": {"asset_id": "a1", "fit": "cover"},
+                    },
+                ],
+            }
+        ],
+    }
+    pptx = tmp_path / "deck.pptx"
+    with zipfile.ZipFile(pptx, "w") as zf:
+        zf.writestr("ppt/media/image1.png", _png_bytes())
+
+    page = native("Колода", deck, pptx)
+
+    assert "left:10.000%" in page and "width:50.000%" in page
+    # Кегль — в долях ширины слайда: 24pt при холсте 720pt даёт 3.333cqw.
+    assert "font-size:3.333cqw" in page
+    assert "Простой снижен на 34%" in page
+    assert "data:image/png;base64," in page          # картинка взята из самого .pptx
+    assert "<img" in page and page.count("<section") == 1
+
+
+def _png_bytes() -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (8, 8), "#0077ff").save(buf, format="PNG")
+    return buf.getvalue()
