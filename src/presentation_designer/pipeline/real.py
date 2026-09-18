@@ -19,6 +19,7 @@ import logging
 import pathlib
 from typing import Any
 
+from presentation_designer import design
 from presentation_designer.generation.edit import EditError, edit_slide
 from presentation_designer.generation.story import (
     StoryError,
@@ -57,6 +58,8 @@ from presentation_designer.pipeline.run import (
 from presentation_designer.pipeline.stubs import StubLayers
 from presentation_designer.shared.settings import Settings
 
+JsonDict = dict[str, Any]
+
 log = logging.getLogger(__name__)
 
 
@@ -86,6 +89,7 @@ class RealLayers(StubLayers):
         self.last_story_report: dict[str, Any] | None = None
         self.last_plan_report: dict[str, Any] | None = None
         self.last_compose_report: dict[str, Any] | None = None
+        self.last_feedback_report: dict[str, Any] | None = None
         self.last_export_report: dict[str, Any] | None = None
 
     # ----- ленивые зависимости -----
@@ -301,6 +305,32 @@ class RealLayers(StubLayers):
             )
         except PlanError as e:
             raise StageError(e.code, str(e), retryable=e.retryable, stage="plan") from e
+        # Слой design: композиция приводится к объёму содержания. Модель знает
+        # вместимость слотов и всё равно оставляет их пустыми — под один
+        # показатель выбирался паттерн на двадцать шесть чисел. Проверка
+        # детерминированная и идёт после модели, а не вместо неё.
+        # Дозапрос на пустые слоты передаётся слою: порядок проходов задан
+        # внутри `design.apply`, потому что дозапрос обязан идти после заставы.
+        filler = self.skill("slot_filler")
+        ask = None
+        if filler is not None:
+            def ask(_system: str, user: str) -> str:
+                request = filler.request("fill.slots", user, stage="plan")
+                return client.complete_sync(request).text
+
+        plan_doc, design_report = design.apply(
+            result.plan,
+            inp.template_profile,
+            inp.story,
+            variant=inp.variant_id,
+            config=self.settings.model_dump() if hasattr(self.settings, "model_dump") else None,
+            ask=ask,
+            refill_limit=int((filler.manifest.params or {}).get("max_slots", 24)) if filler else 24,
+            package=inp.package,
+        )
+        result.plan = plan_doc
+        result.report["design"] = design_report.to_dict()
+
         self.last_plan_report = result.report
         counts = result.report.get("counts") or {}
         log.info(
@@ -314,6 +344,7 @@ class RealLayers(StubLayers):
             result.report.get("cache_hit"),
             result.report.get("total_ms", 0),
         )
+        log.info("слой design %s/%s: %s", inp.job_id, inp.variant_id, design_report.summary())
         return result.plan
 
     # ----- вёрстка -----
@@ -336,9 +367,10 @@ class RealLayers(StubLayers):
                 stage="compose",
             )
         pptx_artifact = f"{inp.staging.prefix}deck.pptx"
+        plan = self.polish_plan(inp)
         try:
             result = compose_deck(
-                inp.plan,
+                plan,
                 inp.template_profile,
                 pathlib.Path(inp.template_path),
                 inp.package,
@@ -356,7 +388,8 @@ class RealLayers(StubLayers):
         except ComposeError as e:
             raise StageError(e.code, str(e), retryable=e.retryable, stage="compose") from e
         inp.staging.write_json("composed.json", result.deck)
-        inp.staging.write_json("plan.json", inp.plan)
+        inp.staging.write_json("plan.json", plan)
+        inp.staging.write_json("story.json", inp.story)
         self.last_compose_report = result.report
         log.info(
             "сборка %s/%s: %d слайдов, объектов %s, удалено %s, %d КБ, %d мс, предупреждений %d",
@@ -374,6 +407,71 @@ class RealLayers(StubLayers):
             slide_titles=result.slide_titles,
             composed_deck=result.deck,
         )
+
+    def polish_plan(self, inp: ComposeInput) -> JsonDict:
+        """План, исправленный по фактам черновой сборки.
+
+        Вёрстка — единственное место, где видно, что получилось на самом деле:
+        какие слоты остались пустыми и какой текст не поместился. Поэтому
+        колода собирается начерно, факты читаются из результата, план правится
+        и собирается заново. Черновые сборки идут в отдельный файл и удаляются.
+
+        Проход необязателен по построению: любая ошибка внутри него оставляет
+        план как есть. Улучшение вёрстки не имеет права ронять генерацию.
+        """
+        settings = self.settings.design.feedback
+        if not settings.enabled or inp.template_path is None:
+            return inp.plan
+
+        draft = inp.staging.path("deck.draft.pptx")
+        template = pathlib.Path(inp.template_path)
+
+        def compose_draft(plan: JsonDict) -> JsonDict:
+            return compose_deck(
+                plan,
+                inp.template_profile,
+                template,
+                inp.package,
+                out_pptx=draft,
+                package_dir=inp.package_dir,
+                job_id=inp.job_id,
+                variant_id=inp.variant_id,
+                revision=inp.revision,
+                prune_layouts=bool(self.settings.layout.prune_unused_layouts),
+                fit_min_ratio=float(self.settings.plan.min_font_ratio),
+                fit_min_body_pt=float(self.settings.plan.min_body_pt),
+                fit_min_title_pt=float(self.settings.plan.min_title_pt),
+            ).deck
+
+        ask = None
+        client = self.llm_client()
+        filler = self.skill("slot_filler")
+        if settings.refill and client is not None and filler is not None:
+            def ask(_system: str, user: str) -> str:
+                return client.complete_sync(filler.request("fill.slots", user, stage="plan")).text
+
+        try:
+            plan, report = design.polish(
+                inp.plan,
+                inp.template_profile,
+                inp.story,
+                compose=compose_draft,
+                variant=inp.variant_id,
+                config=self.settings.model_dump(),
+                ask=ask,
+                package=inp.package,
+            )
+        except Exception:                       # правка не имеет права ронять сборку
+            log.warning("правка по фактам вёрстки не удалась %s/%s",
+                        inp.job_id, inp.variant_id, exc_info=True)
+            return inp.plan
+        finally:
+            draft.unlink(missing_ok=True)
+
+        self.last_feedback_report = report
+        log.info("правка по фактам %s/%s: %s", inp.job_id, inp.variant_id,
+                 {k: v for k, v in report.items() if k not in ("decisions", "refilled")})
+        return plan
 
     # ----- экспорт -----
 

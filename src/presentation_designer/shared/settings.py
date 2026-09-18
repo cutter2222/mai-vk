@@ -155,6 +155,29 @@ class Audit(BaseModel):
     thresholds: AuditThresholds = Field(default_factory=AuditThresholds)
 
 
+class DesignVariant(BaseModel):
+    """Рамки заполненности одного варианта вёрстки (design/rules.py)."""
+
+    min_fill: float = 0.35
+    max_fill: float = 0.72
+    max_slots_ratio: float = 1.5
+
+
+class DesignFeedback(BaseModel):
+    """Правка плана по фактам собранного файла (design/feedback.py)."""
+
+    enabled: bool = True
+    refill: bool = True        # спрашивать модель; выключено — только детерминированные правки
+    rounds: int = 2            # кругов дозапроса: дальше выигрыш не окупает вызова
+    max_slots: int = 24
+    pattern_swap: bool = False # менять композицию по фактам: см. комментарий в app.yaml
+
+
+class Design(BaseModel):
+    variants: dict[str, DesignVariant] = Field(default_factory=dict)
+    feedback: DesignFeedback = Field(default_factory=DesignFeedback)
+
+
 class Llm(BaseModel):
     """Адаптер моделей: кэш, умолчания лимитера, повторы и оценка токенов (llm/)."""
 
@@ -194,6 +217,7 @@ class Settings(BaseModel):
     retention: Retention = Field(default_factory=Retention)
     backup: Backup = Field(default_factory=Backup)
     audit: Audit = Field(default_factory=Audit)
+    design: Design = Field(default_factory=Design)
     llm: Llm = Field(default_factory=Llm)
 
     def resolve(self, path: pathlib.Path) -> pathlib.Path:
