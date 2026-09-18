@@ -1177,6 +1177,21 @@ def _asset_kind_of(ctx: _Context, slide: Any, element_id: str) -> str | None:
     return str(asset.get("kind")) if asset is not None else None
 
 
+# Крупная картинка образца на содержательном слайде: в шаблоне ЛЦТ на четверти
+# слайда стоит скриншот VK WorkSpace, и в колоде про логистику он читается как
+# её содержание. Каталог таких снимков не ловит: из 222 ресурсов «мокапом»
+# помечен один, а измеримого признака (белизна, число цветов, текстурность)
+# у скриншотов с иллюстрациями не нашлось — проверено на всех ресурсах.
+#
+# Поэтому условий два. Размер: мелкая картинка — приём оформления, крупная —
+# заявление по существу. И вид: фотографии и иллюстрации (`photo`) остаются,
+# снимаются плоские картинки (`image` — то, что классификатор счёл
+# одноцветным), а это и есть интерфейсные снимки. Одного размера мало:
+# по нему уходили и удачные иллюстрации в карточках, слайд становился голым.
+BIG_SAMPLE_AREA = 0.12
+KEEPABLE_BIG_KINDS = ("photo", "background", "logo", "icon")
+
+
 def _sample_image_misleading(
     ctx: _Context,
     slide: Any,
@@ -1188,10 +1203,19 @@ def _sample_image_misleading(
 ) -> bool:
     """Картинка образца без содержания вводит в заблуждение, если это картинка диаграммы,
     скриншот или мокап (по каталогу ресурсов), если паттерн — про диаграммы/скриншоты по
-    роли или имени, либо если соседняя картинка той же группы карточек — такая."""
+    роли или имени, если она занимает заметную часть содержательного слайда, либо если
+    соседняя картинка той же группы карточек — такая."""
     if _asset_kind_of(ctx, slide, element_id) in MISLEADING_ASSET_KINDS:
         return True
     role = str(pattern_raw.get("role") or "")
+    decorative_role = role in ("title", "section_divider", "thanks", "image_full", "speaker")
+    box = slot.bbox
+    if (
+        not decorative_role
+        and box[2] * box[3] >= BIG_SAMPLE_AREA
+        and _asset_kind_of(ctx, slide, element_id) not in KEEPABLE_BIG_KINDS
+    ):
+        return True
     name = str(pattern_raw.get("name") or "").lower()
     if role in ("chart", "screenshot", "mockup") or any(w in name for w in _CHART_WORDS):
         return True

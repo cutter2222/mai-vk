@@ -1706,10 +1706,45 @@ def thin_ratio(draft: Draft) -> tuple[int, int] | None:
     return None
 
 
+# Сколько раз одна композиция может встретиться в колоде, прежде чем слайды
+# начнут разводить по другим. Две — это ещё ритм (повтор поддерживает
+# структуру), три и больше — однообразие: колода из восьми слайдов, где пять
+# подряд собраны одинаково, читается как один слайд, размноженный пять раз.
+#
+# Плотному варианту позволено больше: у него слайдов больше, и требовать от
+# него столько же разных композиций — значит выгребать весь шаблон. Пороги
+# разные ещё и потому, что три варианта обязаны отличаться (ТЗ п.2.5): с
+# одинаковыми порогами подгонка приводила их к одной и той же колоде.
+MAX_PATTERN_USES = {"compact": 2, "balanced": 2, "detailed": 3}
+DEFAULT_MAX_USES = 2
+
+# Во сколько раз мест под числа должно быть больше самих чисел, чтобы менять
+# композицию. Плотный вариант терпит просторную композицию, сжатый — нет.
+NUMBERS_SLACK = {"compact": 2.5, "balanced": 3.0, "detailed": 4.0}
+DEFAULT_NUMBERS_SLACK = 3.0
+
+
+def numbers_thin(draft: Draft, slack: float = DEFAULT_NUMBERS_SLACK) -> bool:
+    """Слайд показателей, где мест под числа втрое больше самих чисел.
+
+    Пунктами такой слайд не меряется: у него их нет, есть числа. Замер от
+    18.09.2026 (шаблон ЛЦТ): два показателя в композиции на шестнадцать полос —
+    четырнадцать полос стоят пустыми, а крайнее число обрезается краем слайда.
+    """
+    numbers = sum(1 for b in draft.blocks if b.get("number")) or len(
+        [f for f in draft.facts if f]
+    )
+    capacity = draft.pattern.number_capacity
+    return bool(numbers) and capacity >= max(slack * numbers, numbers + 3)
+
+
 def right_size_pattern(ctx: Context, draft: Draft) -> bool:
     """Композиция по объёму: под один-два пункта берётся ближайшая по вместимости
     композиция (текст, список, две-три карточки), а не карточки на 4–7. Возвращает True,
     если композиция заменена."""
+    slack = NUMBERS_SLACK.get(ctx.variant_id, DEFAULT_NUMBERS_SLACK)
+    if numbers_thin(draft, slack) and "right_size_numbers:trial" not in draft.actions:
+        return _right_size_numbers(ctx, draft)
     thin = thin_ratio(draft)
     if thin is None:
         return False
@@ -1776,6 +1811,55 @@ def count_hint(packet: Packet, drafts: list[Draft]) -> str | None:
         f"{packet.target}) — раскрой тезисы {ids} на отдельные слайды по разным сторонам "
         "(контекст, механизм, следствия, пример), каждый с 2–4 пунктами и своим заголовком-выводом"
     )
+
+
+def _right_size_numbers(ctx: Context, draft: Draft) -> bool:
+    """Композиция под столько показателей, сколько их есть.
+
+    Кандидат обязан вместить все числа и не быть сам избыточным: менять
+    «Цифры × 16» на «Цифры × 11» под два показателя незачем — пустых полос
+    остаётся столько же.
+    """
+    numbers = sum(1 for b in draft.blocks if b.get("number")) or len(draft.facts)
+    need = Need("number", items=max(len(draft.items), 1), numbers=numbers, text_chars=40)
+    pool = candidates_for(
+        ctx.patterns, need, ctx.variant_id, limit=8, has_datasets=ctx.has_datasets
+    ) + [c for c in draft.candidates if c.pattern_id != draft.pattern.pattern_id]
+    ranked = sorted(
+        (
+            c
+            for c in pool
+            if c.pattern_id != draft.pattern.pattern_id
+            and numbers <= c.number_capacity < draft.pattern.number_capacity
+            and c.number_capacity <= 2 * numbers + 1
+        ),
+        key=lambda c: c.number_capacity,
+    )
+    # Кандидат проверяется сборкой: у компактных композиций места под число
+    # рассчитаны на две-три цифры, и «3400» рядом со «120» слипалось в
+    # «1203400». Подгонять размер, не примерив содержание, нельзя.
+    best: PatternInfo | None = None
+    for cand in ranked:
+        trial = copy.deepcopy(draft)
+        trial.pattern = cand
+        trial.overflow = []
+        trial.actions.append("right_size_numbers:trial")
+        fit_draft(ctx, trial)
+        if not trial.overflow:
+            best = cand
+            break
+    if best is None:
+        return False
+    original = draft.pattern
+    draft.pattern = best
+    draft.candidates = [c for c in draft.candidates if c is not best] + [original]
+    draft.actions.append(f"right_size_numbers:{original.pattern_id}→{best.pattern_id}")
+    ctx.fix(
+        "pattern_right_sized",
+        f"«{draft.title[:40]}»: {numbers} показател(я) на {original.number_capacity} мест — "
+        f"{original.pattern_id} → {best.pattern_id}",
+    )
+    return True
 
 
 def thin_count(drafts: list[Draft]) -> int:
@@ -1915,8 +1999,12 @@ def _title_draft(ctx: Context, structure: Structure) -> Draft:
     p = structure.title_pattern
     assert p is not None
     title = _clean(brief.get("title") or ctx.story.get("key_takeaway"), 160)
+    # Подпись обложки — о чём колода, а не для кого. В шаблоне ЛЦТ на этом
+    # месте стоит «Разработчик корпоративного ПО»: жанр — описание, а не
+    # адресат. «Для: инвесторы» читается как поле формы.
     subtitle = _clean(
-        (brief.get("audience") and f"Для: {brief['audience']}") or ctx.story.get("key_takeaway"),
+        ctx.story.get("key_takeaway")
+        or (brief.get("audience") and f"Для: {brief['audience']}"),
         200,
     )
     d = Draft(
@@ -2234,6 +2322,7 @@ def assemble(ctx: Context, structure: Structure, packet_drafts: list[list[Draft]
     deck = drafts + body + ([final] if final else [])
     deck = _control_count(ctx, structure, deck)
     deck = _ensure_coverage(ctx, structure, deck)
+    deck = _diversify(ctx, deck)
     deck = _limit_series(ctx, deck)
     return deck
 
@@ -2663,6 +2752,84 @@ def _neighbour(ctx: Context, deck: list[Draft], t: Thesis) -> Draft | None:
         if 0 <= j < len(deck) and deck[j].kind == "content":
             return deck[j]
     return next((d for d in deck if d.kind == "content"), None)
+
+
+def _need_of(draft: Draft) -> Need:
+    """Что слайду нужно от композиции: подача, число пунктов, объём текста."""
+    chars = len(draft.text) + sum(len(it.get("text") or "") for it in draft.items)
+    return Need(
+        draft.visual,
+        items=max(len(draft.items), 1),
+        numbers=sum(1 for b in draft.blocks if b.get("number")),
+        text_chars=max(chars, 40),
+    )
+
+
+def _alternatives(ctx: Context, draft: Draft) -> list[PatternInfo]:
+    """Чем можно заменить композицию слайда, в порядке предпочтения.
+
+    Сначала братья по группе образцов: это та же композиция в другом
+    исполнении, язык шаблона сохраняется полностью. Затем — подбор по
+    потребности слайда и уже рассмотренные кандидаты.
+    """
+    pool = siblings_of(ctx.patterns, draft.pattern)
+    pool += candidates_for(
+        ctx.patterns, _need_of(draft), ctx.variant_id, limit=12, has_datasets=ctx.has_datasets
+    )
+    pool += list(draft.candidates)
+    seen: set[str] = {draft.pattern.pattern_id}
+    out: list[PatternInfo] = []
+    for cand in pool:
+        if cand.pattern_id in seen:
+            continue
+        seen.add(cand.pattern_id)
+        out.append(cand)
+    # Свой стиль вперёд: светлый слайд не должен без нужды становиться тёмным.
+    out.sort(key=lambda c: c.style_key != draft.pattern.style_key)
+    return out
+
+
+def _diversify(ctx: Context, deck: list[Draft]) -> list[Draft]:
+    """Разные слайды — разные композиции.
+
+    Подгонка по объёму (`right_size_pattern`) выбирает композицию, ближайшую
+    по вместимости, и для одинаковых по объёму слайдов выбирает одну и ту же:
+    в замере от 18.09.2026 пять слайдов подряд получили `pat_s40`, а вся
+    колода уложилась в четыре композиции из пятидесяти четырёх, какие есть в
+    шаблоне. Формально дефекта нет — каждый слайд по отдельности собран
+    правильно. Смотреть такую колоду невозможно.
+
+    Здесь повторы разводятся: слайд переезжает на композицию, которой в колоде
+    ещё нет. Замена принимается только если содержание в неё помещается —
+    проверяется тем же измерением, что и всё остальное.
+    """
+    from collections import Counter
+
+    limit = MAX_PATTERN_USES.get(ctx.variant_id, DEFAULT_MAX_USES)
+    used = Counter(d.pattern.pattern_id for d in deck)
+    for d in deck:
+        if d.kind != "content" or used[d.pattern.pattern_id] <= limit:
+            continue
+        for alt in _alternatives(ctx, d):
+            if used.get(alt.pattern_id, 0) >= limit:
+                continue
+            trial = copy.deepcopy(d)
+            trial.pattern = alt
+            trial.overflow = []
+            fit_draft(ctx, trial)
+            if trial.overflow or trial.pattern.pattern_id == d.pattern.pattern_id:
+                continue
+            used[d.pattern.pattern_id] -= 1
+            used[trial.pattern.pattern_id] += 1
+            ctx.fix(
+                "pattern_diversified",
+                f"«{d.title[:40]}»: {d.pattern.pattern_id} → {trial.pattern.pattern_id} "
+                f"(эта композиция уже занята {used[d.pattern.pattern_id] + 1} раз)",
+            )
+            d.pattern, d.blocks, d.overflow = trial.pattern, trial.blocks, []
+            d.actions.append(f"diversify:{trial.pattern.pattern_id}")
+            break
+    return deck
 
 
 def _limit_series(ctx: Context, deck: list[Draft]) -> list[Draft]:
