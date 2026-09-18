@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-18T17:11:20Z",
+ "entry_version": 1,
+ "key": "3c529f158b65ac5d1cc633f7245c5b0f04a7538d27b5dc2d3acef29652a4d5e1",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3190,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 4174,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Бриф: назначение — product; тема — «Запуск сервиса умных уведомлений»; аудитория — руководители продуктовых направлений; цель — получить одобрение на расширение пилота; тон — деловой, без технических ",
+  "prompt": [
+   "story.outline",
+   "0.2.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "story_planner",
+   "0.2.0"
+  ],
+  "stage": "story"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 23785,
+  "model": "qwen3-32b",
+  "provider": "qwen-api",
+  "text": "{\"key_takeaway\": \"Умные уведомления повысили открываемость на 13 п. п., снизили отписки и принесли экономию в 12,5 млн ₽ — одобрите расширение пилота на все регионы.\", \"theses\": [{\"id\": \"t1\", \"kind\": \"context\", \"statement\": \"Пользователи получают до 27 уведомлений в день, но пропускают до 40 % важных из-за отсутствия приоритизации.\", \"required\": true, \"parent\": \"\", \"source_refs\": [\"b3\"], \"fact_refs\": [\"f1\", \"f2\"], \"dataset_refs\": [], \"asset_refs\": [], \"visual\": \"number\", \"covers\": [\"метрики пилота\"]}, {\"id\": \"t2\", \"kind\": \"section\", \"statement\": \"Решение: центр уведомлений с контекстной приоритизацией\", \"required\": true, \"parent\": \"\", \"source_refs\": [\"b4\", \"b5\"], \"fact_refs\": [], \"dataset_refs\": [], \"asset_refs\": [\"img_1\"], \"visual\": \"image\", \"covers\": []}, {\"id\": \"t3\", \"kind\": \"claim\", \"statement\": \"Открываемость выросла с {fact:f3} до {fact:f4} за три месяца пилота.\", \"required\": true, \"parent\": \"t2\", \"source_refs\": [\"b6\", \"b7\"], \"fact_refs\": [\"f3\", \"f4\"], \"dataset_refs\": [\"ds1\"], \"asset_refs\": [\"img_2\"], \"visual\": \"chart\", \"covers\": [\"метрики пилота\"]}, {\"id\": \"t4\", \"kind\": \"evidence\", \"statement\": \"Доля отписок снизилась с {fact:f5} до {fact:f6}, а активные пользователи увеличились на {fact:f20}.\", \"required\": true, \"parent\": \"t3\", \"source_refs\": [\"b6\", \"b7\"], \"fact_refs\": [\"f5\", \"f6\", \"f20\"], \"dataset_refs\": [\"ds1\"], \"asset_refs\": [], \"visual\": \"table\", \"covers\": [\"метрики пилота\"]}, {\"id\": \"t5\", \"kind\": \"claim\", \"statement\": \"Экономия на поддержке составила {fact:f7} за год при затратах {fact:f8} на пилот.\", \"required\": true, \"parent\": \"t2\", \"source_refs\": [\"b6\", \"b7\"], \"fact_refs\": [\"f7\", \"f8\"], \"dataset_refs\": [\"ds2\"], \"asset_refs\": [], \"visual\": \"comparison\", \"covers\": [\"метрики пилота\"]}, {\"id\": \"t6\", \"kind\": \"conclusion\", \"statement\": \"Пилот показал рост метрик и окупаемость инвестиций менее чем за два месяца.\", \"required\": true, \"parent\": \"t2\", \"source_refs\": [\"b6\", \"b7\"], \"fact_refs\": [\"f9\", \"f10\", \"f23\"], \"dataset_refs\": [\"ds2\"], \"asset_refs\": [], \"visual\": \"text\", \"covers\": []}, {\"id\": \"t7\", \"kind\": \"section\", \"statement\": \"План масштабирования на квартал\", \"required\": true, \"parent\": \"\", \"source_refs\": [\"b9\"], \"fact_refs\": [], \"dataset_refs\": [], \"asset_refs\": [], \"visual\": \"timeline\", \"covers\": [\"план на квартал\"]}, {\"id\": \"t8\", \"kind\": \"claim\", \"statement\": \"В октябре подключим два новых продукта, в ноябре — персональные тихие часы, в декабре — расширим сервис на все регионы.\", \"required\": true, \"parent\": \"t7\", \"source_refs\": [\"b9\", \"b10\"], \"fact_refs\": [\"f11\"], \"dataset_refs\": [], \"asset_refs\": [], \"visual\": \"bullets\", \"covers\": [\"план на квартал\"]}, {\"id\": \"t9\", \"kind\": \"claim\", \"statement\": \"Цель по открываемости — достичь {fact:f11} к концу декабря.\", \"required\": true, \"parent\": \"t7\", \"source_refs\": [\"b9\", \"b10\"], \"fact_refs\": [\"f11\"], \"dataset_refs\": [], \"asset_refs\": [], \"visual\": \"number\", \"covers\": [\"план на квартал\"]}, {\"id\": \"t10\", \"kind\": \"call_to_action\", \"statement\": \"Одобритесь расширения пилота на все продукты в четвёртом квартале.\", \"required\": true, \"parent\": \"\", \"source_refs\": [\"b18\", \"b19\"], \"fact_refs\": [], \"dataset_refs\": [], \"asset_refs\": [], \"visual\": \"text\", \"covers\": []}], \"allowed_reductions\": [{\"thesis_id\": \"t4\", \"reduction\": \"table_to_chart\"}, {\"thesis_id\": \"t8\", \"reduction\": \"shorten_wording\"}], \"assumptions\": [\"Аудитория знакома с продуктом и не требует технических деталей инфраструктуры.\", \"Факты f9, f10 и f23 используются как производные для анализа изменений.\"]}",
+  "usage": {
+   "completion_tokens": 1249,
+   "prompt_tokens": 3411,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

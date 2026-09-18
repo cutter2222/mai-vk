@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-18T17:10:17Z",
+ "entry_version": 1,
+ "key": "f701f2e56bab4c874ce1de8159537a557372fbc83559fe65ae7faf2f8f08b845",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 1917,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 122,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Сделай презентацию про запуск сервиса умных уведомлений для руководителей, чтобы одобрили расширение пилота, 10–12 слайдов",
+  "prompt": [
+   "brief.extract",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "brief_extractor",
+   "0.1.0"
+  ],
+  "stage": "brief"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 6454,
+  "model": "qwen3-32b",
+  "provider": "qwen-api",
+  "text": "{\"purpose\": \"product\", \"title\": \"Запуск сервиса умных уведомлений\", \"audience\": \"руководителей\", \"goal\": \"одобрили расширение пилота\", \"slide_count\": {\"min\": 10, \"max\": 12}, \"intent\": \"generate\"}",
+  "usage": {
+   "completion_tokens": 63,
+   "prompt_tokens": 1294,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

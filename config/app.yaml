@@ -25,13 +25,13 @@ limits:
 timeouts:
   job_total_s: 600          # общий deadline пользовательского запроса
   stage_analyze_s: 180
-  stage_story_s: 120
-  stage_plan_s: 120
+  stage_story_s: 200
+  stage_plan_s: 200
   stage_compose_s: 60
   stage_export_s: 120
   stage_audit_s: 180
   render_convert_s: 90      # одна конвертация LibreOffice
-  llm_call_s: 90
+  llm_call_s: 170      # длинный план не укладывался в 90 с: около 40 токенов/с
   brief_s: 8                # извлечение брифа из сообщения чата: модель без рассуждения, при ошибке эвристика
 
 budget:

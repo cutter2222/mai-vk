@@ -56,7 +56,24 @@ def _valid(
 
 
 def _content_index(plan: dict[str, Any]) -> int:
+    """Содержательный слайд под правку — с одним тезисом.
+
+    Ответ модели в этих проверках несёт одну мысль, и слайд на два тезиса
+    после такой правки терял бы второй. Правка это заметит и откажет
+    (`coverage_missing`) — верное поведение, но проверяется здесь не оно.
+    """
     slides = ed.ordered_slides(plan)
+    single = [
+        i
+        for i, s in enumerate(slides)
+        if s["role"] not in mt.FIXED_ROLES
+        and len(s.get("thesis_refs") or []) == 1
+        # Со слотом заголовка: на слайде таблицы его нет, и проверки про
+        # заголовок там ничего не проверяют.
+        and any(b.get("kind") == "title" for b in s.get("blocks") or [])
+    ]
+    if single:
+        return single[0]
     return next(
         i for i, s in enumerate(slides) if s["role"] not in mt.FIXED_ROLES and s["thesis_refs"]
     )

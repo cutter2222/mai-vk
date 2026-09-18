@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-18T17:10:55Z",
+ "entry_version": 1,
+ "key": "6b36da093dc2aab09fc20686e26800720333445c0adc37707f986406511ae19a",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 1917,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 100,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Сгенерируй презентацию фичи «Тихие часы» для продуктовой команды, цель — согласовать релиз в октябре",
+  "prompt": [
+   "brief.extract",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "brief_extractor",
+   "0.1.0"
+  ],
+  "stage": "brief"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4250,
+  "model": "qwen3-32b",
+  "provider": "qwen-api",
+  "text": "{\"purpose\": \"feature\", \"title\": \"Тихие часы\", \"audience\": \"продуктовой команды\", \"goal\": \"согласовать релиз в октябре\", \"intent\": \"generate\"}",
+  "usage": {
+   "completion_tokens": 43,
+   "prompt_tokens": 1290,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

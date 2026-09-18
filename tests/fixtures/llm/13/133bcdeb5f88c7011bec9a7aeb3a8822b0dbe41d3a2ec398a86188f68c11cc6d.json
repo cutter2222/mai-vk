@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-18T17:12:37Z",
+ "entry_version": 1,
+ "key": "133bcdeb5f88c7011bec9a7aeb3a8822b0dbe41d3a2ec398a86188f68c11cc6d",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3171,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: compact. Компактная подача: слайдов ближе к нижней границе, один слайд может объединять два-три родственных тезиса одного раздела. Заголовок-вывод и два-три коротких пункта (до 8 слов) или по",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 10067,
+  "model": "qwen3-32b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\"t5\"],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"Экономия превышает затраты в 5 раз\",\n      \"message\": \"Пилот окупился за счёт снижения нагрузки на поддержку.\",\n      \"visual\": \"cards\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Затраты на пилот\",\n          \"sub\": \"Инвестиции\",\n          \"facts\": [\"f8\"]\n        },\n        {\n          \"text\": \"Экономия за год\",\n          \"sub\": \"Результат\",\n          \"facts\": [\"f7\"]\n        },\n        {\n          \"text\": \"Окупаемость < 2 мес\",\n          \"sub\": \"Срок\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [\"f7\", \"f8\"],\n      \"dataset\": \"\",\n      \"chart_type\": \"\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\"t6\"],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"Метрики растут, инвестиции окупаются\",\n      \"message\": \"Ключевые показатели эффективности подтверждают успех пилота.\",\n      \"visual\": \"cards\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Открываемость выше\",\n          \"sub\": \"Рост\",\n          \"facts\": [\"f9\"]\n        },\n        {\n          \"text\": \"Отписок стало меньше\",\n          \"sub\": \"Удержание\",\n          \"facts\": [\"f10\"]\n        },\n        {\n          \"text\": \"Чистая выгода\",\n          \"sub\": \"Финансы\",\n          \"facts\": [\"f23\"]\n        }\n      ],\n      \"facts\": [\"f9\", \"f10\", \"f23\"],\n      \"dataset\": \"\",\n      \"chart_type\": \"\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    }\n  ],\n  \"rationale\": \"Оба тезиса раскрыты через карточки для компактной визуализации ключевых фактов без лишнего текста, что соответствует стилю compact и позволяет быстро считать выгоду.\"\n}",
+  "usage": {
+   "completion_tokens": 545,
+   "prompt_tokens": 3231,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

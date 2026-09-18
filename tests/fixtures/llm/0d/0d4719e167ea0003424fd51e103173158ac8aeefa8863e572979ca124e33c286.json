@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-18T17:11:27Z",
+ "entry_version": 1,
+ "key": "0d4719e167ea0003424fd51e103173158ac8aeefa8863e572979ca124e33c286",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3168,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: compact. Компактная подача: слайдов ближе к нижней границе, один слайд может объединять два-три родственных тезиса одного раздела. Заголовок-вывод и два-три коротких пункта (до 8 слов) или по",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 7273,
+  "model": "qwen3-32b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\"t3\", \"t4\"],\n      \"pattern\": \"pat_s3\",\n      \"title\": \"Открываемость выросла, отписки снизились\",\n      \"message\": \"Пилот улучшил ключевые метрики вовлечённости и удержания пользователей.\",\n      \"visual\": \"chart\",\n      \"text\": \"\",\n      \"items\": [],\n      \"facts\": [\"f3\", \"f4\", \"f5\", \"f6\", \"f20\"],\n      \"dataset\": \"ds1\",\n      \"chart_type\": \"line\",\n      \"columns\": [\"Месяц\", \"Открываемость (%)\", \"Отписки (%)\"],\n      \"image\": \"\",\n      \"notes\": \"\"\n    }\n  ],\n  \"rationale\": \"Для варианта compact объединены два родственных тезиса одного раздела в один слайд с диаграммой, показывающей динамику всех ключевых метрик из набора данных ds1.\"\n}",
+  "usage": {
+   "completion_tokens": 236,
+   "prompt_tokens": 3257,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

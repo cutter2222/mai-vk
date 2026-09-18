@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-18T17:11:38Z",
+ "entry_version": 1,
+ "key": "4f37955365665fe2b5d0488e42d3aedfe3c9fdfa87749b31001f5d0738e92525",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3164,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 1160,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 298,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: в пакете 1 слайд(ов) при допустимых 3–4 (цель 3) — раскрой тезисы t5, t6 на отдельные слайды по разным сторонам (контекст, механизм, следствия, пример), каждый с 2–4 пунктам",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 9081,
+  "model": "qwen3-32b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\"t5\"],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"Экономия {fact:f7} при затратах {fact:f8}\",\n      \"message\": \"Финансовая эффективность пилота подтверждена значительной экономией.\",\n      \"visual\": \"cards\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Затраты на запуск и поддержку пилота\",\n          \"sub\": \"Инвестиции\",\n          \"facts\": [\"f8\"]\n        },\n        {\n          \"text\": \"Снижение нагрузки на службу поддержки\",\n          \"sub\": \"Экономия\",\n          \"facts\": [\"f7\"]\n        },\n        {\n          \"text\": \"Чистый финансовый эффект от внедрения\",\n          \"sub\": \"Результат\",\n          \"facts\": [\"f7\", \"f8\"]\n        }\n      ],\n      \"facts\": [\"f7\", \"f8\"],\n      \"dataset\": \"\",\n      \"chart_type\": \"\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\"t6\"],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"Окупаемость менее чем за два месяца\",\n      \"message\": \"Пилот продемонстрировал быструю окупаемость и рост ключевых метрик.\",\n      \"visual\": \"cards\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Рост открываемости уведомлений\",\n          \"sub\": \"Вовлеченность\",\n          \"facts\": [\"f9\"]\n        },\n        {\n          \"text\": \"Снижение доли отписок пользователей\",\n          \"sub\": \"Удержание\",\n          \"facts\": [\"f10\"]\n        },\n        {\n          \"text\": \"Быстрая окупаемость инвестиций проекта\",\n          \"sub\": \"ROI\",\n          \"facts\": [\"f23\"]\n        }\n      ],\n      \"facts\": [\"f9\", \"f10\", \"f23\"],\n      \"dataset\": \"\",\n      \"chart_type\": \"\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    }\n  ],\n  \"rationale\": \"Тезисы разделены на два слайда для детализации финансовой эффективности и метрик окупаемости, каждый с тремя карточками соответствует плотности и компактности варианта.\"\n}",
+  "usage": {
+   "completion_tokens": 582,
+   "prompt_tokens": 3706,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-18T17:12:13Z",
+ "entry_version": 1,
+ "key": "39cac6689ad7f8ac24b19d7bb7edcdd339e6b8014ad3f85d4b5ff852338388cc",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3005,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: detailed. Подробная подача: слайдов ближе к верхней границе, разделы получают разделители. Тезис раскрывается пояснением и примерами, до шести пунктов с подписями (sub), карточки и две колонк",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 10828,
+  "model": "qwen3-32b",
+  "provider": "qwen-api",
+  "text": "{\"slides\": [{\"theses\": [\"t5\"], \"pattern\": \"pat_s2\", \"title\": \"Экономия превышает затраты в 5 раз\", \"message\": \"Сравнение экономии и затрат на пилот\", \"visual\": \"cards\", \"text\": \"\", \"items\": [{\"text\": \"Затраты на пилот: {fact:f8}\", \"sub\": \"Инвестиции\", \"facts\": [\"f8\"]}, {\"text\": \"Экономия на поддержке за год: {fact:f7}\", \"sub\": \"Результат\", \"facts\": [\"f7\"]}, {\"text\": \"Окупаемость инвестиций — менее двух месяцев\", \"sub\": \"Вывод\", \"facts\": []}], \"facts\": [\"f7\", \"f8\"], \"dataset\": \"\", \"chart_type\": \"\", \"columns\": [], \"image\": \"\", \"notes\": \"\"}, {\"theses\": [\"t6\"], \"pattern\": \"pat_s2\", \"title\": \"Пилот окупился за два месяца\", \"message\": \"Метрики роста и окупаемости\", \"visual\": \"cards\", \"text\": \"\", \"items\": [{\"text\": \"Открываемость выросла на {fact:f9}\", \"sub\": \"Ключевая метрика\", \"facts\": [\"f9\"]}, {\"text\": \"Доля отписок снизилась на {fact:f10}\", \"sub\": \"Поведенческий эффект\", \"facts\": [\"f10\"]}, {\"text\": \"Общая экономия при масштабировании: {fact:f23}\", \"sub\": \"Перспективы\", \"facts\": [\"f23\"]}], \"facts\": [\"f9\", \"f10\", \"f23\"], \"dataset\": \"\", \"chart_type\": \"\", \"columns\": [], \"image\": \"\", \"notes\": \"\"}], \"rationale\": \"Выбрана подробная подача с карточками для раскрытия тезисов t5 и t6, что соответствует варианту detailed. Данные представлены через факты и выводы, без технических деталей, как требуется по брифу.\"}",
+  "usage": {
+   "completion_tokens": 491,
+   "prompt_tokens": 3163,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

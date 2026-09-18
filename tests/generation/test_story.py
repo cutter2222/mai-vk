@@ -201,9 +201,11 @@ def test_build_story_on_replay(example_package: dict[str, Any], replay_client: A
     meta = story["generation_meta"]
     assert meta["skills"] == [{"name": "story_planner", "version": "0.2.0"}]
     assert meta["prompts"] == [{"name": "story.outline", "version": "0.2.0"}]
-    assert (
-        meta["models"][0]["name"] == "qwen3.8-27b" and meta["models"][0]["reasoning_mode"] == "off"
-    )
+    from presentation_designer.shared.settings import get_models_config
+
+    role = get_models_config().role("llm")
+    assert meta["models"][0]["name"] == role.model
+    assert meta["models"][0]["reasoning_mode"] == role.reasoning.mode
     assert meta["prompt_tokens"] > 1000 and meta["completion_tokens"] > 500
     assert result.report["digest_truncated"] is False and result.report["fixes"] == []
 

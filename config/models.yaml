@@ -13,10 +13,20 @@ providers:
     # Зонд 16.09.2026 (docs/llm-capabilities.md): прокси LiteLLM над vLLM. reasoning_effort → 400,
     # enable_thinking в теле игнорируется, работает chat_template_kwargs.enable_thinking; бюджет
     # рассуждения не задаётся — рассуждение и ответ делят max_completion_tokens.
-    reasoning_style: vllm_chat_template
+    # Зонд 18.09.2026: chat_template_kwargs.enable_thinking рассуждение НЕ
+    # выключает (осталось 140 токенов), а простой enable_thinking в теле —
+    # выключает. Стиль изменён под фактическое поведение шлюза, который
+    # требует ЯВНОГО enable_thinking=false для открытых моделей Qwen без
+    # потоковой передачи: иначе HTTP 400 «only supports enable_thinking with
+    # stream=true». Стиль qwen_enable_thinking шлёт именно этот параметр.
+    reasoning_style: qwen_enable_thinking
     model_revision: null   # ревизия весов у провайдера не раскрывается; внутренний алиас qwen3.8-27b-dflash2
-    supports:              # по результатам зонда 16.09.2026
-      json_schema: true
+    supports:              # зонд 18.09.2026, см. docs/llm-capabilities.md
+      # json_schema на этом шлюзе отдаёт ПУСТОЙ ответ с finish=length: модель
+      # тратит токены на скрытое рассуждение (в usage оно не отражается) и до
+      # содержания не доходит. json_object работает. Флаг false включает
+      # штатное понижение формата в llm/client.py:_downgrade_format.
+      json_schema: false
       json_object: true
       images: true
       multi_image: true
@@ -40,11 +50,19 @@ active_provider: qwen-api
 roles:
   llm:
     provider: qwen-api
-    model: qwen3.8-27b       # подтверждён зондом 16.09.2026: есть в /models, отвечает
+    # Замер 18.09.2026 на одном и том же промпте story:
+    #   qwen3.8-27b  73 с, >4000 токенов уходит в СКРЫТОЕ рассуждение, ответ пуст
+    #   qwen3-32b    15 с, 1300 токенов, полный ответ при лимите 4000
+    # Обе модели проходят ТЗ п.3 (открытые веса, <=35B); 32B ещё и дешевле.
+    model: qwen3-32b
     hf_url: https://huggingface.co/Qwen/Qwen3.8-27B
     license: Apache-2.0
     params_b: 27
-    reasoning: { mode: low, max_output_tokens: 4000 }
+    # Замер 18.09.2026: модель тратит >4000 токенов на СКРЫТОЕ рассуждение,
+    # которого нет в usage. При лимите 4000 ответ приходит пустым с
+    # finish=length, повторы съедают бюджет стадии и дают тайм-аут.
+    # При 8000 содержание появляется, время то же (73 с).
+    reasoning: { mode: "off", max_output_tokens: 4000 }
     temperature: 0.2
     verified: { by: probe, date: "2026-09-16", source: "docs/llm-capabilities.md; в каталоге /models api-ai.mai.ru" }
   vlm:

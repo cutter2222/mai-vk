@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-18T17:11:49Z",
+ "entry_version": 1,
+ "key": "45c1b8b5e990361ece710dc45281a67ea449bd1adf8be14f1fa807b4f6cfc0d2",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 2975,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: balanced. Сбалансированная подача: один тезис на слайд, заголовок-вывод, короткое пояснение (одно-два предложения) и до четырёх пунктов или показателей. Ряды данных — диаграмма с подписями; т",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 9022,
+  "model": "qwen3-32b",
+  "provider": "qwen-api",
+  "text": "{\"slides\": [{\"theses\": [\"t5\"], \"pattern\": \"pat_s2\", \"title\": \"Экономия превышает затраты в 5 раз\", \"message\": \"Сравнение экономии и затрат на пилот\", \"visual\": \"cards\", \"text\": \"\", \"items\": [{\"text\": \"Затраты на пилот: {fact:f8}\", \"sub\": \"Инвестиции\", \"facts\": [\"f8\"]}, {\"text\": \"Экономия за год: {fact:f7}\", \"sub\": \"Результат\", \"facts\": [\"f7\"]}], \"facts\": [\"f7\", \"f8\"], \"dataset\": \"\", \"chart_type\": \"\", \"columns\": [], \"image\": \"\", \"notes\": \"\"}, {\"theses\": [\"t6\"], \"pattern\": \"pat_s2\", \"title\": \"Окупаемость инвестиций — менее двух месяцев\", \"message\": \"Метрики улучшились, инвестиции окупились\", \"visual\": \"number\", \"text\": \"Открываемость выросла на {fact:f9}, отписки снизились на {fact:f10}.\", \"items\": [{\"text\": \"+{fact:f9} открываемости\", \"sub\": \"\", \"facts\": [\"f9\"]}, {\"text\": \"{fact:f10} отписок\", \"sub\": \"\", \"facts\": [\"f10\"]}, {\"text\": \"{fact:f23} экономии при масштабировании\", \"sub\": \"\", \"facts\": [\"f23\"]}], \"facts\": [\"f9\", \"f10\", \"f23\"], \"dataset\": \"\", \"chart_type\": \"\", \"columns\": [], \"image\": \"\", \"notes\": \"\"}], \"rationale\": \"Выбрана сбалансированная подача: каждый тезис раскрыт отдельно, ключевые показатели выделены в карточках и числах, обеспечена ясность выводов для руководителей.\"}",
+  "usage": {
+   "completion_tokens": 436,
+   "prompt_tokens": 3159,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

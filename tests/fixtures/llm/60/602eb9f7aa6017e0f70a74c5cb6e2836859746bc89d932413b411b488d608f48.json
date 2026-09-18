@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-18T17:10:23Z",
+ "entry_version": 1,
+ "key": "602eb9f7aa6017e0f70a74c5cb6e2836859746bc89d932413b411b488d608f48",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 1917,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 91,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Нужен отчёт по итогам третьего квартала для совета директоров, ровно 8 слайдов, тон деловой",
+  "prompt": [
+   "brief.extract",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "brief_extractor",
+   "0.1.0"
+  ],
+  "stage": "brief"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5272,
+  "model": "qwen3-32b",
+  "provider": "qwen-api",
+  "text": "{\"purpose\": \"report\", \"title\": \"Итоги третьего квартала\", \"audience\": \"совета директоров\", \"tone\": \"деловой\", \"slide_count\": {\"exact\": 8}, \"intent\": \"generate\"}",
+  "usage": {
+   "completion_tokens": 50,
+   "prompt_tokens": 1285,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

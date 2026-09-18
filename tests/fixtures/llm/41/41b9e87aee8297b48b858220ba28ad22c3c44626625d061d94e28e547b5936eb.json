@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-18T17:12:13Z",
+ "entry_version": 1,
+ "key": "41b9e87aee8297b48b858220ba28ad22c3c44626625d061d94e28e547b5936eb",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 2962,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: detailed. Подробная подача: слайдов ближе к верхней границе, разделы получают разделители. Тезис раскрывается пояснением и примерами, до шести пунктов с подписями (sub), карточки и две колонк",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 11039,
+  "model": "qwen3-32b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\"t8\"],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"План масштабирования на квартал\",\n      \"message\": \"Поэтапное расширение сервиса с октября по декабрь.\",\n      \"visual\": \"cards\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Подключение двух новых продуктов\",\n          \"sub\": \"Октябрь\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Персональные тихие часы\",\n          \"sub\": \"Ноябрь\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Расширение на все регионы\",\n          \"sub\": \"Декабрь\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\"t9\"],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"Целевая открываемость к концу года\",\n      \"message\": \"Ключевая метрика эффективности расширения пилота.\",\n      \"visual\": \"cards\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Достичь уровня открываемости уведомлений\",\n          \"sub\": \"Цель декабря\",\n          \"facts\": [\"f11\"]\n        },\n        {\n          \"text\": \"Результат внедрения умной приоритизации\",\n          \"sub\": \"Ожидаемый эффект\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Основание для дальнейшего развития сервиса\",\n          \"sub\": \"Значение метрики\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [\"f11\"],\n      \"dataset\": \"\",\n      \"chart_type\": \"\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    }\n  ],\n  \"rationale\": \"Для варианта detailed использованы карточки с подписями для раскрытия тезисов плана и цели, что соответствует правилам подачи с подробным пояснением.\"\n}",
+  "usage": {
+   "completion_tokens": 518,
+   "prompt_tokens": 3087,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

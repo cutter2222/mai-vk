@@ -56,10 +56,20 @@ def plan_request(**kw: Any) -> Request:
     return req
 
 
+def _limiter_key() -> str:
+    """Ключ лимитера текущей роли: имя модели живёт в конфиге, не в тесте."""
+    from presentation_designer.shared.settings import get_models_config
+
+    return f"qwen-api:{get_models_config().role('llm').model}"
+
+
 def test_resolve_target_and_defaults(models: ModelsConfig) -> None:
+    # Имя модели берётся из конфига: оно там и живёт (ТЗ п.4), а менять его
+    # приходится при смене шлюза. Литерал в тесте ломался бы каждый раз.
+    expected = models.role("llm").model
     target = resolve_target(models, "llm")
-    assert target.provider_name == "qwen-api" and target.model == "qwen3.8-27b"
-    assert target.limiter_key == "qwen-api:qwen3.8-27b"
+    assert target.provider_name == "qwen-api" and target.model == expected
+    assert target.limiter_key == f"qwen-api:{expected}"
     with pytest.raises(ConfigError):
         resolve_target(models, "text_to_image")
     with pytest.raises(ConfigError):
@@ -67,11 +77,17 @@ def test_resolve_target_and_defaults(models: ModelsConfig) -> None:
 
 
 async def test_role_defaults_applied(make_client: Callable[..., LlmClient]) -> None:
+    """Умолчания роли берутся из конфига и доезжают до транспорта."""
+    from presentation_designer.shared.settings import get_models_config
+
+    role = get_models_config().role("llm")
     stub = StubTransport()
     client = make_client(stub)
     await client.complete(plan_request(), parse=Plan)
     sent = stub.calls[0]
-    assert sent.reasoning == "low" and sent.max_output_tokens == 4000 and sent.temperature == 0.2
+    assert sent.reasoning == role.reasoning.mode
+    assert sent.max_output_tokens == role.reasoning.max_output_tokens
+    assert sent.temperature == 0.2
     await client.complete(plan_request(reasoning="off", temperature=0.0), parse=Plan)
     assert stub.calls[1].reasoning == "off" and stub.calls[1].temperature == 0.0
 
@@ -167,7 +183,7 @@ async def test_quota_wait_counts_into_deadline(make_client: Callable[..., LlmCli
     limiter = LocalLimiter(Quota(1, 1000, 1_000_000), max_wait_s=5)
     stub = StubTransport()
     client = make_client(stub, limiter=limiter)
-    lease = await limiter.acquire("qwen-api:qwen3.8-27b", 10)  # слот занят другим воркером
+    lease = await limiter.acquire(_limiter_key(), 10)  # слот занят другим воркером
     with pytest.raises(QuotaTimeoutError):
         await client.complete(plan_request(deadline=Deadline.after(0.3)))
     assert stub.calls == [], "до модели запрос не дошёл"
@@ -192,7 +208,7 @@ async def test_lease_released_after_failure(make_client: Callable[..., LlmClient
     stub.fail(ProviderError("500", status=500, retryable=True), times=1)
     client = make_client(stub, limiter=limiter)
     await client.complete(plan_request(), parse=Plan)
-    snap = await limiter.snapshot("qwen-api:qwen3.8-27b")
+    snap = await limiter.snapshot(_limiter_key())
     assert snap["active"] == 0 and snap["requests_in_window"] == 2
 
 
@@ -238,7 +254,9 @@ def test_provider_summary_has_no_secrets(
     assert redact_url(None) is None
     refs = model_refs(models)
     assert {r["role"] for r in refs} == {"llm", "vlm"}
-    assert all(r["name"] == "qwen3.8-27b" for r in refs)
+    # У ролей разные модели: llm — открытая 32B, vlm — своя. Каждая ссылка
+    # обязана называть модель своей роли, а не одну на всех.
+    assert all(r["name"] == models.role(r["role"]).model for r in refs)
 
 
 def test_complete_sync_outside_loop(make_client: Callable[..., LlmClient]) -> None:

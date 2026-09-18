@@ -74,7 +74,10 @@ async def test_probe_runs_on_stub_and_renders_report(
 
     report = pr.render_report(result, commit="abc123")
     assert "SECRET" not in report and "sk-" not in report
-    assert "https://api.example.org" in report and "qwen3.8-27b" in report
+    from presentation_designer.shared.settings import get_models_config
+
+    assert "https://api.example.org" in report
+    assert get_models_config().role("llm").model in report
     assert "| json_schema | да |" in report and "| multi_image | да |" in report
     assert "Короткий зонд их не доказывает" in report
     snippet = pr.yaml_snippet(result)

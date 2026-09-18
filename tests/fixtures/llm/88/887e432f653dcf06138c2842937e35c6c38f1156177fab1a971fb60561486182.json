@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-18T17:12:51Z",
+ "entry_version": 1,
+ "key": "887e432f653dcf06138c2842937e35c6c38f1156177fab1a971fb60561486182",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3349,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 1970,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 409,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Цель: открываемость {fact:f11} к декабрю» (pat_s3): 1 пункт(ов) на композицию из 3 карточек — раскрой тезис до 3 пунктов по пояснению (без выдуманных цифр); слайд «Од",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 12852,
+  "model": "qwen3-32b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\"t8\"],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"План масштабирования на квартал\",\n      \"message\": \"Поэтапное подключение продуктов и расширение сервиса в октябре–декабре.\",\n      \"visual\": \"cards\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Подключение двух новых продуктов\",\n          \"sub\": \"Октябрь\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Персональные тихие часы\",\n          \"sub\": \"Ноябрь\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Расширение на все регионы\",\n          \"sub\": \"Декабрь\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\"t9\"],\n      \"pattern\": \"pat_s3\",\n      \"title\": \"Цель: открываемость {fact:f11} к декабрю\",\n      \"message\": \"Ключевой показатель эффективности к концу года.\",\n      \"visual\": \"number\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"{fact:f11}\",\n          \"sub\": \"Открываемость\",\n          \"facts\": [\"f11\"]\n        },\n        {\n          \"text\": \"Метрика измеряется ежемесячно\",\n          \"sub\": \"\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Цель достигается за счёт улучшенной приоритизации\",\n          \"sub\": \"\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [\"f11\"],\n      \"dataset\": \"\",\n      \"chart_type\": \"\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\"t10\"],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"Одобрите расширение пилота\",\n      \"message\": \"Запрос на одобрение масштабирования сервиса в четвёртом квартале.\",\n      \"visual\": \"cards\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Расширение на все продукты\",\n          \"sub\": \"Q4\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Интеграция в текущую экосистему\",\n          \"sub\": \"\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Ожидаемый рост метрик пользователей\",\n          \"sub\": \"\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    }\n  ],\n  \"rationale\": \"Компактная подача объединяет три обязательных тезиса в три слайда, используя карточки для плана и призыва, и показатели для цели, что соответствует правилам варианта и бюджету.\"\n}",
+  "usage": {
+   "completion_tokens": 724,
+   "prompt_tokens": 4012,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

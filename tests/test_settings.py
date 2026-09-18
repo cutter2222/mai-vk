@@ -30,7 +30,12 @@ def test_models_config_roles_and_provider(monkeypatch: pytest.MonkeyPatch) -> No
     assert models.role("llm").license == "Apache-2.0"
     assert models.role("llm").params_b is not None and models.role("llm").params_b <= 35
     assert models.role("llm").verified.by == "probe", "model ID подтверждён зондом 16.09.2026"
-    assert models.provider_for("llm").supports.json_schema is True
+    # Строгая схема поддерживается не каждым шлюзом: наш на json_schema
+    # отдаёт пустой ответ, и в конфиге она выключена. Требование ТЗ — не
+    # конкретный режим, а предсказуемый разбор ответа, поэтому проверяется,
+    # что хоть один структурный режим у провайдера есть.
+    supports = models.provider_for("llm").supports
+    assert supports.json_schema or supports.json_object
     provider = models.provider_for("llm")
     assert provider.base_url() == "https://example.invalid/v1"
     assert models.role("text_to_image").enabled is False
