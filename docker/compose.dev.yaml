@@ -1,0 +1,26 @@
+# Правки конфигов и скиллов без пересборки образа: только для отладки.
+services:
+  api:
+    volumes:
+      - ../config:/app/config:ro
+      - ../skills:/app/skills:ro
+      - ../src:/app/src:ro
+      - ../tools:/app/tools:ro
+  worker-generation:
+    volumes:
+      - ../config:/app/config:ro
+      - ../skills:/app/skills:ro
+      - ../src:/app/src:ro
+      - ../tools:/app/tools:ro
+      # Запись фикстур модели идёт отсюда: ключ записи зависит от файлов
+      # шрифтов машины, поэтому писать их надо там же, где потом считается
+      # вместимость слотов, — внутри образа.
+      - ../scripts:/app/scripts:ro
+      - ../tests:/app/tests
+      - ../examples:/app/examples:ro
+  worker-analysis:
+    volumes:
+      - ../config:/app/config:ro
+      - ../skills:/app/skills:ro
+      - ../src:/app/src:ro
+      - ../tools:/app/tools:ro
