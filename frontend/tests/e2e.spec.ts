@@ -340,6 +340,154 @@ test.describe("сквозной сценарий в чате на заглушк
     await expect(page.getByTestId("download-menu")).toBeEnabled();
   });
 
+  test("визуальный редактор: текст и положение, перестановка, применение создаёт ревизию", async ({ page }) => {
+    await speedUp(page, 8);
+    const errors = collectConsoleErrors(page);
+    await createProject(page);
+    await uploadTemplate(page);
+    await sendMaterialsAndBrief(page);
+    await startGeneration(page);
+    await waitForAllVariantsDone(page);
+    // Редактор доступен, когда задание завершено целиком (все варианты собраны и проверены).
+    await page.locator('[data-testid="thumb-strip"] button').first().click();
+    await expect(page.getByTestId("toggle-editor")).toBeVisible({ timeout: WAIT.variantsDone });
+    // Первый слайд — на картинке контуры объектов, клик по заголовку открывает холст с панелью
+    await page.locator(".preview-stage").getByRole("button", { name: "заголовок" }).first().click();
+    await expect(page.getByTestId("slide-canvas")).toBeVisible();
+    await expect(page.getByTestId("object-panel")).toBeVisible();
+    await expect(page.getByTestId("object-title")).toHaveText("Заголовок");
+    const selected = page.locator('[data-testid^="canvas-object-"][data-selected="true"]');
+    await expect(selected).toHaveCount(1);
+    const objectId = (await selected.getAttribute("data-testid"))?.replace("canvas-object-", "") ?? "";
+    const object = page.getByTestId(`canvas-object-${objectId}`);
+    await shot(page, "editor-open");
+
+    // Текст и кегль: холст меняется сразу, черновик блокирует чат
+    await page.getByTestId("prop-text").fill("Новый текст заголовка");
+    await expect(object).toContainText("Новый текст заголовка");
+    await expect(page.getByTestId("badge-user-edited")).toBeVisible();
+    await page.getByTestId("prop-size").fill("31");
+    await page.getByTestId("prop-size").press("Tab");
+    await expect(page.getByTestId("badge-off-template")).toBeVisible();
+    await expect(page.getByTestId("editor-draft-count")).toContainText("Черновик: 2");
+    await page.getByTestId("chat-input").fill("поменяй местами");
+    await expect(page.getByTestId("chat-send")).toBeDisabled();
+    await expect(page.getByTestId("chat-draft-hint")).toBeVisible();
+    await page.getByTestId("chat-input").fill("");
+    // Положение: поле «Слева» двигает объект на холсте
+    await page.getByTestId("prop-x").fill("10");
+    await page.getByTestId("prop-x").press("Tab");
+    await expect(object).toHaveCSS("left", /px/);
+    await expect(page.getByTestId("editor-draft-count")).toContainText("Черновик: 3");
+
+    // Перестановка: первый слайд перетаскивается на место третьего
+    const grip = page.getByTestId("thumb-grip-0");
+    const third = page.getByTestId("thumb-2");
+    await grip.hover();
+    const from = await grip.boundingBox();
+    const to = await third.boundingBox();
+    expect(from && to).toBeTruthy();
+    await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height - 4, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.getByTestId("slide-counter")).toHaveText(/Слайд 3 из/);
+    await expect(page.getByTestId("editor-draft-count")).toContainText("порядок изменён");
+    await shot(page, "editor-draft");
+
+    // Применить: карточка правок в чате, новая ревизия, черновик пуст, чат доступен
+    await page.getByTestId("editor-apply").click();
+    await expect(page.getByTestId("edit-card").last()).toBeVisible();
+    await expect(page.getByTestId("edit-card").last()).toContainText("ревизия 2", { timeout: WAIT.audit * 4 });
+    await expect(page.getByTestId("edit-note").last()).toContainText("Слайд 1");
+    await expect(page.getByText("Правки применены", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("preview-pane")).toContainText("ревизия 2");
+    await expect(page.getByTestId("editor-draft-count")).toContainText("Черновик пуст");
+    await expect(page.getByTestId("chat-draft-hint")).toHaveCount(0);
+    // Слайд с правкой стоит третьим и несёт новый текст
+    await expect(page.getByTestId("slide-counter")).toHaveText(/Слайд 3 из/);
+    await expect(object).toContainText("Новый текст заголовка");
+    await expect(page.getByTestId("badge-user-edited")).toHaveCount(0);
+    await object.click();
+    await expect(page.getByTestId("badge-user-edited")).toBeVisible();
+    await shot(page, "editor-applied");
+
+    // Отмена черновика возвращает исходный вид, «Готово» закрывает редактор
+    await page.getByTestId("prop-text").fill("Временный текст");
+    await expect(object).toContainText("Временный текст");
+    await page.getByTestId("editor-cancel").click();
+    await expect(object).toContainText("Новый текст заголовка");
+    await expect(page.getByTestId("chat-draft-hint")).toHaveCount(0);
+    await page.getByTestId("toggle-editor").click();
+    await expect(page.getByTestId("slide-canvas")).toHaveCount(0);
+    await expect(page.locator(".preview-stage").getByTestId("slide-frame")).toBeVisible();
+    expect(errors, errors.join("\n")).toEqual([]);
+  });
+
+  test("визуальный редактор: замена иконки из шаблона, своя картинка и фон", async ({ page }) => {
+    await speedUp(page, 8);
+    const errors = collectConsoleErrors(page);
+    await createProject(page);
+    await uploadTemplate(page);
+    await sendMaterialsAndBrief(page);
+    await startGeneration(page);
+    await waitForAllVariantsDone(page);
+    await page.locator('[data-testid="thumb-strip"] button').nth(1).click();
+    await expect(page.getByTestId("toggle-editor")).toBeVisible({ timeout: WAIT.variantsDone });
+    await page.getByTestId("toggle-editor").click();
+    await expect(page.getByTestId("slide-canvas")).toBeVisible();
+    // Слайд с картинкой: у заглушки — второй, у настоящей колоды ищем по ленте (может не быть вовсе).
+    const pictures = page.locator('[data-testid^="canvas-object-"][data-kind="picture"]');
+    const thumbs = page.locator('[data-testid="thumb-strip"] button');
+    const total = await thumbs.count();
+    for (let i = 1; i < total && (await pictures.count()) === 0; i += 1) {
+      await thumbs.nth(i).click();
+      await expect(page.getByTestId("slide-counter")).toHaveText(new RegExp(`Слайд ${i + 1} из`));
+    }
+    const hasPicture = (await pictures.count()) > 0;
+    let draft = 0;
+    if (hasPicture) {
+      // Картинка на слайде: выбор ресурса шаблона (иконка перекрашивается цветом палитры)
+      await pictures.first().click();
+      await expect(page.getByTestId("picture-properties")).toBeVisible();
+      await page.getByTestId("prop-picture-replace").click();
+      await expect(page.getByTestId("asset-picker")).toBeVisible();
+      await page.locator('[data-testid^="asset-item-"]').first().click();
+      await expect(page.getByTestId("asset-picker")).toHaveCount(0);
+      await expect(page.getByTestId("badge-user-edited")).toBeVisible();
+      await expect(page.getByTestId("prop-fit")).toBeVisible();
+      const swatch = page.locator('[data-testid^="prop-icon-color-swatch-"]').first();
+      if (await swatch.count()) await swatch.click();
+      draft += 1;
+      await expect(page.getByTestId("editor-draft-count")).toContainText(`Черновик: ${draft}`);
+      // Своя картинка: загрузка в проект и подстановка
+      await page.getByTestId("prop-picture-replace").click();
+      await page.getByTestId("asset-tab-upload").click();
+      const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.getByTestId("asset-upload").click()]);
+      await chooser.setFiles([{ name: "photo.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64") }]);
+      await expect(page.getByTestId("picture-properties")).toContainText("photo.png", { timeout: 15000 });
+    }
+    // Фон слайда: клик по пустому месту холста, цвет из палитры
+    await page.getByTestId("slide-canvas").click({ position: { x: 4, y: 4 } });
+    await expect(page.getByTestId("background-panel")).toBeVisible();
+    await page.getByTestId("bg-kind").getByText("Цвет").click();
+    await page.locator('[data-testid^="bg-color-swatch-"]').first().click();
+    draft += 1;
+    await expect(page.getByTestId("editor-draft-count")).toContainText(`Черновик: ${draft}`);
+    await shot(page, "editor-picture-draft");
+    // Применить: ревизия с картинкой и фоном
+    await page.getByTestId("editor-apply").click();
+    await expect(page.getByTestId("edit-card").last()).toContainText("ревизия 2", { timeout: WAIT.audit * 4 });
+    await expect(page.getByTestId("editor-draft-count")).toContainText("Черновик пуст");
+    await expect(page.getByTestId("slide-canvas")).toHaveCSS("background-color", /rgb/);
+    if (hasPicture) {
+      await pictures.first().click();
+      await expect(page.getByTestId("badge-user-edited")).toBeVisible();
+      await expect(page.getByTestId("picture-properties")).toContainText("своя картинка");
+    }
+    expect(errors, errors.join("\n")).toEqual([]);
+  });
+
   test("частичная ошибка варианта и повтор", async ({ page }) => {
     await speedUp(page, 8);
     await createProject(page);

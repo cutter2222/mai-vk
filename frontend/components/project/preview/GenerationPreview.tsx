@@ -1,43 +1,101 @@
 "use client";
 
 import { ActionIcon, Badge, Button, Group, Loader, SegmentedControl, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
-import { IconListCheck, IconStar, IconStarFilled, IconX } from "@tabler/icons-react";
+import { IconListCheck, IconPencil, IconStar, IconStarFilled, IconX } from "@tabler/icons-react";
+import { useEffect, useRef } from "react";
 
+import type { Outline } from "@/components/common/SlideImage";
+import { PropertiesPanel } from "@/components/project/editor/PropertiesPanel";
+import { SlideCanvas } from "@/components/project/editor/SlideCanvas";
 import { AuditPanel } from "@/components/workspace/AuditPanel";
 import { HowBuiltPanel } from "@/components/workspace/HowBuiltPanel";
 import { RevisionsPanel } from "@/components/workspace/RevisionsPanel";
 import { VariantCard } from "@/components/workspace/VariantCard";
-import { api } from "@/lib/api/client";
+import { api, type TemplateDetail } from "@/lib/api/client";
+import type { ContentPackage } from "@/lib/api/types";
+import { objectLabel } from "@/lib/editor/overrides";
 import { formatMs, STAGE_LABELS, VARIANT_LABELS } from "@/lib/format";
 import { useElapsed } from "@/lib/hooks/useElapsed";
 import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
+import type { SlideEditor } from "@/lib/hooks/useSlideEditor";
 
-import { SlideViewer } from "./SlideViewer";
+import { SlideViewer, type ViewerSlide } from "./SlideViewer";
 
 interface Props {
   session: GenerationSession;
+  editor: SlideEditor;
+  templateDetail: TemplateDetail | null;
+  pkg: ContentPackage | null | undefined;
+  projectId: string | null;
   chosenVariant: string | null;
   onChoose: (variantId: string | null) => void;
 }
 
 const VARIANT_DOT: Record<string, string> = { pending: "gray", running: "blue", ready: "green", needs_review: "yellow", failed: "red" };
 
-/** Слайды сгенерированной презентации: переключение вариантов, просмотр по одному или рядом, рамки аудита. */
-export function GenerationPreview({ session, chosenVariant, onChoose }: Props) {
+/** Слайды сгенерированной презентации: переключение вариантов, просмотр по одному или рядом, рамки аудита, редактор. */
+export function GenerationPreview({ session, editor, templateDetail, pkg, projectId, chosenVariant, onChoose }: Props) {
   const { jobId, result, variant } = session;
   const elapsed = useElapsed(result?.created_at, session.terminal ? (result?.finished_at ?? result?.created_at) : null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  // Высота панели свойств уходит в CSS-переменную: слайд ужимается, чтобы панель не уехала за экран.
+  useEffect(() => {
+    const el = panelRef.current;
+    const main = el?.closest<HTMLElement>(".viewer-main");
+    if (!el || !main) return;
+    const update = () => main.style.setProperty("--object-panel-h", `${el.getBoundingClientRect().height}px`);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      main.style.removeProperty("--object-panel-h");
+    };
+  }, [editor.editing, editor.selectedObjectId]);
+
   if (!jobId || !result) return null;
 
   const thumbs = variant?.artifacts?.thumbnails ?? [];
   const issueSlides = new Set(session.audit.data?.issues.map((i) => i.slide_index) ?? []);
-  const slides = thumbs.map((t) => ({
-    key: t.name,
-    src: api.generations.artifactUrl(jobId, session.viewRevision !== session.currentRevision ? t.name.replace(`/r${session.currentRevision}/`, `/r${session.viewRevision}/`) : t.name),
-    label: `Слайд ${t.slide_index + 1}`,
-    flagged: issueSlides.has(t.slide_index),
-  }));
+  const thumbUrl = (name: string) =>
+    api.generations.artifactUrl(jobId, session.viewRevision !== session.currentRevision ? name.replace(`/r${session.currentRevision}/`, `/r${session.viewRevision}/`) : name);
+  const thumbByDeckIndex = (deckIndex: number) => {
+    const t = thumbs.find((x) => x.slide_index === deckIndex);
+    return t ? thumbUrl(t.name) : undefined;
+  };
+  const deck = editor.deck;
+  // Порядок ленты — черновой порядок редактора, если описание колоды загружено; иначе миниатюры ревизии.
+  const slides: ViewerSlide[] = deck
+    ? editor.slides.map((s, position) => ({
+        key: s.slide_id,
+        src: thumbByDeckIndex(s.index),
+        label: `Слайд ${s.index + 1}`,
+        flagged: issueSlides.has(s.index),
+        edited: editor.changedSlides.some((c) => c.slide_id === s.slide_id) || (editor.orderChanged && deck.slides[position]?.slide_id !== s.slide_id),
+      }))
+    : thumbs.map((t) => ({ key: t.name, src: thumbUrl(t.name), label: `Слайд ${t.slide_index + 1}`, flagged: issueSlides.has(t.slide_index) }));
   const running = !session.terminal;
   const isChosen = Boolean(variant && chosenVariant === variant.variant_id);
+  const current = editor.currentSlide;
+  const outlines: Outline[] =
+    editor.available && current && !editor.editing
+      ? current.objects.filter((o) => o.kind !== "group" && o.kind !== "connector" && o.kind !== "other").map((o) => ({ id: o.object_id, bbox: o.bbox, label: objectLabel(o) }))
+      : [];
+  const layoutUrl =
+    current && templateDetail?.previews.includes(`previews/layout-${current.layout_id}.png`) && templateDetail.profile
+      ? api.templates.assetUrl(templateDetail.profile.template_id, `previews/layout-${current.layout_id}.png`)
+      : null;
+  const pattern = templateDetail?.profile?.patterns.find((p) => p.pattern_id === current?.pattern_id);
+  const fallbackBackground = pattern?.tone?.background === "dark" ? "#1d1f25" : "#ffffff";
+  const mediaUrl = (assetId: string) => {
+    const asset = deck?.assets?.find((a) => a.asset_id === assetId);
+    return asset?.artifact ? api.generations.artifactUrl(jobId, asset.artifact) : undefined;
+  };
+  const openEditor = (objectId: string | null) => {
+    editor.setEditing(true);
+    editor.selectObject(objectId);
+  };
 
   return (
     <>
@@ -68,6 +126,17 @@ export function GenerationPreview({ session, chosenVariant, onChoose }: Props) {
         </Group>
         <Group gap="sm" wrap="nowrap">
           <SegmentedControl size="xs" value={session.layout} onChange={(v) => session.setLayout(v as "single" | "side")} data={[{ value: "single", label: "Один вариант" }, { value: "side", label: "Сравнить" }]} data-testid="layout-switch" />
+          {editor.available && (
+            <Button
+              size="xs"
+              variant={editor.editing ? "filled" : "default"}
+              leftSection={<IconPencil size={14} />}
+              onClick={() => (editor.editing ? editor.setEditing(false) : openEditor(null))}
+              data-testid="toggle-editor"
+            >
+              {editor.editing ? "Готово" : "Редактировать"}
+            </Button>
+          )}
           {variant?.audit && variant.audit.status !== "pending" && (
             <Button
               size="xs"
@@ -75,6 +144,7 @@ export function GenerationPreview({ session, chosenVariant, onChoose }: Props) {
               leftSection={<IconListCheck size={14} />}
               onClick={() => {
                 session.setLayout("single");
+                editor.setEditing(false);
                 session.setAuditOpen(!session.auditOpen);
               }}
               data-testid="toggle-audit"
@@ -124,16 +194,40 @@ export function GenerationPreview({ session, chosenVariant, onChoose }: Props) {
           slides={slides}
           index={session.slideIndex}
           onIndex={session.selectSlide}
-          overlays={session.overlays}
+          overlays={editor.editing ? [] : session.overlays}
           activeOverlay={session.activeIssue}
           onOverlayClick={session.setActiveIssue}
+          outlines={outlines}
+          onOutlineClick={(id) => openEditor(id)}
+          editing={editor.editing}
+          onReorder={editor.available ? editor.reorder : undefined}
+          stage={
+            editor.editing && deck && editor.previewSlide ? (
+              <SlideCanvas
+                deck={deck}
+                slide={editor.previewSlide}
+                layoutUrl={layoutUrl}
+                thumbUrl={current ? thumbByDeckIndex(current.index) : undefined}
+                mediaUrl={mediaUrl}
+                selectedObjectId={editor.selectedObjectId}
+                onSelect={editor.selectObject}
+                editable
+                onGeometry={(objectId, bbox) => {
+                  const obj = current?.objects.find((o) => o.object_id === objectId);
+                  editor.setOp({ op: "geometry", target: { object_id: objectId, ...(obj?.source_object_id ? { source_object_id: obj.source_object_id } : {}) }, geometry: { bbox } });
+                }}
+                fallbackBackground={fallbackBackground}
+              />
+            ) : undefined
+          }
           caption={
             <>
               <Text size="sm" fw={500}>{VARIANT_LABELS[variant.variant_id] ?? variant.variant_id}</Text>
               <Text size="xs" c="dimmed">ревизия {session.viewRevision}</Text>
               {session.viewRevision !== session.currentRevision && <Badge size="xs" color="orange" variant="light">устаревшая</Badge>}
               {variant.status === "running" && <Badge size="xs" color="blue" variant="light" data-testid="preview-provisional">предварительный показ · сборка идёт</Badge>}
-              {variant.audit && variant.audit.status !== "pending" && (
+              {editor.dirty && <Badge size="xs" color="graphite" variant="light" data-testid="draft-badge">черновик: {editor.draftCount}</Badge>}
+              {variant.audit && variant.audit.status !== "pending" && !editor.editing && (
                 <Badge size="xs" variant="light" color={variant.audit.status === "running" ? "blue" : variant.audit.issues_total ? "yellow" : variant.audit.coverage_complete ? "green" : "gray"}>
                   {variant.audit.status === "running" ? "аудит идёт" : `${variant.audit.issues_total} находок${variant.audit.coverage_complete ? "" : " · аудит неполный"}`}
                 </Badge>
@@ -148,7 +242,7 @@ export function GenerationPreview({ session, chosenVariant, onChoose }: Props) {
             </Tooltip>
           }
           aside={
-            session.auditOpen ? (
+            session.auditOpen && !editor.editing ? (
               <div className="audit-drawer" data-testid="audit-drawer">
                 <Group justify="space-between" mb="sm">
                   <Text fw={600}>Аудит</Text>
@@ -182,8 +276,17 @@ export function GenerationPreview({ session, chosenVariant, onChoose }: Props) {
           }
         >
           <Stack gap="md" mt="xs">
-            <Text size="xs" c="dimmed" lineClamp={2} title={variant.rationale}>Ось «плотность»: {variant.rationale}</Text>
-            {session.showHowBuilt && <HowBuiltPanel jobId={jobId} result={result} variantId={variant.variant_id} slideIndex={session.slideIndex} />}
+            {editor.editing && (
+              <div ref={panelRef}>
+                {editor.deckError ? (
+                  <Text size="xs" c="red">Описание колоды не загружено: {editor.deckError}</Text>
+                ) : (
+                  <PropertiesPanel editor={editor} profile={templateDetail?.profile} pkg={pkg} projectId={projectId} />
+                )}
+              </div>
+            )}
+            {!editor.editing && <Text size="xs" c="dimmed" lineClamp={2} title={variant.rationale}>Ось «плотность»: {variant.rationale}</Text>}
+            {session.showHowBuilt && <HowBuiltPanel jobId={jobId} result={result} variantId={variant.variant_id} slideIndex={current?.index ?? session.slideIndex} />}
           </Stack>
         </SlideViewer>
       ) : null}

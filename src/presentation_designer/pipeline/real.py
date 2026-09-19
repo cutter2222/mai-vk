@@ -320,7 +320,7 @@ class RealLayers(StubLayers):
 
             def ask(_system: str, user: str) -> str:
                 request = filler.request("fill.slots", user, stage="plan")
-                return client.complete_sync(request).text
+                return str(client.complete_sync(request).text)
 
         plan_doc, design_report = design.apply(
             result.plan,
@@ -432,6 +432,9 @@ class RealLayers(StubLayers):
                 fit_min_ratio=float(self.settings.plan.min_font_ratio),
                 fit_min_body_pt=float(self.settings.plan.min_body_pt),
                 fit_min_title_pt=float(self.settings.plan.min_title_pt),
+                extra_assets=dict(inp.extra_assets),
+                media_dir=inp.staging.path("media"),
+                media_prefix=inp.staging.prefix,
             )
         except ComposeError as e:
             raise StageError(e.code, str(e), retryable=e.retryable, stage="compose") from e
@@ -470,6 +473,11 @@ class RealLayers(StubLayers):
         settings = self.settings.design.feedback
         if not settings.enabled or inp.template_path is None or inp.variant_id == ORIGINAL_VARIANT:
             return inp.plan  # исходная презентация сохраняется как есть: править нечего
+        if not inp.polish:
+            return inp.plan  # ревизия-патч: пользователь правил руками, план не трогаем
+        locked = {
+            str(s.get("slide_id")) for s in inp.plan.get("slides") or [] if s.get("overrides")
+        } | set(inp.locked_slide_ids)
 
         draft = inp.staging.path("deck.draft.pptx")
         template = pathlib.Path(inp.template_path)
@@ -497,7 +505,8 @@ class RealLayers(StubLayers):
         if settings.refill and client is not None and filler is not None:
 
             def ask(_system: str, user: str) -> str:
-                return client.complete_sync(filler.request("fill.slots", user, stage="plan")).text
+                request = filler.request("fill.slots", user, stage="plan")
+                return str(client.complete_sync(request).text)
 
         try:
             plan, report = design.polish(
@@ -509,6 +518,7 @@ class RealLayers(StubLayers):
                 config=self.settings.model_dump(),
                 ask=ask,
                 package=inp.package,
+                locked_slide_ids=locked,
             )
         except Exception:  # правка не имеет права ронять сборку
             log.warning(
@@ -586,6 +596,10 @@ class RealLayers(StubLayers):
     # ----- правка слайда по запросу (этап 20) -----
 
     def edit(self, inp: EditInput) -> EditOutput:
+        if inp.patch is not None:
+            # Ручные правки редактора применяются без модели — той же детерминированной
+            # веткой, что и в заглушках.
+            return super().edit(inp)
         client = self.llm_client()
         skill = self.skill("slide_editor")
         if client is None or skill is None:

@@ -92,7 +92,7 @@ def slot_capacity(slot: JsonDict, canvas: Canvas | None = None) -> Any | None:
             font=font,
             line_spacing=spacing,
         )
-    except Exception:                       # шрифт не найден, битые метрики
+    except Exception:  # шрифт не найден, битые метрики
         log.debug("замер слота %s не удался", slot.get("slot_id"), exc_info=True)
         return None
     return _at_least_sample(cap, slot)
@@ -117,7 +117,7 @@ def _at_least_sample(cap: Any, slot: JsonDict) -> Any:
     per_line = max(int(cap.chars_per_line or 0), 1)
     try:
         return replace(cap, max_lines=1, max_chars=per_line)
-    except Exception:                       # не dataclass — оставляем как есть
+    except Exception:  # не dataclass — оставляем как есть
         return cap
 
 
@@ -159,12 +159,10 @@ def fits(slot: JsonDict, text: str, canvas: Canvas | None = None) -> bool | None
     width_pt = wrap_width_pt(slot, canvas)
     if width_pt <= 0:
         return None
-    return wrap_lines(str(text), width_pt, font, size_pt) <= cap.max_lines
+    return bool(wrap_lines(str(text), width_pt, font, size_pt) <= cap.max_lines)
 
 
-def lines_needed(
-    slot: JsonDict, text: str, canvas: Canvas | None = None
-) -> tuple[int, int] | None:
+def lines_needed(slot: JsonDict, text: str, canvas: Canvas | None = None) -> tuple[int, int] | None:
     """(нужно строк, помещается строк) или `None`, если мерить нечем."""
     cap = slot_capacity(slot, canvas)
     if cap is None:
@@ -192,7 +190,7 @@ def overflows_badly(slot: JsonDict, text: str, canvas: Canvas | None = None) -> 
     """
     measured = lines_needed(slot, text, canvas)
     if measured is None:
-        return False                        # нечем мерить — не трогаем
+        return False  # нечем мерить — не трогаем
     needed, available = measured
     return needed > max(available, 1) * OVERFLOW_RATIO
 

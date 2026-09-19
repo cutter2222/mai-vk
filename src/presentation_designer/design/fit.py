@@ -28,7 +28,7 @@ class Decision:
     """Одно решение слоя: что и почему изменено на слайде."""
 
     slide_id: str
-    action: str                     # pattern_swap | enrich | keep
+    action: str  # pattern_swap | enrich | keep
     reason: str
     before: JsonDict = field(default_factory=dict)
     after: JsonDict = field(default_factory=dict)
@@ -61,6 +61,7 @@ class Report:
 
 
 # -- замер -------------------------------------------------------------------
+
 
 def _area(slot: JsonDict) -> float:
     box = slot.get("bbox") or {}
@@ -97,6 +98,7 @@ def fill_ratio(slide: JsonDict, pattern: JsonDict) -> float:
 
 
 # -- проход 1: подбор паттерна ----------------------------------------------
+
 
 def _kinds_needed(slide: JsonDict) -> dict[str, int]:
     from collections import Counter
@@ -261,6 +263,7 @@ def remap_blocks(slide: JsonDict, pattern: JsonDict) -> None:
 
 # -- проход 2: добор содержания ---------------------------------------------
 
+
 def _thesis_texts(story: JsonDict, refs: list[str]) -> list[str]:
     """Пояснения и подтверждения тезисов слайда — источник добора.
 
@@ -333,7 +336,7 @@ def enrich(
         texts = _section_lead(story, refs)
     added: list[str] = []
     for slot, text in zip(free, texts, strict=False):
-        if _fits(slot, text, canvas) is not True:   # при «неизвестно» не рискуем
+        if _fits(slot, text, canvas) is not True:  # при «неизвестно» не рискуем
             continue
         slide.setdefault("blocks", []).append(
             {
@@ -343,5 +346,5 @@ def enrich(
                 "source": "design.enrich",
             }
         )
-        added.append(slot.get("slot_id"))
+        added.append(str(slot.get("slot_id")))
     return added

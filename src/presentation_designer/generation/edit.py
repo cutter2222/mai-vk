@@ -50,6 +50,7 @@ from presentation_designer.generation.variants import (
     packet_candidates,
     slide_chars,
     slide_from_draft,
+    upgrade_plan_schema,
     with_capacity_hint,
 )
 from presentation_designer.shared.settings import Settings, get_settings
@@ -58,7 +59,7 @@ log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 
-EDIT_VERSION = "0.1.0"
+EDIT_VERSION = "0.1.1"
 
 EDIT_MODEL_SCHEMA: JsonDict = {
     "type": "object",
@@ -483,7 +484,7 @@ def apply_slide(
         new_slide["notes"] = slide["notes"]
     if change_note:
         new_slide["revision_note"] = change_note
-    doc = copy.deepcopy(plan)
+    doc = upgrade_plan_schema(copy.deepcopy(plan))
     slides = doc["slides"]
     pos = next(i for i, s in enumerate(slides) if s["slide_id"] == slide["slide_id"])
     slides[pos] = new_slide
@@ -534,6 +535,17 @@ def apply_slide(
                 "code": "capacity_overflow",
                 "message": f"«{new_slide['title'][:60]}» ({draft.pattern.pattern_id}): текст не "
                 "помещается и после лестницы ёмкости — проверит аудит",
+            }
+        )
+    dropped = slide.get("overrides") or []
+    if dropped:
+        # Слайд собран заново моделью: ручные правки редактора адресовали прежние объекты и
+        # больше не действительны; пользователь увидит предупреждение в результате.
+        warnings.append(
+            {
+                "code": "overrides_dropped",
+                "message": f"«{new_slide['title'][:60]}»: {len(dropped)} ручных правок "
+                "редактора сброшены — слайд пересобран по инструкции",
             }
         )
     doc["warnings"] = warnings

@@ -442,6 +442,7 @@ def fixed_pattern_pool(
     нет — все заполняемые), по возрастанию числа обязательных слотов (титульный слайд не
     должен требовать таблицу), по убыванию уверенности, затем по порядку образцов в шаблоне
     (`slide_index`, при равенстве — идентификатор)."""
+
     def ordered(pool: list[PatternInfo]) -> list[PatternInfo]:
         pool = [p for p in pool if p.service_safe] or pool
         pool.sort(

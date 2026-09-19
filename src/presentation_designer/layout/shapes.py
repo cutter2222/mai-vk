@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import posixpath
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Any
 
 from lxml import etree
@@ -184,6 +185,97 @@ def in_group(element: Any) -> bool:
     return parent is not None and parent.tag == GRPSP
 
 
+@dataclass
+class GroupTransform:
+    """Отображение координат детей группы в координаты слайда (без поворота группы), то же,
+    что строит анализ (`geometry._Transform`)."""
+
+    off_x: float = 0.0
+    off_y: float = 0.0
+    scale_x: float = 1.0
+    scale_y: float = 1.0
+    ch_off_x: float = 0.0
+    ch_off_y: float = 0.0
+
+    def to_slide(self, x: float, y: float, w: float, h: float) -> tuple[float, float, float, float]:
+        return (
+            self.off_x + (x - self.ch_off_x) * self.scale_x,
+            self.off_y + (y - self.ch_off_y) * self.scale_y,
+            w * self.scale_x,
+            h * self.scale_y,
+        )
+
+    def to_local(self, x: float, y: float, w: float, h: float) -> tuple[float, float, float, float]:
+        sx = self.scale_x or 1.0
+        sy = self.scale_y or 1.0
+        return (
+            self.ch_off_x + (x - self.off_x) / sx,
+            self.ch_off_y + (y - self.off_y) / sy,
+            w / sx,
+            h / sy,
+        )
+
+    def compose(self, xfrm: Any) -> GroupTransform:
+        off = xfrm.find("a:off", NS)
+        ext = xfrm.find("a:ext", NS)
+        ch_off = xfrm.find("a:chOff", NS)
+        ch_ext = xfrm.find("a:chExt", NS)
+        if off is None or ext is None:
+            return self
+        gx, gy = float(off.get("x", 0)), float(off.get("y", 0))
+        gw, gh = float(ext.get("cx", 0)), float(ext.get("cy", 0))
+        cx = float(ch_off.get("x", 0)) if ch_off is not None else 0.0
+        cy = float(ch_off.get("y", 0)) if ch_off is not None else 0.0
+        cw = float(ch_ext.get("cx", 0)) if ch_ext is not None else gw
+        ch = float(ch_ext.get("cy", 0)) if ch_ext is not None else gh
+        sx = gw / cw if cw else 1.0
+        sy = gh / ch if ch else 1.0
+        px, py, pw, ph = self.to_slide(gx, gy, gw, gh)
+        return GroupTransform(
+            px, py, (pw / gw if gw else 1.0) * sx, (ph / gh if gh else 1.0) * sy, cx, cy
+        )
+
+
+def group_transform(element: Any) -> GroupTransform:
+    """Преобразование координат самого элемента (его xfrm) в координаты слайда: композиция
+    xfrm групп-предков от внешней к внутренней; для фигуры вне групп — тождественное."""
+    chain: list[Any] = []
+    parent = element.getparent()
+    while parent is not None and parent.tag == GRPSP:
+        chain.append(parent)
+        parent = parent.getparent()
+    transform = GroupTransform()
+    for group in reversed(chain):
+        xfrm = group.find("p:grpSpPr/a:xfrm", NS)
+        if xfrm is not None:
+            transform = transform.compose(xfrm)
+    return transform
+
+
+def slide_box_to_local(element: Any, box: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+    """Рамка в координатах слайда (EMU) → координаты для собственного xfrm элемента."""
+    x, y, cx, cy = group_transform(element).to_local(*box)
+    return (round(x), round(y), round(cx), round(cy))
+
+
+def set_element_box_absolute(element: Any, box: tuple[int, int, int, int]) -> bool:
+    """Ставит элемент в рамку, заданную в координатах слайда, с учётом вложенности в группы.
+    Возвращает False, если у элемента нет и не может быть xfrm."""
+    if ensure_xfrm(element) is None:
+        return False
+    set_element_box(element, slide_box_to_local(element, box))
+    return True
+
+
+def element_box_absolute(element: Any) -> tuple[int, int, int, int] | None:
+    """Рамка элемента в координатах слайда (EMU) с учётом групп."""
+    own = element_box(element)
+    if own is None:
+        return None
+    x, y, cx, cy = group_transform(element).to_slide(*own)
+    return (round(x), round(y), round(cx), round(cy))
+
+
 def connector_endpoints(
     info: Any,
 ) -> tuple[tuple[float, float], tuple[float, float]]:
@@ -226,17 +318,22 @@ __all__ = [
     "CNVPR",
     "GRPSP",
     "NS",
+    "GroupTransform",
     "drop_unreferenced_rels",
     "element_box",
+    "element_box_absolute",
     "element_ids",
     "emu_box",
+    "group_transform",
     "iter_shapes",
     "next_shape_id",
     "part_by_name",
     "referenced_rids",
     "remove_shape",
     "set_element_box",
+    "set_element_box_absolute",
     "shape_element",
     "shape_map",
+    "slide_box_to_local",
     "sp_tree",
 ]

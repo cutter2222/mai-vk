@@ -330,6 +330,141 @@ class ExecutionMode(BaseModel):
     """
 
 
+class AssetSource(BaseModel):
+    """
+    Источник картинки для ручной правки: ресурс шаблона (asset_id из TemplateProfile.assets), ресурс контент-пакета (asset_id из ContentPackage.assets) или загруженный файл проекта (file_id; sha256 дописывает конвейер, name — для подписи в интерфейсе)
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: Literal["template", "package", "file"]
+    asset_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    file_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    sha256: str | None = None
+    name: str | None = None
+
+
+class Target(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    object_id: str
+    source_object_id: str | None = None
+    slot_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+
+
+class Font1(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    family: str | None = None
+    size_pt: float | None = Field(None, ge=6.0, le=120.0)
+    bold: bool | None = None
+    italic: bool | None = None
+    color: str | None = Field(None, pattern="^#[0-9A-Fa-f]{6}$")
+    """
+    Цвет в формате #RRGGBB
+    """
+
+
+class Style(BaseModel):
+    """
+    оформление всех фрагментов объекта; передаются только изменяемые свойства
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    font: Font1 | None = None
+    align: Literal["left", "center", "right", "justify"] | None = None
+
+
+class Geometry(BaseModel):
+    """
+    новое положение и размер в долях слайда (как bbox ComposedDeck, с учётом групп)
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    bbox: Bbox
+
+
+class Picture(BaseModel):
+    """
+    замена картинки или иконки объекта p:pic; color — перекраска монохромной иконки шаблона
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    source: AssetSource
+    fit: Literal["cover", "contain"] | None = None
+    color: str | None = Field(None, pattern="^#[0-9A-Fa-f]{6}$")
+    """
+    Цвет в формате #RRGGBB
+    """
+
+
+class Background(BaseModel):
+    """
+    фон слайда: сплошной цвет, картинка или наследование от макета
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: Literal["solid", "image", "inherited"]
+    color: str | None = Field(None, pattern="^#[0-9A-Fa-f]{6}$")
+    """
+    Цвет в формате #RRGGBB
+    """
+    source: AssetSource | None = None
+    fit: Literal["cover", "contain"] | None = None
+
+
+class Override(BaseModel):
+    """
+    Ручная правка одного объекта слайда или фона слайда из визуального редактора. Применяется композером после заполнения слота и чистки слайда, поэтому ревизия воспроизводится из плана. target.object_id — p:cNvPr@id объекта в ComposedDeck базовой ревизии (у объектов клона образца совпадает с образцом, у новых объектов детерминирован); source_object_id и slot_id — охрана адреса: при несовпадении правка отбрасывается с предупреждением, а не применяется к чужому объекту. Фон (op background) относится к слайду целиком, target не нужен.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    op: Literal["text", "style", "geometry", "picture", "background"]
+    target: Target | None = None
+    text: str | None = None
+    """
+    новый текст объекта: строки через \\n; ссылки {fact:<id>} подставляются как в плане
+    """
+    style: Style | None = None
+    """
+    оформление всех фрагментов объекта; передаются только изменяемые свойства
+    """
+    geometry: Geometry | None = None
+    """
+    новое положение и размер в долях слайда (как bbox ComposedDeck, с учётом групп)
+    """
+    picture: Picture | None = None
+    """
+    замена картинки или иконки объекта p:pic; color — перекраска монохромной иконки шаблона
+    """
+    background: Background | None = None
+    """
+    фон слайда: сплошной цвет, картинка или наследование от макета
+    """
+
+
 class Asset(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -346,6 +481,10 @@ class Asset(BaseModel):
     """
     неизменяемый ресурс, разделяемый с исходным пакетом
     """
+    artifact: str | None = None
+    """
+    имя артефакта ревизии с байтами ресурса (<variant>/r<N>/media/<file>), если медиа выложено рядом с ревизией
+    """
 
 
 class FallbackElement(BaseModel):
@@ -361,7 +500,7 @@ class FallbackElement(BaseModel):
     fallback: Literal["raster_from_render", "omitted"] | None = None
 
 
-class Font1(BaseModel):
+class Font2(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -964,7 +1103,7 @@ class Timeline(BaseModel):
     all_variants_audited_ms: int | None = None
 
 
-class Font2(BaseModel):
+class Font3(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -984,7 +1123,7 @@ class Versions(BaseModel):
     models: list[ModelRef]
     renderer: VersionRef | None = None
     analyzer: VersionRef | None = None
-    fonts: list[Font2] | None = None
+    fonts: list[Font3] | None = None
     contracts: str | None = None
     """
     версия контрактов, например 1.1
@@ -1057,6 +1196,14 @@ class Edit(BaseModel):
     Номер ревизии результата варианта. Растёт после каждого исправления; находки аудита и запросы исправлений привязаны к ревизии.
     """
     changed_slide_ids: list[Id] | None = None
+    origin: Literal["chat", "editor"] | None = None
+    """
+    chat — инструкция, выполненная моделью (по умолчанию); editor — ручные правки объектов без модели
+    """
+    summary: str | None = None
+    """
+    сводка ручных правок для карточки в чате: какие слайды и что изменено
+    """
 
 
 class Result1(BaseModel):
@@ -1089,6 +1236,10 @@ class Result1(BaseModel):
     change_note: str | None = None
     """
     для правки слайда: что изменено или почему слайд оставлен как есть
+    """
+    changed_slide_ids: list[Id] | None = None
+    """
+    для ручных правок (slide_patch): слайды, изменённые в новой ревизии
     """
 
 
@@ -1193,6 +1344,45 @@ class SkillManifest(BaseModel):
     schema_version: Literal["1.1"]
     reasoning: Reasoning | None = None
     response_format: Literal["json_schema", "json_object", "text"] | None = None
+
+
+class Slide1(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    slide_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    overrides: list[Override]
+
+
+class SlidePatch(BaseModel):
+    """
+    Запрос ручных правок из визуального редактора к ревизии варианта (этап 22). У каждого перечисленного слайда список overrides заменяется целиком: пустой список возвращает слайд к сгенерированному виду; неперечисленные слайды не меняются. order — новый порядок всех слайдов варианта (перестановка slide_id без модели). Применяется детерминированно к SlidePlan базовой ревизии и создаёт новую ревизию тем же конвейером, что правка из чата (compose → export → audit), без вызова модели.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["1.0"]
+    job_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    variant_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    base_revision: int = Field(..., ge=1)
+    """
+    Номер ревизии результата варианта. Растёт после каждого исправления; находки аудита и запросы исправлений привязаны к ревизии.
+    """
+    slides: list[Slide1]
+    order: list[Id] | None = None
+    """
+    новый порядок слайдов: перестановка всех slide_id плана; отсутствует — порядок не меняется
+    """
 
 
 class Variant1(BaseModel):
@@ -1491,7 +1681,7 @@ class Issue(BaseModel):
     """
 
 
-class Background(BaseModel):
+class Background1(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -1504,6 +1694,28 @@ class Background(BaseModel):
     """
     Стабильный идентификатор. Не содержит пробелов и путей.
     """
+
+
+class Target1(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    object_id: str | None = None
+    source_object_id: str | None = None
+    slot_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+
+
+class OverridesDroppedItem(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    op: str
+    target: Target1 | None = None
+    code: str
+    message: str
 
 
 class BriefDraft(BaseModel):
@@ -1913,7 +2125,7 @@ class Crop(BaseModel):
     bottom: float | None = None
 
 
-class Picture(BaseModel):
+class Picture1(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -2540,10 +2752,10 @@ class Metrics1(BaseModel):
 
 class GenerationResult(BaseModel):
     """
-    Результат задания генерации. Отдаётся по ссылке из JobStatus и напрямую GET /api/generations/{id}; пока задание идёт, поля вариантов заполняются по мере готовности. Версия 1.1: ревизии, режим исполнения слоёв, частичные результаты, полнота аудита, версии рендерера и шрифтов, ожидание очереди и квоты, повторы, кэши, время первого и всех готовых вариантов.
+    Результат задания генерации. Отдаётся по ссылке из JobStatus и напрямую GET /api/generations/{id}; пока задание идёт, поля вариантов заполняются по мере готовности. Версия 1.3 (этап 22): у правок edits[] origin — источник (chat: инструкция модели, editor: ручные правки визуального редактора) и summary — сводка правок. Версия 1.1: ревизии, режим исполнения слоёв, частичные результаты, полнота аудита, версии рендерера и шрифтов, ожидание очереди и квоты, повторы, кэши, время первого и всех готовых вариантов.
     """
 
-    schema_version: Literal["1.2"]
+    schema_version: Literal["1.3"]
     job_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
     Стабильный идентификатор. Не содержит пробелов и путей.
@@ -2601,24 +2813,26 @@ class GenerationResult(BaseModel):
     """
     edits: list[Edit] | None = None
     """
-    правки слайдов по запросу из чата: каждая применённая правка создаёт ревизию варианта, как исправление
+    правки слайдов по запросу из чата и из визуального редактора: каждая применённая правка создаёт ревизию варианта, как исправление
     """
 
 
 class JobStatus(BaseModel):
     """
-    Общее состояние любого задания: анализ шаблона, импорт содержания, генерация, исправление, правка слайда по запросу. Отдаётся GET /api/jobs/{id}. Ссылка на результат ведёт на документ своего вида; задания анализа и импорта не заполняют GenerationResult.
+    Общее состояние любого задания: анализ шаблона, импорт содержания, генерация, исправление, правка слайда по запросу, ручные правки из визуального редактора (slide_patch). Отдаётся GET /api/jobs/{id}. Ссылка на результат ведёт на документ своего вида; задания анализа и импорта не заполняют GenerationResult.
     """
 
     model_config = ConfigDict(
         extra="forbid",
     )
-    schema_version: Literal["1.2"]
+    schema_version: Literal["1.3"]
     job_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
     Стабильный идентификатор. Не содержит пробелов и путей.
     """
-    kind: Literal["template_analysis", "content_import", "generation", "repair", "slide_edit"]
+    kind: Literal[
+        "template_analysis", "content_import", "generation", "repair", "slide_edit", "slide_patch"
+    ]
     status: Literal["queued", "running", "succeeded", "needs_review", "failed", "canceled"]
     """
     succeeded: обязательные проверки завершены и блокирующих проблем нет; needs_review: результат пригоден к просмотру, но есть находки или неполный аудит
@@ -2775,7 +2989,7 @@ class Colors(BaseModel):
     palette: list[PaletteItem]
 
 
-class Font3(BaseModel):
+class Font4(BaseModel):
     family: str
     usage_count: int
     embedded: bool
@@ -2799,7 +3013,7 @@ class ScaleItem(BaseModel):
 
 class Typography(BaseModel):
     theme_fonts: ThemeFonts | None = None
-    fonts: list[Font3]
+    fonts: list[Font4]
     scale: list[ScaleItem]
     """
     типографическая шкала шаблона; кегли не из шкалы считаются нарушением
@@ -2906,6 +3120,10 @@ class Object(BaseModel):
     ]
     bbox: Bbox
     rotation_deg: float | None = None
+    geometry: str | None = None
+    """
+    форма фигуры (a:prstGeom@prst): rect, roundRect, ellipse…; отсутствует у произвольной геометрии
+    """
     z_order: int
     group_path: list[str] | None = None
     """
@@ -2921,14 +3139,18 @@ class Object(BaseModel):
     """
     role: Literal["content", "fixed", "decoration", "background"] | None = None
     text: Text | None = None
-    picture: Picture | None = None
+    picture: Picture1 | None = None
     table: Table | None = None
     chart: Chart | None = None
     fill: Fill | None = None
     line: Line | None = None
-    content_source: Literal["plan", "sample", "template", "generated"] | None = None
+    content_source: Literal["plan", "sample", "template", "generated", "user"] | None = None
     """
-    plan — содержимое из блока плана; sample — намеренно оставленный текст или картинка образца (крошечный слот, незаполненный слот изображения), аудит не считает его заглушкой; template — статика образца, макета или мастера; generated — объект, построенный композером (диаграмма, таблица, схема)
+    plan — содержимое из блока плана; sample — намеренно оставленный текст или картинка образца (крошечный слот, незаполненный слот изображения), аудит не считает его заглушкой; template — статика образца, макета или мастера; generated — объект, построенный композером (диаграмма, таблица, схема); user — содержимое заменено ручной правкой из визуального редактора
+    """
+    user_overrides: list[Override] | None = None
+    """
+    ручные правки, применённые к этому объекту в этой ревизии
     """
     slot_kind: str | None = None
     """
@@ -3099,7 +3321,7 @@ class Slide(BaseModel):
     """
     индекс образцового слайда шаблона, из которого клонирован
     """
-    background: Background | None = None
+    background: Background1 | None = None
     objects: list[Object]
     title: str | None = None
     """
@@ -3113,6 +3335,14 @@ class Slide(BaseModel):
     removed_object_ids: list[str] | None = None
     """
     объекты образца, удалённые при сборке: незаполненные карточки и слоты
+    """
+    overrides: list[Override] | None = None
+    """
+    ручные правки слайда из плана этой ревизии (эхо slides[].overrides)
+    """
+    overrides_dropped: list[OverridesDroppedItem] | None = None
+    """
+    правки, которые композер не применил: объект не найден, охрана адреса не совпала, операция не подходит виду объекта, ресурс отсутствует
     """
 
 
@@ -3147,17 +3377,21 @@ class SlideModel(BaseModel):
     """
     что изменено исправлением относительно прошлой ревизии
     """
+    overrides: list[Override] | None = None
+    """
+    ручные правки объектов слайда (этап 22): применяются композером по порядку после заполнения слотов и чистки; адресуют объекты ComposedDeck предыдущей ревизии
+    """
 
 
 class ComposedDeck(BaseModel):
     """
-    Описание фактически собранного PPTX одного варианта: объекты, вычисленные стили, геометрия, порядок слоёв, ресурсы, связи со слотами плана и исходными слайдами шаблона. Строится слоем вёрстки по сохранённому файлу и используется аудитом, подсветкой и HTML-экспортом. Версия 1.2 (этап 8): composer и created_at, шрифты с подменой рендерера, статистика; у слайда заголовок, заметки, часть образца и удалённые объекты образца; у объекта content_source (содержимое из плана, оставленный текст образца, статика шаблона, построенный объект), вид слота и блока, fit из плана; у картинки режим вписывания и происхождение; у таблицы смещение строк и усечение; у диаграммы число категорий и способ построения.
+    Описание фактически собранного PPTX одного варианта: объекты, вычисленные стили, геометрия, порядок слоёв, ресурсы, связи со слотами плана и исходными слайдами шаблона. Строится слоем вёрстки по сохранённому файлу и используется аудитом, подсветкой и HTML-экспортом. Версия 1.3 (этап 22): у слайда overrides — применённые ручные правки (эхо плана) и overrides_dropped — отброшенные с причиной; у объекта user_overrides и content_source user, geometry — форма фигуры (prstGeom) для холста редактора; у ресурса artifact — имя файла медиа в ревизии для интерфейса. Версия 1.2 (этап 8): composer и created_at, шрифты с подменой рендерера, статистика; у слайда заголовок, заметки, часть образца и удалённые объекты образца; у объекта content_source (содержимое из плана, оставленный текст образца, статика шаблона, построенный объект), вид слота и блока, fit из плана; у картинки режим вписывания и происхождение; у таблицы смещение строк и усечение; у диаграммы число категорий и способ построения.
     """
 
     model_config = ConfigDict(
         extra="forbid",
     )
-    schema_version: Literal["1.2"]
+    schema_version: Literal["1.3"]
     deck_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
     Стабильный идентификатор. Не содержит пробелов и путей.
@@ -3200,7 +3434,7 @@ class ComposedDeck(BaseModel):
     warnings: list[Warning] | None = None
     composer: VersionRef | None = None
     created_at: AwareDatetime | None = None
-    fonts: list[Font1] | None = None
+    fonts: list[Font2] | None = None
     """
     семейства шрифтов результата и подмена в рендерере (LibreOffice не использует встроенные шрифты)
     """
@@ -3209,10 +3443,10 @@ class ComposedDeck(BaseModel):
 
 class SlidePlan(BaseModel):
     """
-    План одного варианта презентации: порядок слайдов, выбранные паттерны и содержание каждого слота. Создаётся слоем генерации, проверяется по схеме и по ёмкости слотов до вёрстки. Версия 1.2 (этап 7): у блоков fit — результат измерения текста по метрикам шрифта после подстановки фактов (выбранный кегль, строки, действие лестницы ёмкости); у таблиц row_offset — часть большого набора данных на этом слайде; у slide_count target — целевое число слайдов варианта внутри диапазона; блок chart допускается в слоте image паттерна с ролью chart (картинка диаграммы в образце заменяется нативной диаграммой). Версия 1.1: ссылка на StoryPlan, покрытие обязательных тезисов, точное число или диапазон слайдов, данные для сопоставления вариантов. Соответствие kind содержимому блока проверяется схемой (allOf/if) и валидаторами.
+    План одного варианта презентации: порядок слайдов, выбранные паттерны и содержание каждого слота. Создаётся слоем генерации, проверяется по схеме и по ёмкости слотов до вёрстки. Версия 1.3 (этап 22): у слайда overrides — ручные правки объектов из визуального редактора, которые композер применяет после заполнения слота; правка из чата заменяет слайд целиком и отбрасывает его overrides с предупреждением overrides_dropped. Версия 1.2 (этап 7): у блоков fit — результат измерения текста по метрикам шрифта после подстановки фактов (выбранный кегль, строки, действие лестницы ёмкости); у таблиц row_offset — часть большого набора данных на этом слайде; у slide_count target — целевое число слайдов варианта внутри диапазона; блок chart допускается в слоте image паттерна с ролью chart (картинка диаграммы в образце заменяется нативной диаграммой). Версия 1.1: ссылка на StoryPlan, покрытие обязательных тезисов, точное число или диапазон слайдов, данные для сопоставления вариантов. Соответствие kind содержимому блока проверяется схемой (allOf/if) и валидаторами.
     """
 
-    schema_version: Literal["1.2"]
+    schema_version: Literal["1.3"]
     plan_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
     Стабильный идентификатор. Не содержит пробелов и путей.
@@ -3263,6 +3497,7 @@ class Contracts(BaseModel):
     project: Project | None = None
     project_file: ProjectFile | None = None
     skill_manifest: SkillManifest | None = None
+    slide_patch: SlidePatch | None = None
     slide_plan: SlidePlan | None = None
     story_plan: StoryPlan | None = None
     template_profile: TemplateProfile | None = None

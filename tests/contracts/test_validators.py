@@ -145,3 +145,45 @@ def test_raise_if_wraps_violations() -> None:
     with pytest.raises(v.ContractError) as info:
         v.raise_if([v.Violation("x", "тест")])
     assert "x: тест" in str(info.value)
+
+
+def test_slide_plan_overrides_rules(docs: dict[str, object]) -> None:
+    """Ручные правки (этап 22): пример проходит; адрес, содержимое, пределы, ресурсы и
+    повторы отклоняются своими кодами."""
+    assert _plan(docs, lambda raw: None) == []
+
+    def mutate(raw: dict) -> None:
+        raw["slides"][2]["overrides"] = [
+            {"op": "text", "text": "без адреса"},
+            {"op": "style", "target": {"object_id": "10", "slot_id": "no_such"}, "style": {}},
+            {"op": "geometry", "target": {"object_id": "10"}},
+            {
+                "op": "geometry",
+                "target": {"object_id": "11"},
+                "geometry": {"bbox": {"x": 1.9, "y": 0.1, "width": 0.001, "height": 0.2}},
+            },
+            {
+                "op": "picture",
+                "target": {"object_id": "5"},
+                "picture": {"source": {"kind": "template", "asset_id": "asset_nope"}},
+            },
+            {
+                "op": "picture",
+                "target": {"object_id": "6"},
+                "picture": {"source": {"kind": "file"}},
+            },
+            {"op": "background", "background": {"kind": "solid"}},
+            {"op": "background", "background": {"kind": "image"}},
+            {"op": "text", "target": {"object_id": "10"}, "text": "раз"},
+            {"op": "text", "target": {"object_id": "10"}, "text": "два"},
+        ]
+
+    found = codes(_plan(docs, mutate))
+    assert {
+        "override_target",
+        "override_content",
+        "override_bbox",
+        "asset_missing",
+        "override_file_ref",
+        "override_duplicate",
+    } <= found

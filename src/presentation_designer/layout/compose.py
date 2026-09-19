@@ -14,6 +14,9 @@
 3. Незаполненные карточки убираются по `removable_object_ids`, незаполненные необязательные
    слоты — без потери статики; крошечные слоты сохраняют текст образца (`content_source =
    sample`).
+   После чистки применяются ручные правки объектов из `slides[].overrides` (этап 22,
+   `layout/overrides.py`): текст, стиль, положение, картинки, фон — по `object_id` из
+   ComposedDeck прошлой ревизии, с охраной адреса.
 4. Образцы удаляются, номера слайдов пересчитываются, пакет сохраняется (python-pptx пишет
    только части, достижимые от корня, — недостижимые ресурсы образцов в файл не попадают),
    проверяется `check_package`, по сохранённому файлу строится ComposedDeck.
@@ -40,7 +43,9 @@ from presentation_designer.layout import charts, diagrams, icons, images, tables
 from presentation_designer.layout import text as tx
 from presentation_designer.layout.composed import SlideRecord, SlotFill, build_composed_deck
 from presentation_designer.layout.integrity import IntegrityReport, check_deck
+from presentation_designer.layout.media import export_media
 from presentation_designer.layout.ooxml import clone_slide, keep_only_slides
+from presentation_designer.layout.overrides import apply_overrides
 from presentation_designer.layout.package import (
     ensure_placeholder,
     layout_by_id,
@@ -66,7 +71,7 @@ log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 COMPOSER_NAME = "layout_composer"
-COMPOSER_VERSION = "0.1.0"
+COMPOSER_VERSION = "0.2.0"
 TEXT_KINDS = (
     "title",
     "subtitle",
@@ -124,6 +129,8 @@ class _Context:
     datasets: dict[str, JsonDict]
     package_assets: dict[str, JsonDict]
     profile_assets: dict[str, JsonDict]
+    # Файлы проекта для ручных правок (источник `file`): file_id → путь в хранилище.
+    extra_assets: dict[str, pathlib.Path]
     markers: set[str]
     language: str
     chart_style: charts.ChartStyle
@@ -315,6 +322,7 @@ def _fill_slide(
         record.removed_object_ids = _cleanup(
             ctx, slide, pattern_raw, pinfo, filled, record, slide_index
         )
+    apply_overrides(ctx, slide, record, plan_slide, pinfo, slide_index)
     if record.notes:
         try:
             slide.notes_slide.notes_text_frame.text = record.notes
@@ -1331,11 +1339,16 @@ def compose_deck(
     fit_min_ratio: float = 0.75,
     fit_min_body_pt: float = 12.0,
     fit_min_title_pt: float = 20.0,
+    extra_assets: dict[str, pathlib.Path] | None = None,
+    media_dir: pathlib.Path | None = None,
+    media_prefix: str = "",
 ) -> ComposeResult:
     """Собирает PPTX по плану и возвращает ComposedDeck, заголовки и отчёт.
 
     `fit_*` — лестница кеглей при сужении слотов из-за бокового декора (как `plan.*` в
-    config/app.yaml)."""
+    config/app.yaml). `extra_assets` — файлы проекта для ручных правок (`file_id` → путь);
+    `media_dir` — куда выложить медиа колоды для интерфейса (имена артефактов получают
+    `media_prefix`, как `<variant>/r<N>/`)."""
     started = time.perf_counter()
     template_path = pathlib.Path(template_path)
     if not template_path.is_file():
@@ -1363,6 +1376,7 @@ def compose_deck(
         datasets={str(d["dataset_id"]): d for d in package.get("datasets") or []},
         package_assets={str(a["asset_id"]): a for a in package.get("assets") or []},
         profile_assets={str(a["asset_id"]): a for a in profile.get("assets") or []},
+        extra_assets={k: pathlib.Path(v) for k, v in (extra_assets or {}).items()},
         markers={str(m).strip() for m in profile.get("placeholder_markers") or []},
         language=str(plan.get("language") or "ru"),
         chart_style=charts.ChartStyle.from_profile(profile),
@@ -1447,12 +1461,18 @@ def compose_deck(
         layouts_removed=layouts_removed,
     )
     timings["composed_deck_ms"] = int((time.perf_counter() - t0) * 1000)
+    media_files = 0
+    if media_dir is not None:
+        t0 = time.perf_counter()
+        media_files = export_media(out_pptx, deck, pathlib.Path(media_dir), media_prefix)
+        timings["media_ms"] = int((time.perf_counter() - t0) * 1000)
     total_ms = int((time.perf_counter() - started) * 1000)
     report: JsonDict = {
         "composer": {"name": COMPOSER_NAME, "version": COMPOSER_VERSION},
         "slides": len(new_slides),
         "counts": dict(ctx.counts),
         "layouts_removed": layouts_removed,
+        "media_files": media_files,
         "file_size_bytes": out_pptx.stat().st_size,
         "timings_ms": {**timings, "total": total_ms},
         "integrity": integrity.as_dict(),

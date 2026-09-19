@@ -106,7 +106,7 @@ def rows(pattern: JsonDict) -> list[set[str]]:
     """
     if str(pattern.get("role") or "") in LIST_ROLES:
         return []
-    groups: dict[tuple[str, int, int], set[str]] = {}
+    groups: dict[tuple[str, float, float], set[str]] = {}
     for slot in content_slots(pattern):
         box = slot.get("bbox") or {}
         width, height = float(box.get("width") or 0), float(box.get("height") or 0)
@@ -124,7 +124,7 @@ class Fact:
     slide_id: str
     slide_index: int
     slot_id: str
-    kind: str                      # hole | gap | overflow | shrunk
+    kind: str  # hole | gap | overflow | shrunk
     slot_kind: str = ""
     capacity_chars: int | None = None
     needed_lines: int = 0
@@ -162,6 +162,15 @@ class Facts:
     def of_slide(self, slide_id: str) -> list[Fact]:
         return [f for f in self.items if f.slide_id == slide_id]
 
+    def without(self, slide_ids: Any) -> Facts:
+        """Те же факты без запертых слайдов (ручные правки редактора, этап 22)."""
+        locked = set(slide_ids)
+        return Facts(
+            items=[f for f in self.items if f.slide_id not in locked],
+            canvas=self.canvas,
+            titles=dict(self.titles),
+        )
+
     def score(self) -> float:
         """Общий счёт: чем меньше, тем лучше собрана колода."""
         return sum(WEIGHTS.get(f.kind, 1.0) for f in self.items)
@@ -177,6 +186,7 @@ class Facts:
 
 
 # -- чтение фактов -----------------------------------------------------------
+
 
 def _probe(obj: JsonDict) -> JsonDict:
     """Объект собранного слайда в виде, понятном замеру.
@@ -246,7 +256,7 @@ def read(deck: JsonDict, plan: JsonDict, profile: JsonDict) -> Facts:
                 capacity = max_chars(slot, canvas)
                 floor = MIN_FILLABLE_BY_KIND.get(slot_kind, MIN_FILLABLE_CHARS)
                 if capacity is None or capacity < floor:
-                    continue            # оформление, а не место под содержание
+                    continue  # оформление, а не место под содержание
                 facts.append(
                     Fact(
                         slide_id=slide_id,
@@ -274,7 +284,7 @@ def read(deck: JsonDict, plan: JsonDict, profile: JsonDict) -> Facts:
                 continue
             measured = lines_needed(_probe(obj), text, canvas)
             if measured is None:
-                continue                # нечем мерить — не выдумываем дефект
+                continue  # нечем мерить — не выдумываем дефект
             needed, available = measured
             available = max(available, 1)
             if needed <= available:
@@ -328,7 +338,7 @@ def _hits_something(
         return False
     x, y, width, height = spill
     if x + width > 1.0 or y + height > 1.0:
-        return True                     # текст уходит за край слайда
+        return True  # текст уходит за край слайда
 
     area = width * height
     if area <= 0:
@@ -336,10 +346,11 @@ def _hits_something(
     for other in slide.get("objects", []):
         if other is obj or str(other.get("role") or "") in ("background", "decoration"):
             continue
-        if other.get("kind") == "text" and not str(
-            (other.get("text") or {}).get("plain") or ""
-        ).strip():
-            continue                    # пустая рамка-подложка: не препятствие
+        if (
+            other.get("kind") == "text"
+            and not str((other.get("text") or {}).get("plain") or "").strip()
+        ):
+            continue  # пустая рамка-подложка: не препятствие
         box = other.get("bbox") or {}
         ox, oy = float(box.get("x") or 0), float(box.get("y") or 0)
         ow, oh = float(box.get("width") or 0), float(box.get("height") or 0)
@@ -407,6 +418,7 @@ def _canvas(deck: JsonDict, profile: JsonDict) -> Canvas:
 
 
 # -- правка по фактам --------------------------------------------------------
+
 
 def repair(
     plan: JsonDict,
@@ -536,11 +548,12 @@ def _fit_text(text: str, slot: JsonDict, canvas: Canvas | None) -> str | None:
 def _block_of(slide: JsonDict, slot_id: str) -> JsonDict | None:
     for block in slide.get("blocks", []):
         if block.get("slot_id") == slot_id and str(block.get("text") or "").strip():
-            return block
+            return dict(block)
     return None
 
 
 # -- дозапрос по фактам ------------------------------------------------------
+
 
 def ask_slots(
     plan: JsonDict,
@@ -577,12 +590,14 @@ def ask_slots(
             break
         log.info(
             "дозапрос по фактам, круг %d: слайдов %d, слотов %d",
-            attempt + 1, len(tasks), sum(len(t["empty_slots"]) for t in tasks),
+            attempt + 1,
+            len(tasks),
+            sum(len(t["empty_slots"]) for t in tasks),
         )
         try:
             raw = ask("", json.dumps({"slides": tasks}, ensure_ascii=False))
             answer = _extract_json(raw)
-        except Exception as exc:                # сеть, квота, неразбираемый ответ
+        except Exception as exc:  # сеть, квота, неразбираемый ответ
             log.warning("дозапрос по фактам не удался: %s", exc)
             break
         replace = {
@@ -817,11 +832,7 @@ def complete_rows(
         }
         started_rows = [r for r in rows(pattern) if r & filled and not r <= filled]
         wanted = {sid for row in started_rows for sid in row - filled}
-        empty = [
-            f
-            for f in facts.of_slide(slide_id)
-            if f.kind == "hole" and f.slot_id in wanted
-        ]
+        empty = [f for f in facts.of_slide(slide_id) if f.kind == "hole" and f.slot_id in wanted]
         if not empty:
             continue
 
@@ -908,7 +919,7 @@ def drop_partial_rows(plan: JsonDict, facts: Facts, profile: JsonDict | None = N
             continue
         pattern = patterns.get(slide.get("pattern_id") or "")
         groups = rows(pattern) if pattern else []
-        if not groups:                  # без профиля — по виду слота, как раньше
+        if not groups:  # без профиля — по виду слота, как раньше
             holes: dict[str, set[str]] = {}
             for fact in facts.of_slide(slide_id):
                 if fact.kind == "hole":
@@ -922,13 +933,16 @@ def drop_partial_rows(plan: JsonDict, facts: Facts, profile: JsonDict | None = N
         for group in groups:
             done = group & ours
             if not done or group <= filled:
-                continue                # ряд не наш или заполнен целиком
+                continue  # ряд не наш или заполнен целиком
             slide["blocks"] = [b for b in slide.get("blocks", []) if b.get("slot_id") not in done]
             filled -= done
             dropped += 1
             log.info(
                 "снят неполный ряд %s: заполнено %d из %d (%s)",
-                slide_id, len(done), len(group), ", ".join(sorted(done)),
+                slide_id,
+                len(done),
+                len(group),
+                ", ".join(sorted(done)),
             )
     return dropped
 
@@ -963,7 +977,7 @@ def _nearest_filled(slide: JsonDict, pattern: JsonDict, slot_id: str) -> str | N
         ox = float(their.get("x") or 0) + float(their.get("width") or 0) / 2
         oy = float(their.get("y") or 0) + float(their.get("height") or 0) / 2
         distance = ((cx - ox) ** 2 + (cy - oy) ** 2) ** 0.5
-        if distance > 0.25:               # через полслайда сосед уже не сосед
+        if distance > 0.25:  # через полслайда сосед уже не сосед
             continue
         if best is None or distance < best[0]:
             best = (distance, text)

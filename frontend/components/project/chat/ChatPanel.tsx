@@ -48,8 +48,9 @@ export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged }: Pro
     if (el) el.scrollTop = el.scrollHeight;
   }, [count, session.result?.status, settledEdits]);
 
+  const blocked = session.editorDirty;
   const submit = async () => {
-    if (sending || (!text.trim() && pending.length === 0)) return;
+    if (sending || blocked || (!text.trim() && pending.length === 0)) return;
     setSending(true);
     const t = text;
     const f = pending;
@@ -149,9 +150,13 @@ export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged }: Pro
             style={{ flex: 1 }}
             data-testid="chat-input"
           />
-          <ActionIcon variant="filled" size="lg" onClick={submit} loading={sending} disabled={!text.trim() && pending.length === 0} aria-label="Отправить" data-testid="chat-send"><IconArrowUp size={18} /></ActionIcon>
+          <ActionIcon variant="filled" size="lg" onClick={submit} loading={sending} disabled={blocked || (!text.trim() && pending.length === 0)} aria-label="Отправить" data-testid="chat-send"><IconArrowUp size={18} /></ActionIcon>
         </div>
-        <Text size="xs" c="dimmed" mt={6}>Enter — отправить, Shift+Enter — новая строка. Файлы можно бросать в чат.</Text>
+        {blocked ? (
+          <Text size="xs" c="orange" mt={6} data-testid="chat-draft-hint">Сначала примените или отмените правки на слайде: черновик редактора ждёт решения.</Text>
+        ) : (
+          <Text size="xs" c="dimmed" mt={6}>Enter — отправить, Shift+Enter — новая строка. Файлы можно бросать в чат.</Text>
+        )}
       </div>
     </Dropzone>
   );

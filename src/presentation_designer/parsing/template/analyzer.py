@@ -54,7 +54,7 @@ from presentation_designer.shared.settings import Settings, get_settings
 log = logging.getLogger(__name__)
 
 ANALYZER_NAME = "template_analyzer"
-ANALYZER_VERSION = "0.2.2"
+ANALYZER_VERSION = "0.2.3"
 PREVIEW_DIR = "previews"
 
 
@@ -235,6 +235,20 @@ def analyze_template(
     for index, png in preview_by_index.items():
         previews[f"{PREVIEW_DIR}/slide-{index:02d}.png"] = png
     report.previews_rendered = len(preview_by_index)
+    if render and preview_by_index:
+        # Пустой слайд каждого макета, на который ссылаются паттерны, — подложка холста
+        # редактора (этап 23): фон, декор и логотипы макета, которых нет в ComposedDeck.
+        layout_ids = sorted({p.slide.layout_id for p in patterns if p.slide.layout_id})
+        try:
+            for layout_id, png in render_layout_previews(
+                pkg, settings, render_slots, layout_ids, workdir=workdir, report=report
+            ).items():
+                previews[f"{PREVIEW_DIR}/layout-{layout_id}.png"] = png
+        except Exception as e:
+            log.warning("превью макетов не отрендерены: %s", e)
+            report.warnings.append(
+                {"code": "layout_previews_unavailable", "message": f"рендер макетов: {e}"}
+            )
     clock.lap("render")
 
     skill = None
@@ -318,6 +332,7 @@ def analyze_template(
     TemplateProfile.model_validate(profile)
     clock.lap("assemble")
     report.counts = {
+        **report.counts,
         "slides": len(pkg.slides),
         "content_samples": len(sample_indexes),
         "patterns": len(patterns),
@@ -394,6 +409,71 @@ def render_previews(
                 break
             out[i] = path.read_bytes()
     report.timings_ms["render_total"] = int((time.perf_counter() - started) * 1000)
+    return out
+
+
+def render_layout_previews(
+    pkg: TemplatePackage,
+    settings: Settings,
+    render_slots: Any,
+    layout_ids: list[str],
+    *,
+    workdir: pathlib.Path | None,
+    report: AnalysisReport,
+) -> dict[str, bytes]:
+    """Временный PPTX из пустых слайдов перечисленных макетов → PDF под слотом рендера →
+    PNG по макету. Плейсхолдеры без текста в PDF не печатаются, фон и декор макета — да."""
+    from pptx import Presentation
+
+    from presentation_designer.export.pdf import (
+        RendererUnavailableError,
+        convert_to_pdf,
+        find_soffice,
+    )
+    from presentation_designer.export.render_slots import LocalRenderSlots
+    from presentation_designer.export.thumbnails import render_thumbnails
+    from presentation_designer.layout.ooxml import keep_only_slides
+    from presentation_designer.layout.package import layout_by_id
+
+    if not layout_ids:
+        return {}
+    if find_soffice() is None:
+        raise RendererUnavailableError("LibreOffice не найден")
+    slots = render_slots or LocalRenderSlots(settings.render.slots)
+    started = time.perf_counter()
+    if workdir is not None:
+        workdir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        prefix="tpl-layouts-", dir=str(workdir) if workdir else None
+    ) as tmp:
+        tmp_path = pathlib.Path(tmp)
+        prs = Presentation(str(pkg.path))
+        keep_only_slides(prs, [])
+        rendered: list[str] = []
+        for layout_id in layout_ids:
+            layout = layout_by_id(prs, layout_id)
+            if layout is None:
+                continue
+            prs.slides.add_slide(layout)
+            rendered.append(layout_id)
+        if not rendered:
+            return {}
+        deck_path = tmp_path / "layouts.pptx"
+        prs.save(str(deck_path))
+        with slots.acquire(
+            timeout_s=settings.timeouts.stage_analyze_s,
+            ttl_s=settings.timeouts.render_convert_s * 2,
+        ) as lease:
+            report.timings_ms["render_layouts_slot_wait"] = lease.wait_ms
+            pdf = convert_to_pdf(deck_path, tmp_path, timeout_s=settings.timeouts.render_convert_s)
+        thumbs = render_thumbnails(
+            pdf.pdf_path, tmp_path / "png", width_px=settings.render.thumbnail_width_px
+        )
+        out: dict[str, bytes] = {}
+        for layout_id, path in zip(rendered, thumbs.paths, strict=False):
+            out[layout_id] = path.read_bytes()
+    report.timings_ms["render_layouts"] = int((time.perf_counter() - started) * 1000)
+    report.counts["layout_previews"] = len(out)
     return out
 
 

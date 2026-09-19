@@ -25,6 +25,7 @@ from typing import Any, Protocol
 from presentation_designer import __version__
 from presentation_designer.contracts import CONTRACTS_VERSION
 from presentation_designer.generation.original import original_story
+from presentation_designer.generation.variants import upgrade_plan_schema
 from presentation_designer.llm import model_refs, version_refs
 from presentation_designer.pipeline.artifacts import ArtifactStore
 from presentation_designer.pipeline.files import FileStore, format_for
@@ -376,6 +377,42 @@ class Orchestrator:
             self.artifacts.delete_dir("templates", template_id)
         return template
 
+    def extract_template_media(self, template_id: str, asset: JsonDict) -> pathlib.Path:
+        """Файл ресурса профиля (`assets[].media_path`) в каталоге шаблона: извлекается из
+        загруженного PPTX при первом запросе (`media/<asset_id>.<ext>`), дальше отдаётся с
+        диска. Только части `ppt/media/`; отсутствие — FileNotFoundError."""
+        import zipfile
+
+        from presentation_designer.layout.media import media_file_name
+
+        template = self.state.get_template(template_id)
+        media_path = str(asset.get("media_path") or "").lstrip("/")
+        asset_id = str(asset.get("asset_id") or "")
+        if not media_path.startswith("ppt/media/") or not asset_id:
+            raise FileNotFoundError(media_path)
+        target = (
+            self.artifacts.template_dir(template_id)
+            / "media"
+            / media_file_name(asset_id, media_path)
+        )
+        if target.is_file():
+            return target
+        source = self.files.path_for(str(template["sha256"]))
+        if not source.is_file():
+            raise FileNotFoundError(str(source))
+        try:
+            with zipfile.ZipFile(source) as zf:
+                if media_path not in zf.namelist():
+                    raise FileNotFoundError(media_path)
+                data = zf.read(media_path)
+        except zipfile.BadZipFile as e:
+            raise FileNotFoundError(media_path) from e
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_name(f".{target.name}.tmp")
+        tmp.write_bytes(data)
+        tmp.replace(target)
+        return target
+
     # ----- содержание -----
 
     def submit_package(
@@ -688,6 +725,150 @@ class Orchestrator:
         )
         self.state.update_job(edit_id, rq_ids=[rq_id])
         return self.state.get_job(edit_id)
+
+    def submit_patch(
+        self,
+        job_id: str,
+        variant_id: str,
+        base_revision: int,
+        slides: list[JsonDict],
+        order: list[str] | None = None,
+    ) -> JsonDict:
+        """Ручные правки из визуального редактора (документ slide_patch): то же задание
+        ревизии, что и правка из чата, с видом `patch`, без модели. Правки проверяются
+        против плана и ComposedDeck базовой ревизии до постановки в очередь; файлы проекта
+        (источник `file`) должны принадлежать проекту задания и быть картинками."""
+        from presentation_designer.generation.patch import (
+            PatchError,
+            normalize_patch,
+            patch_is_noop,
+            validate_patch,
+        )
+
+        variant = self.state.get_variant(job_id, variant_id)
+        if variant["revision"] != base_revision:
+            raise ConflictError(
+                "revision_stale",
+                f"Ревизия {base_revision} устарела: текущая ревизия {variant['revision']}. Обновите результат и повторите правки.",  # noqa: E501
+                {"current_revision": variant["revision"]},
+            )
+        if variant["status"] in {"failed", "pending", "running"}:
+            raise ConflictError("variant_failed", "Вариант ещё не собран, править нечего")
+        active = self.state.active_repair(job_id, variant_id)
+        if active:
+            raise ConflictError(
+                "repair_in_progress",
+                "Предыдущая правка этой ревизии ещё применяется",
+                {"repair_job_id": active["repair_job_id"]},
+            )
+        base_dir = self.artifacts.revision_dir(job_id, variant_id, base_revision)
+        plan_path = base_dir / "plan.json"
+        deck_path = base_dir / "composed.json"
+        if not plan_path.is_file():
+            raise ConflictError("plan_missing", "План базовой ревизии не найден")
+        plan = upgrade_plan_schema(json.loads(plan_path.read_text(encoding="utf-8")))
+        deck = json.loads(deck_path.read_text(encoding="utf-8")) if deck_path.is_file() else None
+        patch = normalize_patch(
+            {
+                "job_id": job_id,
+                "variant_id": variant_id,
+                "base_revision": base_revision,
+                "slides": slides,
+                **({"order": order} if order is not None else {}),
+            }
+        )
+        if not patch["slides"] and patch.get("order") is None:
+            raise ConflictError("patch_empty", "В запросе нет ни правок, ни нового порядка")
+        from presentation_designer.pipeline.stubs import explicit_plan
+
+        plan = explicit_plan(plan)
+        gen = self.state.get_generation(job_id)
+        template = self.state.get_template(gen["template_id"])
+        package = self.state.get_package(gen["package_id"])
+        violations = validate_patch(
+            patch, plan, deck, template.get("profile"), package.get("package")
+        )
+        if violations:
+            raise ConflictError(
+                "patch_invalid",
+                "Правки не применимы к этой ревизии: " + "; ".join(str(v) for v in violations[:6]),
+                {"violations": [str(v) for v in violations[:20]]},
+            )
+        if patch_is_noop(patch, plan):
+            raise ConflictError("patch_empty", "Правки совпадают с текущей ревизией: менять нечего")
+        try:
+            self._resolve_patch_files(job_id, patch)
+        except PatchError as e:
+            raise ConflictError(e.code, str(e), e.details) from e
+        patch_id = new_id("patch")
+        touched = [str(s["slide_id"]) for s in patch["slides"]]
+        self.state.create_job(
+            kind="slide_patch",
+            job_id=patch_id,
+            stage="queued",
+            parent_job_id=job_id,
+            result={"generation_result_url": f"/api/generations/{job_id}"},
+            progress={"percent": 0, "message": "Применяю правки редактора"},
+        )
+        first_index = next(
+            (
+                i
+                for i, s in enumerate(sorted(plan["slides"], key=lambda s: int(s["order"])))
+                if str(s["slide_id"]) in touched
+            ),
+            0,
+        )
+        self.state.create_repair(
+            repair_job_id=patch_id,
+            job_id=job_id,
+            variant_id=variant_id,
+            base_revision=base_revision,
+            issue_ids=[],
+            kind="patch",
+            slide_index=first_index,
+            instruction=None,
+            patch=patch,
+        )
+        rq_id = self.executor.enqueue(
+            self.settings.queue.repair_queue,
+            task_edit,
+            (patch_id,),
+            depends_on=[],
+            timeout=self.settings.timeouts.stage_compose_s
+            + self.settings.timeouts.stage_export_s
+            + self.settings.timeouts.stage_audit_s
+            + 30,
+            description=f"patch {patch_id}",
+        )
+        self.state.update_job(patch_id, rq_ids=[rq_id])
+        return self.state.get_job(patch_id)
+
+    def _resolve_patch_files(self, job_id: str, patch: JsonDict) -> None:
+        """Источники `file` в правках: файл проекта задания, картинка; sha256 дописывается
+        в патч, чтобы сборка нашла байты в хранилище без базы."""
+        from presentation_designer.generation.patch import PatchError
+
+        project = self.state.find_project_by_job(job_id)
+        project_id = str(project["project_id"]) if project else None
+        for entry in patch.get("slides") or []:
+            for override in entry.get("overrides") or []:
+                for spec in (override.get("picture"), override.get("background")):
+                    source = (spec or {}).get("source") or {}
+                    if source.get("kind") != "file":
+                        continue
+                    file_id = str(source.get("file_id") or "")
+                    try:
+                        record = self.state.get_file(file_id, project_id)
+                    except NotFound as e:
+                        raise PatchError(
+                            "file_not_found", f"Файл {file_id} не найден в проекте"
+                        ) from e
+                    if str((record.get("check") or {}).get("format") or "") != "image":
+                        raise PatchError(
+                            "file_not_image", f"Файл {record.get('name') or file_id} не картинка"
+                        )
+                    source["sha256"] = str(record["sha256"])
+                    source.setdefault("name", str(record.get("name") or ""))
 
     # ----- бриф из сообщения -----
 
@@ -1544,11 +1725,18 @@ def task_edit(edit_job_id: str) -> None:
     edit = o.state.get_repair(edit_job_id)
     job_id, variant_id = edit["job_id"], edit["variant_id"]
     slide_index = int(edit["slide_index"] or 0)
+    patch = edit.get("patch") if edit.get("kind") == "patch" else None
+    is_patch = patch is not None
     o.state.job_started(edit_job_id)
     o.state.update_job(
         edit_job_id,
         stage="plan",
-        progress={"percent": 10, "message": f"Переделываю слайд {slide_index + 1}"},
+        progress={
+            "percent": 10,
+            "message": (
+                "Применяю правки редактора" if is_patch else f"Переделываю слайд {slide_index + 1}"
+            ),
+        },
     )
     try:
         variant = o.state.get_variant(job_id, variant_id)
@@ -1559,7 +1747,7 @@ def task_edit(edit_job_id: str) -> None:
         plan_path = base_dir / "plan.json"
         if not plan_path.is_file():
             raise StageError("plan_missing", "План базовой ревизии не найден", stage="plan")
-        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        plan = upgrade_plan_schema(json.loads(plan_path.read_text(encoding="utf-8")))
         gen = o.state.get_generation(job_id)
         template = o.state.get_template(gen["template_id"])
         package = o.state.get_package(gen["package_id"])
@@ -1571,6 +1759,13 @@ def task_edit(edit_job_id: str) -> None:
         new_rev = base + 1
         prefix = o.artifacts.prefix(variant_id, new_rev)
         progress = {"plan": 15, "compose": 45, "export": 65, "audit": 85}
+        base_deck = None
+        extra_assets: dict[str, pathlib.Path] = {}
+        if is_patch:
+            deck_path = base_dir / "composed.json"
+            if deck_path.is_file():
+                base_deck = json.loads(deck_path.read_text(encoding="utf-8"))
+            extra_assets = _patch_files(o, patch or {})
 
         def emit(event: str, data: JsonDict) -> None:
             if event == "stage":
@@ -1582,10 +1777,18 @@ def task_edit(edit_job_id: str) -> None:
                         progress={
                             "percent": progress.get(data["stage"], 10),
                             "message": {
-                                "plan": f"Переделываю слайд {slide_index + 1}",
+                                "plan": (
+                                    "Применяю правки редактора"
+                                    if is_patch
+                                    else f"Переделываю слайд {slide_index + 1}"
+                                ),
                                 "compose": "Собираю новую ревизию",
                                 "export": "Экспортирую PDF и миниатюры",
-                                "audit": "Проверяю изменённый слайд",
+                                "audit": (
+                                    "Проверяю изменённые слайды"
+                                    if is_patch
+                                    else "Проверяю изменённый слайд"
+                                ),
                             }.get(data["stage"], ""),
                         },
                     )
@@ -1607,6 +1810,9 @@ def task_edit(edit_job_id: str) -> None:
                 staging=staging,
                 package_dir=o.artifacts.package_dir(gen["package_id"]),
                 nonce=edit_job_id,
+                patch=patch,
+                base_deck=base_deck,
+                extra_assets=extra_assets,
             )
             outcome = run_edit(o.layers, ctx, emit)
             if outcome.status == "failed":
@@ -1640,6 +1846,7 @@ def task_edit(edit_job_id: str) -> None:
             )
             return
         manifest = o.artifacts.read_manifest(job_id, variant_id, new_rev)
+        changed_ids = list(outcome.changed_slide_ids) or [outcome.slide_id]
         o.state.add_revision(
             job_id=job_id,
             variant_id=variant_id,
@@ -1647,7 +1854,7 @@ def task_edit(edit_job_id: str) -> None:
             artifacts_prefix=prefix,
             manifest=manifest,
             repair_job_id=edit_job_id,
-            changed_slide_ids=[outcome.slide_id],
+            changed_slide_ids=changed_ids,
             pptx_hash=_pptx_hash(manifest, prefix),
         )
         summary = dict(outcome.audit or {})
@@ -1665,14 +1872,24 @@ def task_edit(edit_job_id: str) -> None:
             audited_at=now_iso(),
             audit=summary,
         )
+        dropped = sum(
+            len(s.get("overrides_dropped") or [])
+            for s in ((outcome.report or {}).get("deck") or {}).get("slides") or []
+        )
         o.state.update_repair(
             edit_job_id,
             result="applied",
             new_revision=new_rev,
             slide_id=outcome.slide_id,
             change_note=outcome.change_note,
-            changed_slide_ids=[outcome.slide_id],
+            changed_slide_ids=changed_ids,
         )
+        if is_patch:
+            message = f"Правки применены, ревизия {new_rev} собрана"
+            if dropped:
+                message += f"; правок отброшено: {dropped}"
+        else:
+            message = f"Слайд {slide_index + 1} изменён, ревизия {new_rev} собрана"
         o.state.update_job(
             edit_job_id,
             status="succeeded",
@@ -1682,11 +1899,9 @@ def task_edit(edit_job_id: str) -> None:
                 "revision": new_rev,
                 "change_note": outcome.change_note,
                 "generation_result_url": f"/api/generations/{job_id}",
+                **({"changed_slide_ids": changed_ids} if is_patch else {}),
             },
-            progress={
-                "percent": 100,
-                "message": f"Слайд {slide_index + 1} изменён, ревизия {new_rev} собрана",
-            },
+            progress={"percent": 100, "message": message},
         )
     except Exception as e:
         log.exception("правка %s не удалась", edit_job_id)
@@ -1705,6 +1920,20 @@ def task_edit(edit_job_id: str) -> None:
                 "retryable": bool(getattr(e, "retryable", True)),
             },
         )
+
+
+def _patch_files(o: Orchestrator, patch: JsonDict) -> dict[str, pathlib.Path]:
+    """Пути файлов проекта для правок с источником `file` (sha256 записан при постановке)."""
+    out: dict[str, pathlib.Path] = {}
+    for entry in patch.get("slides") or []:
+        for override in entry.get("overrides") or []:
+            for spec in (override.get("picture"), override.get("background")):
+                source = (spec or {}).get("source") or {}
+                if source.get("kind") == "file" and source.get("file_id") and source.get("sha256"):
+                    path = o.files.path_for(str(source["sha256"]))
+                    if path.is_file():
+                        out[str(source["file_id"])] = path
+    return out
 
 
 def task_gc() -> None:

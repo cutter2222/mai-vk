@@ -44,6 +44,34 @@ export function slidePng(key: string, title: string, subtitle: string, accent = 
   });
 }
 
+/** Картинка-ресурс: цветной квадрат, для иконок — круг с прозрачным фоном (перекраска в редакторе). */
+export function assetPng(key: string, color: string, icon = false, size = 128): Promise<Blob> {
+  const cached = cache.get(key);
+  if (cached) return Promise.resolve(cached);
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return Promise.resolve(new Blob());
+  ctx.fillStyle = color;
+  if (icon) {
+    ctx.beginPath();
+    ctx.arc(size / 2, size / 2, size * 0.42, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.fillRect(size * 0.15, size * 0.15, size * 0.7, size * 0.7);
+  }
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => {
+      const b = blob ?? new Blob();
+      cache.set(key, b);
+      resolve(b);
+    }, "image/png");
+  });
+}
+
 function wrap(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxW: number, lineH: number) {
   const words = text.split(" ");
   let line = "";

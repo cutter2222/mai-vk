@@ -43,6 +43,7 @@ def _canvas_of(profile: JsonDict) -> Any:
 
     return canvas_of(profile)
 
+
 # Запас к оценке вместимости: модель почти всегда пишет чуть длиннее, чем
 # просили, и жёсткая граница приводила бы к тому, что ответ выбрасывается
 # целиком. Просим короче, принимаем по факту замера.
@@ -56,7 +57,7 @@ def _capacity_chars(slot: JsonDict, canvas: Any | None = None) -> int | None:
     return max_chars(slot, canvas)
 
 
-def _slide_material(story: JsonDict, refs: list[str]) -> dict:
+def _slide_material(story: JsonDict, refs: list[str]) -> JsonDict:
     """Материал слайда из смыслового плана: тезисы, пояснения, факты.
 
     Без него дозапрос бессмыслен. Промпт требует брать только то, что есть в
@@ -163,8 +164,33 @@ _ADJECTIVE_TAILS = ("ая", "яя", "ое", "ые", "ый", "ой")
 # Служебные слова, которыми подпись не заканчивается. Модель, уложившись в
 # лимит знаков, обрывает фразу на предлоге: «Самый быстрорастущий сегмент
 # бизнеса в с» — ровно сорок знаков, как и просили.
-_TAIL = frozenset({"в", "на", "с", "со", "до", "за", "от", "по", "и", "или", "для", "к", "у",
-                   "о", "об", "при", "из", "под", "над", "а", "но", "что", "как"})
+_TAIL = frozenset(
+    {
+        "в",
+        "на",
+        "с",
+        "со",
+        "до",
+        "за",
+        "от",
+        "по",
+        "и",
+        "или",
+        "для",
+        "к",
+        "у",
+        "о",
+        "об",
+        "при",
+        "из",
+        "под",
+        "над",
+        "а",
+        "но",
+        "что",
+        "как",
+    }
+)
 
 
 def tidy(value: str, facts: dict[str, JsonDict] | None = None) -> str:
@@ -291,19 +317,25 @@ def apply_answer(
                 if not _keeps_meaning(str(block.get("text") or ""), value):
                     log.info(
                         "отвергнуто сокращение %s/%s: от строки ничего не осталось — %r",
-                        slide.get("slide_id"), slot_id, value[:60],
+                        slide.get("slide_id"),
+                        slot_id,
+                        value[:60],
                     )
                     continue
                 if set(_DIGITS.findall(str(block.get("text") or ""))) - set(_DIGITS.findall(value)):
                     log.info(
                         "отвергнуто сокращение %s/%s: потерян показатель — %r",
-                        slide.get("slide_id"), slot_id, value[:60],
+                        slide.get("slide_id"),
+                        slot_id,
+                        value[:60],
                     )
                     continue
                 if _fits(slot, value, canvas) is not True:
                     log.info(
                         "отвергнуто сокращение %s/%s: всё ещё не помещается — %r",
-                        slide.get("slide_id"), slot_id, value[:60],
+                        slide.get("slide_id"),
+                        slot_id,
+                        value[:60],
                     )
                     continue
                 block["text"] = value
@@ -313,13 +345,15 @@ def apply_answer(
             if not value or slot is None or slot_id in filled:
                 log.info(
                     "отвергнут %s/%s: пустой ответ или слот занят",
-                    slide.get("slide_id"), slot_id,
+                    slide.get("slide_id"),
+                    slot_id,
                 )
                 continue
             if norm in sample_marks or norm in seen:
                 log.info(
                     "отвергнут %s/%s: образец шаблона или повтор",
-                    slide.get("slide_id"), slot_id,
+                    slide.get("slide_id"),
+                    slot_id,
                 )
                 continue
             if _dangling(value):
@@ -328,14 +362,20 @@ def apply_answer(
             if _restates(norm, slide.get("title", ""), seen):
                 log.info(
                     "отвергнут %s/%s: пересказ заголовка — %r",
-                    slide.get("slide_id"), slot_id, value[:50],
+                    slide.get("slide_id"),
+                    slot_id,
+                    value[:50],
                 )
                 continue
             verdict = _fits(slot, value, canvas)
             if verdict is not True:
                 log.info(
                     "отвергнут %s/%s: замер %s, %d знаков — %r",
-                    slide.get("slide_id"), slot_id, verdict, len(value), value[:60],
+                    slide.get("slide_id"),
+                    slot_id,
+                    verdict,
+                    len(value),
+                    value[:60],
                 )
                 continue
             slide.setdefault("blocks", []).append(
@@ -373,7 +413,8 @@ def refill(
     tasks = collect_gaps(plan, patterns, limit, story, canvas)
     log.info(
         "дозапрос: слайдов с пустотами %d, слотов %d",
-        len(tasks), sum(len(t["empty_slots"]) for t in tasks),
+        len(tasks),
+        sum(len(t["empty_slots"]) for t in tasks),
     )
     if not tasks:
         return []
@@ -384,7 +425,7 @@ def refill(
 
     try:
         raw = ask(prompt, json.dumps({"slides": tasks}, ensure_ascii=False))
-    except Exception as exc:                    # сеть, квота, таймаут
+    except Exception as exc:  # сеть, квота, таймаут
         log.warning("дозапрос слотов не удался: %s", exc)
         return []
 
@@ -396,17 +437,18 @@ def refill(
 
     markers = {str(m) for m in profile.get("placeholder_markers") or []}
     taken = apply_answer(plan, patterns, answer, markers, canvas, facts_index(package))
-    log.info("дозапрос: модель вернула %d слотов, принято %d",
-             sum(len(v) for v in answer.values() if isinstance(v, dict)), len(taken))
+    log.info(
+        "дозапрос: модель вернула %d слотов, принято %d",
+        sum(len(v) for v in answer.values() if isinstance(v, dict)),
+        len(taken),
+    )
     return taken
 
 
 def facts_index(package: JsonDict | None) -> dict[str, JsonDict]:
     """Факты пакета по идентификатору: нужны, чтобы видеть их единицы измерения."""
     return {
-        str(f.get("fact_id")): f
-        for f in (package or {}).get("facts") or []
-        if f.get("fact_id")
+        str(f.get("fact_id")): f for f in (package or {}).get("facts") or [] if f.get("fact_id")
     }
 
 

@@ -731,3 +731,255 @@ body {
     display: none;
   }
 }
+
+/* ---------- Визуальный редактор: холст, выделение, панель свойств, лента ---------- */
+
+/* Контуры объектов поверх картинки слайда: видны при наведении, клик открывает редактор. */
+.object-outline {
+  position: absolute;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  transition: border-color 100ms ease, background-color 100ms ease;
+}
+
+.slide-frame:hover .object-outline {
+  border-color: rgba(77, 119, 187, 0.35);
+}
+
+.object-outline:hover,
+.object-outline:focus-visible {
+  border-color: var(--mantine-color-blue-6);
+  background: rgba(77, 119, 187, 0.08);
+  outline: none;
+}
+
+.slide-canvas {
+  position: relative;
+  width: 100%;
+  container-type: inline-size;
+  overflow: hidden;
+  border: 1px solid var(--mantine-color-gray-3);
+  border-radius: var(--mantine-radius-sm);
+  outline: none;
+  user-select: none;
+  touch-action: none;
+}
+
+.slide-canvas:focus-visible {
+  box-shadow: 0 0 0 2px rgba(77, 119, 187, 0.35);
+}
+
+.slide-canvas .canvas-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+}
+
+.canvas-object {
+  position: absolute;
+  box-sizing: border-box;
+  cursor: default;
+  outline: 1px solid transparent;
+  outline-offset: 0;
+}
+
+.slide-canvas[data-editable="true"] .canvas-object {
+  cursor: move;
+}
+
+.slide-canvas[data-editable="true"] .canvas-object[data-kind="connector"],
+.slide-canvas[data-editable="true"] .canvas-object[data-kind="other"] {
+  cursor: default;
+}
+
+.slide-canvas .canvas-object:hover {
+  outline-color: rgba(77, 119, 187, 0.5);
+}
+
+.canvas-object[data-selected="true"] {
+  outline: 1.5px solid var(--mantine-color-blue-6);
+}
+
+.canvas-object[data-user="true"]::after {
+  content: "";
+  position: absolute;
+  right: -3px;
+  top: -3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--mantine-color-graphite-6);
+  box-shadow: 0 0 0 1.5px #fff;
+}
+
+.canvas-object p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.2;
+}
+
+.canvas-object img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.canvas-mask {
+  width: 100%;
+  height: 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+}
+
+.canvas-crop {
+  background-repeat: no-repeat;
+}
+
+.canvas-selection {
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: none;
+  outline: 1.5px solid var(--mantine-color-blue-6);
+}
+
+.canvas-handle {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  background: #fff;
+  border: 1.5px solid var(--mantine-color-blue-6);
+  border-radius: 2px;
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+}
+
+.canvas-handle[data-handle="nw"] { left: 0; top: 0; cursor: nwse-resize; }
+.canvas-handle[data-handle="n"] { left: 50%; top: 0; cursor: ns-resize; }
+.canvas-handle[data-handle="ne"] { left: 100%; top: 0; cursor: nesw-resize; }
+.canvas-handle[data-handle="e"] { left: 100%; top: 50%; cursor: ew-resize; }
+.canvas-handle[data-handle="se"] { left: 100%; top: 100%; cursor: nwse-resize; }
+.canvas-handle[data-handle="s"] { left: 50%; top: 100%; cursor: ns-resize; }
+.canvas-handle[data-handle="sw"] { left: 0; top: 100%; cursor: nesw-resize; }
+.canvas-handle[data-handle="w"] { left: 0; top: 50%; cursor: ew-resize; }
+
+/* Панель свойств под слайдом: граница сверху, без теней, в тон остального интерфейса. */
+.object-panel {
+  padding: 12px 0 4px;
+  border-top: 1px solid var(--mantine-color-gray-2);
+}
+
+/* При открытой панели свойств слайд ужимается по высоте, чтобы панель не уехала за экран. */
+.viewer-main[data-editing="true"] .preview-stage {
+  max-width: min(100%, calc((100dvh - 56px - 52px - 48px - 44px - 60px - var(--object-panel-h, 240px)) * 16 / 9));
+  min-width: 420px;
+}
+
+/* Лента: иконка захвата для перестановки, метка черновика, состояние перетаскивания. */
+.filmstrip .thumb-grip {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  color: var(--mantine-color-gray-6);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--mantine-color-gray-3);
+  cursor: grab;
+}
+
+.filmstrip button:hover .thumb-grip,
+.filmstrip button[data-active="true"] .thumb-grip {
+  display: inline-flex;
+}
+
+.filmstrip[data-dragging="true"] .thumb-grip {
+  cursor: grabbing;
+}
+
+.filmstrip button[data-drag-source="true"] .thumb-image {
+  opacity: 0.45;
+}
+
+.filmstrip button[data-drop-target="before"] .thumb-image {
+  box-shadow: 0 -7px 0 -5px var(--mantine-color-blue-6);
+}
+
+.filmstrip button[data-drop-target="after"] .thumb-image {
+  box-shadow: 0 7px 0 -5px var(--mantine-color-blue-6);
+}
+
+.filmstrip .thumb-edited {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mantine-color-graphite-6);
+  box-shadow: 0 0 0 2px #fff;
+}
+
+/* Выбор ресурса: сетка миниатюр шаблона и материалов. */
+.asset-picker {
+  padding: 8px 10px 6px;
+  border: 1px solid var(--mantine-color-gray-2);
+  border-radius: var(--mantine-radius-sm);
+  background: var(--mantine-color-gray-0);
+}
+
+.asset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.asset-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid var(--mantine-color-gray-2);
+  border-radius: var(--mantine-radius-sm);
+  background: #fff;
+  cursor: pointer;
+}
+
+.asset-item:hover,
+.asset-item:focus-visible {
+  border-color: var(--mantine-color-blue-6);
+  outline: none;
+}
+
+.asset-item img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  background: repeating-conic-gradient(#f1f3f5 0% 25%, #fff 0% 50%) 0 0 / 12px 12px;
+  border-radius: 3px;
+}
+
+.asset-caption {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 10px;
+  color: var(--mantine-color-gray-6);
+}

@@ -510,7 +510,7 @@ def test_three_plans_on_replay_mini_template(
     for variant_id, result in results.items():
         plan = result.plan
         _assert_valid(plan, mini_profile, example_package, example_story)
-        assert plan["schema_version"] == "1.2" and plan["variant"]["value"] == variant_id
+        assert plan["schema_version"] == "1.3" and plan["variant"]["value"] == variant_id
         assert plan["coverage"]["missing"] == []
         assert {c["thesis_id"] for c in plan["coverage"]["covered"]} == required
         assert plan["slide_count"]["min"] <= len(plan["slides"]) <= plan["slide_count"]["max"]
@@ -977,7 +977,8 @@ def test_slide_spec_from_settings_and_brief(example_story: dict[str, Any]) -> No
 def test_title_falls_back_to_speaker_or_any_titled_pattern(mini_profile: dict[str, Any]) -> None:
     """Обычная презентация, отданная как шаблон (popov.pptx, 19.09): титульной композиции нет,
     первый слайд — спикер, остальные — списки. Титулом становится слайд спикера, а без него —
-    образец с заголовком и наименьшим числом обязательных слотов; отказа plan_no_title_pattern нет."""
+    образец с заголовком и наименьшим числом обязательных слотов; отказа plan_no_title_pattern
+    нет."""
     profile = json.loads(json.dumps(mini_profile))
     roles = {"pat_s1": "speaker", "pat_s2": "bullets", "pat_s3": "table", "pat_s4": "bullets"}
     for p in profile["patterns"]:

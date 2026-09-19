@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "plan_id": "plan_demo_balanced",
   "template_id": "tpl_vk_education",
   "package_id": "pkg_demo",
@@ -147,6 +147,39 @@
       "thesis_refs": [
         "t1",
         "t2"
+      ],
+      "overrides": [
+        {
+          "op": "style",
+          "target": {
+            "object_id": "10",
+            "source_object_id": "10",
+            "slot_id": "title"
+          },
+          "style": {
+            "font": {
+              "size_pt": 28,
+              "color": "#0077FF"
+            },
+            "align": "left"
+          }
+        },
+        {
+          "op": "geometry",
+          "target": {
+            "object_id": "11",
+            "source_object_id": "11",
+            "slot_id": "kpi_1_value"
+          },
+          "geometry": {
+            "bbox": {
+              "x": 0.05,
+              "y": 0.28,
+              "width": 0.3,
+              "height": 0.15
+            }
+          }
+        }
       ]
     },
     {

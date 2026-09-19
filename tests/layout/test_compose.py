@@ -77,7 +77,7 @@ def _plan_with(
 ) -> dict[str, Any]:
     """Минимальный план из явных слайдов: композер читает только slides, variant, language."""
     return {
-        "schema_version": "1.2",
+        "schema_version": "1.3",
         "plan_id": "plan_manual",
         "template_id": profile["template_id"],
         "package_id": package_id,

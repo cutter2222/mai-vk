@@ -11,7 +11,7 @@ import resultExample from "./data/generation_result.json";
 import planExample from "./data/slide_plan.json";
 import storyExample from "./data/story_plan.json";
 import profileExample from "./data/template_profile.json";
-import type { AuditReport, ContentPackage, GenerationRequest, GenerationResult, JobStatus, SlidePlan, StoryPlan, TemplateProfile } from "@/lib/api/types";
+import type { AuditReport, ContentPackage, GenerationRequest, GenerationResult, JobStatus, Override, SlidePlan, StoryPlan, TemplateProfile } from "@/lib/api/types";
 
 type Status = "queued" | "running" | "succeeded" | "needs_review" | "failed" | "canceled";
 
@@ -41,8 +41,12 @@ interface RevisionRecord {
   changed_slide_ids: string[];
   audit: AuditReport;
   fixedIssueIds: string[];
-  /** Заголовки слайдов, изменённые правкой по запросу: индекс слайда → заголовок (для миниатюр). */
-  titles?: Record<number, string>;
+  /** Заголовки слайдов, изменённые правкой по запросу или редактором: slide_id → заголовок (для миниатюр). */
+  titles?: Record<string, string>;
+  /** Ручные правки редактора, действующие в ревизии: slide_id → overrides (эхо плана). */
+  overrides?: Record<string, Override[]>;
+  /** Порядок слайдов в ревизии (slide_id), если переставлялись. */
+  order?: string[];
 }
 
 export interface MockVariant {
@@ -71,7 +75,7 @@ export interface MockGeneration {
   plan: SlidePlan;
 }
 
-/** Задание ревизии: исправление по находкам или правка слайда по инструкции (kind edit). */
+/** Задание ревизии: исправление по находкам, правка слайда по инструкции (kind edit) или ручные правки редактора (kind patch). */
 export interface MockRepair {
   repair_job_id: string;
   job_id: string;
@@ -81,11 +85,13 @@ export interface MockRepair {
   startedAt: number;
   durationMs: number;
   applied: boolean;
-  kind?: "repair" | "edit";
+  kind?: "repair" | "edit" | "patch";
   slide_index?: number;
   instruction?: string;
   unchanged?: boolean;
   change_note?: string;
+  patch?: { slides: Array<{ slide_id: string; overrides: Override[] }>; order?: string[] };
+  changed_slide_ids?: string[];
 }
 
 const SPEED = Number(typeof window !== "undefined" ? window.localStorage.getItem("mock_speed") ?? "1" : "1") || 1;
@@ -372,7 +378,10 @@ export function buildResult(g: MockGeneration): GenerationResult {
     if (a.html) manifest[a.html] = { content_type: "text/html", size_bytes: 350000, sha256: "mock" };
     a.thumbnails?.forEach((th) => (manifest[th.name] = { content_type: "image/png", size_bytes: 180000, sha256: "mock" }));
     if (v.plan_artifact) manifest[v.plan_artifact] = { content_type: "application/json", size_bytes: 40000, sha256: "mock" };
-    if (v.composed_deck_artifact) manifest[v.composed_deck_artifact] = { content_type: "application/json", size_bytes: 40000, sha256: "mock" };
+    if (v.composed_deck_artifact) {
+      manifest[v.composed_deck_artifact] = { content_type: "application/json", size_bytes: 40000, sha256: "mock" };
+      manifest[`${v.variant_id}/r${v.revision}/media/asset_logo.png`] = { content_type: "image/png", size_bytes: 2000, sha256: "mock" };
+    }
     if (v.audit?.report_artifact) manifest[v.audit.report_artifact] = { content_type: "application/json", size_bytes: 30000, sha256: "mock" };
   });
   const elapsed = Math.min(t, g.createdAt + Math.max(...g.variants.map((v) => timeline(g, v).auditDone - g.createdAt))) - g.createdAt;
@@ -410,17 +419,38 @@ export function buildResult(g: MockGeneration): GenerationResult {
       },
     },
     repairs: [...store.repairs.values()].filter((r) => r.job_id === g.job_id && r.applied && r.kind !== "edit").map((r) => ({ repair_job_id: r.repair_job_id, variant_id: r.variant_id, issue_ids: r.issue_ids, result: "applied" as const, base_revision: r.base_revision, new_revision: r.base_revision + 1 })),
-    edits: [...store.repairs.values()].filter((r) => r.job_id === g.job_id && r.applied && r.kind === "edit").map((r) => ({
-      edit_job_id: r.repair_job_id,
-      variant_id: r.variant_id,
-      base_revision: r.base_revision,
-      slide_index: r.slide_index ?? 0,
-      slide_id: `s${(r.slide_index ?? 0) + 1}`,
-      instruction: r.instruction ?? "",
-      result: r.unchanged ? ("unchanged" as const) : ("applied" as const),
-      change_note: r.change_note,
-      ...(r.unchanged ? {} : { new_revision: r.base_revision + 1, changed_slide_ids: [`s${(r.slide_index ?? 0) + 1}`] }),
-    })),
+    edits: [...store.repairs.values()].filter((r) => r.job_id === g.job_id && r.applied && (r.kind === "edit" || r.kind === "patch")).map((r) => {
+      const v = g.variants.find((x) => x.variant_id === r.variant_id);
+      const slideId = slideIdsAt(v, r.base_revision)[r.slide_index ?? 0] ?? `s${(r.slide_index ?? 0) + 1}`;
+      if (r.kind === "patch") {
+        return {
+          edit_job_id: r.repair_job_id,
+          variant_id: r.variant_id,
+          base_revision: r.base_revision,
+          slide_index: r.slide_index ?? 0,
+          slide_id: r.changed_slide_ids?.[0] ?? slideId,
+          instruction: r.change_note ?? "",
+          origin: "editor" as const,
+          summary: r.change_note,
+          result: "applied" as const,
+          change_note: r.change_note,
+          new_revision: r.base_revision + 1,
+          changed_slide_ids: r.changed_slide_ids ?? [],
+        };
+      }
+      return {
+        edit_job_id: r.repair_job_id,
+        variant_id: r.variant_id,
+        base_revision: r.base_revision,
+        slide_index: r.slide_index ?? 0,
+        slide_id: slideId,
+        instruction: r.instruction ?? "",
+        origin: "chat" as const,
+        result: r.unchanged ? ("unchanged" as const) : ("applied" as const),
+        change_note: r.change_note,
+        ...(r.unchanged ? {} : { new_revision: r.base_revision + 1, changed_slide_ids: [slideId] }),
+      };
+    }),
     warnings: anyFailed ? [{ code: "variant_failed", message: "Вариант detailed не собран; доступны остальные варианты" }] : [{ code: "font_substituted", message: "Шрифт Arial заменён на Liberation Sans при рендеринге миниатюр" }],
   };
 }
@@ -448,7 +478,7 @@ function progressMessage(stage: string, variants: GenerationResult["variants"]):
 export function buildJobStatus(g: MockGeneration): JobStatus {
   const r = buildResult(g);
   return {
-    schema_version: "1.2",
+    schema_version: "1.3",
     job_id: g.job_id,
     kind: "generation",
     status: r.status,
@@ -468,7 +498,7 @@ export function buildJobStatus(g: MockGeneration): JobStatus {
 export function templateJobStatus(t: MockTemplate): JobStatus {
   const status = templateStatus(t);
   return {
-    schema_version: "1.2",
+    schema_version: "1.3",
     job_id: t.job_id,
     kind: "template_analysis",
     status,
@@ -485,7 +515,7 @@ export function packageJobStatus(p: MockPackage): JobStatus {
   const status = packageStatus(p);
   const pk = p.pkg;
   return {
-    schema_version: "1.2",
+    schema_version: "1.3",
     job_id: p.job_id,
     kind: "content_import",
     status,
@@ -536,6 +566,82 @@ export function createEdit(g: MockGeneration, variantId: string, baseRevision: n
   return edit;
 }
 
+/** Идентификаторы слайдов варианта в порядке ревизии: исходный s1..sN или переставленный редактором. */
+export function slideIdsAt(v: MockVariant | undefined, revision: number): string[] {
+  const count = v?.slideCount ?? 0;
+  let ids = Array.from({ length: count }, (_, i) => `s${i + 1}`);
+  for (const rec of v?.revisions ?? []) {
+    if (rec.revision <= revision && rec.order) ids = [...rec.order];
+  }
+  return ids;
+}
+
+/** Ручные правки, действующие в ревизии: slide_id → overrides (последняя запись побеждает). */
+export function overridesAt(v: MockVariant | undefined, revision: number): Record<string, Override[]> {
+  let out: Record<string, Override[]> = {};
+  for (const rec of v?.revisions ?? []) {
+    if (rec.revision <= revision && rec.overrides) out = { ...out, ...rec.overrides };
+  }
+  return out;
+}
+
+/** Ручные правки редактора: списки overrides слайдов и порядок; заглушка применяет их без модели. */
+export function createPatch(
+  g: MockGeneration,
+  variantId: string,
+  baseRevision: number,
+  slides: Array<{ slide_id: string; overrides: Override[] }>,
+  order?: string[],
+): MockRepair | { conflict: number } | { busy: string } | { invalid: string } {
+  const v = g.variants.find((x) => x.variant_id === variantId);
+  if (!v) throw new Error("variant_missing");
+  if (baseRevision !== v.currentRevision) return { conflict: v.currentRevision };
+  const active = [...store.repairs.values()].find((r) => r.job_id === g.job_id && r.variant_id === variantId && !r.applied && now() - r.startedAt < r.durationMs);
+  if (active) return { busy: active.repair_job_id };
+  const ids = slideIdsAt(v, baseRevision);
+  for (const s of slides) {
+    if (!ids.includes(s.slide_id)) return { invalid: `slide_unknown: слайда ${s.slide_id} нет в плане` };
+    for (const o of s.overrides) {
+      const id = o.target?.object_id;
+      if (o.op !== "background" && !["2", "3", "5"].includes(id ?? "")) return { invalid: `object_unknown: объекта ${id} нет на слайде ${s.slide_id}` };
+    }
+  }
+  if (order && [...order].sort().join("|") !== [...ids].sort().join("|")) return { invalid: "order_invalid: порядок должен быть перестановкой всех slide_id" };
+  const current = overridesAt(v, baseRevision);
+  const changed = slides.filter((s) => JSON.stringify(current[s.slide_id] ?? []) !== JSON.stringify(s.overrides)).map((s) => s.slide_id);
+  if (order) ids.forEach((id, i) => order[i] !== id && !changed.includes(order[i]) && changed.push(order[i]));
+  if (changed.length === 0) return { invalid: "patch_empty: правки совпадают с текущей ревизией" };
+  const patch: MockRepair = {
+    repair_job_id: nextId("patch"),
+    job_id: g.job_id,
+    variant_id: variantId,
+    base_revision: baseRevision,
+    issue_ids: [],
+    startedAt: now(),
+    durationMs: ms(3000),
+    applied: false,
+    kind: "patch",
+    slide_index: Math.max(0, ids.indexOf(changed[0])),
+    patch: { slides, order },
+    changed_slide_ids: changed,
+    change_note: describePatch(slides, order, ids),
+  };
+  store.repairs.set(patch.repair_job_id, patch);
+  persistStore();
+  return patch;
+}
+
+function describePatch(slides: Array<{ slide_id: string; overrides: Override[] }>, order: string[] | undefined, ids: string[]): string {
+  const parts = slides.map((s) => {
+    const n = ids.indexOf(s.slide_id) + 1;
+    if (s.overrides.length === 0) return `Слайд ${n}: сброс правок`;
+    const labels = s.overrides.map((o) => ({ text: "заголовок: текст", style: "заголовок: стиль", geometry: "положение", picture: "картинка", background: "фон" })[o.op]);
+    return `Слайд ${n}: ${labels.join("; ")}`;
+  });
+  if (order) parts.push("порядок слайдов изменён");
+  return parts.join(" · ");
+}
+
 /** Применяет завершившиеся исправления и правки: создаёт новую ревизию с обновлённым отчётом. */
 export function settleRepairs(): void {
   for (const r of store.repairs.values()) {
@@ -543,6 +649,31 @@ export function settleRepairs(): void {
     const g = store.generations.get(r.job_id);
     const v = g?.variants.find((x) => x.variant_id === r.variant_id);
     if (!g || !v) continue;
+    if (r.kind === "patch" && r.patch) {
+      const prevAudit = buildAudit(g, v.variant_id) as AuditReport;
+      const newRev = v.currentRevision + 1;
+      const changed = r.changed_slide_ids ?? [];
+      const overrides: Record<string, Override[]> = {};
+      const titles: Record<string, string> = {};
+      for (const s of r.patch.slides) {
+        overrides[s.slide_id] = s.overrides;
+        const text = s.overrides.find((o) => o.op === "text" && o.target?.object_id === "2");
+        if (text?.text) titles[s.slide_id] = text.text.split("\n")[0].slice(0, 80);
+      }
+      const audit: AuditReport = {
+        ...structuredClone(prevAudit),
+        report_id: `audit_${g.job_id}_${v.variant_id}_r${newRev}`,
+        revision: newRev,
+        created_at: iso(now()),
+        issues: prevAudit.issues.map((i) => ({ ...i, revision: newRev })),
+        rechecked_after_repair: { base_revision: v.currentRevision, changed_slide_ids: changed, dependent_slide_ids: [], deck_checks_rerun: ["integrity.duplicate_slides"] },
+      };
+      v.revisions.push({ revision: newRev, created_at: audit.created_at, changed_slide_ids: changed, audit, fixedIssueIds: [], titles, overrides, order: r.patch.order });
+      v.currentRevision = newRev;
+      r.applied = true;
+      persistStore();
+      continue;
+    }
     if (r.kind === "edit") {
       if (r.unchanged) {
         r.applied = true;
@@ -559,9 +690,11 @@ export function settleRepairs(): void {
         revision: newRev,
         created_at: iso(now()),
         issues: prevAudit.issues.map((i) => ({ ...i, revision: newRev })),
-        rechecked_after_repair: { base_revision: v.currentRevision, changed_slide_ids: [`s${idx + 1}`], dependent_slide_ids: [], deck_checks_rerun: ["integrity.duplicate_slides"] },
+        rechecked_after_repair: { base_revision: v.currentRevision, changed_slide_ids: [slideIdsAt(v, v.currentRevision)[idx] ?? `s${idx + 1}`], dependent_slide_ids: [], deck_checks_rerun: ["integrity.duplicate_slides"] },
       };
-      v.revisions.push({ revision: newRev, created_at: audit.created_at, changed_slide_ids: [`s${idx + 1}`], audit, fixedIssueIds: [], titles: { [idx]: (r.instruction ?? "").slice(0, 80) } });
+      const editedId = slideIdsAt(v, v.currentRevision)[idx] ?? `s${idx + 1}`;
+      // Слайд пересобран по инструкции: ручные правки редактора у него сбрасываются.
+      v.revisions.push({ revision: newRev, created_at: audit.created_at, changed_slide_ids: [editedId], audit, fixedIssueIds: [], titles: { [editedId]: (r.instruction ?? "").slice(0, 80) }, overrides: { [editedId]: [] } });
       v.currentRevision = newRev;
       r.applied = true;
       r.change_note = "Заголовок заменён по просьбе";
@@ -593,12 +726,31 @@ export function settleRepairs(): void {
 export function repairJobStatus(r: MockRepair): JobStatus {
   const done = r.applied || now() - r.startedAt >= r.durationMs;
   const percent = done ? 100 : Math.round(((now() - r.startedAt) / r.durationMs) * 100);
+  if (r.kind === "patch") {
+    const stage = percent < 15 ? "plan" : percent < 50 ? "compose" : percent < 80 ? "export" : "audit";
+    const messages: Record<string, string> = { plan: "Применяю правки редактора", compose: "Собираю новую ревизию", export: "Экспортирую PDF и миниатюры", audit: "Проверяю изменённые слайды" };
+    return {
+      schema_version: "1.3",
+      job_id: r.repair_job_id,
+      kind: "slide_patch",
+      status: done ? "succeeded" : "running",
+      stage: done ? "done" : stage,
+      stages: (["plan", "compose", "export", "audit"] as const).map((s) => ({ stage: s, status: done ? ("done" as const) : s === stage ? ("running" as const) : ("pending" as const) })),
+      progress: { percent, message: done ? `Правки применены, ревизия ${r.base_revision + 1} собрана` : messages[stage] },
+      created_at: iso(r.startedAt),
+      finished_at: done ? iso(r.startedAt + r.durationMs) : undefined,
+      parent_job_id: r.job_id,
+      result: done
+        ? { revision: r.base_revision + 1, change_note: r.change_note, changed_slide_ids: r.changed_slide_ids, generation_result_url: `/api/generations/${r.job_id}` }
+        : { generation_result_url: `/api/generations/${r.job_id}` },
+    };
+  }
   if (r.kind === "edit") {
     const idx = (r.slide_index ?? 0) + 1;
     const stage = percent < 30 ? "plan" : percent < 55 ? "compose" : percent < 80 ? "export" : "audit";
     const messages: Record<string, string> = { plan: `Переделываю слайд ${idx}`, compose: "Собираю новую ревизию", export: "Экспортирую PDF и миниатюры", audit: "Проверяю изменённый слайд" };
     return {
-      schema_version: "1.2",
+      schema_version: "1.3",
       job_id: r.repair_job_id,
       kind: "slide_edit",
       status: done ? "succeeded" : "running",
@@ -616,7 +768,7 @@ export function repairJobStatus(r: MockRepair): JobStatus {
     };
   }
   return {
-    schema_version: "1.2",
+    schema_version: "1.3",
     job_id: r.repair_job_id,
     kind: "repair",
     status: done ? "succeeded" : "running",
@@ -630,12 +782,14 @@ export function repairJobStatus(r: MockRepair): JobStatus {
   };
 }
 
-/** Заголовок слайда в ревизии с учётом правок по запросу до неё включительно. */
-export function slideTitleAt(v: MockVariant | undefined, revision: number, index: number, fallback: string): string {
+/** Заголовок слайда на позиции ревизии с учётом перестановок и правок до неё включительно. */
+export function slideTitleAt(v: MockVariant | undefined, revision: number, index: number, fallback: string, titles: string[] = []): string {
   if (!v) return fallback;
-  let title = fallback;
+  const id = slideIdsAt(v, revision)[index] ?? `s${index + 1}`;
+  const base = Number(id.slice(1)) - 1;
+  let title = titles[base] ?? fallback;
   for (const rec of v.revisions) {
-    if (rec.revision <= revision && rec.titles && rec.titles[index] !== undefined) title = rec.titles[index];
+    if (rec.revision <= revision && rec.titles && rec.titles[id] !== undefined) title = rec.titles[id];
   }
   return title;
 }

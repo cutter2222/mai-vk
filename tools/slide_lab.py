@@ -97,8 +97,9 @@ def main() -> int:
     ap.add_argument("--raw", action="store_true", help="без слоя design — как отдала модель")
     ap.add_argument("--png", action="store_true", help="снимки слайдов рядом с .pptx")
     ap.add_argument("--facts", action="store_true", help="факты собранного файла и счёт дефектов")
-    ap.add_argument("--polish", action="store_true",
-                    help="правка по фактам: сборка → факты → правка")
+    ap.add_argument(
+        "--polish", action="store_true", help="правка по фактам: сборка → факты → правка"
+    )
     ap.add_argument("--ask", action="store_true", help="разрешить дозапрос к модели")
     args = ap.parse_args()
 
@@ -113,9 +114,13 @@ def main() -> int:
 
     template = _from_db("templates", "profile", "where status='succeeded'")
     package = _from_db("packages", "package", "where status='succeeded'")
-    sha = sqlite3.connect(DB).execute(
-        "select sha256 from templates where status='succeeded' order by created_at desc limit 1"
-    ).fetchone()[0]
+    sha = (
+        sqlite3.connect(DB)
+        .execute(
+            "select sha256 from templates where status='succeeded' order by created_at desc limit 1"
+        )
+        .fetchone()[0]
+    )
 
     if not args.raw:
         story = plan.get("story") or {}
@@ -138,15 +143,26 @@ def main() -> int:
     template_file = _template_file(sha)
 
     def build(doc: dict, path: pathlib.Path = out_pptx):
-        return compose_deck(doc, template, template_file, package,
-                            out_pptx=path, job_id="slide_lab", variant_id=args.variant)
+        return compose_deck(
+            doc,
+            template,
+            template_file,
+            package,
+            out_pptx=path,
+            job_id="slide_lab",
+            variant_id=args.variant,
+        )
 
     if args.polish:
         ask = _model_ask() if args.ask else None
         plan, report = design.polish(
-            plan, template, plan.get("story") or {},
+            plan,
+            template,
+            plan.get("story") or {},
             compose=lambda doc: build(doc, OUT / "draft.pptx").deck,
-            variant=args.variant, ask=ask, package=package,
+            variant=args.variant,
+            ask=ask,
+            package=package,
         )
         brief = {k: v for k, v in report.items() if k not in ("decisions", "refilled")}
         print("правка по фактам:", json.dumps(brief, ensure_ascii=False))
@@ -170,8 +186,10 @@ def main() -> int:
             if fact.kind in feedback.EMPTY_KINDS:
                 print(f"   {place} {fact.kind:8} пусто, вмещает {fact.capacity_chars} знаков")
             else:
-                print(f"   {place} {fact.kind:8} строк {fact.needed_lines} при {fact.fits_lines}"
-                      f": {fact.text[:40]!r}")
+                print(
+                    f"   {place} {fact.kind:8} строк {fact.needed_lines} при {fact.fits_lines}"
+                    f": {fact.text[:40]!r}"
+                )
     print(f"\nсобрано: {out_pptx}  за {time.perf_counter() - started:.1f} с")
     warnings = (result.report or {}).get("warnings") or []
     if warnings:
@@ -184,7 +202,9 @@ def main() -> int:
 
         subprocess.run(
             ["soffice", "--headless", "--convert-to", "png", "--outdir", str(OUT), str(out_pptx)],
-            check=False, capture_output=True, timeout=120,
+            check=False,
+            capture_output=True,
+            timeout=120,
         )
         print(f"снимки: {OUT}")
     return 0

@@ -2,7 +2,7 @@
 # например PD_LIMITS__MAX_UPLOAD_MB=200. Загрузчик: presentation_designer.shared.settings.
 app:
   name: presentation-designer
-  contracts_version: "1.7"
+  contracts_version: "1.9"
   language_default: ru
 
 paths:

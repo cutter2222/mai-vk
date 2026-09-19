@@ -4,7 +4,9 @@ import { Button, Stack, Text } from "@mantine/core";
 import { IconLayoutDashboard } from "@tabler/icons-react";
 
 import { ApiError, type TemplateDetail } from "@/lib/api/client";
+import type { ContentPackage } from "@/lib/api/types";
 import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
+import type { SlideEditor } from "@/lib/hooks/useSlideEditor";
 import type { Project } from "@/lib/state/projects";
 
 import { GenerationPreview } from "./GenerationPreview";
@@ -13,6 +15,8 @@ import { TemplatePreview } from "./TemplatePreview";
 interface Props {
   project: Project;
   session: GenerationSession;
+  editor: SlideEditor;
+  pkg: ContentPackage | null | undefined;
   templateDetail: TemplateDetail | null;
   templateError: Error | null;
   onChoose: (variantId: string | null) => void;
@@ -20,7 +24,7 @@ interface Props {
 }
 
 /** Правая часть редактора: слайды задания, иначе выбранный шаблон, иначе подсказка. */
-export function PreviewPane({ project, session, templateDetail, templateError, onChoose, onOpenTemplateTab }: Props) {
+export function PreviewPane({ project, session, editor, pkg, templateDetail, templateError, onChoose, onOpenTemplateTab }: Props) {
   if (project.job_id) {
     if (session.job.error && !session.result) {
       const notFound = session.job.error instanceof ApiError && session.job.error.status === 404;
@@ -41,7 +45,7 @@ export function PreviewPane({ project, session, templateDetail, templateError, o
         </div>
       );
     }
-    return <GenerationPreview session={session} chosenVariant={project.chosen_variant} onChoose={onChoose} />;
+    return <GenerationPreview session={session} editor={editor} templateDetail={templateDetail} pkg={pkg} projectId={project.project_id} chosenVariant={project.chosen_variant} onChoose={onChoose} />;
   }
 
   if (project.template_id) {

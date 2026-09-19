@@ -32,6 +32,34 @@ A_PPR = f"{{{NS_A}}}pPr"
 A_END = f"{{{NS_A}}}endParaRPr"
 _RUN_LIKE = (A_R, A_BR, A_FLD)
 _BULLET_TAGS = ("buChar", "buAutoNum", "buBlip")
+# Порядок детей a:rPr по схеме DrawingML (CT_TextCharacterProperties): нарушение порядка
+# PowerPoint считает повреждением файла.
+_RPR_ORDER = (
+    "ln",
+    "noFill",
+    "solidFill",
+    "gradFill",
+    "blipFill",
+    "pattFill",
+    "grpFill",
+    "effectLst",
+    "effectDag",
+    "highlight",
+    "uLnTx",
+    "uLn",
+    "uFillTx",
+    "uFill",
+    "latin",
+    "ea",
+    "cs",
+    "sym",
+    "hlinkClick",
+    "hlinkMouseOver",
+    "rtl",
+    "extLst",
+)
+_FILL_TAGS = ("noFill", "solidFill", "gradFill", "blipFill", "pattFill", "grpFill")
+ALIGN_TO_XML = {"left": "l", "center": "ctr", "right": "r", "justify": "just"}
 
 
 @dataclass
@@ -308,6 +336,98 @@ def plain_text(element: Any) -> str:
     return "\n".join(out)
 
 
+def _insert_ordered(rpr: Any, child: Any) -> None:
+    """Вставляет ребёнка a:rPr на место, положенное схемой."""
+    name = etree.QName(child).localname
+    rank = _RPR_ORDER.index(name)
+    position = 0
+    for i, existing in enumerate(list(rpr)):
+        ename = etree.QName(existing).localname
+        if ename in _RPR_ORDER and _RPR_ORDER.index(ename) <= rank:
+            position = i + 1
+    rpr.insert(position, child)
+
+
+def _style_rpr(
+    rpr: Any,
+    *,
+    family: str | None,
+    size_pt: float | None,
+    bold: bool | None,
+    italic: bool | None,
+    color: str | None,
+) -> None:
+    """Меняет только переданные свойства оформления фрагмента; цвет темы (a:schemeClr)
+    заменяется явным a:srgbClr, гарнитура — a:latin и a:cs."""
+    if size_pt:
+        rpr.set("sz", str(round(float(size_pt) * 100)))
+    if bold is not None:
+        rpr.set("b", "1" if bold else "0")
+    if italic is not None:
+        rpr.set("i", "1" if italic else "0")
+    if color:
+        for child in list(rpr):
+            if etree.QName(child).localname in _FILL_TAGS:
+                rpr.remove(child)
+        solid = etree.Element(f"{{{NS_A}}}solidFill")
+        etree.SubElement(solid, f"{{{NS_A}}}srgbClr", val=color.lstrip("#").upper())
+        _insert_ordered(rpr, solid)
+    if family:
+        for tag in ("latin", "cs"):
+            node = rpr.find(f"a:{tag}", NS)
+            if node is None:
+                node = etree.Element(f"{{{NS_A}}}{tag}")
+                _insert_ordered(rpr, node)
+            node.set("typeface", family)
+            for attr in ("panose", "pitchFamily", "charset"):
+                if attr in node.attrib:
+                    del node.attrib[attr]
+
+
+def set_run_style(
+    element: Any,
+    *,
+    family: str | None = None,
+    size_pt: float | None = None,
+    bold: bool | None = None,
+    italic: bool | None = None,
+    color: str | None = None,
+    align: str | None = None,
+) -> int:
+    """Оформление всех абзацев и фрагментов объекта (ручная правка из редактора): кегль,
+    начертание, цвет, гарнитура — на каждом `a:r`, `a:fld`, `a:br` и `a:endParaRPr`;
+    выравнивание — атрибут `algn` у `a:pPr` каждого абзаца. Меняются только переданные
+    свойства, остальное оформление образца сохраняется. Возвращает число фрагментов."""
+    body = text_body(element)
+    if body is None:
+        return 0
+    count = 0
+    for paragraph in _paragraphs(body):
+        if align in ALIGN_TO_XML:
+            ppr = paragraph.find(A_PPR)
+            if ppr is None:
+                ppr = etree.Element(A_PPR)
+                paragraph.insert(0, ppr)
+            ppr.set("algn", ALIGN_TO_XML[align])
+        for child in paragraph:
+            if child.tag in _RUN_LIKE:
+                rpr = child.find(A_RPR)
+                if rpr is None:
+                    rpr = etree.Element(A_RPR)
+                    child.insert(0, rpr)
+                _style_rpr(
+                    rpr, family=family, size_pt=size_pt, bold=bold, italic=italic, color=color
+                )
+                count += 1
+        end = paragraph.find(A_END)
+        if end is None:
+            end = etree.SubElement(paragraph, A_END)
+        _style_rpr(end, family=family, size_pt=size_pt, bold=bold, italic=italic, color=color)
+    if size_pt:
+        _reset_autofit(element)
+    return count
+
+
 def set_field_text(element: Any, field_type: str, text: str) -> int:
     """Подставляет текст в поля `a:fld` данного типа (номер слайда); возвращает число полей."""
     count = 0
@@ -330,6 +450,7 @@ __all__ = [
     "fill_text",
     "plain_text",
     "set_field_text",
+    "set_run_style",
     "set_wrap",
     "substitute_facts",
     "text_body",

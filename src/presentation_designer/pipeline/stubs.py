@@ -196,6 +196,190 @@ def build_html(title: str, slide_titles: list[str], subtitle: str) -> str:
     )
 
 
+def _logo_png() -> bytes:
+    from PIL import Image
+
+    img = Image.new("RGBA", (64, 64), (0, 119, 255, 255))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def stub_deck(plan: dict[str, Any], titles: list[str], *, prefix: str = "") -> dict[str, Any]:
+    """ComposedDeck заглушки по числу слайдов плана: на каждом слайде заголовок, текст и
+    логотип с теми же идентификаторами, что в примере контракта, эхо ручных правок плана.
+    Нужен ревизии-патчу: адреса объектов проверяются по описанию базовой ревизии."""
+    sample = _example("composed_deck")
+    slides_raw = plan.get("slides") or []
+    explicit = bool(slides_raw) and not isinstance(plan.get("slide_count"), int)
+    ordered = sorted(slides_raw, key=lambda s: int(s.get("order", 0))) if explicit else []
+    slides: list[dict[str, Any]] = []
+    for index, title in enumerate(titles):
+        plan_slide = ordered[index] if index < len(ordered) else {}
+        slide_id = str(plan_slide.get("slide_id") or f"s{index + 1}")
+        objects: list[dict[str, Any]] = [
+            {
+                "object_id": "2",
+                "name": "Title 1",
+                "kind": "text",
+                "geometry": "rect",
+                "bbox": {"x": 0.05, "y": 0.06, "width": 0.9, "height": 0.12},
+                "z_order": 1,
+                "slot_id": "title",
+                "slot_kind": "title",
+                "block_kind": "title",
+                "source_object_id": "2",
+                "role": "content",
+                "content_source": "plan",
+                "text": {
+                    "plain": title,
+                    "paragraphs": [{"text": title, "level": 0, "bullet": False, "align": "left"}],
+                    "computed_style": {
+                        "font": {"family": "Play", "size_pt": 32, "bold": True, "color": "#000000"}
+                    },
+                    "autofit": "none",
+                },
+            },
+            {
+                "object_id": "3",
+                "name": "Body 2",
+                "kind": "text",
+                "geometry": "rect",
+                "bbox": {"x": 0.05, "y": 0.3, "width": 0.6, "height": 0.4},
+                "z_order": 2,
+                "slot_id": "body",
+                "slot_kind": "body",
+                "block_kind": "body",
+                "source_object_id": "3",
+                "role": "content",
+                "content_source": "plan",
+                "text": {
+                    "plain": f"Вариант {plan.get('variant', {}).get('variant_id', '')}",
+                    "paragraphs": [
+                        {
+                            "text": f"Вариант {plan.get('variant', {}).get('variant_id', '')}",
+                            "level": 0,
+                            "bullet": False,
+                            "align": "left",
+                        }
+                    ],
+                    "computed_style": {
+                        "font": {
+                            "family": "Arial",
+                            "size_pt": 16,
+                            "bold": False,
+                            "color": "#202020",
+                        }
+                    },
+                    "autofit": "none",
+                },
+            },
+            {
+                "object_id": "5",
+                "name": "Logo",
+                "kind": "picture",
+                "bbox": {"x": 0.87, "y": 0.9, "width": 0.08, "height": 0.06},
+                "z_order": 0,
+                "role": "fixed",
+                "source_object_id": "5",
+                "content_source": "template",
+                "picture": {
+                    "asset_id": "asset_logo",
+                    "natural_width_px": 64,
+                    "natural_height_px": 64,
+                    "origin": "template",
+                    "fit": "as_is",
+                },
+            },
+        ]
+        for override in plan_slide.get("overrides") or []:
+            target = override.get("target") or {}
+            for obj in objects:
+                if obj["object_id"] == str(target.get("object_id") or ""):
+                    obj.setdefault("user_overrides", []).append(copy.deepcopy(override))
+                    if override.get("op") == "text" and override.get("text") is not None:
+                        text = str(override["text"])
+                        obj["text"]["plain"] = text
+                        obj["text"]["paragraphs"][0]["text"] = text
+                        obj["content_source"] = "user"
+                    if override.get("op") == "geometry":
+                        obj["bbox"] = dict(
+                            (override.get("geometry") or {}).get("bbox") or obj["bbox"]
+                        )
+        slide: dict[str, Any] = {
+            "slide_id": slide_id,
+            "index": index,
+            "pptx_slide_part": f"ppt/slides/slide{index + 1}.xml",
+            "layout_id": "slideLayout6",
+            "pattern_id": str(plan_slide.get("pattern_id") or "pat_title"),
+            "background": {"kind": "inherited"},
+            "objects": objects,
+            "title": title,
+            "removed_object_ids": [],
+        }
+        if plan_slide.get("overrides"):
+            slide["overrides"] = copy.deepcopy(plan_slide["overrides"])
+            slide["overrides_dropped"] = []
+            bg = next((o for o in plan_slide["overrides"] if o.get("op") == "background"), None)
+            if bg:
+                spec = bg.get("background") or {}
+                slide["background"] = {
+                    k: v
+                    for k, v in {"kind": spec.get("kind"), "color": spec.get("color")}.items()
+                    if v
+                }
+        slides.append(slide)
+    deck = {k: v for k, v in sample.items() if k not in ("slides", "assets", "stats")}
+    deck["slides"] = slides
+    deck["assets"] = [
+        {
+            "asset_id": "asset_logo",
+            "media_path": "ppt/media/image1.png",
+            "sha256": "0" * 64,
+            "content_type": "image/png",
+            "origin": "template",
+            "shared_with_template": True,
+            "artifact": f"{prefix}media/asset_logo.png",
+        }
+    ]
+    deck["stats"] = {
+        "slides": len(slides),
+        "objects": 3 * len(slides),
+        "text_objects": 2 * len(slides),
+        "pictures": len(slides),
+        "tables": 0,
+        "charts": 0,
+        "diagrams": 0,
+        "removed_objects": 0,
+    }
+    deck["warnings"] = []
+    return deck
+
+
+def explicit_plan(plan: dict[str, Any]) -> dict[str, Any]:
+    """План заглушки с явным списком слайдов: заглушечный план примера несёт лишь число
+    слайдов и примерные заголовки, а правкам нужны slide_id и order."""
+    plan = copy.deepcopy(plan)
+    count, titles = plan_slides(plan)
+    if isinstance(plan.get("slide_count"), int) or len(plan.get("slides") or []) != count:
+        sample = (plan.get("slides") or [{}])[0]
+        plan["slides"] = [
+            {
+                "slide_id": f"s{i + 1}",
+                "order": i + 1,
+                "role": "title" if i == 0 else "bullets",
+                "pattern_id": sample.get("pattern_id", "pat_title"),
+                "title": title,
+                "key_message": title,
+                "blocks": [{"slot_id": "title", "kind": "title", "text": title}],
+                "thesis_refs": [],
+            }
+            for i, title in enumerate(titles)
+        ]
+        plan["slide_count"] = {"target": count}
+    return plan
+
+
 def plan_slides(plan: dict[str, Any]) -> tuple[int, list[str]]:
     """Число слайдов и заголовки по плану: настоящий план несёт свои слайды, заглушечный —
     число слайдов и примерные заголовки."""
@@ -249,6 +433,13 @@ class StubLayers(Layers):
             if path and path not in previews:
                 previews[path] = slide_image(
                     "Образец", "Образцовый слайд шаблона", (0, 119, 255), 640
+                )
+        # Пустой слайд каждого макета — подложка холста редактора (этап 23).
+        for layout in profile.get("layouts", []):
+            layout_id = str(layout.get("layout_id") or "")
+            if layout_id:
+                previews[f"previews/layout-{layout_id}.png"] = slide_image(
+                    "", str(layout.get("name") or layout_id), (200, 205, 215), 640
                 )
         return AnalyzeOutput(profile=profile, previews=previews)
 
@@ -366,7 +557,7 @@ class StubLayers(Layers):
         deck_title = inp.package.get("brief", {}).get("title") or title
         pptx = build_pptx(deck_title, titles, subtitle)
         inp.staging.write_bytes("deck.pptx", pptx)
-        deck = _example("composed_deck")
+        deck = stub_deck(inp.plan, titles, prefix=inp.staging.prefix)
         deck["deck_id"] = f"deck_{inp.job_id}_{inp.variant_id}_r{inp.revision}"
         deck["job_id"] = inp.job_id
         deck["variant_id"] = inp.variant_id
@@ -374,6 +565,7 @@ class StubLayers(Layers):
         deck["plan_id"] = inp.plan["plan_id"]
         deck["template_id"] = inp.template_profile["template_id"]
         deck["pptx_artifact"] = f"{inp.staging.prefix}deck.pptx"
+        inp.staging.write_bytes("media/asset_logo.png", _logo_png())
         inp.staging.write_json("composed.json", deck)
         inp.staging.write_json("plan.json", inp.plan)
         return ComposeOutput(slide_count=count, slide_titles=titles, composed_deck=deck)
@@ -544,30 +736,17 @@ class StubLayers(Layers):
         явного списка слайдов сначала получает его по своим примерным заголовкам, чтобы
         заголовок новой ревизии был виден на миниатюре."""
         _pause(self.delay_ms)
+        if inp.patch is not None:
+            return self._apply_patch(inp)
         plan = copy.deepcopy(inp.plan)
-        count, titles = plan_slides(plan)
+        count, _titles = plan_slides(plan)
         if inp.slide_index < 0 or inp.slide_index >= count:
             raise StageError(
                 "slide_index_out_of_range",
                 f"В плане {count} слайдов, слайда с номером {inp.slide_index + 1} нет",
                 stage="plan",
             )
-        if isinstance(plan.get("slide_count"), int) or len(plan.get("slides") or []) != count:
-            sample = (plan.get("slides") or [{}])[0]
-            plan["slides"] = [
-                {
-                    "slide_id": f"s{i + 1}",
-                    "order": i + 1,
-                    "role": "title" if i == 0 else "bullets",
-                    "pattern_id": sample.get("pattern_id", "pat_title"),
-                    "title": title,
-                    "key_message": title,
-                    "blocks": [{"slot_id": "title", "kind": "title", "text": title}],
-                    "thesis_refs": [],
-                }
-                for i, title in enumerate(titles)
-            ]
-            plan["slide_count"] = {"target": count}
+        plan = explicit_plan(plan)
         slide = sorted(plan["slides"], key=lambda s: int(s.get("order", 0)))[inp.slide_index]
         slide_id = str(slide["slide_id"])
         instruction = " ".join(inp.instruction.split())
@@ -586,10 +765,38 @@ class StubLayers(Layers):
             if block.get("kind") == "title":
                 block["text"] = title
         slide["revision_note"] = "Заголовок заменён по просьбе"
+        slide.pop("overrides", None)
         return EditOutput(
             plan=plan,
             changed=True,
             slide_id=slide_id,
             change_note="Заголовок заменён по просьбе",
             report={"stub": True},
+        )
+
+    def _apply_patch(self, inp: EditInput) -> EditOutput:
+        """Ручные правки редактора: детерминированно, без модели, одинаково в заглушках и в
+        настоящих слоях (`generation/patch.py`)."""
+        from presentation_designer.generation.patch import PatchError, apply_patch
+
+        plan = explicit_plan(inp.plan)
+        try:
+            result = apply_patch(
+                plan,
+                inp.patch or {},
+                inp.base_deck,
+                inp.template_profile,
+                inp.package,
+                inp.story,
+            )
+        except PatchError as e:
+            raise StageError(e.code, str(e), stage="plan") from e
+        return EditOutput(
+            plan=result.plan,
+            changed=True,
+            slide_id=result.changed_slide_ids[0] if result.changed_slide_ids else "",
+            change_note=result.summary,
+            report={**result.report, "warnings": result.warnings},
+            changed_slide_ids=list(result.changed_slide_ids),
+            summary=result.summary,
         )

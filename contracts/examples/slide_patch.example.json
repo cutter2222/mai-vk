@@ -1,0 +1,92 @@
+{
+  "schema_version": "1.0",
+  "job_id": "job_demo",
+  "variant_id": "balanced",
+  "base_revision": 1,
+  "slides": [
+    {
+      "slide_id": "s2",
+      "overrides": [
+        {
+          "op": "text",
+          "target": {
+            "object_id": "10",
+            "source_object_id": "10",
+            "slot_id": "title"
+          },
+          "text": "Почти половина уведомлений теряется"
+        },
+        {
+          "op": "style",
+          "target": {
+            "object_id": "10",
+            "source_object_id": "10",
+            "slot_id": "title"
+          },
+          "style": {
+            "font": {
+              "size_pt": 28,
+              "bold": true,
+              "color": "#0077FF"
+            },
+            "align": "left"
+          }
+        },
+        {
+          "op": "geometry",
+          "target": {
+            "object_id": "11",
+            "source_object_id": "11",
+            "slot_id": "kpi_1_value"
+          },
+          "geometry": {
+            "bbox": {
+              "x": 0.05,
+              "y": 0.28,
+              "width": 0.3,
+              "height": 0.15
+            }
+          }
+        },
+        {
+          "op": "picture",
+          "target": {
+            "object_id": "5",
+            "source_object_id": "5"
+          },
+          "picture": {
+            "source": {
+              "kind": "template",
+              "asset_id": "icon_rocket"
+            },
+            "fit": "contain",
+            "color": "#0077FF"
+          }
+        },
+        {
+          "op": "background",
+          "background": {
+            "kind": "solid",
+            "color": "#F5F7FA"
+          }
+        }
+      ]
+    },
+    {
+      "slide_id": "s5",
+      "overrides": []
+    }
+  ],
+  "order": [
+    "s1",
+    "s1b",
+    "s2",
+    "s2b",
+    "s4",
+    "s4b",
+    "s3b",
+    "s3",
+    "s5",
+    "s6"
+  ]
+}

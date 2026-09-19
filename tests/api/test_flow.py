@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import io
 import json
+import pathlib
 import zipfile
 from typing import Any
 
@@ -42,7 +43,7 @@ def test_health_and_capabilities(client: TestClient) -> None:
     assert health["status"] == "ok"
     assert health["workers"]["generation"] >= 1
     caps = client.get("/api/capabilities").json()
-    assert caps["contracts_version"] == "1.7"
+    assert caps["contracts_version"] == "1.9"
     assert caps["execution_mode"]["mode"] == "stub"
     assert caps["execution_mode"]["layers"]["brief"] == "stub"
     assert caps["limits"]["max_project_files"] > 0
@@ -340,6 +341,237 @@ def test_slide_edit_flow(client: TestClient, pptx_bytes: bytes, xlsx_bytes: byte
     assert [e["result"] for e in raw3["edits"]] == ["applied", "unchanged"]
     assert raw3["edits"][1]["change_note"] and "new_revision" not in raw3["edits"][1]
     assert "balanced/r3/deck.pptx" not in raw3["artifacts_manifest"]
+
+
+def test_slide_patch_flow(client: TestClient, pptx_bytes: bytes, xlsx_bytes: bytes) -> None:
+    """Ручные правки редактора (этап 23): задание slide_patch без модели, ревизия с
+    несколькими изменёнными слайдами и новым порядком, edits[] с origin editor, медиа
+    ревизии в манифесте, файл проекта как источник картинки; конфликты и негодные правки."""
+    import io
+
+    from PIL import Image
+
+    from tests.pipeline.helpers import run_generation
+
+    run = run_generation(client, pptx_bytes, xlsx_bytes, title="Правки редактора")
+    job_id, project_id = run["job_id"], run["project_id"]
+    result = m.GenerationResult.model_validate(client.get(f"/api/generations/{job_id}").json())
+    balanced = next(v for v in result.variants if v.variant_id == "balanced")
+    assert balanced.revision == 1 and balanced.composed_deck_artifact
+    deck = client.get(
+        f"/api/generations/{job_id}/artifacts/{balanced.composed_deck_artifact}"
+    ).json()
+    m.ComposedDeck.model_validate(deck)
+    assert deck["schema_version"] == "1.3"
+    logo = next(a for a in deck["assets"] if a["asset_id"] == "asset_logo")
+    assert logo["artifact"] == "balanced/r1/media/asset_logo.png"
+    media = client.get(f"/api/generations/{job_id}/artifacts/{logo['artifact']}")
+    assert media.status_code == 200 and media.headers["content-type"].startswith("image/png")
+    ids = [s["slide_id"] for s in deck["slides"]]
+    assert len(ids) == balanced.slide_count
+    url = f"/api/generations/{job_id}/variants/balanced/patches"
+
+    # Файл проекта — картинка для правки.
+    png = io.BytesIO()
+    Image.new("RGB", (32, 32), (10, 200, 30)).save(png, format="PNG")
+    photo = client.post(
+        f"/api/projects/{project_id}/files",
+        files=[("files", ("photo.png", png.getvalue(), "image/png"))],
+    ).json()[0]
+    not_image = client.post(
+        f"/api/projects/{project_id}/files",
+        files=[("files", ("notes.txt", b"just text", "text/plain"))],
+    ).json()[0]
+
+    # Проверки запроса.
+    empty = client.post(url, json={"base_revision": 1, "slides": []})
+    assert empty.status_code == 422 and empty.json()["error"]["code"] == "patch_empty"
+    stale = client.post(
+        url, json={"base_revision": 9, "slides": [{"slide_id": ids[0], "overrides": []}]}
+    )
+    assert stale.status_code == 409 and stale.json()["error"]["code"] == "revision_stale"
+    bad_schema = client.post(
+        url,
+        json={
+            "base_revision": 1,
+            "slides": [{"slide_id": ids[0], "overrides": [{"op": "fly"}]}],
+        },
+    )
+    assert bad_schema.status_code == 422 and bad_schema.json()["error"]["code"] == "patch_invalid"
+    unknown = client.post(
+        url,
+        json={
+            "base_revision": 1,
+            "slides": [
+                {
+                    "slide_id": ids[0],
+                    "overrides": [{"op": "text", "target": {"object_id": "404"}, "text": "x"}],
+                }
+            ],
+        },
+    )
+    assert unknown.status_code == 422
+    assert "object_unknown" in unknown.json()["error"]["message"]
+    wrong_file = client.post(
+        url,
+        json={
+            "base_revision": 1,
+            "slides": [
+                {
+                    "slide_id": ids[0],
+                    "overrides": [
+                        {
+                            "op": "picture",
+                            "target": {"object_id": "5"},
+                            "picture": {
+                                "source": {"kind": "file", "file_id": not_image["file_id"]}
+                            },
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+    assert wrong_file.status_code == 422
+    assert wrong_file.json()["error"]["code"] == "file_not_image"
+    missing = client.post(
+        f"/api/generations/{job_id}/variants/nope/patches",
+        json={"base_revision": 1, "slides": [{"slide_id": ids[0], "overrides": []}]},
+    )
+    assert missing.status_code == 404
+
+    # Правки на двух слайдах и перестановка: ревизия 2.
+    order = [ids[1], ids[0], *ids[2:]]
+    body = {
+        "base_revision": 1,
+        "slides": [
+            {
+                "slide_id": ids[0],
+                "overrides": [
+                    {
+                        "op": "text",
+                        "target": {"object_id": "2", "source_object_id": "2", "slot_id": "title"},
+                        "text": "Правка редактора",
+                    },
+                    {
+                        "op": "style",
+                        "target": {"object_id": "2"},
+                        "style": {"font": {"size_pt": 28, "bold": True}, "align": "left"},
+                    },
+                    {
+                        "op": "picture",
+                        "target": {"object_id": "5"},
+                        "picture": {
+                            "source": {"kind": "file", "file_id": photo["file_id"]},
+                            "fit": "contain",
+                        },
+                    },
+                ],
+            },
+            {
+                "slide_id": ids[2],
+                "overrides": [
+                    {"op": "background", "background": {"kind": "solid", "color": "#F5F7FA"}}
+                ],
+            },
+        ],
+        "order": order,
+    }
+    r = client.post(url, json=body)
+    assert r.status_code == 202, r.text
+    patch_id = r.json()["patch_job_id"]
+    busy = client.post(url, json=body)
+    assert busy.status_code in (202, 409)  # встроенный исполнитель успевает завершить задание
+    status = client.get(f"/api/jobs/{patch_id}").json()
+    m.JobStatus.model_validate(status)
+    assert status["kind"] == "slide_patch" and status["status"] == "succeeded", status
+    assert status["result"]["revision"] == 2
+    assert set(status["result"]["changed_slide_ids"]) == {ids[0], ids[1], ids[2]}
+    assert [s["stage"] for s in status["stages"]] == ["plan", "compose", "export", "audit"]
+    raw2 = client.get(f"/api/generations/{job_id}").json()
+    m.GenerationResult.model_validate(raw2)
+    balanced2 = next(v for v in raw2["variants"] if v["variant_id"] == "balanced")
+    assert balanced2["revision"] == 2 and len(balanced2["revisions"]) == 2
+    rev2 = balanced2["revisions"][-1]
+    assert rev2["repair_job_id"] == patch_id
+    assert set(rev2["changed_slide_ids"]) == {ids[0], ids[1], ids[2]}
+    edit = next(e for e in raw2["edits"] if e["edit_job_id"] == patch_id)
+    assert edit["origin"] == "editor" and edit["result"] == "applied"
+    assert edit["summary"] and edit["summary"] == edit["instruction"]
+    assert "Слайд 1" in edit["summary"] and "порядок слайдов изменён" in edit["summary"]
+    assert edit["new_revision"] == 2 and edit["slide_index"] == 0
+    plan2 = client.get(f"/api/generations/{job_id}/artifacts/balanced/r2/plan.json").json()
+    m.SlidePlan.model_validate(plan2)
+    by_id = {s["slide_id"]: s for s in plan2["slides"]}
+    assert [o["op"] for o in by_id[ids[0]]["overrides"]] == ["text", "style", "picture"]
+    source = by_id[ids[0]]["overrides"][2]["picture"]["source"]
+    assert source["sha256"] == photo["sha256"] and source["name"] == "photo.png"
+    assert by_id[ids[2]]["overrides"][0]["op"] == "background"
+    assert [s["slide_id"] for s in sorted(plan2["slides"], key=lambda s: s["order"])] == order
+    deck2 = client.get(f"/api/generations/{job_id}/artifacts/balanced/r2/composed.json").json()
+    m.ComposedDeck.model_validate(deck2)
+    first = next(s for s in deck2["slides"] if s["slide_id"] == ids[0])
+    assert first["overrides"] == by_id[ids[0]]["overrides"] and first["overrides_dropped"] == []
+    title = next(o for o in first["objects"] if o["object_id"] == "2")
+    assert title["content_source"] == "user" and title["text"]["plain"] == "Правка редактора"
+    assert [o["op"] for o in title["user_overrides"]] == ["text", "style"]
+    third = next(s for s in deck2["slides"] if s["slide_id"] == ids[2])
+    assert third["background"] == {"kind": "solid", "color": "#F5F7FA"}
+    assert "balanced/r2/media/asset_logo.png" in raw2["artifacts_manifest"]
+    audit2 = client.get(f"/api/generations/{job_id}/variants/balanced/audit").json()
+    assert set(audit2["rechecked_after_repair"]["changed_slide_ids"]) == {ids[0], ids[1], ids[2]}
+
+    # Сброс правок слайда — новая ревизия без overrides; устаревшая база — 409.
+    reset = client.post(
+        url, json={"base_revision": 2, "slides": [{"slide_id": ids[0], "overrides": []}]}
+    )
+    assert reset.status_code == 202
+    status3 = client.get(f"/api/jobs/{reset.json()['patch_job_id']}").json()
+    assert status3["status"] == "succeeded" and status3["result"]["revision"] == 3
+    plan3 = client.get(f"/api/generations/{job_id}/artifacts/balanced/r3/plan.json").json()
+    assert "overrides" not in next(s for s in plan3["slides"] if s["slide_id"] == ids[0])
+    same = client.post(
+        url, json={"base_revision": 3, "slides": [{"slide_id": ids[0], "overrides": []}]}
+    )
+    assert same.status_code == 422 and same.json()["error"]["code"] == "patch_empty"
+    old = client.post(
+        url, json={"base_revision": 2, "slides": [{"slide_id": ids[0], "overrides": []}]}
+    )
+    assert old.status_code == 409 and old.json()["error"]["code"] == "revision_stale"
+
+
+def test_template_media_endpoint(client: TestClient, tmp_path: pathlib.Path) -> None:
+    """Ресурсы шаблона для панели редактора: байты по asset_id профиля с ETag, 404 для
+    чужого идентификатора. Заглушка анализа отдаёт профиль примера (asset_logo →
+    ppt/media/image1.png), поэтому шаблон — синтетический с картинками."""
+    from tests.fixtures.rich_template import build_rich_template
+
+    rich = build_rich_template(tmp_path / "rich_template.pptx").read_bytes()
+    project_id = _project(client)
+    tpl = _upload(client, project_id, "Шаблон.pptx", rich, PPTX_MIME)
+    template_id = client.post("/api/templates", json={"file_id": tpl["file_id"]}).json()[
+        "template_id"
+    ]
+    detail = client.get(f"/api/templates/{template_id}").json()
+    assert detail["status"] == "succeeded"
+    assets = [a for a in detail["profile"]["assets"] if a["media_path"].startswith("ppt/media/")]
+    previews = detail["previews"]
+    assert any(name.startswith("previews/layout-") for name in previews), previews
+    listing = client.get("/api/templates").json()
+    card = next(t for t in listing if t["template_id"] == template_id)
+    assert "/layout-" not in card["preview"]
+    missing = client.get(f"/api/templates/{template_id}/media/asset_nope")
+    assert missing.status_code == 404 and missing.json()["error"]["code"] == "asset_not_found"
+    assert assets, "у профиля примера есть ресурс ppt/media/image1.png"
+    asset = assets[0]
+    r = client.get(f"/api/templates/{template_id}/media/{asset['asset_id']}")
+    assert r.status_code == 200 and r.content[:4] == b"\x89PNG"
+    assert r.headers["etag"] and r.headers["cache-control"].startswith("public")
+    cached = client.get(
+        f"/api/templates/{template_id}/media/{asset['asset_id']}",
+        headers={"if-none-match": r.headers["etag"]},
+    )
+    assert cached.status_code == 304
 
 
 def test_partial_failure_and_cancel(

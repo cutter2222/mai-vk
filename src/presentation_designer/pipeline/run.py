@@ -135,6 +135,12 @@ class ComposeInput:
     staging: Staging
     # Каталог опубликованных ресурсов пакета (assets[].path относительно него); None — без картинок.
     package_dir: pathlib.Path | None = None
+    # Файлы проекта для ручных правок редактора (source.kind == file): file_id → путь.
+    extra_assets: dict[str, pathlib.Path] = field(default_factory=dict)
+    # Полировка плана по фактам черновой сборки: для ревизии-патча выключена, слайды с
+    # ручными правками (и перечисленные здесь) полировка не трогает.
+    polish: bool = True
+    locked_slide_ids: frozenset[str] = frozenset()
 
 
 @dataclass
@@ -216,6 +222,10 @@ class EditInput:
     story: JsonDict
     settings: JsonDict
     nonce: str | None = None
+    # Ручные правки редактора (документ slide_patch): применяются без модели, инструкция
+    # пуста; base_deck — ComposedDeck базовой ревизии для проверки адресов объектов.
+    patch: JsonDict | None = None
+    base_deck: JsonDict | None = None
 
 
 @dataclass
@@ -228,6 +238,9 @@ class EditOutput:
     change_note: str = ""
     reason: str = ""
     report: JsonDict = field(default_factory=dict)
+    # Все изменённые слайды (у патча их может быть несколько), сводка для карточки.
+    changed_slide_ids: list[str] = field(default_factory=list)
+    summary: str = ""
 
 
 class Layers:
@@ -522,6 +535,9 @@ class EditContext:
     staging: Staging
     package_dir: pathlib.Path | None = None
     nonce: str | None = None
+    patch: JsonDict | None = None
+    base_deck: JsonDict | None = None
+    extra_assets: dict[str, pathlib.Path] = field(default_factory=dict)
 
 
 @dataclass
@@ -541,13 +557,18 @@ class EditOutcome:
     stages: list[JsonDict] = field(default_factory=list)
     thumbnails: list[JsonDict] = field(default_factory=list)
     edit_report: JsonDict = field(default_factory=dict)
+    changed_slide_ids: list[str] = field(default_factory=list)
+    summary: str = ""
 
 
 def run_edit(layers: Layers, ctx: EditContext, emit: Emit) -> EditOutcome:
     """Правка слайда → сборка → экспорт → аудит новой ревизии; отказ модели останавливает
-    цепочку после первого этапа без ревизии."""
+    цепочку после первого этапа без ревизии. Для ручных правок редактора (`ctx.patch`) шаг
+    plan детерминирован: патч применяется к плану без модели, полировка по фактам сборки
+    выключена, чтобы не переписать то, что пользователь поправил руками."""
     outcome = EditOutcome(status="running")
     stage = "plan"
+    is_patch = ctx.patch is not None
     try:
         timer = _Timer(emit, "plan", ctx.variant_id)
         edited = layers.edit(
@@ -564,10 +585,16 @@ def run_edit(layers: Layers, ctx: EditContext, emit: Emit) -> EditOutcome:
                 ctx.story,
                 ctx.settings,
                 nonce=ctx.nonce,
+                patch=ctx.patch,
+                base_deck=ctx.base_deck,
             )
         )
         outcome.slide_id = edited.slide_id
         outcome.edit_report = edited.report
+        outcome.changed_slide_ids = list(edited.changed_slide_ids) or (
+            [edited.slide_id] if edited.slide_id else []
+        )
+        outcome.summary = edited.summary
         outcome.stages.append(timer.done())
         if not edited.changed or edited.plan is None:
             outcome.status = "unchanged"
@@ -589,6 +616,8 @@ def run_edit(layers: Layers, ctx: EditContext, emit: Emit) -> EditOutcome:
                 ctx.story,
                 ctx.staging,
                 package_dir=ctx.package_dir,
+                extra_assets=dict(ctx.extra_assets),
+                polish=not is_patch,
             )
         )
         outcome.slide_count = composed.slide_count
@@ -634,7 +663,7 @@ def run_edit(layers: Layers, ctx: EditContext, emit: Emit) -> EditOutcome:
         rechecked = report.get("rechecked_after_repair") or {}
         report["rechecked_after_repair"] = {
             "base_revision": ctx.base_revision,
-            "changed_slide_ids": [edited.slide_id],
+            "changed_slide_ids": list(outcome.changed_slide_ids),
             "dependent_slide_ids": list(rechecked.get("dependent_slide_ids") or []),
             "deck_checks_rerun": list(rechecked.get("deck_checks_rerun") or []),
         }

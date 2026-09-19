@@ -11,6 +11,7 @@ import type {
   JobStatus,
   Project,
   ProjectFile,
+  SlidePatch,
   StoryPlan,
   TemplateProfile,
 } from "./types";
@@ -160,6 +161,8 @@ export const api = {
     /** Убирает шаблон из библиотеки; проекты, которые им пользовались, остаются без шаблона. */
     delete: (id: string) => request<void>(`/templates/${encodeURIComponent(id)}`, { method: "DELETE" }),
     assetUrl: (id: string, name: string) => `${API_BASE}/templates/${encodeURIComponent(id)}/assets/${name}`,
+    /** Байты ресурса профиля шаблона (иконка, логотип, картинка) для холста и панели редактора. */
+    mediaUrl: (id: string, assetId: string) => `${API_BASE}/templates/${encodeURIComponent(id)}/media/${encodeURIComponent(assetId)}`,
     /** Адрес профиля целиком: открыть JSON в новой вкладке. */
     detailUrl: (id: string) => `${API_BASE}/templates/${encodeURIComponent(id)}`,
   },
@@ -174,6 +177,8 @@ export const api = {
     create: (fileIds: string[], brief?: Record<string, unknown>) =>
       request<{ package_id: string; job_id: string; cached: boolean }>("/content", json({ file_ids: fileIds, brief })),
     get: (id: string) => request<ContentDetail>(`/content/${encodeURIComponent(id)}`),
+    /** Картинка контент-пакета по пути из package.assets[].path. */
+    assetUrl: (id: string, name: string) => `${API_BASE}/content/${encodeURIComponent(id)}/assets/${name}`,
   },
 
   generations: {
@@ -197,7 +202,15 @@ export const api = {
         `/generations/${encodeURIComponent(jobId)}/variants/${encodeURIComponent(variantId)}/edits`,
         json({ base_revision: baseRevision, slide_index: slideIndex, instruction }),
       ),
+    /** Ручные правки из визуального редактора: новая ревизия варианта без модели (документ slide_patch). */
+    patch: (jobId: string, variantId: string, baseRevision: number, slides: SlidePatch["slides"], order?: string[]) =>
+      request<{ patch_job_id: string }>(
+        `/generations/${encodeURIComponent(jobId)}/variants/${encodeURIComponent(variantId)}/patches`,
+        json({ base_revision: baseRevision, slides, ...(order ? { order } : {}) }),
+      ),
     artifactUrl: (jobId: string, name: string) => `${API_BASE}/generations/${encodeURIComponent(jobId)}/artifacts/${name}`,
+    /** JSON-артефакт ревизии (план, описание собранной колоды) по имени из манифеста. */
+    artifactJson: <T,>(jobId: string, name: string) => request<T>(`/generations/${encodeURIComponent(jobId)}/artifacts/${name}`),
   },
 
   jobs: {

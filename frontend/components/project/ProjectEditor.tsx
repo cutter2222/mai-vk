@@ -5,11 +5,12 @@ import { notifications } from "@mantine/notifications";
 import { IconFolder, IconMessage, IconX } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 
-import { api, ApiError, type CapabilitiesResponse, type TemplateDetail } from "@/lib/api/client";
+import { api, ApiError, type CapabilitiesResponse, type ContentDetail, type TemplateDetail } from "@/lib/api/client";
 import type { GenerationRequest } from "@/lib/api/types";
 import { usePolling } from "@/lib/api/usePolling";
 import { useGenerationSession } from "@/lib/hooks/useGenerationSession";
-import { updateProject, type Project } from "@/lib/state/projects";
+import { useSlideEditor } from "@/lib/hooks/useSlideEditor";
+import { appendMessage, updateProject, type Project } from "@/lib/state/projects";
 
 import { ChatPanel } from "./chat/ChatPanel";
 import type { CardContext } from "./chat/cards";
@@ -42,6 +43,24 @@ export function ProjectEditor({ project }: { project: Project }) {
   );
 
   const session = useGenerationSession(project.job_id, (jobId) => patch({ job_id: jobId }));
+
+  const pkg = usePolling<ContentDetail>(
+    project.package_id ? () => api.content.get(project.package_id as string) : null,
+    (d) => d.status === "succeeded" || d.status === "failed",
+    [project.package_id],
+  );
+
+  // Визуальный редактор слайдов: черновик правок и применение одной ревизией; карточка хода — в чат.
+  const onPatchStarted = useCallback(
+    (patchJobId: string, slideIndex: number) => {
+      const jobId = project.job_id;
+      const variantId = session.variant?.variant_id;
+      if (!jobId || !variantId) return;
+      appendMessage(project.project_id, { role: "assistant", kind: "edit_card", job_id: jobId, variant_id: variantId, edit_job_id: patchJobId, slide_index: slideIndex });
+    },
+    [project.job_id, project.project_id, session.variant?.variant_id],
+  );
+  const editor = useSlideEditor(session, { profile: template.data?.profile, pkg: pkg.data?.package, onPatchStarted });
 
   const generate = useCallback(async (): Promise<boolean> => {
     if (!project.template_id || !project.package_id) return false;
@@ -174,6 +193,8 @@ export function ProjectEditor({ project }: { project: Project }) {
           <PreviewPane
             project={project}
             session={session}
+            editor={editor}
+            pkg={pkg.data?.package}
             templateDetail={template.data}
             templateError={template.error}
             onChoose={(variantId) => patch({ chosen_variant: variantId })}

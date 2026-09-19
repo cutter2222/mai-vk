@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 # Виды слотов, которые несут содержание. Иконки и подложки к делу не относятся:
 # их заполненность от плана не зависит.
@@ -26,9 +27,9 @@ NOT_ENRICHABLE = frozenset({"title", "number"})
 class Thresholds:
     """Границы заполненности слайда для одного варианта вёрстки."""
 
-    min_fill: float          # ниже — слайд полупустой, композицию надо менять
-    max_fill: float          # выше — слайд перегружен (этим занят capacity.py)
-    max_slots_ratio: float   # во сколько раз слотов может быть больше блоков
+    min_fill: float  # ниже — слайд полупустой, композицию надо менять
+    max_fill: float  # выше — слайд перегружен (этим занят capacity.py)
+    max_slots_ratio: float  # во сколько раз слотов может быть больше блоков
 
     def underfilled(self, fill: float) -> bool:
         return fill < self.min_fill
@@ -44,7 +45,7 @@ DEFAULTS: dict[str, Thresholds] = {
 }
 
 
-def thresholds_for(variant: str, config: dict | None = None) -> Thresholds:
+def thresholds_for(variant: str, config: dict[str, Any] | None = None) -> Thresholds:
     """Пороги варианта: из конфига, иначе умолчание.
 
     Неизвестный вариант получает рамки `balanced`: это не ошибка, а разумная

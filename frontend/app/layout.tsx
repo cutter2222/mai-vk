@@ -2,6 +2,9 @@ import "@mantine/core/styles.css";
 import "@mantine/dropzone/styles.css";
 import "@mantine/notifications/styles.css";
 import "@fontsource-variable/golos-text";
+// Play — шрифт шаблонов VK: холст редактора рисует текст слайда им же (OFL, без внешних запросов).
+import "@fontsource/play/400.css";
+import "@fontsource/play/700.css";
 import "./globals.css";
 
 import type { Metadata } from "next";

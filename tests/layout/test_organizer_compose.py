@@ -131,3 +131,95 @@ def test_compose_three_variants_on_organizer_template(
     (REPORT_DIR / f"{name.split('.')[0][:40]}.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8"
     )
+
+
+def test_vkedu_overrides_deterministic(
+    organizer_dir: pathlib.Path,
+    example_package: dict[str, Any],
+    make_plan: Any,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Ручные правки редактора на настоящем шаблоне: id объектов совпадают между двумя
+    сборками одного плана, правки текста, стиля, положения и фона на трёх слайдах
+    применяются без отброшенных, PPTX проходит проверку целостности."""
+    name = "Шаблон презентации VK Education.pptx"
+    path = organizer_dir / name
+    if not path.exists():
+        pytest.fail(f"нет файла {path}: прогон организаторов не должен пропускаться молча")
+    profile = analyze_template(
+        path,
+        template_id="tpl_org",
+        name=name,
+        size_bytes=path.stat().st_size,
+        render=False,
+        use_vlm=False,
+    ).profile
+    package = {k: v for k, v in example_package.items() if not k.startswith("_")}
+    assets = pathlib.Path(example_package["_assets_dir"])
+    plan = make_plan(profile, "balanced")
+    base = compose_deck(
+        plan, profile, path, package, out_pptx=tmp_path / "base.pptx", package_dir=assets
+    )
+    again = compose_deck(
+        plan, profile, path, package, out_pptx=tmp_path / "again.pptx", package_dir=assets
+    )
+    ids = lambda deck: [[o["object_id"] for o in s["objects"]] for s in deck["slides"]]  # noqa: E731
+    assert ids(base.deck) == ids(again.deck)
+    # Правки по объектам ComposedDeck первой сборки: заголовки трёх содержательных слайдов.
+    edited: list[str] = []
+    for deck_slide, plan_slide in zip(
+        base.deck["slides"], sorted(plan["slides"], key=lambda s: s["order"]), strict=True
+    ):
+        title = next(
+            (o for o in deck_slide["objects"] if o.get("slot_kind") == "title" and o.get("text")),
+            None,
+        )
+        if title is None or len(edited) >= 3:
+            continue
+        picture = next((o for o in deck_slide["objects"] if o["kind"] == "picture"), None)
+        overrides = [
+            {
+                "op": "text",
+                "target": {
+                    "object_id": title["object_id"],
+                    "source_object_id": title.get("source_object_id"),
+                    "slot_id": title["slot_id"],
+                },
+                "text": "Правка редактора",
+            },
+            {
+                "op": "style",
+                "target": {"object_id": title["object_id"]},
+                "style": {"font": {"bold": True, "color": "#0077FF"}, "align": "left"},
+            },
+            {"op": "background", "background": {"kind": "solid", "color": "#F5F7FA"}},
+        ]
+        if picture is not None:
+            box = dict(picture["bbox"])
+            box["x"] = round(max(0.0, box["x"] - 0.02), 4)
+            overrides.append(
+                {
+                    "op": "geometry",
+                    "target": {"object_id": picture["object_id"]},
+                    "geometry": {"bbox": box},
+                }
+            )
+        plan_slide["overrides"] = overrides
+        edited.append(plan_slide["slide_id"])
+    assert len(edited) == 3
+    result = compose_deck(
+        plan, profile, path, package, out_pptx=tmp_path / "edited.pptx", package_dir=assets
+    )
+    assert result.integrity.ok
+    for deck_slide in result.deck["slides"]:
+        if deck_slide["slide_id"] not in edited:
+            assert "overrides" not in deck_slide
+            continue
+        assert deck_slide["overrides_dropped"] == [], deck_slide["overrides_dropped"]
+        assert deck_slide["background"] == {"kind": "solid", "color": "#F5F7FA"}
+        title = next(o for o in deck_slide["objects"] if o.get("slot_kind") == "title")
+        assert title["text"]["plain"] == "Правка редактора"
+        assert title["content_source"] == "user"
+        assert title["text"]["computed_style"]["font"]["color"] == "#0077FF"
+    ComposedDeck.model_validate(result.deck)
+    assert ids(result.deck) == ids(base.deck), "правки не меняют идентификаторы объектов"

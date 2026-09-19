@@ -1,10 +1,11 @@
 import { HttpResponse, delay, http } from "msw";
 
 import { API_BASE } from "@/lib/api/config";
-import type { Event, GenerationRequest, ProjectFile } from "@/lib/api/types";
+import type { Event, GenerationRequest, Override, ProjectFile } from "@/lib/api/types";
 
 import { extractBrief } from "./brief";
-import { htmlBlob, pdfBlob, pptxBlob, slidePng } from "./files";
+import { buildDeck } from "./deck";
+import { assetPng, htmlBlob, pdfBlob, pptxBlob, slidePng } from "./files";
 import * as projects from "./projects";
 import {
   buildAudit,
@@ -13,6 +14,7 @@ import {
   createEdit,
   createGeneration,
   createPackage,
+  createPatch,
   createRepair,
   createTemplate,
   deleteTemplate,
@@ -78,7 +80,7 @@ export const handlers = [
 
   http.get(base("/capabilities"), () =>
     HttpResponse.json({
-      contracts_version: "1.2",
+      contracts_version: "1.9",
       execution_mode: { mode: "stub", layers: { "parsing.template": "stub", "parsing.content": "stub", brief: "stub", "generation.story": "stub", "generation.plan": "stub", layout: "stub", export: "stub", "audit.deterministic": "stub", "audit.contextual": "stub" } },
       features: { generate_images: false, contextual_audit: true, html_export: true },
       limits: { max_upload_mb: 100, max_content_files: 20, slide_count_max: 60, max_project_files: 50, max_project_mb: 1024 },
@@ -193,14 +195,30 @@ export const handlers = [
     const t = store.templates.get(String(params.id));
     if (!t) return err(404, "template_not_found", "Шаблон не найден");
     const status = templateStatus(t);
-    const previews = status === "succeeded" ? t.profile.patterns.map((p) => p.preview_path ?? "").filter(Boolean) : [];
+    const previews = status === "succeeded" ? [...t.profile.patterns.map((p) => p.preview_path ?? "").filter(Boolean), ...t.profile.layouts.map((l) => `previews/layout-${l.layout_id}.png`)] : [];
     return HttpResponse.json({ status, job_id: t.job_id, name: t.name, profile: status === "succeeded" ? t.profile : undefined, previews });
+  }),
+
+  // Байты ресурса шаблона (иконка, логотип, картинка) для панели и холста редактора.
+  http.get(base("/templates/:id/media/:assetId"), async ({ params }) => {
+    const t = store.templates.get(String(params.id));
+    if (!t) return err(404, "template_not_found", "Шаблон не найден");
+    const asset = t.profile.assets.find((a) => a.asset_id === String(params.assetId));
+    if (!asset) return err(404, "asset_not_found", "Ресурс не найден в профиле шаблона");
+    const png = await assetPng(`tpl-media:${asset.asset_id}`, asset.kind === "icon" ? "#0077FF" : "#FF3885", asset.kind === "icon" || asset.kind === "logo");
+    return new HttpResponse(png, { headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" } });
   }),
 
   http.get(base("/templates/:id/assets/*"), async ({ params, request }) => {
     const t = store.templates.get(String(params.id));
     if (!t) return err(404, "template_not_found", "Шаблон не найден");
     const name = new URL(request.url).pathname.split("/assets/")[1] ?? "";
+    if (name.startsWith("previews/layout-")) {
+      const layoutId = name.slice("previews/layout-".length).replace(/\.png$/, "");
+      const layout = t.profile.layouts.find((l) => l.layout_id === layoutId);
+      const png = await slidePng(`tpl-layout:${t.template_id}:${layoutId}`, "", layout?.name ?? layoutId, "#C8CDD7", 640);
+      return new HttpResponse(png, { headers: { "Content-Type": "image/png" } });
+    }
     const pattern = t.profile.patterns.find((p) => p.preview_path === name);
     const png = await slidePng(`tpl:${t.template_id}:${name}`, pattern?.name ?? "Образец", `Образец шаблона: ${pattern?.role ?? ""}`, "#0077FF", 640);
     return new HttpResponse(png, { headers: { "Content-Type": "image/png" } });
@@ -231,6 +249,15 @@ export const handlers = [
     if (!p) return err(404, "package_not_found", "Контент-пакет не найден");
     const status = packageStatus(p);
     return HttpResponse.json({ status, job_id: p.job_id, package: status === "succeeded" ? p.pkg : undefined });
+  }),
+
+  // Картинка контент-пакета по пути ресурса — для панели редактора.
+  http.get(base("/content/:id/assets/*"), async ({ params, request }) => {
+    const p = store.packages.get(String(params.id));
+    if (!p) return err(404, "package_not_found", "Контент-пакет не найден");
+    const name = new URL(request.url).pathname.split("/assets/")[1] ?? "";
+    const png = await assetPng(`pkg-asset:${name}`, "#520977");
+    return new HttpResponse(png, { headers: { "Content-Type": "image/png" } });
   }),
 
   // ---------- генерация ----------
@@ -301,6 +328,23 @@ export const handlers = [
     return HttpResponse.json({ edit_job_id: result.repair_job_id }, { status: 202 });
   }),
 
+  http.post(base("/generations/:jobId/variants/:variantId/patches"), async ({ params, request }) => {
+    settleRepairs();
+    const g = store.generations.get(String(params.jobId));
+    if (!g) return err(404, "job_not_found", "Задание не найдено");
+    const variant = g.variants.find((v) => v.variant_id === String(params.variantId));
+    if (!variant) return err(404, "variant_not_found", "Вариант не найден");
+    const body = (await request.json()) as { base_revision: number; slides?: Array<{ slide_id: string; overrides: Override[] }>; order?: string[] };
+    const slides = body.slides ?? [];
+    if (slides.length === 0 && !body.order) return err(422, "patch_empty", "В запросе нет ни правок, ни нового порядка");
+    const result = createPatch(g, variant.variant_id, body.base_revision, slides, body.order);
+    if ("conflict" in result) return err(409, "revision_stale", `Ревизия ${body.base_revision} устарела: текущая ревизия ${result.conflict}. Обновите результат и повторите правки.`, { current_revision: result.conflict });
+    if ("busy" in result) return err(409, "repair_in_progress", "Предыдущая правка этой ревизии ещё применяется", { repair_job_id: result.busy });
+    if ("invalid" in result) return err(422, result.invalid.startsWith("patch_empty") ? "patch_empty" : "patch_invalid", `Правки не применимы к этой ревизии: ${result.invalid}`);
+    await delay(200);
+    return HttpResponse.json({ patch_job_id: result.repair_job_id }, { status: 202 });
+  }),
+
   http.get(base("/generations/:jobId/artifacts/*"), async ({ params, request }) => {
     settleRepairs();
     const g = store.generations.get(String(params.jobId));
@@ -322,12 +366,17 @@ export const handlers = [
       const hasIssue = audit?.issues.some((i) => i.slide_index === idx) ?? false;
       const fixedMark = revision > 1 && (variant?.revisions.some((r) => r.revision <= revision && r.changed_slide_ids.includes(`s${idx + 1}`)) ?? false);
       const subtitle = hasIssue ? "На этом слайде есть находки аудита" : fixedMark ? "Слайд исправлен в новой ревизии" : `Вариант ${variantId}, ревизия ${revision}`;
-      const title = slideTitleAt(variant, revision, idx, SLIDE_TITLES[idx] ?? `Слайд ${idx + 1}`);
+      const title = slideTitleAt(variant, revision, idx, SLIDE_TITLES[idx] ?? `Слайд ${idx + 1}`, SLIDE_TITLES);
       const png = await slidePng(`${g.job_id}:${name}:${hasIssue}:${title}`, title, subtitle, variantId === "compact" ? "#0077FF" : variantId === "balanced" ? "#FF3885" : "#520977");
+      return new HttpResponse(png, { headers: { "Content-Type": "image/png" } });
+    }
+    if (name.includes("/media/")) {
+      const png = await assetPng(`media:${name.split("/media/")[1]}`, "#0077FF", true);
       return new HttpResponse(png, { headers: { "Content-Type": "image/png" } });
     }
     if (name.endsWith("plan.json")) return HttpResponse.json(g.plan);
     if (name.endsWith("audit.json")) return HttpResponse.json(audit);
+    if (name.endsWith("composed.json")) return HttpResponse.json(buildDeck(g, variantId, revision, SLIDE_TITLES));
     return HttpResponse.json({ mock: true, name });
   }),
 

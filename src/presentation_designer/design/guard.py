@@ -39,9 +39,8 @@ def _norm(text: str) -> str:
 
 # -- 1. образцы шаблона ------------------------------------------------------
 
-def drop_placeholders(
-    slide: JsonDict, pattern: JsonDict, markers: set[str]
-) -> list[str]:
+
+def drop_placeholders(slide: JsonDict, pattern: JsonDict, markers: set[str]) -> list[str]:
     """Убирает блоки, чей текст — образец шаблона, а не содержание.
 
     Пустой слот лучше слова «Заголовок» в готовой презентации: первое
@@ -67,6 +66,7 @@ def drop_placeholders(
 
 # -- 2. повторы на слайде ----------------------------------------------------
 
+
 def drop_duplicates(slide: JsonDict) -> list[str]:
     """Оставляет один блок на каждую формулировку.
 
@@ -89,6 +89,7 @@ def drop_duplicates(slide: JsonDict) -> list[str]:
 
 
 # -- 3. вместимость ----------------------------------------------------------
+
 
 def _shorten(text: str) -> str | None:
     """Первое предложение — если оно короче исходного."""
@@ -140,6 +141,7 @@ def enforce_capacity(
 
 
 # -- оркестрация -------------------------------------------------------------
+
 
 def guard(
     slide: JsonDict, pattern: JsonDict, markers: set[str], canvas: Any | None = None

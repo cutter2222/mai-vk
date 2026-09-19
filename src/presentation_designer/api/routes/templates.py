@@ -1,8 +1,11 @@
-"""Шаблоны: загрузка (multipart или file_id проекта), список, профиль, превью, удаление."""
+"""Шаблоны: загрузка (multipart или file_id проекта), список, профиль, превью, ресурсы
+(иконки и картинки для редактора), удаление."""
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 from typing import Any
 
 from fastapi import APIRouter, Request, Response
@@ -99,7 +102,10 @@ def list_templates(orch: Orch) -> list[dict[str, Any]]:
         if t["status"] == "succeeded" and previews:
             patterns = profile.get("patterns", [])
             first = next((p["preview_path"] for p in patterns if p.get("preview_path")), None)
-            item["preview"] = first if first in previews else previews[0]
+            slides_only = [name for name in previews if "/layout-" not in name]
+            item["preview"] = (
+                first if first in previews else (slides_only[0] if slides_only else previews[0])
+            )
         out.append(item)
     return out
 
@@ -121,6 +127,55 @@ def delete_template(template_id: str, orch: Orch) -> Response:
     except NotFound as e:
         raise ApiError(404, "template_not_found", "Шаблон не найден") from e
     return Response(status_code=204)
+
+
+@router.get("/templates/{template_id}/media/{asset_id}")
+def template_media(template_id: str, asset_id: str, orch: Orch, request: Request) -> Response:
+    """Байты ресурса шаблона (иконка, логотип, картинка) из профиля: извлекаются из файла
+    шаблона в каталог шаблона при первом запросе; ETag — sha256 ресурса."""
+    try:
+        template = orch.state.get_template(template_id)
+    except NotFound as e:
+        raise ApiError(404, "template_not_found", "Шаблон не найден") from e
+    asset = next(
+        (
+            a
+            for a in (template.get("profile") or {}).get("assets") or []
+            if a.get("asset_id") == asset_id
+        ),
+        None,
+    )
+    if asset is None:
+        raise ApiError(404, "asset_not_found", "Ресурс не найден в профиле шаблона")
+    try:
+        path = orch.extract_template_media(template_id, asset)
+    except FileNotFoundError as e:
+        raise ApiError(404, "asset_not_found", "Файл ресурса отсутствует") from e
+    sha = str(asset.get("sha256") or "").split(":", 1)[-1].lower()
+    if not re.fullmatch(r"[0-9a-f]{16,64}", sha):
+        sha = hashlib.sha256(path.read_bytes()).hexdigest()
+    etag = f'"{sha}"'
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304)
+    headers = {"Cache-Control": "public, max-age=86400", "ETag": etag}
+    return FileResponse(
+        path, media_type=_media_type(str(asset.get("media_path") or "")), headers=headers
+    )
+
+
+def _media_type(name: str) -> str:
+    suffix = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    return {
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "gif": "image/gif",
+        "svg": "image/svg+xml",
+        "webp": "image/webp",
+        "emf": "image/emf",
+        "wmf": "image/wmf",
+        "bmp": "image/bmp",
+    }.get(suffix, "application/octet-stream")
 
 
 @router.get("/templates/{template_id}/assets/{name:path}")

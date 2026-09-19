@@ -179,6 +179,11 @@ MIGRATIONS: list[str] = [
     ALTER TABLE repairs ADD COLUMN instruction TEXT;
     ALTER TABLE repairs ADD COLUMN change_note TEXT;
     """,
+    # 5 (этап 23): ручные правки из визуального редактора — вид `patch`, документ
+    # slide_patch целиком (JSON) для истории и воспроизведения. Старый код колонку не читает.
+    """
+    ALTER TABLE repairs ADD COLUMN patch TEXT;
+    """,
 ]
 
 LATEST_SCHEMA = len(MIGRATIONS)
@@ -1117,6 +1122,7 @@ class State:
             "slide_id": row["slide_id"],
             "instruction": row["instruction"],
             "change_note": row["change_note"],
+            "patch": _loads(row["patch"], None) if "patch" in row.keys() else None,
         }
 
     def create_repair(
@@ -1130,13 +1136,15 @@ class State:
         kind: str = "repair",
         slide_index: int | None = None,
         instruction: str | None = None,
+        patch: JsonDict | None = None,
     ) -> None:
-        """Задание ревизии: исправление по находкам (`repair`) или правка слайда по
-        инструкции (`edit`); обе создают новую ревизию варианта и делят блокировку."""
+        """Задание ревизии: исправление по находкам (`repair`), правка слайда по инструкции
+        (`edit`) или ручные правки редактора (`patch`); все создают новую ревизию варианта и
+        делят блокировку."""
         with self.tx() as conn:
             conn.execute(
                 "INSERT INTO repairs(repair_job_id, job_id, variant_id, base_revision, issue_ids,"
-                " kind, slide_index, instruction) VALUES (?,?,?,?,?,?,?,?)",
+                " kind, slide_index, instruction, patch) VALUES (?,?,?,?,?,?,?,?,?)",
                 (
                     repair_job_id,
                     job_id,
@@ -1146,6 +1154,7 @@ class State:
                     kind,
                     slide_index,
                     instruction,
+                    _dumps(patch) if patch is not None else None,
                 ),
             )
 
@@ -1167,13 +1176,18 @@ class State:
                     (_dumps(value) if key in json_fields else value, repair_job_id),
                 )
 
-    def list_repairs(self, job_id: str, kind: str | None = None) -> list[JsonDict]:
-        """Задания ревизий генерации в порядке создания; `kind` сужает до исправлений или
-        правок."""
+    def list_repairs(
+        self, job_id: str, kind: str | tuple[str, ...] | None = None
+    ) -> list[JsonDict]:
+        """Задания ревизий генерации в порядке создания; `kind` (вид или несколько видов)
+        сужает до исправлений, правок из чата или ручных правок."""
+        kinds = (kind,) if isinstance(kind, str) else kind
         with self.read() as conn:
             rows = conn.execute("SELECT * FROM repairs WHERE job_id = ? ORDER BY rowid", (job_id,))
             return [
-                self._repair_row(r) for r in rows if kind is None or (r["kind"] or "repair") == kind
+                self._repair_row(r)
+                for r in rows
+                if kinds is None or (r["kind"] or "repair") in kinds
             ]
 
     def active_repair(self, job_id: str, variant_id: str) -> JsonDict | None:

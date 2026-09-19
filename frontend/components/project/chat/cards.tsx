@@ -263,7 +263,9 @@ export function EditCard({ m, ctx }: { m: Msg<"edit_card">; ctx: CardContext }) 
   const entry = session.result?.edits?.find((e) => e.edit_job_id === m.edit_job_id);
   const settled = Boolean(entry && entry.result !== undefined);
   const status = usePolling<JobStatus>(!settled ? () => api.jobs.get(m.edit_job_id) : null, (s) => TERMINAL_STATES.has(s.status), [m.edit_job_id, settled]);
-  const title = `Правка слайда ${m.slide_index + 1}`;
+  const manual = entry?.origin === "editor" || status.data?.kind === "slide_patch" || m.edit_job_id.startsWith("patch");
+  const changedCount = entry?.changed_slide_ids?.length ?? 0;
+  const title = manual ? (changedCount > 1 ? `Правки на слайдах` : `Правки на слайде ${m.slide_index + 1}`) : `Правка слайда ${m.slide_index + 1}`;
   const variantLabel = VARIANT_LABELS[m.variant_id] ?? m.variant_id;
   if (session.jobId !== m.job_id) {
     return <Card title={title} aside={<Badge color="gray" size="xs">задание заменено</Badge>} />;
@@ -297,7 +299,7 @@ export function EditCard({ m, ctx }: { m: Msg<"edit_card">; ctx: CardContext }) 
     };
     return (
       <Card title={title} aside={<Badge color="green" size="xs">ревизия {entry.new_revision}</Badge>} testId="edit-card">
-        <Text size="sm" mb={8} data-testid="edit-note">{entry.change_note || "Слайд переделан по просьбе"}</Text>
+        <Text size="sm" mb={8} data-testid="edit-note">{(manual ? entry.summary : undefined) || entry.change_note || (manual ? "Правки применены" : "Слайд переделан по просьбе")}</Text>
         <SimpleGrid cols={2} spacing="xs" mb={8}>
           <div>
             <SlideImage src={api.generations.artifactUrl(m.job_id, name(entry.base_revision))} alt="до" />
@@ -310,15 +312,19 @@ export function EditCard({ m, ctx }: { m: Msg<"edit_card">; ctx: CardContext }) 
         </SimpleGrid>
         <Group gap="xs">
           <Button size="xs" variant="default" onClick={show} data-testid="edit-show">Показать слайд</Button>
-          <Text size="xs" c="dimmed">{variantLabel}: остальные слайды не менялись, прежняя ревизия доступна в панели ревизий.</Text>
+          <Text size="xs" c="dimmed">
+            {manual
+              ? `${variantLabel}: изменено слайдов — ${Math.max(changedCount, 1)}, прежняя ревизия доступна в панели ревизий.`
+              : `${variantLabel}: остальные слайды не менялись, прежняя ревизия доступна в панели ревизий.`}
+          </Text>
         </Group>
       </Card>
     );
   }
-  const message = status.data?.progress?.message ?? `Переделываю слайд ${m.slide_index + 1}`;
+  const message = status.data?.progress?.message ?? (manual ? "Применяю правки редактора" : `Переделываю слайд ${m.slide_index + 1}`);
   return (
     <Card title={title} aside={<Loader size={12} />} testId="edit-card">
-      <Text size="xs" c="dimmed">{status.error ? status.error.message : `${message}: план → сборка → экспорт → проверка.`}</Text>
+      <Text size="xs" c="dimmed">{status.error ? status.error.message : `${message}: ${manual ? "сборка → экспорт → проверка" : "план → сборка → экспорт → проверка"}.`}</Text>
     </Card>
   );
 }

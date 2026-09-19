@@ -20,6 +20,7 @@ MODELS: dict[str, type] = {
     "content_package": m.ContentPackage,
     "story_plan": m.StoryPlan,
     "slide_plan": m.SlidePlan,
+    "slide_patch": m.SlidePatch,
     "composed_deck": m.ComposedDeck,
     "audit_report": m.AuditReport,
     "generation_request": m.GenerationRequest,

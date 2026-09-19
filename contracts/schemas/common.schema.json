@@ -500,6 +500,269 @@
     "timestamp": {
       "type": "string",
       "format": "date-time"
+    },
+    "asset_source": {
+      "type": "object",
+      "description": "Источник картинки для ручной правки: ресурс шаблона (asset_id из TemplateProfile.assets), ресурс контент-пакета (asset_id из ContentPackage.assets) или загруженный файл проекта (file_id; sha256 дописывает конвейер, name — для подписи в интерфейсе)",
+      "properties": {
+        "kind": {
+          "enum": [
+            "template",
+            "package",
+            "file"
+          ]
+        },
+        "asset_id": {
+          "$ref": "#/$defs/id"
+        },
+        "file_id": {
+          "$ref": "#/$defs/id"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "override": {
+      "type": "object",
+      "description": "Ручная правка одного объекта слайда или фона слайда из визуального редактора. Применяется композером после заполнения слота и чистки слайда, поэтому ревизия воспроизводится из плана. target.object_id — p:cNvPr@id объекта в ComposedDeck базовой ревизии (у объектов клона образца совпадает с образцом, у новых объектов детерминирован); source_object_id и slot_id — охрана адреса: при несовпадении правка отбрасывается с предупреждением, а не применяется к чужому объекту. Фон (op background) относится к слайду целиком, target не нужен.",
+      "properties": {
+        "op": {
+          "enum": [
+            "text",
+            "style",
+            "geometry",
+            "picture",
+            "background"
+          ]
+        },
+        "target": {
+          "type": "object",
+          "properties": {
+            "object_id": {
+              "type": "string"
+            },
+            "source_object_id": {
+              "type": "string"
+            },
+            "slot_id": {
+              "$ref": "#/$defs/id"
+            }
+          },
+          "required": [
+            "object_id"
+          ],
+          "additionalProperties": false
+        },
+        "text": {
+          "type": "string",
+          "description": "новый текст объекта: строки через \\n; ссылки {fact:<id>} подставляются как в плане"
+        },
+        "style": {
+          "type": "object",
+          "description": "оформление всех фрагментов объекта; передаются только изменяемые свойства",
+          "properties": {
+            "font": {
+              "type": "object",
+              "properties": {
+                "family": {
+                  "type": "string"
+                },
+                "size_pt": {
+                  "type": "number",
+                  "minimum": 6,
+                  "maximum": 120
+                },
+                "bold": {
+                  "type": "boolean"
+                },
+                "italic": {
+                  "type": "boolean"
+                },
+                "color": {
+                  "$ref": "#/$defs/color"
+                }
+              },
+              "additionalProperties": false
+            },
+            "align": {
+              "enum": [
+                "left",
+                "center",
+                "right",
+                "justify"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "geometry": {
+          "type": "object",
+          "description": "новое положение и размер в долях слайда (как bbox ComposedDeck, с учётом групп)",
+          "properties": {
+            "bbox": {
+              "$ref": "#/$defs/bbox"
+            }
+          },
+          "required": [
+            "bbox"
+          ],
+          "additionalProperties": false
+        },
+        "picture": {
+          "type": "object",
+          "description": "замена картинки или иконки объекта p:pic; color — перекраска монохромной иконки шаблона",
+          "properties": {
+            "source": {
+              "$ref": "#/$defs/asset_source"
+            },
+            "fit": {
+              "enum": [
+                "cover",
+                "contain"
+              ]
+            },
+            "color": {
+              "$ref": "#/$defs/color"
+            }
+          },
+          "required": [
+            "source"
+          ],
+          "additionalProperties": false
+        },
+        "background": {
+          "type": "object",
+          "description": "фон слайда: сплошной цвет, картинка или наследование от макета",
+          "properties": {
+            "kind": {
+              "enum": [
+                "solid",
+                "image",
+                "inherited"
+              ]
+            },
+            "color": {
+              "$ref": "#/$defs/color"
+            },
+            "source": {
+              "$ref": "#/$defs/asset_source"
+            },
+            "fit": {
+              "enum": [
+                "cover",
+                "contain"
+              ]
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "enum": [
+                  "text",
+                  "style",
+                  "geometry",
+                  "picture"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "target"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "text"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "text"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "style"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "style"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "geometry"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "geometry"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "picture"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "picture"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "background"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "background"
+            ]
+          }
+        }
+      ]
     }
   }
 }

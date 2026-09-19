@@ -41,7 +41,7 @@ export function HowBuiltPanel({ jobId, result, variantId, slideIndex }: Props) {
   const factIds = new Set<string>([...(slide?.fact_refs ?? []), ...(slide?.blocks.flatMap((b: PlanSlide["blocks"][number]) => b.fact_refs ?? []) ?? [])]);
   const facts = pkg?.facts.filter((f) => factIds.has(f.fact_id)) ?? [];
   const repairs = result.repairs?.filter((r) => r.variant_id === variantId && r.changed_slide_ids?.includes(slide?.slide_id ?? "")) ?? [];
-  const edits = result.edits?.filter((e) => e.variant_id === variantId && e.result === "applied" && e.slide_id === slide?.slide_id) ?? [];
+  const edits = result.edits?.filter((e) => e.variant_id === variantId && e.result === "applied" && (e.slide_id === slide?.slide_id || e.changed_slide_ids?.includes(slide?.slide_id ?? ""))) ?? [];
 
   if (!slide) {
     return (
@@ -92,7 +92,11 @@ export function HowBuiltPanel({ jobId, result, variantId, slideIndex }: Props) {
           {edits.length > 0 && (
             <div>
               <Text size="xs" c="dimmed" mb={4}>Правки по запросу</Text>
-              {edits.map((e) => <Text key={e.edit_job_id} size="xs" data-testid="how-built-edit">ревизия {e.new_revision}: «{e.instruction}» — {e.change_note ?? "применено"}</Text>)}
+              {edits.map((e) => (
+                <Text key={e.edit_job_id} size="xs" data-testid="how-built-edit">
+                  ревизия {e.new_revision}: {e.origin === "editor" ? `правки редактора — ${e.summary ?? e.change_note ?? "применены"}` : `«${e.instruction}» — ${e.change_note ?? "применено"}`}
+                </Text>
+              ))}
             </div>
           )}
           {slide.revision_note && <Text size="xs" c="dimmed">Последняя правка: {slide.revision_note}</Text>}

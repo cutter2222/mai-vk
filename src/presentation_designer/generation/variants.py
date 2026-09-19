@@ -55,8 +55,21 @@ log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 
-PLAN_VERSION = "0.3.0"
-PLAN_SCHEMA_VERSION = "1.2"
+PLAN_VERSION = "0.3.1"
+PLAN_SCHEMA_VERSION = "1.3"
+# Версии плана, отличающиеся от текущей только добавленными необязательными полями: план
+# прежней ревизии (правки из чата и редактора читают его с диска) поднимается до текущей.
+COMPATIBLE_PLAN_SCHEMAS = ("1.2",)
+
+
+def upgrade_plan_schema(plan: JsonDict) -> JsonDict:
+    """План прежней совместимой версии схемы → текущая (копия, если версия менялась)."""
+    version = str(plan.get("schema_version") or "")
+    if version == PLAN_SCHEMA_VERSION or version not in COMPATIBLE_PLAN_SCHEMAS:
+        return plan
+    return {**plan, "schema_version": PLAN_SCHEMA_VERSION}
+
+
 VARIANTS = ("compact", "balanced", "detailed")
 DEFAULT_RANGE = (10, 15)
 CHART_TYPES = ("column", "bar", "stacked_column", "line", "area", "pie", "doughnut", "scatter")
@@ -1731,9 +1744,7 @@ def numbers_thin(draft: Draft, slack: float = DEFAULT_NUMBERS_SLACK) -> bool:
     18.09.2026 (шаблон ЛЦТ): два показателя в композиции на шестнадцать полос —
     четырнадцать полос стоят пустыми, а крайнее число обрезается краем слайда.
     """
-    numbers = sum(1 for b in draft.blocks if b.get("number")) or len(
-        [f for f in draft.facts if f]
-    )
+    numbers = sum(1 for b in draft.blocks if b.get("number")) or len([f for f in draft.facts if f])
     capacity = draft.pattern.number_capacity
     return bool(numbers) and capacity >= max(slack * numbers, numbers + 3)
 
@@ -2003,8 +2014,7 @@ def _title_draft(ctx: Context, structure: Structure) -> Draft:
     # месте стоит «Разработчик корпоративного ПО»: жанр — описание, а не
     # адресат. «Для: инвесторы» читается как поле формы.
     subtitle = _clean(
-        ctx.story.get("key_takeaway")
-        or (brief.get("audience") and f"Для: {brief['audience']}"),
+        ctx.story.get("key_takeaway") or (brief.get("audience") and f"Для: {brief['audience']}"),
         200,
     )
     d = Draft(
@@ -2890,12 +2900,26 @@ def slide_from_draft(ctx: Context, d: Draft, *, slide_id: str, order: int) -> Js
             fact_refs.append(b["number"]["fact_id"])
         for it in b.get("items") or []:
             fact_refs.extend(it.get("fact_refs") or [])
+    title = cap.substitute_facts(d.title, ctx.facts)
+    # Лестница ёмкости могла сократить блок заголовка: заголовок слайда — то, что на слайде.
+    shortened = next(
+        (
+            b
+            for b in d.blocks
+            if b.get("kind") == "title"
+            and (b.get("fit") or {}).get("action") == "shortened"
+            and b.get("text")
+        ),
+        None,
+    )
+    if shortened is not None:
+        title = cap.substitute_facts(str(shortened["text"]), ctx.facts)
     slide: JsonDict = {
         "slide_id": slide_id,
         "order": order,
         "role": d.pattern.role,
         "pattern_id": d.pattern.pattern_id,
-        "title": cap.substitute_facts(d.title, ctx.facts),
+        "title": title,
         "key_message": cap.substitute_facts(d.message or d.title, ctx.facts)[:300],
         "blocks": d.blocks,
         "thesis_refs": list(dict.fromkeys(d.theses)),

@@ -4,11 +4,14 @@
         --profile runs/analyze/profile.json --template tests/fixtures/pptx/mini_template.pptx \\
         --content runs/import/package.json --out runs/compose/balanced/
     … --assets DIR       каталог с ресурсами пакета (по умолчанию каталог package.json)
+    … --uploads DIR      хранилище файлов проекта (`data/uploads`) для ручных правок с
+                         источником `file`: путь ищется по sha256 из плана
     … --prune-layouts    убрать неиспользуемые макеты (файл меньше, набор макетов меняется)
     … --pdf              дополнительно PDF через LibreOffice для собственной проверки
     … --report           печатать отчёт в stderr
 
 Выходы: `<out>/deck.pptx`, `<out>/composed.json` (ComposedDeck), `<out>/plan.json` (копия плана),
+`<out>/media/` (ресурсы колоды для интерфейса, имена в `assets[].artifact`),
 `<out>/report.json` (время шагов, счётчики, проверка пакета, предупреждения) и
 `<out>/manifest.json` со ссылками на входы и sha256 выходов. Тот же композер использует
 воркер (`pipeline/real.py`).
@@ -43,6 +46,9 @@ def build_parser(parser: argparse.ArgumentParser | None = None) -> argparse.Argu
     )
     parser.add_argument("--content", required=True, help="package.json (ContentPackage)")
     parser.add_argument("--assets", default=None, help="каталог ресурсов пакета")
+    parser.add_argument(
+        "--uploads", default=None, help="хранилище файлов проекта для правок с источником file"
+    )
     parser.add_argument("--out", default="runs/compose/balanced", help="каталог выходов")
     parser.add_argument("--job-id", default="job_local")
     parser.add_argument("--revision", type=int, default=1)
@@ -60,6 +66,24 @@ def _sha(path: pathlib.Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _uploaded_files(plan: dict[str, Any], uploads: str | None) -> dict[str, pathlib.Path]:
+    """Файлы проекта из ручных правок (`source.kind == file`) по sha256 в хранилище."""
+    if not uploads:
+        return {}
+    root = pathlib.Path(uploads)
+    out: dict[str, pathlib.Path] = {}
+    for slide in plan.get("slides") or []:
+        for override in slide.get("overrides") or []:
+            for spec in (override.get("picture"), override.get("background")):
+                source = (spec or {}).get("source") or {}
+                if source.get("kind") == "file" and source.get("file_id") and source.get("sha256"):
+                    sha = str(source["sha256"])
+                    path = root / sha[:2] / sha  # как FileStore.path_for
+                    if path.is_file():
+                        out[str(source["file_id"])] = path
+    return out
+
+
 def run(args: argparse.Namespace) -> int:
     for path in (args.plan, args.profile, args.template, args.content):
         if not pathlib.Path(path).is_file():
@@ -72,6 +96,7 @@ def run(args: argparse.Namespace) -> int:
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     variant_id = str((plan.get("variant") or {}).get("variant_id") or "balanced")
+    prefix = f"{variant_id}/r{args.revision}/"
     try:
         result = compose_deck(
             plan,
@@ -83,8 +108,11 @@ def run(args: argparse.Namespace) -> int:
             job_id=args.job_id,
             variant_id=variant_id,
             revision=args.revision,
-            pptx_artifact=f"{variant_id}/r{args.revision}/deck.pptx",
+            pptx_artifact=f"{prefix}deck.pptx",
             prune_layouts=args.prune_layouts,
+            extra_assets=_uploaded_files(plan, args.uploads),
+            media_dir=out / "media",
+            media_prefix=prefix,
         )
     except ComposeError as e:
         print(f"сборка не удалась ({e.code}): {e}", file=sys.stderr)

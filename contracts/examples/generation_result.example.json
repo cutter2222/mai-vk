@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "job_id": "job_demo",
   "status": "needs_review",
   "stage": "done",
@@ -893,6 +893,24 @@
       "new_revision": 2,
       "changed_slide_ids": [
         "s3"
+      ],
+      "origin": "chat"
+    },
+    {
+      "edit_job_id": "patch_demo",
+      "variant_id": "balanced",
+      "base_revision": 2,
+      "slide_index": 2,
+      "slide_id": "s2",
+      "instruction": "Слайд 3: текст и кегль заголовка, положение показателя; слайд 9: сброс правок",
+      "origin": "editor",
+      "summary": "Слайд 3: текст и кегль заголовка, положение показателя; слайд 9: сброс правок",
+      "result": "applied",
+      "change_note": "Слайд 3: текст и кегль заголовка, положение показателя; слайд 9: сброс правок",
+      "new_revision": 3,
+      "changed_slide_ids": [
+        "s2",
+        "s5"
       ]
     }
   ]

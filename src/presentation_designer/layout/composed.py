@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import copy
 import datetime
 import hashlib
 import mimetypes
@@ -64,6 +65,12 @@ class SlideRecord:
     static_object_ids: list[str] = field(default_factory=list)
     fills: list[SlotFill] = field(default_factory=list)
     removed_object_ids: list[str] = field(default_factory=list)
+    # Ручные правки (этап 22): применённые по объектам, отброшенные с причиной, описание
+    # картинок, заменённых у объектов без слота, правка фона слайда.
+    overrides_applied: dict[str, list[JsonDict]] = field(default_factory=dict)
+    overrides_dropped: list[JsonDict] = field(default_factory=list)
+    user_pictures: dict[str, JsonDict] = field(default_factory=dict)
+    background_override: JsonDict | None = None
 
 
 def _kind(info: ShapeInfo) -> str:
@@ -176,6 +183,7 @@ def build_composed_deck(
         (str(f.get("source_part", "")), str(f.get("element_ref", "")))
         for f in profile.get("fixed_elements") or []
     }
+    plan_slides = {str(s.get("slide_id")): s for s in plan.get("slides") or []}
     assets: dict[str, JsonDict] = {}
     slides_out: list[JsonDict] = []
     fallback_elements: list[JsonDict] = []
@@ -221,6 +229,8 @@ def build_composed_deck(
             }
             if abs(info.rotation_deg) > 0.01:
                 obj["rotation_deg"] = round(info.rotation_deg, 2)
+            if info.geometry:
+                obj["geometry"] = str(info.geometry)
             if info.group_path:
                 obj["group_path"] = list(info.group_path)
             if fill is not None:
@@ -252,6 +262,11 @@ def build_composed_deck(
                     obj["role"] = "fixed"
                 else:
                     obj["role"] = "decoration"
+            user_ops = record.overrides_applied.get(info.element_id) or []
+            if user_ops:
+                obj["user_overrides"] = [copy.deepcopy(o) for o in user_ops]
+                if any(o.get("op") in ("text", "picture") for o in user_ops):
+                    obj["content_source"] = "user"
             if kind in ("text", "placeholder_empty") or (info.has_text_frame and info.text):
                 text: JsonDict = {"plain": info.text}
                 paragraphs = [
@@ -291,10 +306,20 @@ def build_composed_deck(
                     if width and height:
                         picture["natural_width_px"] = width
                         picture["natural_height_px"] = height
+                user_picture = record.user_pictures.get(info.element_id)
                 if fill is not None and fill.picture:
                     for key in ("fit", "origin", "recolored"):
                         if fill.picture.get(key) is not None:
                             picture[key] = fill.picture[key]
+                elif user_picture:
+                    for key in ("fit", "origin", "recolored"):
+                        if user_picture.get(key) is not None:
+                            picture[key] = user_picture[key]
+                    if user_picture.get("asset_id") and asset_id.startswith("media_"):
+                        asset_id = str(user_picture["asset_id"]) + (
+                            ":recolored" if user_picture.get("recolored") else ""
+                        )
+                        picture["asset_id"] = asset_id
                 else:
                     picture["origin"] = "template"
                     picture["fit"] = "as_is"
@@ -372,12 +397,22 @@ def build_composed_deck(
             "source_slide_index": record.source_slide_index,
             "source_slide_part": record.source_slide_part,
             "title": record.title,
-            "background": _background(slide_info),
+            "background": _background(
+                slide_info,
+                assets,
+                profile_assets_by_sha,
+                record.background_override,
+                package_assets_by_sha,
+            ),
             "objects": objects,
             "removed_object_ids": list(record.removed_object_ids),
         }
         if record.notes:
             slide_out["notes"] = record.notes
+        plan_overrides = (plan_slides.get(record.slide_id) or {}).get("overrides") or []
+        if plan_overrides or record.overrides_dropped:
+            slide_out["overrides"] = copy.deepcopy(plan_overrides)
+            slide_out["overrides_dropped"] = copy.deepcopy(record.overrides_dropped)
         slides_out.append(slide_out)
     fonts = [
         {
@@ -393,7 +428,7 @@ def build_composed_deck(
         for f in ((profile.get("design_tokens") or {}).get("typography") or {}).get("fonts") or []
     ]
     return {
-        "schema_version": "1.2",
+        "schema_version": "1.3",
         "deck_id": f"deck_{job_id}_{variant_id}_r{revision}",
         "job_id": job_id,
         "variant_id": variant_id,
@@ -443,27 +478,53 @@ def _image_size(blob: bytes) -> tuple[int | None, int | None]:
     return image_size(blob)
 
 
-def _background(slide_info: Any) -> JsonDict:
-    element = slide_info.element
-    bg = element.find(
-        "{http://schemas.openxmlformats.org/presentationml/2006/main}cSld/"
-        "{http://schemas.openxmlformats.org/presentationml/2006/main}bg"
-    )
-    if bg is None:
-        return {"kind": "inherited"}
-    ns_a = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
-    if bg.find(f".//{ns_a}blipFill") is not None:
-        return {"kind": "image"}
-    if bg.find(f".//{ns_a}gradFill") is not None:
-        return {"kind": "gradient"}
-    solid = bg.find(f".//{ns_a}solidFill")
-    if solid is not None:
-        srgb = solid.find(f"{ns_a}srgbClr")
-        out: JsonDict = {"kind": "solid"}
-        if srgb is not None:
-            out["color"] = f"#{srgb.get('val', '000000').upper()}"
-        return out
-    return {"kind": "inherited"}
+def _background(
+    slide_info: Any,
+    assets: dict[str, JsonDict] | None = None,
+    profile_assets_by_sha: dict[str, JsonDict] | None = None,
+    override: JsonDict | None = None,
+    package_assets_by_sha: dict[str, JsonDict] | None = None,
+) -> JsonDict:
+    """Фон слайда по XML; фон-картинка регистрируется в ресурсах колоды. `override` — правка
+    фона из плана, по ней определяется происхождение картинки (шаблон или содержание)."""
+    from presentation_designer.layout import background
+
+    part = getattr(getattr(slide_info, "slide", None), "part", None)
+    info = background.read(slide_info.element, part)
+    out: JsonDict = {"kind": str(info.get("kind", "inherited"))}
+    if info.get("color"):
+        out["color"] = str(info["color"])
+    sha = str(info.get("sha256") or "")
+    media_part = str(info.get("media_part") or "")
+    if sha and media_part:
+        known = (profile_assets_by_sha or {}).get(sha)
+        from_package = (package_assets_by_sha or {}).get(sha)
+        source = ((override or {}).get("background") or {}).get("source") or {}
+        source_kind = str(source.get("kind") or "")
+        if from_package is not None:
+            asset_id = str(from_package["asset_id"])
+        elif known is not None:
+            asset_id = str(known["asset_id"])
+        else:
+            asset_id = f"media_{sha[:12]}"
+        out["asset_id"] = asset_id
+        if assets is not None:
+            assets.setdefault(
+                asset_id,
+                {
+                    "asset_id": asset_id,
+                    "media_path": media_part,
+                    "sha256": sha,
+                    "content_type": _content_type(media_part),
+                    "origin": (
+                        "content"
+                        if from_package is not None or source_kind in ("package", "file")
+                        else "template"
+                    ),
+                    "shared_with_template": known is not None,
+                },
+            )
+    return out
 
 
 def now_iso() -> str:

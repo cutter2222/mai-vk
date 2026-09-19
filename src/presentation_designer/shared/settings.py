@@ -167,10 +167,10 @@ class DesignFeedback(BaseModel):
     """Правка плана по фактам собранного файла (design/feedback.py)."""
 
     enabled: bool = True
-    refill: bool = True        # спрашивать модель; выключено — только детерминированные правки
-    rounds: int = 2            # кругов дозапроса: дальше выигрыш не окупает вызова
+    refill: bool = True  # спрашивать модель; выключено — только детерминированные правки
+    rounds: int = 2  # кругов дозапроса: дальше выигрыш не окупает вызова
     max_slots: int = 24
-    pattern_swap: bool = False # менять композицию по фактам: см. комментарий в app.yaml
+    pattern_swap: bool = False  # менять композицию по фактам: см. комментарий в app.yaml
 
 
 class Design(BaseModel):
@@ -198,7 +198,7 @@ class Llm(BaseModel):
 
 class App(BaseModel):
     name: str = "presentation-designer"
-    contracts_version: str = "1.7"
+    contracts_version: str = "1.9"
     language_default: str = "ru"
 
 

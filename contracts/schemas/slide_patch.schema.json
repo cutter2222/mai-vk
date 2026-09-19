@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://presentation-designer.local/contracts/slide_patch.schema.json",
+  "title": "SlidePatch",
+  "description": "Запрос ручных правок из визуального редактора к ревизии варианта (этап 22). У каждого перечисленного слайда список overrides заменяется целиком: пустой список возвращает слайд к сгенерированному виду; неперечисленные слайды не меняются. order — новый порядок всех слайдов варианта (перестановка slide_id без модели). Применяется детерминированно к SlidePlan базовой ревизии и создаёт новую ревизию тем же конвейером, что правка из чата (compose → export → audit), без вызова модели.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "job_id",
+    "variant_id",
+    "base_revision",
+    "slides"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "job_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "variant_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "base_revision": {
+      "$ref": "common.schema.json#/$defs/revision"
+    },
+    "slides": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "slide_id",
+          "overrides"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "slide_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "overrides": {
+            "type": "array",
+            "items": {
+              "$ref": "common.schema.json#/$defs/override"
+            }
+          }
+        }
+      }
+    },
+    "order": {
+      "type": "array",
+      "description": "новый порядок слайдов: перестановка всех slide_id плана; отсутствует — порядок не меняется",
+      "items": {
+        "$ref": "common.schema.json#/$defs/id"
+      }
+    }
+  }
+}

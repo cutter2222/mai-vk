@@ -134,13 +134,17 @@ def check_slide_plan(
     datasets: set[str] = set()
     assets: set[str] = set()
     blocks: set[str] = set()
+    package_assets: set[str] = set()
+    profile_assets: set[str] = set()
     if package is not None:
         facts = {_id(f.fact_id) for f in package.facts}
         datasets = {_id(d.dataset_id) for d in package.datasets}
-        assets = {_id(a.asset_id) for a in package.assets}
+        package_assets = {_id(a.asset_id) for a in package.assets}
+        assets = set(package_assets)
         blocks = {_id(b.block_id) for b in package.blocks}
     if profile is not None:
-        assets |= {_id(a.asset_id) for a in profile.assets}
+        profile_assets = {_id(a.asset_id) for a in profile.assets}
+        assets |= profile_assets
     theses: dict[str, m.Thesis] = {}
     if story is not None:
         theses = {_id(t.thesis_id): t for t in story.theses}
@@ -283,6 +287,14 @@ def check_slide_plan(
                     )
         for sid in sorted(required_slots - used_slots):
             out.append(Violation("slot_required", f"обязательный слот {sid} не заполнен", spath))
+        _check_overrides(
+            s.overrides or [],
+            spath,
+            slots=set(slots) if pattern is not None else None,
+            profile_assets=profile_assets if profile is not None else None,
+            package_assets=package_assets if package is not None else None,
+            out=out,
+        )
         if story is not None:
             for t in _ids(s.thesis_refs):
                 if t not in theses:
@@ -337,6 +349,91 @@ def check_slide_plan(
                     )
                 )
     return out
+
+
+OVERRIDE_CONTENT = {
+    "text": "text",
+    "style": "style",
+    "geometry": "geometry",
+    "picture": "picture",
+    "background": "background",
+}
+OVERRIDE_POS = (-0.5, 1.5)
+OVERRIDE_DIM = (0.005, 1.5)
+
+
+def _check_overrides(
+    overrides: list[m.Override],
+    spath: str,
+    *,
+    slots: set[str] | None,
+    profile_assets: set[str] | None,
+    package_assets: set[str] | None,
+    out: list[Violation],
+) -> None:
+    """Ручные правки слайда (этап 22): адрес, содержимое по виду операции, разумные пределы
+    геометрии, существование ресурсов (пределы кегля 6–120 держит схема). Файлы проекта
+    (`file`) проверяет конвейер — у валидатора нет доступа к хранилищу."""
+    seen: set[tuple[str, str]] = set()
+    for i, ov in enumerate(overrides):
+        opath = f"{spath}.overrides[{i}]"
+        target = ov.target
+        if ov.op != "background" and (target is None or not target.object_id):
+            out.append(Violation("override_target", f"правка {ov.op} без object_id", opath))
+        if target is not None and target.slot_id is not None and slots is not None:
+            if _id(target.slot_id) not in slots:
+                out.append(
+                    Violation(
+                        "override_target",
+                        f"слот {_id(target.slot_id)} отсутствует в паттерне слайда",
+                        opath,
+                    )
+                )
+        field = OVERRIDE_CONTENT[ov.op]
+        if getattr(ov, field, None) is None:
+            msg = f"правка {ov.op} должна содержать поле {field}"
+            out.append(Violation("override_content", msg, opath))
+            continue
+        key = (ov.op, target.object_id if target is not None else "")
+        if key in seen:
+            msg = f"правка {ov.op} объекта {key[1]} повторяется"
+            out.append(Violation("override_duplicate", msg, opath))
+        seen.add(key)
+        if ov.op == "geometry" and ov.geometry is not None:
+            box = ov.geometry.bbox
+            lo, hi = OVERRIDE_POS
+            dlo, dhi = OVERRIDE_DIM
+            if not (lo <= box.x <= hi and lo <= box.y <= hi):
+                out.append(Violation("override_bbox", "объект уходит далеко за слайд", opath))
+            if not (dlo <= box.width <= dhi and dlo <= box.height <= dhi):
+                msg = "размер объекта вне разумных пределов"
+                out.append(Violation("override_bbox", msg, opath))
+        sources: list[m.AssetSource] = []
+        if ov.op == "picture" and ov.picture is not None:
+            sources.append(ov.picture.source)
+        if ov.op == "background" and ov.background is not None:
+            if ov.background.kind == "solid" and not ov.background.color:
+                out.append(Violation("override_content", "сплошной фон без цвета", opath))
+            if ov.background.kind == "image":
+                if ov.background.source is None:
+                    out.append(Violation("override_content", "фон-картинка без источника", opath))
+                else:
+                    sources.append(ov.background.source)
+        for src in sources:
+            if src.kind == "file":
+                if not src.file_id:
+                    out.append(Violation("override_file_ref", "источник file без file_id", opath))
+                continue
+            if not src.asset_id:
+                out.append(
+                    Violation("override_content", f"источник {src.kind} без asset_id", opath)
+                )
+                continue
+            known = profile_assets if src.kind == "template" else package_assets
+            if known is not None and _id(src.asset_id) not in known:
+                where = "профиле шаблона" if src.kind == "template" else "пакете"
+                msg = f"ресурс {_id(src.asset_id)} не найден в {where}"
+                out.append(Violation("asset_missing", msg, opath))
 
 
 # ----------------------------------------------------------------------------

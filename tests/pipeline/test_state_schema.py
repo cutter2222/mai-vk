@@ -48,6 +48,11 @@ def test_pending_migrations_and_upgrade(tmp_path: pathlib.Path) -> None:
     assert old_repair["instruction"] is None and old_repair["slide_index"] is None
     assert state.list_repairs("job_1", kind="edit") == []
     assert [r["repair_job_id"] for r in state.list_repairs("job_1", kind="repair")] == ["rep_1"]
+    # Миграция 5 (этап 23): у старых исправлений нет документа ручных правок.
+    assert old_repair["patch"] is None and state.list_repairs("job_1", kind="patch") == []
+    assert [r["repair_job_id"] for r in state.list_repairs("job_1", kind=("repair", "patch"))] == [
+        "rep_1"
+    ]
     # Повторный запуск ничего не меняет.
     assert State(db).migrate() == (LATEST_SCHEMA, LATEST_SCHEMA)
 

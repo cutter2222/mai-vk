@@ -97,7 +97,13 @@ def apply(
         log.info("слой design: дозапрос выключен (модель не передана)")
     else:
         taken = refill(
-            result, profile, ask, prompt="", story=story, limit=refill_limit, canvas=canvas,
+            result,
+            profile,
+            ask,
+            prompt="",
+            story=story,
+            limit=refill_limit,
+            canvas=canvas,
             package=package,
         )
         log.info("слой design: дозапрос заполнил слотов %d", len(taken))
@@ -176,12 +182,23 @@ def apply(
     return result, report
 
 
+def _restore_locked(candidate: JsonDict, plan: JsonDict, locked: set[str]) -> None:
+    """Возвращает запертые слайды из исходного плана: их полировка не касается."""
+    original = {str(s.get("slide_id")): s for s in plan.get("slides") or []}
+    slides = candidate.get("slides") or []
+    for i, slide in enumerate(slides):
+        sid = str(slide.get("slide_id"))
+        if sid in locked and sid in original:
+            slides[i] = copy.deepcopy(original[sid])
+
+
 def plan_pattern(plan: JsonDict, slide: JsonDict) -> str | None:
     """Исходный паттерн слайда — для отчёта после подмены."""
     slide_id = slide.get("slide_id")
     for original in plan.get("slides", []):
         if original.get("slide_id") == slide_id:
-            return original.get("pattern_id")
+            pattern = original.get("pattern_id")
+            return str(pattern) if pattern is not None else None
     return None
 
 
@@ -195,8 +212,13 @@ def polish(
     config: JsonDict | None = None,
     ask: Any = None,
     package: JsonDict | None = None,
+    locked_slide_ids: Any = (),
 ) -> tuple[JsonDict, JsonDict]:
     """Правка плана по фактам вёрстки: сборка → факты → правка → проверка.
+
+    `locked_slide_ids` — слайды с ручными правками редактора (этап 22): их факты не
+    читаются, а сами слайды возвращаются из исходного плана до контрольной сборки, чтобы
+    полировка не переписала то, что пользователь поправил руками.
 
     `compose` — способ собрать колоду по плану, `plan -> ComposedDeck`. Он
     передаётся снаружи, поэтому слой не зависит от вёрстки и проверяется без
@@ -208,9 +230,14 @@ def polish(
     уже приводила к тому, что одних дефектов становилось меньше, а всего
     больше.
     """
+    locked = {str(s) for s in locked_slide_ids}
     draft = compose(plan)
     before = feedback.read(draft, plan, profile)
+    if locked:
+        before = before.without(locked)
     report: JsonDict = {"before": before.summary(), "decisions": [], "verdict": "нет дефектов"}
+    if locked:
+        report["locked_slide_ids"] = sorted(locked)
     if not before:
         log.info("слой design: вёрстка без дефектов, правка не нужна")
         return plan, report
@@ -229,7 +256,11 @@ def polish(
     )
     taken = (
         feedback.ask_slots(
-            candidate, before, profile, story, ask,
+            candidate,
+            before,
+            profile,
+            story,
+            ask,
             package=package,
             limit=int(limits.get("max_slots", 24)),
             rounds=int(limits.get("rounds", 2)),
@@ -247,7 +278,11 @@ def polish(
         log.info("слой design: дефекты есть (%s), но починить нечем", before.summary())
         return plan, report
 
+    if locked:
+        _restore_locked(candidate, plan, locked)
     after = feedback.read(compose(candidate), candidate, profile)
+    if locked:
+        after = after.without(locked)
     report["after"] = after.summary()
     if after.score() < before.score():
         report["verdict"] = "правка принята"

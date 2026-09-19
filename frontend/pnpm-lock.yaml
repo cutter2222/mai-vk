@@ -11,6 +11,9 @@ importers:
       '@fontsource-variable/golos-text':
         specifier: 5.3.0
         version: 5.3.0
+      '@fontsource/play':
+        specifier: 5.3.0
+        version: 5.3.0
       '@mantine/core':
         specifier: 9.6.1
         version: 9.6.1(@mantine/hooks@9.6.1(react@19.2.8))(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -232,6 +235,9 @@ packages:
 
   '@fontsource-variable/golos-text@5.3.0':
     resolution: {integrity: sha512-D+Evz5yqXYh6tsalc537FS+cPDWn2FTdO8j/K1ZZuFAvA7ib6WnusTiihciq7mMnm6GBo6XTlh0JXPrhBsam2g==}
+
+  '@fontsource/play@5.3.0':
+    resolution: {integrity: sha512-VpI6fd/A3jT1J3bOuyHn01CioAqwGWwNReTGycrFF2D57An2EJhDAuG030up3Ho7jSy1sSGW85gtB+l/v3gXOw==}
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -2736,6 +2742,8 @@ snapshots:
   '@floating-ui/utils@0.2.12': {}
 
   '@fontsource-variable/golos-text@5.3.0': {}
+
+  '@fontsource/play@5.3.0': {}
 
   '@humanfs/core@0.19.2':
     dependencies:

@@ -1,5 +1,5 @@
 """Генерация: запуск задания, результат, смысловой план, отчёты аудита, исправления,
-правки слайдов по запросу, артефакты."""
+правки слайдов по запросу и из визуального редактора, артефакты."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from presentation_designer.api.deps import Orch
 from presentation_designer.api.errors import ApiError
@@ -34,6 +34,15 @@ class EditRequest(BaseModel):
     base_revision: int = Field(..., ge=1)
     slide_index: int = Field(..., ge=0)
     instruction: str = Field("", max_length=2000)
+
+
+class PatchRequest(BaseModel):
+    """Ручные правки из визуального редактора: списки overrides по слайдам (замена
+    целиком) и, при перестановке, новый порядок всех слайдов."""
+
+    base_revision: int = Field(..., ge=1)
+    slides: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
+    order: list[str] | None = Field(None, max_length=500)
 
 
 def _generation(orch: Orchestrator, job_id: str) -> dict[str, Any]:
@@ -136,6 +145,42 @@ def create_edit(job_id: str, variant_id: str, body: EditRequest, orch: Orch) -> 
     except NotFound as e:
         raise ApiError(404, "variant_not_found", "Вариант не найден") from e
     return {"edit_job_id": job["job_id"]}
+
+
+@router.post("/generations/{job_id}/variants/{variant_id}/patches", status_code=202)
+def create_patch(job_id: str, variant_id: str, body: PatchRequest, orch: Orch) -> dict[str, Any]:
+    """Ручные правки редактора: новая ревизия варианта без модели. Документ проверяется по
+    схеме slide_patch и против ComposedDeck базовой ревизии; конфликты — как у правок из
+    чата (409 revision_stale / repair_in_progress, 422 остальное)."""
+    _generation(orch, job_id)
+    if not body.slides and body.order is None:
+        raise ApiError(422, "patch_empty", "В запросе нет ни правок, ни нового порядка")
+    document = {
+        "schema_version": "1.0",
+        "job_id": job_id,
+        "variant_id": variant_id,
+        "base_revision": body.base_revision,
+        "slides": body.slides,
+        **({"order": body.order} if body.order is not None else {}),
+    }
+    try:
+        m.SlidePatch.model_validate(document)
+    except ValidationError as e:
+        errors = [
+            f"{'.'.join(str(x) for x in err.get('loc', ()))}: {err.get('msg')}"
+            for err in e.errors()[:20]
+        ]
+        raise ApiError(
+            422,
+            "patch_invalid",
+            "Правки не соответствуют схеме: " + "; ".join(errors[:6]),
+            {"violations": errors},
+        ) from e
+    try:
+        job = orch.submit_patch(job_id, variant_id, body.base_revision, body.slides, body.order)
+    except NotFound as e:
+        raise ApiError(404, "variant_not_found", "Вариант не найден") from e
+    return {"patch_job_id": job["job_id"]}
 
 
 @router.get("/generations/{job_id}/artifacts/{name:path}")

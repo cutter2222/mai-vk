@@ -78,7 +78,7 @@ def build_html(
         '<!doctype html><html lang="ru"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         f"<title>{html.escape(title)}</title><style>{faces}{_CSS}</style></head><body>"
-        f"<h1>{html.escape(title)}</h1><div class=\"deck\">{''.join(sections)}</div>"
+        f'<h1>{html.escape(title)}</h1><div class="deck">{"".join(sections)}</div>'
         "</body></html>"
     )
 
@@ -101,7 +101,7 @@ def _slide(
     return (
         f'<section class="slide" id="slide-{index + 1}" aria-label="{html.escape(label)}"'
         f' style="aspect-ratio:{1 / ratio:.4f};background:{background}">'
-        f"{''.join(parts)}<span class=\"num\">{index + 1}</span></section>"
+        f'{"".join(parts)}<span class="num">{index + 1}</span></section>'
     )
 
 

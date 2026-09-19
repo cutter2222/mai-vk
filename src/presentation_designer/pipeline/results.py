@@ -36,7 +36,7 @@ def build_generation_result(state: State, job_id: str) -> JsonDict:
     variants_rows = state.get_variants(job_id)
     revisions = state.list_revisions(job_id)
     repairs = state.list_repairs(job_id, kind="repair")
-    edits = state.list_repairs(job_id, kind="edit")
+    edits = state.list_repairs(job_id, kind=("edit", "patch"))
     revisions_by_variant: dict[str, list[JsonDict]] = {}
     for rev in revisions:
         revisions_by_variant.setdefault(rev["variant_id"], []).append(rev)
@@ -157,7 +157,7 @@ def build_generation_result(state: State, job_id: str) -> JsonDict:
         "timeline": timeline,
     }
     result: JsonDict = {
-        "schema_version": "1.2",
+        "schema_version": "1.3",
         "job_id": job_id,
         "status": status,
         "stage": stage,
@@ -199,7 +199,10 @@ def build_generation_result(state: State, job_id: str) -> JsonDict:
                     "base_revision": e["base_revision"],
                     "slide_index": int(e["slide_index"] or 0),
                     "slide_id": e["slide_id"],
-                    "instruction": e["instruction"] or "",
+                    # У ручных правок инструкции нет: в поле идёт сводка, как и в summary.
+                    "instruction": e["instruction"] or e["change_note"] or "",
+                    "origin": "editor" if e["kind"] == "patch" else "chat",
+                    "summary": e["change_note"] if e["kind"] == "patch" else None,
                     "result": e["result"],
                     "change_note": e["change_note"],
                     "message": e["message"],
@@ -267,7 +270,7 @@ def _progress_message(stage: str, variants: list[JsonDict]) -> str:
 def build_job_status(state: State, job_id: str) -> JsonDict:
     job = state.get_job(job_id)
     status: JsonDict = {
-        "schema_version": "1.2",
+        "schema_version": "1.3",
         "job_id": job_id,
         "kind": job["kind"],
         "status": job["status"],

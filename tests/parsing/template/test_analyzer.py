@@ -126,7 +126,7 @@ def test_groups_and_tone(variety_template: pathlib.Path) -> None:
     заливки слайда с источником; style_key — тон, семейство макета и plain."""
     profile = analyze(variety_template).profile
     TemplateProfile.model_validate(profile)
-    assert profile["schema_version"] == "1.2" and profile["analyzer"]["version"] == "0.2.2"
+    assert profile["schema_version"] == "1.2" and profile["analyzer"]["version"] == "0.2.3"
     by_id = {p["pattern_id"]: p for p in profile["patterns"]}
     assert by_id["pat_s1"]["group_id"] == by_id["pat_s2"]["group_id"], "титулы одного состава"
     assert by_id["pat_s3"]["group_id"] == by_id["pat_s4"]["group_id"], "разделители"
@@ -219,3 +219,61 @@ def test_single_title_per_pattern(tmp_path: pathlib.Path) -> None:
     assert titles == [("title_1", "title", True)], kinds
     assert [k[0] for k in kinds if k[1] == "label"] == ["label_1", "label_2", "label_3", "label_4"]
     assert not any(k[2] for k in kinds if k[1] == "label"), "подписи карточек не обязательны"
+
+
+def test_layout_previews_rendered_with_fake_soffice(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Подложка холста редактора (этап 23): при рендере анализатор собирает временный PPTX
+    из пустых слайдов макетов паттернов и кладёт `previews/layout-<id>.png`; без
+    LibreOffice — предупреждение, не отказ."""
+    import io
+    import stat
+
+    from PIL import Image
+    from pptx import Presentation
+
+    from tests.layout.conftest import MINI_TEMPLATE
+
+    calls = tmp_path / "calls.log"
+
+    def pdf_bytes(pages: int) -> bytes:
+        images = [Image.new("RGB", (160, 90), (200 + i, 210, 230)) for i in range(pages)]
+        buf = io.BytesIO()
+        images[0].save(buf, format="PDF", save_all=True, append_images=images[1:])
+        return buf.getvalue()
+
+    slide_count = len(Presentation(str(MINI_TEMPLATE)).slides)
+    (tmp_path / "full.pdf").write_bytes(pdf_bytes(slide_count))
+    (tmp_path / "layouts.pdf").write_bytes(pdf_bytes(3))
+    script = tmp_path / "soffice"
+    script.write_text(
+        "#!/bin/sh\n"
+        'outdir=""; prev=""\n'
+        'for a in "$@"; do if [ "$prev" = "--outdir" ]; then outdir="$a"; fi; prev="$a"; done\n'
+        'mkdir -p "$outdir"\n'
+        'name=$(basename "${@: -1}" .pptx)\n'
+        f'echo "$name" >> "{calls}"\n'
+        f'if [ "$name" = "layouts" ]; then cp "{tmp_path / "layouts.pdf"}" "$outdir/$name.pdf";'
+        f' else cp "{tmp_path / "full.pdf"}" "$outdir/$name.pdf"; fi\n'
+    )
+    script.chmod(script.stat().st_mode | stat.S_IEXEC)
+    monkeypatch.setenv("PD_SOFFICE", str(script))
+    result = an.analyze_template(
+        MINI_TEMPLATE,
+        template_id="tpl_test",
+        name=MINI_TEMPLATE.name,
+        size_bytes=MINI_TEMPLATE.stat().st_size,
+        render=True,
+        use_vlm=False,
+        workdir=tmp_path / "work",
+    )
+    layout_ids = {p["source"]["layout_id"] for p in result.profile["patterns"]}
+    assert layout_ids, "у паттернов есть макеты"
+    layout_previews = {k for k in result.previews if k.startswith("previews/layout-")}
+    assert layout_previews == {f"previews/layout-{lid}.png" for lid in layout_ids}
+    assert result.report.counts["layout_previews"] == len(layout_ids)
+    assert calls.read_text().split() == [MINI_TEMPLATE.stem, "layouts"]
+    with Image.open(io.BytesIO(next(iter(result.previews[k] for k in layout_previews)))) as img:
+        assert img.width > 0
+    assert result.profile["analyzer"]["version"] == an.ANALYZER_VERSION

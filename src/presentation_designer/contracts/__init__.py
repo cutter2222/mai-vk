@@ -12,13 +12,14 @@ from presentation_designer.contracts.models import (
     Project,
     ProjectFile,
     SkillManifest,
+    SlidePatch,
     SlidePlan,
     StoryPlan,
     TemplateProfile,
 )
 from presentation_designer.contracts.validators import ContractError, Violation, raise_if
 
-CONTRACTS_VERSION = "1.7"
+CONTRACTS_VERSION = "1.9"
 
 __all__ = [
     "CONTRACTS_VERSION",
@@ -33,6 +34,7 @@ __all__ = [
     "Project",
     "ProjectFile",
     "SkillManifest",
+    "SlidePatch",
     "SlidePlan",
     "StoryPlan",
     "TemplateProfile",

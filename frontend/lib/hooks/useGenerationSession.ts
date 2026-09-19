@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { Overlay } from "@/components/common/SlideImage";
 import { api, ApiError, TERMINAL_STATES } from "@/lib/api/client";
-import type { AuditReport, GenerationResult } from "@/lib/api/types";
+import type { AuditReport, GenerationResult, SlidePatch } from "@/lib/api/types";
 import { usePolling } from "@/lib/api/usePolling";
 
 type Variant = GenerationResult["variants"][number];
@@ -38,6 +38,10 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
   const [showHowBuilt, setShowHowBuilt] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
   const [editJob, setEditJob] = useState<string | null>(null);
+  // Задание правки: инструкция из чата (edit) или ручные правки редактора (patch).
+  const [editJobKind, setEditJobKind] = useState<"edit" | "patch">("edit");
+  // Непустой черновик визуального редактора: чат не отправляет сообщения, пока правки не применены.
+  const [editorDirty, setEditorDirty] = useState(false);
   // Крестик на чипе снимает адресацию для этого слайда; следующий выбор слайда возвращает чип.
   const [dismissedTarget, setDismissedTarget] = useState<number | null>(null);
 
@@ -115,12 +119,19 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
       setHandledEdit(editJob);
       setEditJob(null);
       job.refresh();
+      const manual = editJobKind === "patch";
       if (status?.status === "succeeded" && status.result?.unchanged) {
         notifications.show({ color: "gray", title: "Слайд оставлен как есть", message: status.result.change_note ?? "" });
       } else if (status?.status === "succeeded") {
-        notifications.show({ color: "green", title: "Слайд изменён", message: `Создана ревизия ${status.result?.revision ?? ""}. ${status.result?.change_note ?? ""}`.trim() });
+        notifications.show({
+          color: "green",
+          title: manual ? "Правки применены" : "Слайд изменён",
+          message: manual
+            ? `Создана ревизия ${status.result?.revision ?? ""}: ${status.result?.change_note ?? "правки редактора"}`
+            : `Создана ревизия ${status.result?.revision ?? ""}. ${status.result?.change_note ?? ""}`.trim(),
+        });
       } else if (status?.status === "failed") {
-        notifications.show({ color: "red", title: "Правка не применена", message: status.error?.message ?? "" });
+        notifications.show({ color: "red", title: manual ? "Правки не применены" : "Правка не применена", message: status.error?.message ?? "" });
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -201,11 +212,32 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
     }
   };
 
+  /** Ручные правки редактора: одна ревизия на все перечисленные слайды и новый порядок; ошибки отдаются вызывающему. */
+  const requestPatch = async (target: Pick<SlideTarget, "jobId" | "variantId" | "revision">, slides: SlidePatch["slides"], order?: string[]): Promise<string> => {
+    setBusy(true);
+    try {
+      const res = await api.generations.patch(target.jobId, target.variantId, target.revision, slides, order);
+      setEditJobKind("patch");
+      setEditJob(res.patch_job_id);
+      setHandledEdit(null);
+      return res.patch_job_id;
+    } catch (e) {
+      if (e instanceof ApiError && e.code === "revision_stale") {
+        setRevision(null);
+        job.refresh();
+      }
+      throw e;
+    } finally {
+      setBusy(false);
+    }
+  };
+
   /** Правка выбранного слайда по инструкции; ошибки (устаревшая ревизия, идущая правка) отдаются вызывающему. */
   const requestEdit = async (target: SlideTarget, instruction: string): Promise<string> => {
     setBusy(true);
     try {
       const res = await api.generations.edit(target.jobId, target.variantId, target.revision, target.slideIndex, instruction);
+      setEditJobKind("edit");
       setEditJob(res.edit_job_id);
       setHandledEdit(null);
       return res.edit_job_id;
@@ -291,8 +323,12 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
     dismissTarget,
     selectSlide,
     requestEdit,
+    requestPatch,
     editJob,
+    editJobKind,
     editStatus: editStatus.data,
+    editorDirty,
+    setEditorDirty,
   };
 }
 

@@ -10,6 +10,7 @@ from presentation_designer.cli import analyze as analyze_cmd
 from presentation_designer.cli import compose as compose_cmd
 from presentation_designer.cli import edit as edit_cmd
 from presentation_designer.cli import import_content as import_cmd
+from presentation_designer.cli import patch as patch_cmd
 from presentation_designer.cli import plan as plan_cmd
 from presentation_designer.cli import story as story_cmd
 from presentation_designer.contracts import CONTRACTS_VERSION
@@ -37,6 +38,9 @@ def build_parser() -> argparse.ArgumentParser:
     edit_cmd.build_parser(
         sub.add_parser("edit-slide", help="правка одного слайда плана по инструкции")
     )
+    patch_cmd.build_parser(
+        sub.add_parser("patch-slides", help="ручные правки редактора (slide_patch) в план")
+    )
     for name in PLANNED:
         sub.add_parser(name, help="подключается на этапе реализации соответствующего слоя")
     return parser
@@ -60,6 +64,8 @@ def main(argv: list[str] | None = None) -> int:
         return compose_cmd.run(args)
     if args.command == "edit-slide":
         return edit_cmd.run(args)
+    if args.command == "patch-slides":
+        return patch_cmd.run(args)
     print(
         f"Команда {args.command!r} ещё не реализована: см. IMPLEMENTATION_PLAN.md", file=sys.stderr
     )

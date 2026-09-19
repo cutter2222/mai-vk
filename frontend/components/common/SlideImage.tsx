@@ -12,6 +12,12 @@ export interface Overlay {
   label: string;
 }
 
+export interface Outline {
+  id: string;
+  bbox: Bbox;
+  label: string;
+}
+
 interface Props {
   src?: string;
   alt: string;
@@ -19,13 +25,16 @@ interface Props {
   activeOverlay?: string | null;
   onOverlayClick?: (id: string) => void;
   onLoad?: () => void;
+  /** Контуры объектов слайда (из ComposedDeck): подсвечиваются при наведении, клик открывает редактор. */
+  outlines?: Outline[];
+  onOutlineClick?: (id: string) => void;
 }
 
 /**
  * Слайд 16:9 с рамками находок. Координаты рамок нормализованы к слайду, поэтому
  * пересчитываются в пиксели фактической области изображения внутри контейнера (object-fit: contain).
  */
-export function SlideImage({ src, alt, overlays = [], activeOverlay, onOverlayClick }: Props) {
+export function SlideImage({ src, alt, overlays = [], activeOverlay, onOverlayClick, outlines = [], onOutlineClick }: Props) {
   const ref = useRef<HTMLImageElement | null>(null);
   const [rect, setRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
 
@@ -62,6 +71,24 @@ export function SlideImage({ src, alt, overlays = [], activeOverlay, onOverlayCl
           Миниатюра ещё не готова
         </Text>
       )}
+      {rect &&
+        outlines.map((o) => (
+          <button
+            key={`outline-${o.id}`}
+            type="button"
+            className="object-outline"
+            data-testid={`object-outline-${o.id}`}
+            title={o.label}
+            aria-label={o.label}
+            onClick={() => onOutlineClick?.(o.id)}
+            style={{
+              left: rect.left + o.bbox.x * rect.width,
+              top: rect.top + o.bbox.y * rect.height,
+              width: o.bbox.width * rect.width,
+              height: o.bbox.height * rect.height,
+            }}
+          />
+        ))}
       {rect &&
         overlays.map((o) => (
           <Box
