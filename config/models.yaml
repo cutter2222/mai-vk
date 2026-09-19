@@ -10,23 +10,19 @@ providers:
     kind: openai_compatible
     env_base_url: PD_QWEN_BASE_URL
     env_api_key: PD_QWEN_API_KEY
-    # Зонд 16.09.2026 (docs/llm-capabilities.md): прокси LiteLLM над vLLM. reasoning_effort → 400,
-    # enable_thinking в теле игнорируется, работает chat_template_kwargs.enable_thinking; бюджет
-    # рассуждения не задаётся — рассуждение и ответ делят max_completion_tokens.
-    # Зонд 18.09.2026: chat_template_kwargs.enable_thinking рассуждение НЕ
-    # выключает (осталось 140 токенов), а простой enable_thinking в теле —
-    # выключает. Стиль изменён под фактическое поведение шлюза, который
-    # требует ЯВНОГО enable_thinking=false для открытых моделей Qwen без
-    # потоковой передачи: иначе HTTP 400 «only supports enable_thinking with
-    # stream=true». Стиль qwen_enable_thinking шлёт именно этот параметр.
-    reasoning_style: qwen_enable_thinking
+    # Зонд 16.09.2026 и перепроверка 18.09.2026 вечером (docs/llm-capabilities.md): прокси
+    # LiteLLM над vLLM. Рассуждение у моделей Qwen включено по умолчанию; reasoning_effort → 400,
+    # enable_thinking в теле принимается, но НЕ действует; выключает только
+    # chat_template_kwargs.enable_thinking — стиль vllm_chat_template. Бюджет рассуждения
+    # не задаётся: рассуждение и ответ делят max_completion_tokens, поэтому с включённым
+    # рассуждением промпт планировщика тратит 4–6 тысяч токенов на размышления и при лимите
+    # 3500 отдаёт пустой ответ с finish=length (сбой сборки 18.09 вечером, job_e971bbd…).
+    # У шлюза кэш по тексту запроса и температуре: повтор возвращает прежний ответ независимо
+    # от extra_body, так что замеры параметров рассуждения требуют уникальных входов.
+    reasoning_style: vllm_chat_template
     model_revision: null   # ревизия весов у провайдера не раскрывается; внутренний алиас qwen3.8-27b-dflash2
-    supports:              # зонд 18.09.2026, см. docs/llm-capabilities.md
-      # json_schema на этом шлюзе отдаёт ПУСТОЙ ответ с finish=length: модель
-      # тратит токены на скрытое рассуждение (в usage оно не отражается) и до
-      # содержания не доходит. json_object работает. Флаг false включает
-      # штатное понижение формата в llm/client.py:_downgrade_format.
-      json_schema: false
+    supports:              # зонд 16.09.2026, перепроверено 18.09.2026 при выключенном рассуждении
+      json_schema: true    # промпт планировщика: полный валидный JSON за 7–21 с, рассуждения 0
       json_object: true
       images: true
       multi_image: true
@@ -50,18 +46,15 @@ active_provider: qwen-api
 roles:
   llm:
     provider: qwen-api
-    # Замер 18.09.2026 на одном и том же промпте story:
-    #   qwen3.8-27b  73 с, >4000 токенов уходит в СКРЫТОЕ рассуждение, ответ пуст
-    #   qwen3-32b    15 с, 1300 токенов, полный ответ при лимите 4000
-    # Обе модели проходят ТЗ п.3 (открытые веса, <=35B); 32B ещё и дешевле.
-    model: qwen3-32b
+    # Обе роли на одном checkpoint: qwen3.8-27b подтверждён зондом 16.09.2026, на нём сняты
+    # профили шаблонов и фикстуры. qwen3-32b из каталога провайдера исчезла (18.09.2026 вечером).
+    model: qwen3.8-27b
     hf_url: https://huggingface.co/Qwen/Qwen3.8-27B
     license: Apache-2.0
     params_b: 27
-    # Замер 18.09.2026: модель тратит >4000 токенов на СКРЫТОЕ рассуждение,
-    # которого нет в usage. При лимите 4000 ответ приходит пустым с
-    # finish=length, повторы съедают бюджет стадии и дают тайм-аут.
-    # При 8000 содержание появляется, время то же (73 с).
+    # Лимит с запасом: при выключенном рассуждении самый длинный пакет плана — ~2000 токенов.
+    # Замеры «73 с и пустой ответ» от 18.09 были при рассуждении, которое стиль
+    # qwen_enable_thinking не выключал; со стилем vllm_chat_template тот же промпт — 7 с.
     reasoning: { mode: "off", max_output_tokens: 4000 }
     temperature: 0.2
     verified: { by: probe, date: "2026-09-16", source: "docs/llm-capabilities.md; в каталоге /models api-ai.mai.ru" }
