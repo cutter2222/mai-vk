@@ -303,7 +303,7 @@ def test_pipeline_reuses_story_by_content_hash(
             job_id = client.post(
                 "/api/generations",
                 json={
-                    "schema_version": "1.1",
+                    "schema_version": "1.2",
                     "template_id": template_id,
                     "package_id": package_id,
                     "idempotency_key": key,

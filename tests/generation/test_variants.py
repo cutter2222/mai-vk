@@ -972,3 +972,23 @@ def test_slide_spec_from_settings_and_brief(example_story: dict[str, Any]) -> No
         vr.slide_spec({"slide_count": {"min": 6, "max": 9}}, example_story, "balanced", 12).target
         == 9
     )
+
+
+def test_title_falls_back_to_speaker_or_any_titled_pattern(mini_profile: dict[str, Any]) -> None:
+    """Обычная презентация, отданная как шаблон (popov.pptx, 19.09): титульной композиции нет,
+    первый слайд — спикер, остальные — списки. Титулом становится слайд спикера, а без него —
+    образец с заголовком и наименьшим числом обязательных слотов; отказа plan_no_title_pattern нет."""
+    profile = json.loads(json.dumps(mini_profile))
+    roles = {"pat_s1": "speaker", "pat_s2": "bullets", "pat_s3": "table", "pat_s4": "bullets"}
+    for p in profile["patterns"]:
+        p["role"] = roles.get(p["pattern_id"], "bullets")
+    patterns = mt.profile_patterns(profile)
+    title = mt.fixed_pattern(patterns, "title")
+    assert title is not None and title.pattern_id == "pat_s1" and title.role == "speaker"
+    for p in profile["patterns"]:
+        if p["pattern_id"] == "pat_s1":
+            p["role"] = "bullets"
+    patterns = mt.profile_patterns(profile)
+    title = mt.fixed_pattern(patterns, "title")
+    assert title is not None and title.title is not None and title.role == "bullets"
+    assert mt.fixed_pattern(patterns, "thanks") is None

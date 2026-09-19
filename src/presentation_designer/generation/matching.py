@@ -423,8 +423,10 @@ def profile_patterns(profile: JsonDict) -> list[PatternInfo]:
 # ---------- фиксированные слайды по ролям ----------
 
 
+# Слайд спикера — титул презентации-визитки (popov.pptx: портрет и имя на первом слайде);
+# если и его нет, титулом становится любой образец с заголовком (см. fixed_pattern_pool).
 FIXED_FALLBACK_ROLES: dict[str, tuple[str, ...]] = {
-    "title": ("title", "section_divider", "text"),
+    "title": ("title", "section_divider", "text", "speaker"),
     "section_divider": ("section_divider",),
     "thanks": ("thanks", "qr"),
     "agenda": ("agenda",),
@@ -440,19 +442,34 @@ def fixed_pattern_pool(
     нет — все заполняемые), по возрастанию числа обязательных слотов (титульный слайд не
     должен требовать таблицу), по убыванию уверенности, затем по порядку образцов в шаблоне
     (`slide_index`, при равенстве — идентификатор)."""
+    def ordered(pool: list[PatternInfo]) -> list[PatternInfo]:
+        pool = [p for p in pool if p.service_safe] or pool
+        pool.sort(
+            key=lambda p: (
+                len(p.required_singles),
+                -p.confidence,
+                p.slide_index,
+                p.pattern_id,
+            )
+        )
+        return pool
+
     for r in FIXED_FALLBACK_ROLES.get(role, (role,)):
         pool = [p for p in patterns if p.role == r and p.fillable(has_datasets=has_datasets)]
-        pool = [p for p in pool if p.service_safe] or pool
         if pool:
-            pool.sort(
-                key=lambda p: (
-                    len(p.required_singles),
-                    -p.confidence,
-                    p.slide_index,
-                    p.pattern_id,
-                )
-            )
-            return pool
+            return ordered(pool)
+    if role == "title":
+        # Презентация без титульной композиции (обычный файл, отданный как шаблон): титулом
+        # становится образец с заголовком и наименьшим числом обязательных слотов, а не отказ.
+        pool = [
+            p
+            for p in patterns
+            if p.title is not None
+            and p.role not in ("thanks", "qr", "agenda")
+            and p.fillable(has_datasets=has_datasets)
+        ]
+        if pool:
+            return ordered(pool)
     return []
 
 

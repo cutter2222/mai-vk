@@ -810,9 +810,12 @@ class Settings(BaseModel):
     точное число или диапазон; при обоих заданных exact имеет приоритет; min <= max проверяется валидатором
     """
     language: str | None = "ru"
-    variants: list[Literal["compact", "balanced", "detailed"]] | None = Field(
+    variants: list[Literal["compact", "balanced", "detailed", "original"]] | None = Field(
         ["compact", "balanced", "detailed"], max_length=3, min_length=1
     )
+    """
+    варианты вёрстки; original — исходная презентация как есть, только один в списке (проверяется валидатором)
+    """
     generate_images: bool | None = False
     """
     генерация новых изображений моделью; доступно только при включённой возможности сервиса
@@ -833,7 +836,7 @@ class Settings(BaseModel):
 
 class GenerationRequest(BaseModel):
     """
-    Тело POST /api/generations и вход CLI-команды generate. Версия 1.1. Приоритет: явные настройки запроса → бриф ContentPackage → умолчания config/app.yaml. Пути файлов от клиента не принимаются: только идентификаторы.
+    Тело POST /api/generations и вход CLI-команды generate. Версия 1.2: вариант original — загруженная презентация как готовый результат (шаблон и материал — один и тот же файл; план строится из профиля без модели, слайды и тексты сохраняются как есть; сочетается только сам с собой). Приоритет: явные настройки запроса → бриф ContentPackage → умолчания config/app.yaml. Пути файлов от клиента не принимаются: только идентификаторы.
     """
 
     model_config = ConfigDict(
@@ -848,7 +851,7 @@ class GenerationRequest(BaseModel):
     Стабильный идентификатор. Не содержит пробелов и путей.
     """
     settings: Settings | None = None
-    schema_version: Literal["1.1"]
+    schema_version: Literal["1.2"]
     idempotency_key: str | None = Field(None, max_length=128)
     """
     повтор запроса с тем же ключом возвращает то же задание
@@ -1575,7 +1578,10 @@ class Event(BaseModel):
     """
     Стабильный идентификатор. Не содержит пробелов и путей.
     """
-    resolved: Literal["template", "material"] | None = None
+    resolved: Literal["template", "material", "deck"] | None = None
+    """
+    ответ на вопрос о PPTX: шаблон оформления, материал с содержанием или deck — готовая презентация как результат (этап 21)
+    """
     template_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
     Стабильный идентификатор. Не содержит пробелов и путей.
@@ -2666,7 +2672,7 @@ class Project(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    schema_version: Literal["1.4"]
+    schema_version: Literal["1.5"]
     project_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
     Стабильный идентификатор. Не содержит пробелов и путей.

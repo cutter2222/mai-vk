@@ -24,7 +24,7 @@ export interface SlideRef {
 export type ChatMessage =
   | { event_id: string; at: string; role: "user"; kind: "message"; text: string; file_ids: string[]; slide_ref?: SlideRef }
   | { event_id: string; at: string; role: "assistant"; kind: "text"; text: string }
-  | { event_id: string; at: string; role: "assistant"; kind: "template_question"; file_id: string; resolved?: "template" | "material" }
+  | { event_id: string; at: string; role: "assistant"; kind: "template_question"; file_id: string; resolved?: PptxAnswer }
   | { event_id: string; at: string; role: "assistant"; kind: "template_card"; template_id: string }
   | { event_id: string; at: string; role: "assistant"; kind: "content_card"; package_id: string; file_ids: string[] }
   | { event_id: string; at: string; role: "assistant"; kind: "brief_card"; understood: string[]; missing_purpose: boolean; brief_source?: "model" | "heuristic" }
@@ -43,6 +43,9 @@ export type Project = Omit<ProjectDoc, "events" | "template_id" | "package_id" |
 export const DEFAULT_TITLE = "Новая презентация";
 
 export const DEFAULT_BRIEF: BriefDraft = { purpose: "", title: "", audience: "", goal: "", language: "ru", tone: "", must_include: [], avoid: [] };
+
+/** Ответ на вопрос о PPTX: шаблон оформления, готовая презентация как результат или материал. */
+export type PptxAnswer = "template" | "deck" | "material";
 
 export const DEFAULT_SETTINGS: SettingsDraft = { mode: "range", min: 10, max: 15, exact: 12, variants: ["compact", "balanced", "detailed"], contextual: true, images: false, seed: null, force: false };
 

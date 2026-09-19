@@ -15,24 +15,26 @@ import {
   removeProjectFile,
   updateProject,
   type BriefDraft,
+  type PptxAnswer,
   type Project,
   type ProjectFile,
   type SettingsDraft,
 } from "@/lib/state/projects";
+import type { GenerationRequest } from "@/lib/api/types";
 
-const GENERATE_RE = /сгенерир|запусти|собери|сделай|построй|начина/i;
+const GENERATE_RE = /сгенерир|запусти|собер[иа]|сдела[йт]|сделаем|построй|начина|давай/i;
 const EDIT_RE = /поменя[йть]|перестав|местами|удали|убери|добавь слайд|переимен/i;
 
 const isPptx = (f: ProjectFile) => f.check.format === "pptx";
 const isMaterial = (f: ProjectFile) => f.kind === "material";
 const isPptxFile = (f: File) => /\.pptx$/i.test(f.name);
 
-/** PPTX, брошенный в чат: вопрос «шаблон или материал» показан сразу, файл ещё едет на сервер. */
+/** PPTX, брошенный в чат: вопрос «шаблон, готовая презентация или материал» показан сразу, файл ещё едет на сервер. */
 export interface StagedPptx {
   local_id: string;
   name: string;
   size: number;
-  answer?: "template" | "material";
+  answer?: PptxAnswer;
 }
 
 /**
@@ -47,7 +49,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
   const say = useCallback((text: string) => appendMessage(id, { role: "assistant", kind: "text", text }), [id]);
 
   const [staged, setStaged] = useState<StagedPptx[]>([]);
-  const stagedAnswers = useRef(new Map<string, "template" | "material">());
+  const stagedAnswers = useRef(new Map<string, PptxAnswer>());
 
   /** Импорт всех материалов проекта в новый пакет по file_ids. Возвращает package_id или null. */
   const importMaterials = useCallback(async (): Promise<string | null> => {
@@ -67,16 +69,19 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     }
   }, [id, say, current]);
 
-  const uploadTemplate = useCallback(async (fileId: string) => {
+  /** Файл проекта в библиотеку шаблонов; карточка с ходом анализа — только в ответ на вопрос в чате,
+   * загрузка из шапки остаётся без сообщений: состояние анализа показывает сама шапка. */
+  const uploadTemplate = useCallback(async (fileId: string, { quiet = false }: { quiet?: boolean } = {}) => {
     const meta = current().files.find((f) => f.file_id === fileId);
     if (!meta) return;
     try {
       const res = await api.templates.upload(fileId);
       patchProjectFile(id, fileId, { kind: "template", template_id: res.template_id });
       updateProject(id, { template_id: res.template_id });
-      appendMessage(id, { role: "assistant", kind: "template_card", template_id: res.template_id });
+      if (!quiet) appendMessage(id, { role: "assistant", kind: "template_card", template_id: res.template_id });
     } catch (e) {
-      say(`Не удалось загрузить шаблон: ${e instanceof ApiError ? e.message : "неизвестная ошибка"}.`);
+      if (quiet) notifications.show({ color: "red", title: "Шаблон не загружен", message: e instanceof ApiError ? e.message : "Неизвестная ошибка" });
+      else say(`Не удалось загрузить шаблон: ${e instanceof ApiError ? e.message : "неизвестная ошибка"}.`);
     }
   }, [id, say, current]);
 
@@ -87,6 +92,21 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     if (last && last.role === "assistant" && last.kind === "brief_card") return;
     appendMessage(id, { role: "assistant", kind: "brief_card", understood, missing_purpose: !p.brief.purpose, ...(briefSource ? { brief_source: briefSource } : {}) });
   }, [id, current]);
+
+  /**
+   * Материалы импортированы без задачи в тексте: без шаблона — просьба выбрать его, с шаблоном —
+   * презентация собирается сразу (назначение можно уточнить в карточке задачи и пересобрать).
+   */
+  const afterMaterials = useCallback(async () => {
+    const p = current();
+    if (!p.package_id) return;
+    if (!p.template_id) {
+      say("Материалы в работе. Шаблон оформления не выбран: выберите его в шапке проекта или перетащите PPTX и ответьте «Сделать шаблоном» — и я соберу презентацию.");
+      return;
+    }
+    offerGeneration();
+    if (!p.job_id) await generate();
+  }, [current, say, offerGeneration, generate]);
 
   /** Сообщение, адресованное слайду: событие с адресом, запрос правки, карточка хода и результата. */
   const editSlide = useCallback(async (text: string, target: SlideTarget) => {
@@ -137,15 +157,22 @@ export function useChat(project: Project, session: GenerationSession, generate: 
       say(`${others.map((o) => `«${o.name}»`).join(", ")}: такой тип файла сохранён в файлах проекта, но при генерации пока не используется. Поддерживаются docx, xlsx, csv, pdf, md, txt и изображения.`);
     }
 
-    // 4. Материалы импортируются пакетом вместе с уже загруженными.
+    // 4. Материалы импортируются пакетом вместе с уже загруженными; без текста задачи
+    //    презентация собирается сразу, если выбран шаблон, иначе чат просит его выбрать.
     let imported = false;
     if (rows.some(isMaterial)) {
       imported = Boolean(await importMaterials());
+      if (imported && !rest) {
+        await afterMaterials();
+        return;
+      }
     }
 
     // 5. Текст: бриф извлекает сервер; поля, которых нет в сообщении, не трогаем.
     let understood: string[] = [];
     let briefSource: "model" | "heuristic" | undefined;
+    // Намерение собрать презентацию: сервер (модель или правила) либо явная команда в тексте.
+    let wantsGeneration = Boolean(rest) && GENERATE_RE.test(rest);
     if (rest) {
       if (EDIT_RE.test(rest) && current().job_id) {
         say("Чтобы изменить слайд, выберите его в ленте справа: в поле ввода появится метка слайда, и просьба применится к нему новой ревизией. Перестановка и удаление слайдов пока недоступны.");
@@ -154,6 +181,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
         const res = await api.brief.extract(rest, { ...current().brief });
         understood = res.understood;
         briefSource = res.source;
+        if (res.intent === "generate") wantsGeneration = true;
         if (understood.length) {
           updateProject(id, (p) => {
             const brief: BriefDraft = { ...p.brief, ...res.brief } as BriefDraft;
@@ -173,8 +201,22 @@ export function useChat(project: Project, session: GenerationSession, generate: 
         /* сервер не ответил: бриф можно заполнить вручную через «Изменить» */
       }
       if (!understood.length && !rows.length && !EDIT_RE.test(rest)) {
-        say("Не нашёл в сообщении ничего про презентацию. Опишите задачу одной фразой: «сделай презентацию про запуск сервиса умных уведомлений для руководителей, чтобы одобрили пилот» — и перетащите шаблон PPTX и материалы.");
-        return;
+        const p = current();
+        const hasContext = Boolean(p.package_id || p.template_id || p.files.length);
+        if (!wantsGeneration && !hasContext) {
+          say("Не нашёл в сообщении ничего про презентацию. Опишите задачу одной фразой: «сделай презентацию про запуск сервиса умных уведомлений для руководителей, чтобы одобрили пилот» — и перетащите шаблон PPTX и материалы.");
+          return;
+        }
+        // Полей брифа в сообщении нет, но в проекте уже есть материалы или шаблон, либо
+        // пользователь просит собрать: ведём к недостающему, а не отписываемся.
+        const missing = [
+          !p.template_id ? "шаблон оформления — выберите в шапке или перетащите PPTX" : null,
+          !p.package_id ? "материалы или описание темы" : null,
+          !p.brief.purpose ? "назначение презентации — кнопки в карточке задачи" : null,
+        ].filter(Boolean);
+        if (missing.length) {
+          say(`${p.package_id ? "Материалы уже в работе. " : ""}Чтобы собрать презентацию, не хватает: ${missing.join("; ")}.`);
+        }
       }
     }
 
@@ -184,36 +226,70 @@ export function useChat(project: Project, session: GenerationSession, generate: 
       imported = Boolean(await importMaterials());
     }
 
-    // 7. Карточка брифа с кнопкой, когда есть что показать; явная команда запускает генерацию.
-    if (understood.length || (current().template_id && current().package_id)) {
+    // 7. Карточка брифа с кнопкой, когда есть что показать; просьба собрать запускает генерацию.
+    if (understood.length || wantsGeneration || (current().template_id && current().package_id)) {
       offerGeneration(understood, understood.length ? briefSource : undefined);
     }
     const ready = current().template_id && current().package_id && current().brief.purpose;
-    if (rest && GENERATE_RE.test(rest) && ready && !current().job_id) {
+    if (wantsGeneration && ready && !current().job_id) {
       await generate();
     }
-  }, [id, importMaterials, offerGeneration, say, generate, current, editSlide]);
+  }, [id, importMaterials, afterMaterials, offerGeneration, say, generate, current, editSlide]);
 
-  /** Шаблон из библиотеки, выбранный в шапке: карточка в чате, чтобы история отражала смену оформления. */
+  /** Шаблон из библиотеки, выбранный в шапке: без сообщений в чате — смену оформления показывает миниатюра в шапке. */
   const selectTemplate = useCallback((templateId: string) => {
     if (current().template_id === templateId) return;
     updateProject(id, { template_id: templateId });
-    appendMessage(id, { role: "assistant", kind: "template_card", template_id: templateId });
   }, [id, current]);
 
   /** Действие по ответу на вопрос о PPTX: разбор как шаблона или импорт как материала. */
-  const applyTemplateAnswer = useCallback(async (fileId: string, answer: "template" | "material") => {
+  /**
+   * Готовая презентация: тот же файл разбирается как шаблон (композиции слайдов) и импортируется
+   * как содержание (тексты, факты), затем запускается генерация одного варианта original —
+   * слайды переносятся как есть, а правки идут из чата по слайдам.
+   */
+  const openAsDeck = useCallback(async (fileId: string) => {
+    const meta = current().files.find((f) => f.file_id === fileId);
+    if (!meta) return;
+    try {
+      const tpl = await api.templates.upload(fileId);
+      patchProjectFile(id, fileId, { kind: "template", template_id: tpl.template_id });
+      const p = current();
+      const briefFilled = p.brief.title.trim().length > 0;
+      const pkg = await api.content.create([fileId], briefFilled ? { ...p.brief } : undefined);
+      patchProjectFile(id, fileId, { package_id: pkg.package_id });
+      updateProject(id, { template_id: tpl.template_id, package_id: pkg.package_id });
+      const req: GenerationRequest = {
+        schema_version: "1.2",
+        template_id: tpl.template_id,
+        package_id: pkg.package_id,
+        idempotency_key: `deck-${id}-${fileId}-${Date.now().toString(36)}`,
+        settings: { variants: ["original"], language: p.brief.language || "ru", run_contextual_audit: p.settings.contextual, generate_images: false },
+      };
+      const job = await api.generations.create(req);
+      updateProject(id, { job_id: job.job_id, chosen_variant: null });
+    } catch (e) {
+      say(`Не удалось открыть «${meta.name}» как готовую презентацию: ${e instanceof ApiError ? e.message : "неизвестная ошибка"}.`);
+    }
+  }, [id, say, current]);
+
+  const applyTemplateAnswer = useCallback(async (fileId: string, answer: PptxAnswer) => {
     if (answer === "template") {
       await uploadTemplate(fileId);
+    } else if (answer === "deck") {
+      await openAsDeck(fileId);
+      return;
     } else {
       patchProjectFile(id, fileId, { kind: "material" });
       say("Хорошо, PPTX считаю материалом: текст его слайдов пойдёт в содержание.");
       await importMaterials();
+      await afterMaterials();
+      return;
     }
     if (current().template_id && current().package_id) offerGeneration();
-  }, [id, uploadTemplate, importMaterials, offerGeneration, say, current]);
+  }, [id, uploadTemplate, openAsDeck, importMaterials, afterMaterials, offerGeneration, say, current]);
 
-  const resolveTemplateQuestion = useCallback(async (messageId: string, fileId: string, answer: "template" | "material") => {
+  const resolveTemplateQuestion = useCallback(async (messageId: string, fileId: string, answer: PptxAnswer) => {
     void patchMessage(id, messageId, { resolved: answer });
     await applyTemplateAnswer(fileId, answer);
   }, [id, applyTemplateAnswer]);
@@ -249,7 +325,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
   }, [id, say, current, applyTemplateAnswer, selectTemplate]);
 
   /** Ответ на вопрос о PPTX, который ещё грузится: запоминается и применяется после загрузки. */
-  const answerStaged = useCallback((localId: string, answer: "template" | "material") => {
+  const answerStaged = useCallback((localId: string, answer: PptxAnswer) => {
     stagedAnswers.current.set(localId, answer);
     setStaged((s) => s.map((x) => (x.local_id === localId ? { ...x, answer } : x)));
   }, []);
@@ -295,8 +371,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     }
     const row = rows[0];
     if (!row) return;
-    appendMessage(id, { role: "user", kind: "message", text: "", file_ids: [row.file_id] });
-    await uploadTemplate(row.file_id);
+    await uploadTemplate(row.file_id, { quiet: true });
     await refreshProject(id);
     if (current().template_id && current().package_id) offerGeneration();
   }, [id, uploadTemplate, offerGeneration, current]);

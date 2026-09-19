@@ -134,7 +134,7 @@ def test_end_to_end(api: httpx.Client, project: Callable[[str | None], str]) -> 
         assert any(f.source_location and f.source_location.cell for f in package.facts)
 
     req = {
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "template_id": template_id,
         "package_id": package_id,
         "idempotency_key": f"it-{time.time()}",
@@ -239,7 +239,7 @@ def test_partial_failure_and_cancel(
 
     job_id = api.post(
         "/generations",
-        json={"schema_version": "1.1", "template_id": template_id, "package_id": package_id},
+        json={"schema_version": "1.2", "template_id": template_id, "package_id": package_id},
     ).json()["job_id"]
     result = wait_for(
         lambda: api.get(f"/generations/{job_id}").json(), lambda d: d["status"] in TERMINAL, 180, 2
@@ -251,7 +251,7 @@ def test_partial_failure_and_cancel(
 
     canceled_job = api.post(
         "/generations",
-        json={"schema_version": "1.1", "template_id": template_id, "package_id": package_id},
+        json={"schema_version": "1.2", "template_id": template_id, "package_id": package_id},
     ).json()["job_id"]
     assert api.post(f"/jobs/{canceled_job}/cancel").status_code == 202
     status = wait_for(

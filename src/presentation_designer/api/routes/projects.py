@@ -95,7 +95,7 @@ class FilePatch(BaseModel):
 
 
 def _project_doc(project: dict[str, Any]) -> dict[str, Any]:
-    doc = {"schema_version": "1.4", **project}
+    doc = {"schema_version": "1.5", **project}
     return m.Project.model_validate(doc).model_dump(mode="json", exclude_none=True)
 
 

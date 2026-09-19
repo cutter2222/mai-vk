@@ -298,6 +298,48 @@ test.describe("сквозной сценарий в чате на заглушк
     await expect(page.getByTestId("project-empty")).toBeVisible();
   });
 
+  test("материалы есть, просьба собрать без брифа: подсказка, чего не хватает, и карточка задачи", async ({ page }) => {
+    await createProject(page);
+    await attach(page, [{ name: "popov.pptx", mimeType: PPTX_MIME, buffer: PPTX() }]);
+    await page.getByTestId("answer-material").last().click();
+    await expect(page.getByTestId("import-summary").last()).toBeVisible({ timeout: 15000 });
+    await sendMessage(page, "давай сделаем на основе этого презентацию");
+    await expect(page.getByTestId("msg-assistant").last()).not.toContainText("Не нашёл");
+    await expect(page.getByTestId("brief-card").last()).toContainText("Не хватает: шаблон");
+    await expect(page.getByTestId("brief-card").last()).toContainText("Уточните назначение");
+    await sendMessage(page, "Ну я же скинул материалы выше в чате, возьми их и используй");
+    await expect(page.getByTestId("msg-assistant").last()).not.toContainText("Не нашёл");
+  });
+
+  test("материал при выбранном шаблоне: презентация собирается сама, без шаблона — просьба выбрать", async ({ page }) => {
+    await speedUp(page, 8);
+    await createProject(page);
+    await attach(page, [{ name: "Данные.pptx", mimeType: PPTX_MIME, buffer: PPTX() }]);
+    await page.getByTestId("answer-material").last().click();
+    await expect(page.getByTestId("msg-assistant").last()).toContainText("Шаблон оформления не выбран", { timeout: 15000 });
+    await uploadTemplate(page);
+    await attach(page, [{ name: "Ещё данные.pptx", mimeType: PPTX_MIME, buffer: PPTX() }]);
+    await page.getByTestId("answer-material").last().click();
+    await expect(page.getByTestId("progress-panel").last()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId("progress-panel").last()).toContainText(/job_/);
+  });
+
+  test("готовая презентация: третий ответ на PPTX открывает один вариант original", async ({ page }) => {
+    await speedUp(page, 8);
+    await createProject(page);
+    await attach(page, [{ name: "Отчёт за квартал.pptx", mimeType: PPTX_MIME, buffer: PPTX() }]);
+    await page.getByTestId("answer-deck").last().click();
+    await expect(page.locator('[data-testid^="template-question-"]').last()).toContainText("готовую презентацию");
+    const panel = page.getByTestId("progress-panel").last();
+    await expect(panel).toBeVisible({ timeout: 15000 });
+    await expect(panel).toContainText("Исходная презентация");
+    await expect(page.getByTestId("variant-progress-original")).toBeVisible();
+    await expect(page.getByTestId("variant-progress-compact")).toHaveCount(0);
+    await waitForAllVariantsDone(page);
+    await expect(page.getByTestId("template-menu")).toContainText("Отчёт за квартал");
+    await expect(page.getByTestId("download-menu")).toBeEnabled();
+  });
+
   test("частичная ошибка варианта и повтор", async ({ page }) => {
     await speedUp(page, 8);
     await createProject(page);

@@ -115,7 +115,7 @@ def test_full_flow(client: TestClient, pptx_bytes: bytes, xlsx_bytes: bytes) -> 
 
     # Генерация: три варианта, файлы и аудит.
     req = {
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "template_id": template_id,
         "package_id": package_id,
         "idempotency_key": "t1",
@@ -367,7 +367,7 @@ def test_partial_failure_and_cancel(
 
     job_id = client.post(
         "/api/generations",
-        json={"schema_version": "1.1", "template_id": template_id, "package_id": package_id},
+        json={"schema_version": "1.2", "template_id": template_id, "package_id": package_id},
     ).json()["job_id"]
     result = m.GenerationResult.model_validate(client.get(f"/api/generations/{job_id}").json())
     assert result.status == "needs_review" and result.partial is True
@@ -436,7 +436,7 @@ def test_validation_and_limits(client: TestClient, pptx_bytes: bytes) -> None:
     bad = client.post(
         "/api/generations",
         json={
-            "schema_version": "1.1",
+            "schema_version": "1.2",
             "template_id": template_id,
             "package_id": package_id,
             "settings": {"slide_count": {"min": 20, "max": 10}},
@@ -445,7 +445,7 @@ def test_validation_and_limits(client: TestClient, pptx_bytes: bytes) -> None:
     assert bad.status_code == 422 and bad.json()["error"]["code"] == "slide_count_range"
     missing = client.post(
         "/api/generations",
-        json={"schema_version": "1.1", "template_id": "tpl_none", "package_id": package_id},
+        json={"schema_version": "1.2", "template_id": "tpl_none", "package_id": package_id},
     )
     assert missing.status_code == 404 and missing.json()["error"]["code"] == "template_not_found"
     assert client.post("/api/templates", json={"file_id": "file_none"}).status_code == 404
@@ -586,3 +586,39 @@ def test_multipart_cli_paths(client: TestClient, pptx_bytes: bytes, xlsx_bytes: 
     assert r.status_code == 202
     pkg = client.get(f"/api/content/{r.json()['package_id']}").json()
     assert pkg["status"] == "succeeded" and pkg["package"]["mode"] == "mixed"
+
+
+def test_original_deck_generation(client: TestClient, pptx_bytes: bytes) -> None:
+    """Загруженная презентация как готовый результат: тот же файл — шаблон и материал,
+    один вариант original; сочетание с вариантами вёрстки отклоняется."""
+    project_id = _project(client)
+    tpl = _upload(client, project_id, "deck.pptx", pptx_bytes, PPTX_MIME)
+    template_id = client.post("/api/templates", json={"file_id": tpl["file_id"]}).json()[
+        "template_id"
+    ]
+    package_id = client.post("/api/content", json={"file_ids": [tpl["file_id"]]}).json()[
+        "package_id"
+    ]
+    base = {"schema_version": "1.2", "template_id": template_id, "package_id": package_id}
+    bad = client.post(
+        "/api/generations", json={**base, "settings": {"variants": ["original", "compact"]}}
+    )
+    assert bad.status_code == 422 and bad.json()["error"]["code"] == "variants_original_alone"
+    r = client.post(
+        "/api/generations",
+        json={**base, "idempotency_key": "orig1", "settings": {"variants": ["original"]}},
+    )
+    assert r.status_code == 202, r.text
+    result = client.get(f"/api/generations/{r.json()['job_id']}").json()
+    m.GenerationResult.model_validate(result)
+    assert [v["variant_id"] for v in result["variants"]] == ["original"]
+    variant = result["variants"][0]
+    assert variant["status"] in ("ready", "needs_review"), variant.get("error")
+    assert variant["axis"] == "custom" and variant["artifacts"]["pptx"]
+    assert result["status"] in ("succeeded", "needs_review")
+    # Предварительная ревизия (файл и его рендер) и полная сборка — одна и та же r1:
+    # запись обновлена, в манифесте есть и рендер, и план с описанием собранного файла.
+    assert [r["revision"] for r in variant["revisions"]] == [1]
+    names = set(result["artifacts_manifest"])
+    assert {"original/r1/deck.pptx", "original/r1/deck.pdf", "original/r1/plan.json"} <= names
+    assert any(n.startswith("original/r1/thumbs/") for n in names)

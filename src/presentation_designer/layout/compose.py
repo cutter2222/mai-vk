@@ -131,6 +131,10 @@ class _Context:
     diagram_style: diagrams.DiagramStyle
     warnings: list[JsonDict] = field(default_factory=list)
     counts: dict[str, int] = field(default_factory=dict)
+    # Вариант original: загруженная презентация как готовый результат. Каждый слайд плана —
+    # собственный образец с его же текстами; объекты образца не удаляются, текст, равный
+    # образцу, не перезаписывается (сохраняется оформление абзацев), отличающийся — правка.
+    preserve: bool = False
     # Области нативных диаграмм, построенных на месте картинок текущего слайда (доли слайда).
     chart_areas: list[tuple[float, float, float, float]] = field(default_factory=list)
     next_id: int = 1  # свободный id объекта на текущем слайде: новые объекты не занимают
@@ -278,6 +282,19 @@ def _fill_slide(
                 slide_index,
             )
             continue
+        if ctx.preserve and _same_as_sample(slot, block):
+            kept = SlotFill(
+                slot_id=slot.slot_id,
+                slot_kind=slot.kind,
+                block_kind=str(block.get("kind")),
+                element_id=_element_id(element),
+                source_object_id=_element_id(element),
+                content_source="sample",
+                text=slot.sample_text or None,
+            )
+            filled[slot.slot_id] = kept
+            record.fills.append(kept)
+            continue
         try:
             fill = _apply_block(ctx, slide, slot, element, block, slide_index, pinfo)
         except Exception as e:
@@ -291,9 +308,13 @@ def _fill_slide(
         if fill is not None:
             filled[slot.slot_id] = fill
             record.fills.append(fill)
-    record.removed_object_ids = _cleanup(
-        ctx, slide, pattern_raw, pinfo, filled, record, slide_index
-    )
+    if ctx.preserve:
+        _keep_rest(slide, pattern_raw, pinfo, filled, record, from_layout)
+        record.removed_object_ids = []
+    else:
+        record.removed_object_ids = _cleanup(
+            ctx, slide, pattern_raw, pinfo, filled, record, slide_index
+        )
     if record.notes:
         try:
             slide.notes_slide.notes_text_frame.text = record.notes
@@ -774,6 +795,51 @@ def _is_textual(slot: SlotInfo) -> bool:
 
 def _is_tiny(slot: SlotInfo) -> bool:
     return _is_textual(slot) and 0 < slot.max_chars < TINY_SLOT_CHARS
+
+
+def _same_as_sample(slot: SlotInfo, block: JsonDict) -> bool:
+    """Блок плана повторяет текст образца (с точностью до пробелов): в режиме сохранения
+    объект остаётся как есть, вместе с абзацами и разнородным оформлением внутри."""
+    if str(block.get("kind")) == "bullets":
+        text = "\n".join(str(it.get("text", "")) for it in block.get("items") or [])
+    elif str(block.get("kind")) in TEXT_KINDS:
+        text = str(block.get("text") or "")
+    else:
+        return False
+    mine, sample = " ".join(text.split()), " ".join((slot.sample_text or "").split())
+    return bool(mine) and mine == sample
+
+
+def _keep_rest(
+    slide: Any,
+    pattern_raw: JsonDict,
+    pinfo: Any,
+    filled: dict[str, SlotFill],
+    record: SlideRecord,
+    from_layout: bool,
+) -> None:
+    """Режим сохранения: слоты без блоков остаются объектами образца, ничего не удаляется."""
+    refs = {s["slot_id"]: str(s.get("element_ref") or "") for s in pattern_raw.get("slots") or []}
+    for slot in pinfo.slots.values():
+        if slot.slot_id in filled:
+            continue
+        ref = refs.get(slot.slot_id, "")
+        element = shape_element(slide, ref) if ref and not from_layout else None
+        if element is None:
+            continue
+        fill = SlotFill(
+            slot_id=slot.slot_id,
+            slot_kind=slot.kind,
+            block_kind=slot.kind,
+            element_id=ref,
+            source_object_id=ref,
+            content_source="sample",
+        )
+        if _is_textual(slot) or slot.kind in ("qr", "footer"):
+            fill.text = slot.sample_text or None
+        elif slot.kind in ("image", "icon"):
+            fill.picture = {"origin": "template", "fit": "as_is"}
+        record.fills.append(fill)
 
 
 def _cleanup(
@@ -1305,6 +1371,7 @@ def compose_deck(
         fit_min_ratio=fit_min_ratio,
         fit_min_body_pt=fit_min_body_pt,
         fit_min_title_pt=fit_min_title_pt,
+        preserve=str((plan.get("variant") or {}).get("variant_id")) == "original",
     )
     samples = list(prs.slides)
     if not samples:

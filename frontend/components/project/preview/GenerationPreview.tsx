@@ -1,6 +1,6 @@
 "use client";
 
-import { ActionIcon, Badge, Button, Group, Progress, SegmentedControl, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
+import { ActionIcon, Badge, Button, Group, Loader, SegmentedControl, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
 import { IconListCheck, IconStar, IconStarFilled, IconX } from "@tabler/icons-react";
 
 import { AuditPanel } from "@/components/workspace/AuditPanel";
@@ -8,7 +8,8 @@ import { HowBuiltPanel } from "@/components/workspace/HowBuiltPanel";
 import { RevisionsPanel } from "@/components/workspace/RevisionsPanel";
 import { VariantCard } from "@/components/workspace/VariantCard";
 import { api } from "@/lib/api/client";
-import { STAGE_LABELS, VARIANT_LABELS } from "@/lib/format";
+import { formatMs, STAGE_LABELS, VARIANT_LABELS } from "@/lib/format";
+import { useElapsed } from "@/lib/hooks/useElapsed";
 import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
 
 import { SlideViewer } from "./SlideViewer";
@@ -24,6 +25,7 @@ const VARIANT_DOT: Record<string, string> = { pending: "gray", running: "blue", 
 /** Слайды сгенерированной презентации: переключение вариантов, просмотр по одному или рядом, рамки аудита. */
 export function GenerationPreview({ session, chosenVariant, onChoose }: Props) {
   const { jobId, result, variant } = session;
+  const elapsed = useElapsed(result?.created_at, session.terminal ? (result?.finished_at ?? result?.created_at) : null);
   if (!jobId || !result) return null;
 
   const thumbs = variant?.artifacts?.thumbnails ?? [];
@@ -85,11 +87,10 @@ export function GenerationPreview({ session, chosenVariant, onChoose }: Props) {
 
       {running && (
         <div style={{ padding: "8px 20px", borderBottom: "1px solid var(--mantine-color-gray-2)", background: "var(--mantine-color-body)" }} data-testid="preview-progress">
-          <Group justify="space-between" mb={4}>
-            <Text size="xs">{result.progress?.message ?? STAGE_LABELS[result.stage]}</Text>
-            <Text size="xs" c="dimmed">{result.progress?.percent ?? 0} %</Text>
+          <Group justify="space-between" wrap="nowrap">
+            <Group gap={6} wrap="nowrap"><Loader size={12} /><Text size="xs">{result.progress?.message ?? STAGE_LABELS[result.stage]}</Text></Group>
+            <Text size="xs" fw={600} style={{ whiteSpace: "nowrap" }}>{formatMs(elapsed)}</Text>
           </Group>
-          <Progress value={result.progress?.percent ?? 0} size="xs" animated />
         </div>
       )}
 
@@ -131,6 +132,7 @@ export function GenerationPreview({ session, chosenVariant, onChoose }: Props) {
               <Text size="sm" fw={500}>{VARIANT_LABELS[variant.variant_id] ?? variant.variant_id}</Text>
               <Text size="xs" c="dimmed">ревизия {session.viewRevision}</Text>
               {session.viewRevision !== session.currentRevision && <Badge size="xs" color="orange" variant="light">устаревшая</Badge>}
+              {variant.status === "running" && <Badge size="xs" color="blue" variant="light" data-testid="preview-provisional">предварительный показ · сборка идёт</Badge>}
               {variant.audit && variant.audit.status !== "pending" && (
                 <Badge size="xs" variant="light" color={variant.audit.status === "running" ? "blue" : variant.audit.issues_total ? "yellow" : variant.audit.coverage_complete ? "green" : "gray"}>
                   {variant.audit.status === "running" ? "аудит идёт" : `${variant.audit.issues_total} находок${variant.audit.coverage_complete ? "" : " · аудит неполный"}`}

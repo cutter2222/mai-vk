@@ -7,7 +7,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 
 import { formatBytes, VARIANT_LABELS } from "@/lib/format";
 import type { SlideTarget } from "@/lib/hooks/useGenerationSession";
-import type { ChatMessage } from "@/lib/state/projects";
+import type { ChatMessage, PptxAnswer } from "@/lib/state/projects";
 
 import { AuditCard, BriefCard, ContentCard, EditCard, JobCard, PptxQuestion, TemplateCard, TemplateQuestionCard, type CardContext } from "./cards";
 import type { StagedPptx } from "./useChat";
@@ -18,12 +18,12 @@ interface Props {
   /** Разбирает брошенные файлы: презентации забирает сразу, остальные возвращает как вложения к сообщению. */
   onAttach: (files: File[]) => File[];
   staged: StagedPptx[];
-  onAnswerStaged: (localId: string, answer: "template" | "material") => void;
+  onAnswerStaged: (localId: string, answer: PptxAnswer) => void;
 }
 
 /**
  * Чат проекта: лента сообщений и карточек шагов, внизу поле ввода с вложениями; файлы можно бросать в любое место панели.
- * PPTX не ждёт отправки: вопрос «шаблон или материал» появляется в ленте в момент броска, пока файл грузится.
+ * PPTX не ждёт отправки: вопрос «шаблон, готовая презентация или материал» появляется в ленте в момент броска, пока файл грузится.
  */
 export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged }: Props) {
   const { project, session } = ctx;

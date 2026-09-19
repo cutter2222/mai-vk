@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from presentation_designer.pipeline.state import TERMINAL, JsonDict, State
+from presentation_designer.pipeline.state import TERMINAL, JsonDict, NotFound, State
 
 VARIANT_STAGES = ["plan", "compose", "export", "audit"]
 
@@ -322,6 +322,18 @@ def template_detail(state: State, template: JsonDict) -> JsonDict:
         detail["profile"] = template["profile"]
     if template.get("error"):
         detail["error"] = template["error"]
+    # Время анализа — из задания: карточка шаблона показывает, сколько заняло чтение образцов.
+    try:
+        job = state.get_job(template["job_id"])
+    except NotFound:
+        job = None
+    if job is not None:
+        timing = {k: job.get(k) for k in ("created_at", "started_at", "finished_at") if job.get(k)}
+        stage = next((s for s in job.get("stages") or [] if s.get("stage") == "analyze"), None)
+        if stage and stage.get("duration_ms") is not None:
+            timing["duration_ms"] = stage["duration_ms"]
+        if timing:
+            detail["timing"] = timing
     return detail
 
 

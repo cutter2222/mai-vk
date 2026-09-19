@@ -21,6 +21,7 @@ from typing import Any
 
 from presentation_designer import design
 from presentation_designer.generation.edit import EditError, edit_slide
+from presentation_designer.generation.original import VARIANT_ID as ORIGINAL_VARIANT
 from presentation_designer.generation.story import (
     StoryError,
     build_story,
@@ -271,6 +272,8 @@ class RealLayers(StubLayers):
     # ----- план варианта -----
 
     def plan(self, inp: PlanInput) -> dict[str, Any]:
+        if inp.variant_id == ORIGINAL_VARIANT:
+            return self.original_plan(inp)
         client = self.llm_client()
         skill = self.skill("variant_planner")
         if client is None or skill is None:
@@ -314,6 +317,7 @@ class RealLayers(StubLayers):
         filler = self.skill("slot_filler")
         ask = None
         if filler is not None:
+
             def ask(_system: str, user: str) -> str:
                 request = filler.request("fill.slots", user, stage="plan")
                 return client.complete_sync(request).text
@@ -346,6 +350,50 @@ class RealLayers(StubLayers):
         )
         log.info("слой design %s/%s: %s", inp.job_id, inp.variant_id, design_report.summary())
         return result.plan
+
+    def original_plan(self, inp: PlanInput) -> dict[str, Any]:
+        """Вариант original: план из профиля и пакета без модели, проверка связей контракта."""
+        from presentation_designer.contracts import (
+            ContentPackage,
+            SlidePlan,
+            StoryPlan,
+            TemplateProfile,
+        )
+        from presentation_designer.contracts.validators import check_slide_plan
+        from presentation_designer.generation.original import original_plan
+
+        plan = original_plan(
+            inp.story,
+            inp.template_profile,
+            inp.package,
+            plan_id=f"plan_{inp.job_id}_{inp.variant_id}",
+        )
+        # Обязательные слоты без блока (таблицы, диаграммы, картинки) заполнены самим
+        # образцом: композер в режиме сохранения их не трогает.
+        violations = [
+            v
+            for v in check_slide_plan(
+                SlidePlan.model_validate(plan),
+                TemplateProfile.model_validate(inp.template_profile),
+                ContentPackage.model_validate(inp.package),
+                StoryPlan.model_validate(inp.story),
+            )
+            if v.code != "slot_required"
+        ]
+        if violations:
+            raise StageError(
+                "plan_invalid",
+                "План исходной презентации нарушает связи контракта: "
+                + "; ".join(str(v) for v in violations[:6]),
+                stage="plan",
+            )
+        log.info(
+            "план original %s: %d слайдов, предупреждений %d",
+            inp.job_id,
+            len(plan["slides"]),
+            len(plan.get("warnings") or []),
+        )
+        return plan
 
     # ----- вёрстка -----
 
@@ -420,8 +468,8 @@ class RealLayers(StubLayers):
         план как есть. Улучшение вёрстки не имеет права ронять генерацию.
         """
         settings = self.settings.design.feedback
-        if not settings.enabled or inp.template_path is None:
-            return inp.plan
+        if not settings.enabled or inp.template_path is None or inp.variant_id == ORIGINAL_VARIANT:
+            return inp.plan  # исходная презентация сохраняется как есть: править нечего
 
         draft = inp.staging.path("deck.draft.pptx")
         template = pathlib.Path(inp.template_path)
@@ -447,6 +495,7 @@ class RealLayers(StubLayers):
         client = self.llm_client()
         filler = self.skill("slot_filler")
         if settings.refill and client is not None and filler is not None:
+
             def ask(_system: str, user: str) -> str:
                 return client.complete_sync(filler.request("fill.slots", user, stage="plan")).text
 
@@ -461,16 +510,24 @@ class RealLayers(StubLayers):
                 ask=ask,
                 package=inp.package,
             )
-        except Exception:                       # правка не имеет права ронять сборку
-            log.warning("правка по фактам вёрстки не удалась %s/%s",
-                        inp.job_id, inp.variant_id, exc_info=True)
+        except Exception:  # правка не имеет права ронять сборку
+            log.warning(
+                "правка по фактам вёрстки не удалась %s/%s",
+                inp.job_id,
+                inp.variant_id,
+                exc_info=True,
+            )
             return inp.plan
         finally:
             draft.unlink(missing_ok=True)
 
         self.last_feedback_report = report
-        log.info("правка по фактам %s/%s: %s", inp.job_id, inp.variant_id,
-                 {k: v for k, v in report.items() if k not in ("decisions", "refilled")})
+        log.info(
+            "правка по фактам %s/%s: %s",
+            inp.job_id,
+            inp.variant_id,
+            {k: v for k, v in report.items() if k not in ("decisions", "refilled")},
+        )
         return plan
 
     # ----- экспорт -----
@@ -502,6 +559,7 @@ class RealLayers(StubLayers):
                 settings=self.settings,
                 render_slots=self.render_slots(),
                 slide_titles=inp.slide_titles,
+                prerendered=inp.prerendered,
             )
         except RendererUnavailableError as e:
             raise StageError(
@@ -511,7 +569,7 @@ class RealLayers(StubLayers):
             raise StageError("export_failed", str(e), retryable=True, stage="export") from e
         self.last_export_report = result.report
         log.info(
-            "экспорт %s/%s r%d: %d страниц, pdf %d мс, миниатюры %d мс, ожидание слота %d мс",
+            "экспорт %s/%s r%d: %d страниц, pdf %d мс, миниатюры %d мс, ожидание слота %d мс%s",
             inp.job_id,
             inp.variant_id,
             inp.revision,
@@ -519,6 +577,9 @@ class RealLayers(StubLayers):
             result.report["timings_ms"].get("pdf", 0),
             result.report["timings_ms"].get("thumbnails", 0),
             result.report["timings_ms"].get("render_slot_wait", 0),
+            " (рендер предварительной ревизии)"
+            if result.report.get("renderer") == "prerendered"
+            else "",
         )
         return ExportOutput(thumbnails=result.thumbnails)
 

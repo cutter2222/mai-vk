@@ -53,7 +53,7 @@ export function ProjectEditor({ project }: { project: Project }) {
     setStarting(true);
     const s = project.settings;
     const req: GenerationRequest = {
-      schema_version: "1.1",
+      schema_version: "1.2",
       template_id: project.template_id,
       package_id: project.package_id,
       idempotency_key: `ui-${project.project_id}-${Date.now().toString(36)}`,
@@ -120,6 +120,7 @@ export function ProjectEditor({ project }: { project: Project }) {
     generating: starting,
     onOpenAudit: openAudit,
     onRepairAll: repairAll,
+    onRetryImport: () => void chat.importMaterials(),
   };
 
   const TABS: Array<{ key: Tab; label: string; icon: React.ReactNode; badge?: number }> = [

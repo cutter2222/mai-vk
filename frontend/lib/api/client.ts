@@ -49,12 +49,15 @@ export interface TemplateDetail {
   profile?: TemplateProfile;
   previews: string[];
   error?: ApiErrorBody["error"];
+  /** Время задания анализа: начало, конец и длительность чтения образцов. */
+  timing?: { created_at?: string; started_at?: string; finished_at?: string; duration_ms?: number };
 }
 
 export interface ContentDetail {
   status: TemplateListItem["status"];
   job_id: string;
   package?: ContentPackage;
+  error?: ApiErrorBody["error"];
 }
 
 export type BriefExtractResponse = BriefExtract;

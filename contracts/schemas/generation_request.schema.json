@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://presentation-designer.local/contracts/generation_request.schema.json",
   "title": "GenerationRequest",
-  "description": "Тело POST /api/generations и вход CLI-команды generate. Версия 1.1. Приоритет: явные настройки запроса → бриф ContentPackage → умолчания config/app.yaml. Пути файлов от клиента не принимаются: только идентификаторы.",
+  "description": "Тело POST /api/generations и вход CLI-команды generate. Версия 1.2: вариант original — загруженная презентация как готовый результат (шаблон и материал — один и тот же файл; план строится из профиля без модели, слайды и тексты сохраняются как есть; сочетается только сам с собой). Приоритет: явные настройки запроса → бриф ContentPackage → умолчания config/app.yaml. Пути файлов от клиента не принимаются: только идентификаторы.",
   "type": "object",
   "required": [
     "schema_version",
@@ -51,9 +51,11 @@
             "enum": [
               "compact",
               "balanced",
-              "detailed"
+              "detailed",
+              "original"
             ]
           },
+          "description": "варианты вёрстки; original — исходная презентация как есть, только один в списке (проверяется валидатором)",
           "uniqueItems": true,
           "minItems": 1,
           "maxItems": 3,
@@ -86,7 +88,7 @@
       "additionalProperties": false
     },
     "schema_version": {
-      "const": "1.1"
+      "const": "1.2"
     },
     "idempotency_key": {
       "type": "string",

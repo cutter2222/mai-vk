@@ -2,7 +2,7 @@ export function formatMs(ms?: number | null): string {
   if (ms == null) return "—";
   if (ms < 1000) return `${ms} мс`;
   const s = ms / 1000;
-  if (s < 60) return `${s.toFixed(s < 10 ? 1 : 0)} с`;
+  if (s < 60) return `${Math.round(s)} с`;
   const m = Math.floor(s / 60);
   return `${m} мин ${Math.round(s - m * 60)} с`;
 }
@@ -50,6 +50,7 @@ export const VARIANT_LABELS: Record<string, string> = {
   compact: "Компактный",
   balanced: "Сбалансированный",
   detailed: "Подробный",
+  original: "Исходная презентация",
 };
 
 export const SEVERITY_LABELS: Record<string, string> = {

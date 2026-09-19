@@ -27,6 +27,7 @@ VARIANT_AXIS = {
     "compact": ("density", "compact"),
     "balanced": ("density", "balanced"),
     "detailed": ("density", "detailed"),
+    "original": ("custom", "original"),  # загруженная презентация как готовый результат
 }
 DEFAULT_SLIDES = {"compact": 10, "balanced": 12, "detailed": 15}
 
@@ -154,6 +155,9 @@ class ExportInput:
     slide_marks: dict[int, str] = field(default_factory=dict)
     # ComposedDeck ревизии: текст слайдов для автономного HTML; заглушка его не читает.
     composed_deck: JsonDict | None = None
+    # Каталог с готовыми deck.pdf и thumbs/ того же по содержанию файла (предварительная
+    # ревизия исходной презентации): рендер не повторяется.
+    prerendered: pathlib.Path | None = None
 
 
 @dataclass
@@ -297,6 +301,7 @@ class VariantContext:
     revision: int = 1
     is_canceled: Callable[[], bool] = lambda: False
     package_dir: pathlib.Path | None = None
+    prerendered: pathlib.Path | None = None
 
 
 @dataclass
@@ -310,6 +315,9 @@ class VariantOutcome:
     stages: list[JsonDict] = field(default_factory=list)
     thumbnails: list[JsonDict] = field(default_factory=list)
     deck_title: str = ""
+    # Предупреждения плана, которые должен увидеть пользователь в результате задания
+    # (например, слайды исходной презентации, не перенесённые в вариант original).
+    warnings: list[JsonDict] = field(default_factory=list)
 
 
 def resolve_slide_count(variant_id: str, settings: JsonDict) -> int:
@@ -390,6 +398,11 @@ def run_variant(layers: Layers, ctx: VariantContext, emit: Emit) -> VariantOutco
         outcome.stages.append(
             timer.done(cache_hit=bool((plan.get("generation_meta") or {}).get("cache_hit")))
         )
+        outcome.warnings = [
+            {"code": w["code"], "message": w.get("message", "")}
+            for w in plan.get("warnings") or []
+            if w.get("code") == "original_slides_skipped"
+        ]
 
         stage = "compose"
         _check_canceled(ctx, stage)
@@ -425,6 +438,7 @@ def run_variant(layers: Layers, ctx: VariantContext, emit: Emit) -> VariantOutco
                 composed.slide_titles,
                 outcome.deck_title,
                 composed_deck=composed.composed_deck,
+                prerendered=ctx.prerendered,
             )
         )
         outcome.thumbnails = exported.thumbnails

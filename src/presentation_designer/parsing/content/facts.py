@@ -389,8 +389,10 @@ def extract_text_facts(
                 block_id=unit.block_id,
                 must_keep=True,
                 context=context,
+                # Место факта по контракту: страница и лист; номер слайда материала-презентации
+                # остаётся у блока (block_id) — у факта схема его не допускает.
                 source_location={
-                    **{k: v for k, v in unit.location.items() if k in ("page", "sheet", "slide")},
+                    **{k: v for k, v in unit.location.items() if k in ("page", "sheet")},
                     "fragment": _fragment(unit.text, m),
                     "char_offset": m.start,
                 },

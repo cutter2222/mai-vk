@@ -3368,16 +3368,9 @@ def build_variant_plan(
         for d in deck
         if d.overflow
     ]
-    if unresolved and ctx.spec.exact is not None:
-        raise PlanError(
-            "plan_capacity",
-            "Обязательное содержание не помещается при точном числе слайдов",
-            details={
-                "variant_id": variant_id,
-                "required": ctx.spec.as_dict(),
-                "overflow": unresolved,
-            },
-        )
+    # Переполнение после лестницы ёмкости остаётся в плане структурированно и уходит в аудит —
+    # и при диапазоне, и при точном числе слайдов: колода с подсвеченной строкой лучше отказа
+    # от варианта (18.09: в шаблоне со строчными слотами на 52–112 символов не выдался ни один).
     for u in unresolved:
         ctx.fix(
             "capacity_overflow",

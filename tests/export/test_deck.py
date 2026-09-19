@@ -91,7 +91,7 @@ def test_export_revision_writes_pdf_thumbnails_and_html(
     # объекта своя рамка в процентах холста, и текст на странице выделяется.
     assert result.report["html"] == "native_objects"
     assert html.count('<section class="slide"') == len(deck["slides"])
-    assert "class=\"o\" style=\"left:" in html
+    assert 'class="o" style="left:' in html
     first_text = next(
         p["text"]
         for o in deck["slides"][0]["objects"]
@@ -233,7 +233,7 @@ def test_native_html_keeps_geometry_fonts_and_pictures(tmp_path: pathlib.Path) -
     # Кегль — в долях ширины слайда: 24pt при холсте 720pt даёт 3.333cqw.
     assert "font-size:3.333cqw" in page
     assert "Простой снижен на 34%" in page
-    assert "data:image/png;base64," in page          # картинка взята из самого .pptx
+    assert "data:image/png;base64," in page  # картинка взята из самого .pptx
     assert "<img" in page and page.count("<section") == 1
 
 
@@ -241,3 +241,49 @@ def _png_bytes() -> bytes:
     buf = io.BytesIO()
     Image.new("RGB", (8, 8), "#0077ff").save(buf, format="PNG")
     return buf.getvalue()
+
+
+def test_export_reuses_prerendered_pdf_and_thumbnails(
+    fake_soffice: pathlib.Path, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Предварительная ревизия исходной презентации уже отрендерена: полная сборка берёт
+    её deck.pdf и миниатюры, LibreOffice не вызывается, HTML строится заново нативно."""
+    settings = Settings()
+    settings.render.thumbnail_width_px = 640
+    preview = tmp_path / "preview"
+    preview.mkdir()
+    (preview / "deck.pptx").write_bytes(FIXTURE.read_bytes())
+    first = deck_export.export_revision(
+        preview / "deck.pptx",
+        preview,
+        prefix="original/r1/",
+        composed_deck=None,
+        deck_title="Исходная",
+        settings=settings,
+        slide_titles=["А", "Б", "В"],
+    )
+    assert first.report["html"] == "images_with_text"
+
+    out = tmp_path / "r1"
+    out.mkdir()
+    (out / "deck.pptx").write_bytes(FIXTURE.read_bytes())
+    monkeypatch.setenv(
+        "PD_SOFFICE", str(tmp_path / "missing-soffice")
+    )  # рендер не должен понадобиться
+    second = deck_export.export_revision(
+        out / "deck.pptx",
+        out,
+        prefix="original/r1/",
+        composed_deck=_composed_deck(),
+        deck_title="Исходная",
+        settings=settings,
+        slide_titles=["А", "Б", "В"],
+        prerendered=preview,
+    )
+    assert second.report["renderer"] == "prerendered" and second.report["timings_ms"]["pdf"] == 0
+    assert second.pdf_path.read_bytes() == first.pdf_path.read_bytes()
+    assert [t["name"] for t in second.thumbnails] == [t["name"] for t in first.thumbnails]
+    assert (out / "thumbs" / "slide-02.png").read_bytes() == (
+        preview / "thumbs" / "slide-02.png"
+    ).read_bytes()
+    assert second.report["html"] == "native_objects"

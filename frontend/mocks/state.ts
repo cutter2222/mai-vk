@@ -46,7 +46,7 @@ interface RevisionRecord {
 }
 
 export interface MockVariant {
-  variant_id: "compact" | "balanced" | "detailed";
+  variant_id: "compact" | "balanced" | "detailed" | "original";
   startedAt: number;
   planMs: number;
   composeMs: number;
@@ -232,7 +232,7 @@ export function createGeneration(req: GenerationRequest): MockGeneration {
     fail: failDetailed && variant_id === "detailed",
     revisions: [],
     currentRevision: 1,
-    slideCount: variant_id === "compact" ? 10 : variant_id === "balanced" ? 12 : 15,
+    slideCount: variant_id === "compact" ? 10 : variant_id === "balanced" ? 12 : variant_id === "original" ? (template.profile.stats?.slides ?? 10) : 15,
   }));
   const gen: MockGeneration = { job_id, request: req, template, pkg, createdAt: base, canceled: false, variants, storyMs: ms(4000), story, plan };
   store.generations.set(job_id, gen);
@@ -312,10 +312,10 @@ export function buildResult(g: MockGeneration): GenerationResult {
       { stage: "export" as const, variant_id: v.variant_id, status: failed ? ("skipped" as const) : stageState(t, tl.composeDone, tl.exportDone), duration_ms: t >= tl.exportDone ? v.exportMs : undefined },
       { stage: "audit" as const, variant_id: v.variant_id, status: failed ? ("skipped" as const) : stageState(t, tl.exportDone, tl.auditDone), duration_ms: t >= tl.auditDone ? v.auditMs : undefined, quota_wait_ms: 4000 },
     ];
-    const rationale = { compact: "Минимум текста, один факт на слайд, таблицы заменены графиками", balanced: "Тезис и пояснение, графики с подписями, таблицы до 5 строк", detailed: "Подробные буллеты в пределах порогов, таблицы и схемы, разделители секций" }[v.variant_id];
+    const rationale = { compact: "Минимум текста, один факт на слайд, таблицы заменены графиками", balanced: "Тезис и пояснение, графики с подписями, таблицы до 5 строк", detailed: "Подробные буллеты в пределах порогов, таблицы и схемы, разделители секций", original: "Исходная презентация как есть: слайды, тексты и оформление файла сохранены" }[v.variant_id];
     return {
       variant_id: v.variant_id,
-      axis: "density",
+      axis: v.variant_id === "original" ? "custom" : "density",
       value: v.variant_id,
       rationale,
       status,

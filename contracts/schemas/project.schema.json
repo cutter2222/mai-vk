@@ -18,7 +18,7 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "const": "1.4"
+      "const": "1.5"
     },
     "project_id": {
       "$ref": "common.schema.json#/$defs/id"
@@ -270,9 +270,11 @@
           "$ref": "common.schema.json#/$defs/id"
         },
         "resolved": {
+          "description": "ответ на вопрос о PPTX: шаблон оформления, материал с содержанием или deck — готовая презентация как результат (этап 21)",
           "enum": [
             "template",
-            "material"
+            "material",
+            "deck"
           ]
         },
         "template_id": {

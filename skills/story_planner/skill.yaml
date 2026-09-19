@@ -17,8 +17,7 @@ prompts:
   version: 0.2.0
 params:
   temperature: 0.2
-  time_budget_s: 180     # замер 18.09.2026: ~97 токенов/с, план на 4000 токенов
-                         # с длинным промптом не укладывался в 90 с (stage_story_s поднят до 200)
+  time_budget_s: 90      # один вызов с ожиданием квоты и повторами (stage_story_s 120 делится с импортом)
   max_digest_chars: 14000
 input_schema: content_package
 output_schema: story_plan

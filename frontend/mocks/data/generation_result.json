@@ -10,7 +10,7 @@
   "template_id": "tpl_vk_education",
   "package_id": "pkg_demo",
   "request": {
-    "schema_version": "1.1",
+    "schema_version": "1.2",
     "template_id": "tpl_vk_education",
     "package_id": "pkg_demo",
     "idempotency_key": "ui-7c1e2a",

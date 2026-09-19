@@ -260,3 +260,27 @@ def test_cli_import_writes_package_assets_manifest(
     report = json.loads((out / "report.json").read_text())
     assert report["counts"]["datasets"] == 2 and report["model_used"] is False
     assert main(["import", str(tmp_path / "нет"), "--out", str(out)]) == 2
+
+
+def test_pptx_material_with_numbers_gives_valid_facts(
+    tmp_path: pathlib.Path, cache: ParseCache, import_settings: Settings
+) -> None:
+    """Факт из презентации-материала: у блока есть номер слайда, у факта — только страница,
+    лист и фрагмент, как требует контракт (18.09: пакет не проходил проверку из-за slide)."""
+    from pptx import Presentation
+
+    from tests.parsing.content.conftest import material
+
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[1])
+    slide.shapes.title.text = "Итоги пилота"
+    slide.placeholders[1].text = "Выручка выросла на 25 % за 2025 год, 340 клиентов подключены"
+    path = tmp_path / "deck.pptx"
+    prs.save(path)
+    result = _import([material(path)], {"purpose": "product"}, import_settings, cache)
+    pkg = result.package
+    doc = ContentPackage.model_validate(pkg)
+    assert not check_content_package(doc)
+    assert pkg["facts"], "числа со слайда стали фактами"
+    assert all("slide" not in (f.get("source_location") or {}) for f in pkg["facts"])
+    assert any((b.get("source_location") or {}).get("slide") == 1 for b in pkg["blocks"])

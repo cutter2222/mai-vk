@@ -28,7 +28,10 @@ export type Event = {
    * Стабильный идентификатор. Не содержит пробелов и путей.
    */
   file_id?: string;
-  resolved?: "template" | "material";
+  /**
+   * ответ на вопрос о PPTX: шаблон оформления, материал с содержанием или deck — готовая презентация как результат (этап 21)
+   */
+  resolved?: "template" | "material" | "deck";
   /**
    * Стабильный идентификатор. Не содержит пробелов и путей.
    */
@@ -1203,7 +1206,7 @@ export interface VersionRef1 {
   version: string;
 }
 /**
- * Тело POST /api/generations и вход CLI-команды generate. Версия 1.1. Приоритет: явные настройки запроса → бриф ContentPackage → умолчания config/app.yaml. Пути файлов от клиента не принимаются: только идентификаторы.
+ * Тело POST /api/generations и вход CLI-команды generate. Версия 1.2: вариант original — загруженная презентация как готовый результат (шаблон и материал — один и тот же файл; план строится из профиля без модели, слайды и тексты сохраняются как есть; сочетается только сам с собой). Приоритет: явные настройки запроса → бриф ContentPackage → умолчания config/app.yaml. Пути файлов от клиента не принимаются: только идентификаторы.
  */
 export interface GenerationRequest {
   /**
@@ -1225,13 +1228,19 @@ export interface GenerationRequest {
     };
     language?: string;
     /**
+     * варианты вёрстки; original — исходная презентация как есть, только один в списке (проверяется валидатором)
+     *
      * @minItems 1
      * @maxItems 3
      */
     variants?:
-      | ["compact" | "balanced" | "detailed"]
-      | ["compact" | "balanced" | "detailed", "compact" | "balanced" | "detailed"]
-      | ["compact" | "balanced" | "detailed", "compact" | "balanced" | "detailed", "compact" | "balanced" | "detailed"];
+      | ["compact" | "balanced" | "detailed" | "original"]
+      | ["compact" | "balanced" | "detailed" | "original", "compact" | "balanced" | "detailed" | "original"]
+      | [
+          "compact" | "balanced" | "detailed" | "original",
+          "compact" | "balanced" | "detailed" | "original",
+          "compact" | "balanced" | "detailed" | "original"
+        ];
     /**
      * генерация новых изображений моделью; доступно только при включённой возможности сервиса
      */
@@ -1249,7 +1258,7 @@ export interface GenerationRequest {
      */
     force_regenerate?: boolean;
   };
-  schema_version: "1.1";
+  schema_version: "1.2";
   /**
    * повтор запроса с тем же ключом возвращает то же задание
    */
@@ -1660,7 +1669,7 @@ export interface JobStatus {
  * Проект — одна презентация: выбранный шаблон, файлы, бриф, настройки, задание генерации и лента событий чата. Серверная сущность: интерфейс восстанавливает проект по идентификатору из URL. Карточки ленты ссылаются на шаблоны, пакеты, задания и файлы по идентификаторам и не дублируют данные. Версия 1.3 (этап 6): карточка брифа хранит источник извлечения (модель или правила). Версия 1.2: серверная сущность проекта.
  */
 export interface Project {
-  schema_version: "1.4";
+  schema_version: "1.5";
   /**
    * Стабильный идентификатор. Не содержит пробелов и путей.
    */

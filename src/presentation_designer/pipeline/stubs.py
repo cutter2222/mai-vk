@@ -63,12 +63,18 @@ SLIDE_TITLES = [
     "Приложение: методика измерений",
 ]
 
-VARIANT_SLIDES = {"compact": 10, "balanced": 12, "detailed": 15}
-VARIANT_COLORS = {"compact": (0, 119, 255), "balanced": (255, 56, 133), "detailed": (82, 9, 119)}
+VARIANT_SLIDES = {"compact": 10, "balanced": 12, "detailed": 15, "original": 10}
+VARIANT_COLORS = {
+    "compact": (0, 119, 255),
+    "balanced": (255, 56, 133),
+    "detailed": (82, 9, 119),
+    "original": (60, 60, 60),
+}
 VARIANT_RATIONALE = {
     "compact": "Минимум текста, один факт на слайд, таблицы заменены графиками",
     "balanced": "Тезис и пояснение, графики с подписями, таблицы до 5 строк",
     "detailed": "Подробные буллеты в пределах порогов, таблицы и схемы, разделители секций",
+    "original": "Исходная презентация как есть: слайды, тексты и оформление файла сохранены",
 }
 
 KIND_BY_FORMAT = {

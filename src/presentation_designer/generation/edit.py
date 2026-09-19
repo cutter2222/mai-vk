@@ -561,10 +561,14 @@ def validate_plan(doc: JsonDict, profile: JsonDict, package: JsonDict, story: Js
         ContentPackage.model_validate(package),
         StoryPlan.model_validate(story),
     )
+    # У исходной презентации (вариант original) обязательные слоты без блока заполнены самим
+    # образцом — композер в режиме сохранения их не трогает.
+    original = str((doc.get("variant") or {}).get("variant_id")) == "original"
     violations = [
         v
         for v in violations
-        if v.code != "package_mismatch" or story.get("package_id") == package.get("package_id")
+        if (v.code != "package_mismatch" or story.get("package_id") == package.get("package_id"))
+        and not (original and v.code == "slot_required")
     ]
     if violations:
         raise EditError(

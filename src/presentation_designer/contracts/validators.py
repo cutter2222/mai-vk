@@ -103,6 +103,15 @@ def check_generation_request(req: m.GenerationRequest) -> list[Violation]:
             )
     if settings.variants is not None and len(set(settings.variants)) != len(settings.variants):
         out.append(Violation("variants_duplicate", "варианты повторяются", "settings.variants"))
+    variants = [str(v) for v in settings.variants or []]
+    if "original" in variants and len(variants) > 1:
+        out.append(
+            Violation(
+                "variants_original_alone",
+                "исходная презентация (original) не сочетается с вариантами вёрстки",
+                "settings.variants",
+            )
+        )
     return out
 
 

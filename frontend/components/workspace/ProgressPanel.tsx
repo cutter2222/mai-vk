@@ -1,17 +1,21 @@
 "use client";
 
-import { Badge, Group, Progress, Stack, Text, ThemeIcon, Tooltip } from "@mantine/core";
+import { Badge, Group, Loader, Stack, Text, ThemeIcon, Tooltip } from "@mantine/core";
 import { IconCheck, IconClock, IconLoader2, IconX } from "@tabler/icons-react";
 
 import { StatusBadge } from "@/components/common/StatusBadge";
 import type { GenerationResult } from "@/lib/api/types";
 import { formatMs, STAGE_LABELS, VARIANT_LABELS } from "@/lib/format";
+import { useElapsed } from "@/lib/hooks/useElapsed";
 
 const COMMON: Array<GenerationResult["stage"]> = ["analyze", "import", "story"];
 
-/** Ход задания: общие этапы и этапы каждого варианта с временем. Действия отмены и повтора живут в шапке проекта. */
+/** Ход задания: общие этапы и этапы каждого варианта с временем. Вместо процентов — секунды с начала
+ * задания, после завершения — итоговое время. Действия отмены и повтора живут в шапке проекта. */
 export function ProgressPanel({ result }: { result: GenerationResult }) {
   const terminal = ["succeeded", "needs_review", "failed", "canceled"].includes(result.status);
+  const elapsed = useElapsed(result.created_at, terminal ? (result.finished_at ?? result.created_at) : null);
+  const total = terminal ? (result.metrics.totals?.duration_ms ?? elapsed) : elapsed;
   const common = COMMON.map((s) => result.metrics.stages?.find((x) => x.stage === s));
   const stubLayers = Object.entries(result.execution_mode.layers).filter(([, v]) => v !== "real").map(([k]) => k);
 
@@ -32,8 +36,16 @@ export function ProgressPanel({ result }: { result: GenerationResult }) {
         </Tooltip>
         {result.partial && <Badge color="yellow" size="xs">частичный результат</Badge>}
       </Group>
-      <Text size="xs" c="dimmed" mb={6}>{result.progress?.message ?? STAGE_LABELS[result.stage]}</Text>
-      <Progress value={result.progress?.percent ?? 0} size="sm" animated={!terminal} mb="md" />
+      <Group justify="space-between" wrap="nowrap" mb="md" data-testid="job-elapsed">
+        <Group gap={6} wrap="nowrap" style={{ minWidth: 0 }}>
+          {!terminal && <Loader size={12} />}
+          <Text size="xs" c="dimmed" truncate>{result.progress?.message ?? STAGE_LABELS[result.stage]}</Text>
+        </Group>
+        <Text size="xs" c={terminal ? "dimmed" : undefined} fw={terminal ? 400 : 600} style={{ whiteSpace: "nowrap" }}>{terminal ? `за ${formatMs(total)}` : formatMs(total)}</Text>
+      </Group>
+      {result.warnings?.filter((w) => w.code === "original_slides_skipped").map((w) => (
+        <Text key={w.code} size="xs" c="orange" mb="sm" data-testid="job-warning">{w.message}</Text>
+      ))}
       {result.error && (
         <Text size="sm" c="red" mb="sm" data-testid="job-error">
           {result.error.message}{result.error.retryable ? " Можно повторить." : ""}

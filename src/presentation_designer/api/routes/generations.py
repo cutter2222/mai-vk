@@ -55,7 +55,7 @@ def create_generation(body: dict[str, Any], orch: Orch) -> dict[str, Any]:
     blocking = [
         x
         for x in v.check_generation_request(request)
-        if x.code in {"slide_count_range", "variants_duplicate"}
+        if x.code in {"slide_count_range", "variants_duplicate", "variants_original_alone"}
     ]
     if blocking:
         raise ApiError(

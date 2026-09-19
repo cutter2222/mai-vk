@@ -32,7 +32,7 @@ def run_generation(
     ).json()["package_id"]
     job_id = client.post(
         "/api/generations",
-        json={"schema_version": "1.1", "template_id": template_id, "package_id": package_id},
+        json={"schema_version": "1.2", "template_id": template_id, "package_id": package_id},
     ).json()["job_id"]
     client.patch(
         f"/api/projects/{project_id}",

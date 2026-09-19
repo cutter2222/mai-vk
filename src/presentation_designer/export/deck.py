@@ -13,6 +13,7 @@ import base64
 import html
 import logging
 import pathlib
+import shutil
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -51,37 +52,48 @@ def export_revision(
     settings: Settings,
     render_slots: Any = None,
     slide_titles: list[str] | None = None,
+    prerendered: pathlib.Path | None = None,
 ) -> ExportResult:
     """`out_dir/deck.pdf`, `out_dir/thumbs/slide-NN.png`, `out_dir/deck.html`.
 
     Имена миниатюр в результате относительны каталогу задания (`prefix` — `<variant>/r<rev>/`),
-    как их отдаёт манифест ревизии. Ошибки рендерера пробрасываются вызывающему слою."""
-    soffice = _find_soffice()
-    if soffice is None or not soffice.exists():
-        raise RendererUnavailableError("LibreOffice не найден: экспорт PDF невозможен")
-    from presentation_designer.export.render_slots import LocalRenderSlots
-
-    slots = render_slots or LocalRenderSlots(settings.render.slots)
+    как их отдаёт манифест ревизии. Ошибки рендерера пробрасываются вызывающему слою.
+    `prerendered` — каталог с `deck.pdf` и `thumbs/` от прежнего рендера того же по содержанию
+    файла (предварительная ревизия исходной презентации): конвертация не повторяется."""
     report: JsonDict = {"timings_ms": {}}
     started = time.perf_counter()
-    with slots.acquire(
-        timeout_s=settings.timeouts.stage_export_s,
-        ttl_s=settings.timeouts.render_convert_s * 2,
-    ) as lease:
-        report["timings_ms"]["render_slot_wait"] = lease.wait_ms
-        pdf = _convert_to_pdf(
-            pptx_path, out_dir, timeout_s=settings.timeouts.render_convert_s, soffice=soffice
-        )
-    report["renderer"] = f"libreoffice ({lease.backend} slots)"
-    report["timings_ms"]["pdf"] = int(pdf.seconds * 1000)
-    if pdf.pdf_path.name != "deck.pdf":
-        pdf.pdf_path.replace(out_dir / "deck.pdf")
-    pdf_path = out_dir / "deck.pdf"
+    reused = _reuse_render(prerendered, out_dir) if prerendered else None
+    if reused is not None:
+        pdf_path, thumb_paths = reused
+        report["renderer"] = "prerendered"
+        report["timings_ms"]["pdf"] = 0
+        report["timings_ms"]["thumbnails"] = 0
+    else:
+        soffice = _find_soffice()
+        if soffice is None or not soffice.exists():
+            raise RendererUnavailableError("LibreOffice не найден: экспорт PDF невозможен")
+        from presentation_designer.export.render_slots import LocalRenderSlots
 
-    thumbs = render_thumbnails(
-        pdf_path, out_dir / THUMBS_DIR, width_px=settings.render.thumbnail_width_px
-    )
-    report["timings_ms"]["thumbnails"] = int(thumbs.seconds * 1000)
+        slots = render_slots or LocalRenderSlots(settings.render.slots)
+        with slots.acquire(
+            timeout_s=settings.timeouts.stage_export_s,
+            ttl_s=settings.timeouts.render_convert_s * 2,
+        ) as lease:
+            report["timings_ms"]["render_slot_wait"] = lease.wait_ms
+            pdf = _convert_to_pdf(
+                pptx_path, out_dir, timeout_s=settings.timeouts.render_convert_s, soffice=soffice
+            )
+        report["renderer"] = f"libreoffice ({lease.backend} slots)"
+        report["timings_ms"]["pdf"] = int(pdf.seconds * 1000)
+        if pdf.pdf_path.name != "deck.pdf":
+            pdf.pdf_path.replace(out_dir / "deck.pdf")
+        pdf_path = out_dir / "deck.pdf"
+
+        thumbs = render_thumbnails(
+            pdf_path, out_dir / THUMBS_DIR, width_px=settings.render.thumbnail_width_px
+        )
+        report["timings_ms"]["thumbnails"] = int(thumbs.seconds * 1000)
+        thumb_paths = list(thumbs.paths)
     thumbnails = [
         {
             "slide_index": i,
@@ -89,7 +101,7 @@ def export_revision(
             "width_px": size[0],
             "height_px": size[1],
         }
-        for i, (path, size) in enumerate((p, _png_size(p)) for p in thumbs.paths)
+        for i, (path, size) in enumerate((p, _png_size(p)) for p in thumb_paths)
     ]
 
     html_started = time.perf_counter()
@@ -103,7 +115,7 @@ def export_revision(
         markup = native_html(deck_title, composed_deck, pptx_path, slide_titles or [])
     except Exception:
         log.warning("нативный html не построен, остаются снимки", exc_info=True)
-        markup = build_html(deck_title, composed_deck, thumbs.paths, slide_titles or [])
+        markup = build_html(deck_title, composed_deck, thumb_paths, slide_titles or [])
         kind = "images_with_text"
     html_path.write_text(markup, encoding="utf-8")
     report["timings_ms"]["html"] = int((time.perf_counter() - html_started) * 1000)
@@ -111,6 +123,32 @@ def export_revision(
     report["pages"] = len(thumbnails)
     report["html"] = kind
     return ExportResult(pdf_path, html_path, thumbnails, report)
+
+
+def _reuse_render(
+    source: pathlib.Path, out_dir: pathlib.Path
+) -> tuple[pathlib.Path, list[pathlib.Path]] | None:
+    """Копирует `deck.pdf` и `thumbs/` прежнего рендера в каталог ревизии; None — рендера нет."""
+    pdf = source / "deck.pdf"
+    thumbs_dir = source / THUMBS_DIR
+    if not pdf.is_file() or not thumbs_dir.is_dir():
+        return None
+    paths = sorted(p for p in thumbs_dir.iterdir() if p.suffix.lower() == ".png")
+    if not paths:
+        return None
+    out_dir.mkdir(parents=True, exist_ok=True)
+    target_pdf = out_dir / "deck.pdf"
+    if pdf.resolve() != target_pdf.resolve():
+        shutil.copyfile(pdf, target_pdf)
+    target_dir = out_dir / THUMBS_DIR
+    target_dir.mkdir(parents=True, exist_ok=True)
+    copied: list[pathlib.Path] = []
+    for p in paths:
+        target = target_dir / p.name
+        if p.resolve() != target.resolve():
+            shutil.copyfile(p, target)
+        copied.append(target)
+    return target_pdf, copied
 
 
 def _png_size(path: pathlib.Path) -> tuple[int, int]:
