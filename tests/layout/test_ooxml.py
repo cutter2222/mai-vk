@@ -171,6 +171,7 @@ def test_clone_keeps_references_when_skipped_rel_precedes_others(tmp_path: pathl
     out = _save(prs, tmp_path / "notes.pptx")
     assert ooxml.check_package(out).ok
 
+
 def test_drop_template_logos_removes_marked_shapes() -> None:
     """Знак шаблона снимается с макета по профилю: объект уходит, остальное на месте.
 
@@ -199,4 +200,3 @@ def test_drop_template_logos_removes_marked_shapes() -> None:
     assert len(after) == before - 1, "остальные объекты макета на месте"
     # Профиль без логотипов ничего не трогает.
     assert drop_template_logos(prs, {"fixed_elements": []}) == 0
-

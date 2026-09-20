@@ -53,9 +53,7 @@ def builtin_patterns(
     out: list[JsonDict] = []
     for family in load_families():
         for composition in family.expand():
-            out.append(
-                _as_pattern(composition, design, width_emu, height_emu, layout, layout_name)
-            )
+            out.append(_as_pattern(composition, design, width_emu, height_emu, layout, layout_name))
     return out
 
 

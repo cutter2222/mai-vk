@@ -269,8 +269,13 @@ def test_report_marks_deck_checks_and_package(tmp_path: Any) -> None:
         return next(r["outcome"] for r in report["results"] if r["check_id"] == check_id)
 
     report = build_report(
-        job_id="job_1", variant_id="v", revision=1, deck=deck, profile=_profile(),
-        staging_prefix="v/r1/", contextual=False,
+        job_id="job_1",
+        variant_id="v",
+        revision=1,
+        deck=deck,
+        profile=_profile(),
+        staging_prefix="v/r1/",
+        contextual=False,
     )
     assert outcome(report, "integrity.duplicate_slides") == "failed"
     assert outcome(report, "integrity.package") == "not_checked"
@@ -279,8 +284,14 @@ def test_report_marks_deck_checks_and_package(tmp_path: Any) -> None:
     pptx = tmp_path / "deck.pptx"
     Presentation().save(pptx)
     report = build_report(
-        job_id="job_1", variant_id="v", revision=1, deck=deck, profile=_profile(),
-        staging_prefix="v/r1/", contextual=False, pptx_path=pptx,
+        job_id="job_1",
+        variant_id="v",
+        revision=1,
+        deck=deck,
+        profile=_profile(),
+        staging_prefix="v/r1/",
+        contextual=False,
+        pptx_path=pptx,
     )
     assert outcome(report, "integrity.package") == "passed"
     assert "pptx_file" not in report["coverage"].get("missing_inputs", [])

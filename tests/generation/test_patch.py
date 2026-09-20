@@ -315,9 +315,7 @@ def test_delete_and_add_text(
         "bbox_missing",
     ]
     # чужой адрес занимать нельзя
-    assert "object_exists" in codes(
-        [{**add, "target": {"object_id": "2"}}]
-    )
+    assert "object_exists" in codes([{**add, "target": {"object_id": "2"}}])
     # картинка на свою надпись не ставится
     assert "override_unsupported" in codes(
         [
@@ -365,9 +363,10 @@ def test_template_logo_is_deck_wide(
     assert pt.patch_is_noop(patch, result.plan)
     back = {**patch, "template_logo": "keep"}
     assert not pt.patch_is_noop(back, result.plan)
-    assert pt.apply_patch(result.plan, back, deck, mini_profile, example_package).plan[
-        "template_logo"
-    ] == "keep"
+    assert (
+        pt.apply_patch(result.plan, back, deck, mini_profile, example_package).plan["template_logo"]
+        == "keep"
+    )
 
 
 def test_normalize_and_describe() -> None:

@@ -146,9 +146,7 @@ def test_organizer_template_profile(organizer_dir: pathlib.Path, name: str) -> N
     assert exp["catalogs"] <= catalogs, f"листы иконок не исключены: {exp['catalogs'] - catalogs}"
     assert exp["style_guides"] <= guides, f"инструкции не исключены: {exp['style_guides'] - guides}"
     # Собственные композиции библиотеки не приходят со слайда шаблона: у них нет slide_index.
-    pattern_slides = {
-        p["source"]["slide_index"] for p in template_patterns
-    }
+    pattern_slides = {p["source"]["slide_index"] for p in template_patterns}
     assert not (pattern_slides & catalogs) and not (pattern_slides & guides)
     for idx in catalogs:
         assert any(a.get("source_slide_index") == idx for a in profile["assets"]), (
@@ -197,9 +195,7 @@ def test_organizer_template_profile(organizer_dir: pathlib.Path, name: str) -> N
         and profile["design_tokens"]["typography"]["scale"]
     )
     assert profile["fixed_elements"], "логотипы/номера страниц не найдены"
-    by_slide = {
-        p["source"]["slide_index"]: p for p in template_patterns
-    }
+    by_slide = {p["source"]["slide_index"]: p for p in template_patterns}
     for members in exp.get("groups", ()):
         ids = {by_slide[i]["group_id"] for i in members}
         assert len(ids) == 1, f"образцы {sorted(members)} должны быть одной группой: {ids}"

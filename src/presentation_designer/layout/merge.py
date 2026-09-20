@@ -230,11 +230,7 @@ def _master_and_layout_ids(base: Any, *, exclude: Any) -> list[int]:
     for master in base.slide_masters:
         if master.part is exclude:
             continue
-        ids += [
-            int(e.get("id"))
-            for e in master.part._element.iter(_SLD_LAYOUT_ID)
-            if e.get("id")
-        ]
+        ids += [int(e.get("id")) for e in master.part._element.iter(_SLD_LAYOUT_ID) if e.get("id")]
     return ids
 
 

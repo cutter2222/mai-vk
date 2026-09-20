@@ -99,9 +99,7 @@ def _cluster(parts: list[ShapeInfo], *, kind: str, th: Thresholds) -> list[Shape
         return None
     base = statistics.median([(p.y + p.height) if kind == "column" else p.x for p in parts])
     row = [
-        p
-        for p in parts
-        if abs(((p.y + p.height) if kind == "column" else p.x) - base) <= BASE_TOL
+        p for p in parts if abs(((p.y + p.height) if kind == "column" else p.x) - base) <= BASE_TOL
     ]
     if len(row) < th.parts:
         return None
@@ -111,9 +109,7 @@ def _cluster(parts: list[ShapeInfo], *, kind: str, th: Thresholds) -> list[Shape
     if typical <= 0:
         return None
     row = [
-        p
-        for p, t in zip(row, thickness, strict=True)
-        if abs(t - typical) / typical <= WIDTH_TOL
+        p for p, t in zip(row, thickness, strict=True) if abs(t - typical) / typical <= WIDTH_TOL
     ]
     if len(row) < th.parts:
         return None

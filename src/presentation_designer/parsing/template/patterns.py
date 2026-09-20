@@ -624,8 +624,6 @@ def build_pattern(
     )
 
 
-
-
 def _attach_chart_slot(
     shapes: list[ShapeInfo],
     slots: list[Slot],
@@ -700,7 +698,6 @@ def attach_drawn_chart(pattern: Pattern) -> bool:
         return False
     pattern.chart_parts = parts
     return True
-
 
 
 # ---------- роль ----------

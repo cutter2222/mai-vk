@@ -137,9 +137,7 @@ def test_groups_and_tone(variety_template: pathlib.Path) -> None:
     assert profile["analyzer"]["version"] == an.ANALYZER_VERSION
     # Группы и тон есть только у образцов шаблона: собственные композиции строятся из
     # дизайн-кода и своего слайда-источника не имеют.
-    by_id = {
-        p["pattern_id"]: p for p in profile["patterns"] if p["source"]["kind"] != "builtin"
-    }
+    by_id = {p["pattern_id"]: p for p in profile["patterns"] if p["source"]["kind"] != "builtin"}
     assert by_id["pat_s1"]["group_id"] == by_id["pat_s2"]["group_id"], "титулы одного состава"
     assert by_id["pat_s3"]["group_id"] == by_id["pat_s4"]["group_id"], "разделители"
     assert by_id["pat_s5"]["group_id"] == by_id["pat_s6"]["group_id"], "карточки одной сигнатуры"

@@ -525,6 +525,7 @@ def test_object_ids_stable_across_recompose(
     assert ids_first == ids_second
     assert any(o["content_source"] == "generated" for o in first.deck["slides"][1]["objects"])
 
+
 def test_delete_removes_object_and_add_text_creates_shape(
     rich_profile: dict[str, Any],
     rich_template_path: pathlib.Path,

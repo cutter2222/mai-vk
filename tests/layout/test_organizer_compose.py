@@ -224,6 +224,7 @@ def test_vkedu_overrides_deterministic(
     ComposedDeck.model_validate(result.deck)
     assert ids(result.deck) == ids(base.deck), "правки не меняют идентификаторы объектов"
 
+
 def test_vktech_drawn_chart_and_logo_removal(
     organizer_dir: pathlib.Path,
     example_package: dict[str, Any],
@@ -333,4 +334,3 @@ def test_vktech_drawn_chart_and_logo_removal(
     assert dropped.deck["template_logo"] == "drop"
     assert dropped.report["counts"].get("logos_removed", 0) > 0
     assert logo_shapes(tmp_path / "drop.pptx") == 0, "знак снят со всех макетов"
-
