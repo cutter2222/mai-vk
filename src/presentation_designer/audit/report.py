@@ -14,6 +14,7 @@ import time
 from typing import Any
 
 from presentation_designer.audit.deterministic import Issue, check_package, run_slide_checks
+from presentation_designer.audit.pixels import DeckPixels
 from presentation_designer.audit.registry import ALL_CHECKS, BY_ID, Check
 
 JsonDict = dict[str, Any]
@@ -47,6 +48,10 @@ _INPUTS_BY_CATEGORY = {
 }
 _INPUTS_BY_CHECK = {
     "layout.text_overflow": ["composed_deck", "font_metrics"],
+    # Эти две меряются по отрендеренной странице: под буквами бывает фотография, а гарнитуру
+    # подменяет тот, кто рисует, — по файлу ни того, ни другого не узнать.
+    "template.contrast": ["render", "composed_deck"],
+    "template.font_substituted": ["render", "composed_deck"],
     "integrity.package": ["xml"],
     "integrity.duplicate_slides": ["composed_deck", "whole_deck_text"],
     "content.facts_grounded": ["render", "composed_deck", "content_package"],
@@ -243,13 +248,32 @@ def build_report(
     started: float | None = None,
     llm_metrics: JsonDict | None = None,
     pptx_path: pathlib.Path | None = None,
+    pdf_path: pathlib.Path | None = None,
 ) -> JsonDict:
-    """Отчёт аудита по собранной колоде. `pptx_path` — сам файл: по нему проверяется
-    целостность пакета; без файла эта проверка честно помечается `not_checked`."""
+    """Отчёт аудита по собранной колоде.
+
+    `pptx_path` — сам файл: по нему проверяется целостность пакета. `pdf_path` — рендер
+    ревизии: по нему меряются контраст к настоящей подложке и подмена гарнитуры. Без входных
+    данных проверки честно помечаются `not_checked`, а не «пройденными».
+    """
     began = started if started is not None else time.perf_counter()
-    issues = run_slide_checks(deck, profile)
     unchecked: dict[str, str] = {}
     missing = list(missing_inputs or [])
+    pixels = None
+    if pdf_path is not None and pdf_path.exists():
+        try:
+            pixels = DeckPixels(pdf_path)
+        except Exception as error:  # рендер не обязателен: отчёт всё равно нужен
+            unchecked["template.font_substituted"] = f"страницу не прочитать: {error}"
+            missing.append("pdf_file")
+    else:
+        unchecked["template.font_substituted"] = "файла PDF нет рядом с отчётом"
+        missing.append("pdf_file")
+    try:
+        issues = run_slide_checks(deck, profile, pixels=pixels)
+    finally:
+        if pixels is not None:
+            pixels.close()
     if pptx_path is not None and pptx_path.exists():
         issues += check_package(pptx_path)
     else:

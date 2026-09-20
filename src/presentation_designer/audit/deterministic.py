@@ -48,10 +48,16 @@ class Issue:
 
 @dataclass
 class Context:
-    """Всё, по чему судят проверки: колода, профиль шаблона и производные множества."""
+    """Всё, по чему судят проверки: колода, профиль шаблона и производные множества.
+
+    `pixels` — отрендеренная колода (PDF ревизии). Часть проверок нельзя выполнить по файлу:
+    под текстом бывает фотография, а гарнитуру подменяет тот, кто рисует. Когда рендера нет,
+    такие проверки честно помечаются невыполненными, а не «пройденными».
+    """
 
     deck: JsonDict
     profile: JsonDict
+    pixels: Any = None
 
     def __post_init__(self) -> None:
         tokens = self.profile.get("design_tokens") or {}
@@ -577,7 +583,16 @@ def check_fixed_elements(slide: JsonDict, ctx: Context) -> list[Issue]:
 
 
 def check_contrast(slide: JsonDict, ctx: Context) -> list[Issue]:
-    """Контраст текста к тому, что под ним: заливке блока, фону слайда или макета."""
+    """Контраст текста к тому, что под ним.
+
+    По отрендеренной странице, когда она есть: буквы и подложка берутся такими, какими их
+    видит человек, поэтому текст на фотографии и на градиенте проверяется наравне с текстом
+    на заливке. Без рендера остаётся прежний путь по цветам файла, а где цвета фона нет —
+    проверка не выполняется.
+    """
+    measured = _contrast_by_pixels(slide, ctx)
+    if measured is not None:
+        return measured
     minimum = float(threshold("template.contrast", "min_ratio", 4.5))
     background = _slide_background(slide, ctx)
     out: list[Issue] = []
@@ -616,6 +631,139 @@ def check_contrast(slide: JsonDict, ctx: Context) -> list[Issue]:
                 )
                 break
     return out
+
+
+def _contrast_by_pixels(slide: JsonDict, ctx: Context) -> list[Issue] | None:
+    """Контраст строк отрендеренной страницы к тому, что под ними. None — рендера нет."""
+    page = _page_of(slide, ctx)
+    if page is None:
+        return None
+    from presentation_designer.audit.pixels import contrast
+
+    minimum = float(threshold("template.contrast", "min_ratio", 4.5))
+    large_minimum = float(threshold("template.contrast", "min_ratio_large_text", 3.0))
+    # Одна находка на объект: двадцать буллетов одного списка — это одна проблема списка,
+    # а не двадцать разных. Остаётся худшая строка.
+    worst: dict[str, tuple[float, float, Any, tuple[int, int, int]]] = {}
+    for run in page.runs:
+        owner = _content_at(slide, run.bbox)
+        if owner is None:
+            continue
+        under = page.background_under(run.bbox)
+        if under is None:
+            continue
+        ratio = contrast(run.color, under)
+        limit = large_minimum if run.size_pt >= 24 else minimum
+        if ratio >= limit:
+            continue
+        key = str(owner.get("object_id"))
+        if key in worst and worst[key][0] <= ratio:
+            continue
+        worst[key] = (ratio, limit, run, under)
+    return [
+        Issue(
+            "template.contrast",
+            f"Контраст текста «{run.text[:30]}» к фону — {ratio:.1f}:1",
+            bbox=run.bbox,
+            element_ids=[key],
+            evidence={
+                "measured": ratio,
+                "threshold": limit,
+                "details": f"{run.size_pt:g} pt, цвет текста {_hex(run.color)}, "
+                f"фон под буквами {_hex(under)} — измерено по отрендеренной странице",
+            },
+            **_slide_ref(slide),
+        )
+        for key, (ratio, limit, run, under) in worst.items()
+    ]
+
+
+def check_font_substituted(slide: JsonDict, ctx: Context) -> list[Issue]:
+    """Гарнитура на странице против той, что объект просил в файле.
+
+    Это не «шрифт не из шаблона» (та проверка читает файл), а разошедшаяся пара: в файле
+    написано одно, нарисовано другое. Значит, у того, кто открывает колоду, шрифта нет —
+    и у заказчика вёрстка поедет так же, как поехала у рендерера.
+    """
+    page = _page_of(slide, ctx)
+    if page is None:
+        return []
+    from presentation_designer.audit.pixels import normalized_family
+
+    seen: set[tuple[str, str]] = set()
+    out: list[Issue] = []
+    for run in page.runs:
+        # Маркер списка рисуется своей гарнитурой («•» из Arial, «§» из OpenSymbol) — это не
+        # подмена, а так задумано в файле.
+        if sum(1 for c in run.text if c.isalnum()) < 2:
+            continue
+        owner = _content_at(slide, run.bbox)
+        if owner is None:
+            continue
+        wanted = _font_family_of(owner)
+        drawn = normalized_family(run.font)
+        if not wanted or not drawn or normalized_family(wanted) == drawn:
+            continue
+        key = (str(owner.get("object_id")), drawn)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(
+            Issue(
+                "template.font_substituted",
+                f"Текст «{run.text[:30]}» просит «{wanted}», а нарисован гарнитурой «{run.font}»",
+                bbox=run.bbox,
+                element_ids=[str(owner.get("object_id"))],
+                evidence={"details": f"в файле «{wanted}», на странице «{run.font}»"},
+                **_slide_ref(slide),
+            )
+        )
+    return out
+
+
+def _font_family_of(obj: JsonDict) -> str:
+    """Гарнитура, которую объект просит в файле: стиль абзаца, иначе стиль объекта."""
+    for style in _paragraph_styles(obj):
+        family = (style.get("font") or {}).get("family")
+        if family:
+            return str(family)
+    computed = ((obj.get("text") or {}).get("computed_style") or {}).get("font") or {}
+    return str(computed.get("family") or "")
+
+
+def _page_of(slide: JsonDict, ctx: Context) -> Any:
+    """Измерения страницы этого слайда или None, если рендера нет."""
+    if ctx.pixels is None:
+        return None
+    try:
+        return ctx.pixels.slide(int(slide.get("index", -1)))
+    except Exception:
+        return None
+
+
+def _content_at(slide: JsonDict, bbox: JsonDict) -> JsonDict | None:
+    """Наш объект под строкой страницы или None, если строка не наша.
+
+    Рендерер рисует и то, чего в колоде нет: подсказки пустых плейсхолдеров («Фото команды»),
+    номера слайдов и надписи макета. Проверять их контраст незачем — это не то содержание,
+    которое собрал сервис, и «исправить» его нельзя. Берётся самый маленький текстовый объект
+    с содержанием, накрывший середину строки: вложенные рамки тогда не спорят.
+    """
+    cx = float(bbox.get("x") or 0) + float(bbox.get("width") or 0) / 2
+    cy = float(bbox.get("y") or 0) + float(bbox.get("height") or 0) / 2
+    found: list[JsonDict] = []
+    for obj in slide.get("objects") or []:
+        if obj.get("kind") != "text" or not _plain(obj):
+            continue
+        b = obj.get("bbox") or {}
+        x, y = float(b.get("x") or 0), float(b.get("y") or 0)
+        if x <= cx <= x + float(b.get("width") or 0) and y <= cy <= y + float(b.get("height") or 0):
+            found.append(obj)
+    return min(found, key=_area) if found else None
+
+
+def _hex(color: tuple[int, int, int]) -> str:
+    return "#{:02X}{:02X}{:02X}".format(*color)
 
 
 def _slide_background(slide: JsonDict, ctx: Context) -> str | None:
@@ -982,6 +1130,7 @@ SLIDE_CHECKS = (
     check_layout,
     check_fixed_elements,
     check_contrast,
+    check_font_substituted,
     check_density,
     check_fill_ratio,
     check_placeholder_text,
@@ -993,9 +1142,9 @@ SLIDE_CHECKS = (
 DECK_CHECKS = (check_duplicate_slides,)
 
 
-def run_slide_checks(deck: JsonDict, profile: JsonDict) -> list[Issue]:
-    """Все детерминированные проверки по колоде."""
-    ctx = Context(deck=deck, profile=profile)
+def run_slide_checks(deck: JsonDict, profile: JsonDict, pixels: Any = None) -> list[Issue]:
+    """Все детерминированные проверки по колоде; `pixels` — рендер ревизии, если он есть."""
+    ctx = Context(deck=deck, profile=profile, pixels=pixels)
     issues: list[Issue] = []
     for slide in deck.get("slides") or []:
         for check in SLIDE_CHECKS:

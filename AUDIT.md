@@ -7,7 +7,7 @@
 
 ## Как устроен аудит
 
-Проверок в реестре: **35** — 24 считаются по файлу и
+Проверок в реестре: **36** — 25 считаются по файлу и
 11 задаются модели. Все взяты из Приложения 1 ТЗ.
 
 * **По файлу** (`audit/deterministic.py`) — геометрия, шрифты, палитра, макет, плотность,
@@ -40,9 +40,9 @@
 
 | проверка | что ищет | как | область | серьёзность | порог | входы | код | тесты |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `layout.out_of_bounds` | Элемент вышел за границы слайда | по файлу | слайд | ошибка | `tolerance` = 0.005 | composed_deck | `audit/deterministic.py` | — |
-| `layout.overlap` | Два блока наложились друг на друга | по файлу | слайд | ошибка | `min_overlap_ratio` = 0.12 | composed_deck | `audit/deterministic.py` | — |
-| `layout.text_overflow` | Текст не поместился в свою рамку | по файлу | слайд | ошибка | — | composed_deck, font_metrics | `audit/deterministic.py` | — |
+| `layout.out_of_bounds` | Элемент вышел за границы слайда | по файлу | слайд | ошибка | `tolerance` = 0.005 | composed_deck | `audit/deterministic.py` | `audit/test_repair.py` |
+| `layout.overlap` | Два блока наложились друг на друга | по файлу | слайд | ошибка | `min_overlap_ratio` = 0.12 | composed_deck | `audit/deterministic.py` | `audit/test_repair.py` |
+| `layout.text_overflow` | Текст не поместился в свою рамку | по файлу | слайд | ошибка | — | composed_deck, font_metrics | `audit/deterministic.py` | `audit/test_repair.py` |
 | `layout.clipped` | Текст обрезан краем слайда | по файлу | слайд | ошибка | `tolerance` = 0.005 | composed_deck | `audit/deterministic.py` | — |
 | `layout.margins` | Контент заходит в поля у краёв | по файлу | слайд | замечание | `tolerance` = 0.01 | composed_deck | `audit/deterministic.py` | `audit/test_deterministic.py` |
 | `layout.image_distorted` | Картинка растянута, пропорции нарушены | по файлу | слайд | замечание | `max_ratio_delta` = 0.08 | composed_deck | `audit/deterministic.py` | `audit/test_deterministic.py` |
@@ -51,13 +51,14 @@
 
 | проверка | что ищет | как | область | серьёзность | порог | входы | код | тесты |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `template.font_not_in_template` | Шрифт не из шаблона | по файлу | слайд | ошибка | — | composed_deck, template_profile | `audit/deterministic.py` | — |
+| `template.font_not_in_template` | Шрифт не из шаблона | по файлу | слайд | ошибка | — | composed_deck, template_profile | `audit/deterministic.py` | `audit/test_repair.py` |
 | `template.font_families` | Больше двух гарнитур на слайде | по файлу | слайд | замечание | `max_families` = 2 | composed_deck, template_profile | `audit/deterministic.py` | — |
-| `template.size_not_in_scale` | Кегль не из типографической шкалы шаблона | по файлу | слайд | замечание | `tolerance_pt` = 0.6 | composed_deck, template_profile | `audit/deterministic.py` | — |
-| `template.color_not_in_palette` | Цвет не из палитры шаблона | по файлу | слайд | замечание | `max_distance` = 24 | composed_deck, template_profile | `audit/deterministic.py` | — |
+| `template.size_not_in_scale` | Кегль не из типографической шкалы шаблона | по файлу | слайд | замечание | `tolerance_pt` = 0.6 | composed_deck, template_profile | `audit/deterministic.py` | `audit/test_repair.py` |
+| `template.color_not_in_palette` | Цвет не из палитры шаблона | по файлу | слайд | замечание | `max_distance` = 24 | composed_deck, template_profile | `audit/deterministic.py` | `audit/test_repair.py` |
 | `template.layout_not_from_template` | Слайд собран не на макете из шаблона | по файлу | слайд | блокирующая | — | composed_deck, template_profile | `audit/deterministic.py` | — |
-| `template.fixed_element_moved` | Логотип или колонтитул сдвинуты с положенного места | по файлу | слайд | ошибка | `max_shift` = 0.01 | composed_deck, template_profile | `audit/deterministic.py` | `audit/test_deterministic.py` |
-| `template.contrast` | Контраст текста к фону ниже 4,5:1 | по файлу | слайд | ошибка | `min_ratio` = 4.5, `min_ratio_large_text` = 3.0 | composed_deck, template_profile | `audit/deterministic.py` | `audit/test_deterministic.py` |
+| `template.fixed_element_moved` | Логотип или колонтитул сдвинуты с положенного места | по файлу | слайд | ошибка | `max_shift` = 0.01 | composed_deck, template_profile | `audit/deterministic.py` | `audit/test_deterministic.py`, `audit/test_repair.py` |
+| `template.contrast` | Контраст текста к фону ниже 4,5:1 | по файлу | слайд | ошибка | `min_ratio` = 4.5, `min_ratio_large_text` = 3.0 | render, composed_deck | `audit/deterministic.py` | `audit/test_deterministic.py`, `audit/test_pixels.py` |
+| `template.font_substituted` | Рендерер подменил гарнитуру: в файле одна, на странице другая | по файлу | слайд | замечание | — | render, composed_deck | `audit/deterministic.py` | `audit/test_pixels.py` |
 
 ### Плотность
 
@@ -67,7 +68,7 @@
 | `density.bullet_length` | Буллет длиннее пятнадцати слов | по файлу | слайд | замечание | `max_words` = 15 | composed_deck | `audit/deterministic.py` | — |
 | `density.table_size` | Таблица больше семи строк или пяти колонок | по файлу | слайд | замечание | `max_rows` = 7, `max_cols` = 5 | composed_deck | `audit/deterministic.py` | — |
 | `density.chart_series` | Больше пяти серий на диаграмме | по файлу | слайд | замечание | `max_series` = 5 | composed_deck | `audit/deterministic.py` | — |
-| `density.fill_ratio` | Слайд заполнен меньше четверти или больше трёх четвертей | по файлу | слайд | замечание | `min_ratio` = 0.25, `max_ratio` = 0.75 | composed_deck | `audit/deterministic.py` | — |
+| `density.fill_ratio` | Слайд заполнен меньше четверти или больше трёх четвертей | по файлу | слайд | замечание | `min_ratio` = 0.25, `max_ratio` = 0.75 | composed_deck | `audit/deterministic.py` | `audit/test_repair.py` |
 
 ### Целостность
 
@@ -87,7 +88,7 @@
 | `content.title_is_takeaway` | Заголовок содержит вывод, а не просто называет тему? | моделью | слайд | замечание | `question_id` = 1 | render, composed_deck | `audit/contextual.py (вопрос 1)` | `audit/test_contextual.py` |
 | `content.title_matches_body` | Содержимое слайда соответствует заголовку? | моделью | слайд | замечание | `question_id` = 2 | render, composed_deck | `audit/contextual.py (вопрос 2)` | — |
 | `content.one_sentence` | Слайд пересказывается одним предложением? | моделью | слайд | замечание | `question_id` = 3 | render, composed_deck | `audit/contextual.py (вопрос 3)` | `audit/test_contextual.py` |
-| `content.facts_grounded` | Все цифры и факты со слайда есть в исходных материалах? | моделью | слайд | ошибка | `question_id` = 4 | render, composed_deck, content_package | `audit/contextual.py (вопрос 4)` | `audit/test_contextual.py` |
+| `content.facts_grounded` | Все цифры и факты со слайда есть в исходных материалах? | моделью | слайд | ошибка | `question_id` = 4 | render, composed_deck, content_package | `audit/contextual.py (вопрос 4)` | `audit/test_contextual.py`, `audit/test_repair.py` |
 | `content.has_content` | На слайде есть содержание, а не только заголовок? | моделью | слайд | ошибка | `question_id` = 5 | render, composed_deck | `audit/contextual.py (вопрос 5)` | — |
 | `content.visuals_relevant` | Картинки и иконки относятся к теме слайда? | моделью | слайд | замечание | `question_id` = 6 | render, composed_deck | `audit/contextual.py (вопрос 6)` | `audit/test_contextual.py` |
 | `content.no_garbage` | Нет служебного мусора: реплик спикера, кусков промпта? | моделью | слайд | ошибка | `question_id` = 7 | render, composed_deck | `audit/contextual.py (вопрос 7)` | `audit/test_contextual.py` |
@@ -110,5 +111,5 @@
 
 Версия реестра проверок: 1.0.
 
-Проверки без отдельного теста: `layout.out_of_bounds`, `layout.overlap`, `layout.text_overflow`, `layout.clipped`, `template.font_not_in_template`, `template.font_families`, `template.size_not_in_scale`, `template.color_not_in_palette`, `template.layout_not_from_template`, `density.bullets`, `density.bullet_length`, `density.table_size`, `density.chart_series`, `density.fill_ratio`, `integrity.placeholder_text`, `integrity.empty_slide`, `integrity.raster_slide`, `content.title_matches_body`, `content.has_content`, `content.one_language`. Они выполняются и попадают в отчёт, но доказательства в виде дефектной
+Проверки без отдельного теста: `layout.clipped`, `template.font_families`, `template.layout_not_from_template`, `density.bullets`, `density.bullet_length`, `density.table_size`, `density.chart_series`, `integrity.placeholder_text`, `integrity.empty_slide`, `integrity.raster_slide`, `content.title_matches_body`, `content.has_content`, `content.one_language`. Они выполняются и попадают в отчёт, но доказательства в виде дефектной
 фикстуры у них пока нет.
