@@ -62,7 +62,12 @@ def export_revision(
     файла (предварительная ревизия исходной презентации): конвертация не повторяется."""
     report: JsonDict = {"timings_ms": {}}
     started = time.perf_counter()
-    reused = _reuse_render(prerendered, out_dir) if prerendered else None
+    # Готовый рендер годится, только если в нём столько же страниц, сколько слайдов в
+    # собранном файле. У исходной презентации слайды без композиции (скрытые, пустые,
+    # служебные) не переносятся, и тогда предварительный рендер загруженного файла
+    # описывает другую колоду: лента и рамки аудита встали бы не на те слайды.
+    expected = len(composed_deck.get("slides") or []) if composed_deck else 0
+    reused = _reuse_render(prerendered, out_dir, expected) if prerendered else None
     if reused is not None:
         pdf_path, thumb_paths = reused
         report["renderer"] = "prerendered"
@@ -126,15 +131,26 @@ def export_revision(
 
 
 def _reuse_render(
-    source: pathlib.Path, out_dir: pathlib.Path
+    source: pathlib.Path, out_dir: pathlib.Path, expected_slides: int = 0
 ) -> tuple[pathlib.Path, list[pathlib.Path]] | None:
-    """Копирует `deck.pdf` и `thumbs/` прежнего рендера в каталог ревизии; None — рендера нет."""
+    """Копирует `deck.pdf` и `thumbs/` прежнего рендера в каталог ревизии.
+
+    None — рендера нет или он не о той колоде: при `expected_slides` число страниц должно
+    совпадать со числом слайдов собранного файла, иначе рендер повторяется.
+    """
     pdf = source / "deck.pdf"
     thumbs_dir = source / THUMBS_DIR
     if not pdf.is_file() or not thumbs_dir.is_dir():
         return None
     paths = sorted(p for p in thumbs_dir.iterdir() if p.suffix.lower() == ".png")
     if not paths:
+        return None
+    if expected_slides and len(paths) != expected_slides:
+        log.info(
+            "предварительный рендер не переиспользован: страниц %d, слайдов %d",
+            len(paths),
+            expected_slides,
+        )
         return None
     out_dir.mkdir(parents=True, exist_ok=True)
     target_pdf = out_dir / "deck.pdf"

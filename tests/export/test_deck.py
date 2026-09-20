@@ -287,3 +287,41 @@ def test_export_reuses_prerendered_pdf_and_thumbnails(
         preview / "thumbs" / "slide-02.png"
     ).read_bytes()
     assert second.report["html"] == "native_objects"
+
+
+def test_export_rerenders_when_prerender_has_other_slide_count(
+    fake_soffice: pathlib.Path, tmp_path: pathlib.Path
+) -> None:
+    """Слайды без композиции не перенесены: страниц в предварительном рендере больше, чем
+    слайдов в собранном файле, и рендер повторяется. Иначе лента и рамки аудита показывали бы
+    не те слайды."""
+    settings = Settings()
+    settings.render.thumbnail_width_px = 640
+    preview = tmp_path / "preview"
+    preview.mkdir()
+    (preview / "deck.pptx").write_bytes(FIXTURE.read_bytes())
+    first = deck_export.export_revision(
+        preview / "deck.pptx",
+        preview,
+        prefix="original/r1/",
+        composed_deck=None,
+        deck_title="Исходная",
+        settings=settings,
+    )
+    assert len(first.thumbnails) == 3
+
+    deck = _composed_deck()
+    deck["slides"] = deck["slides"][:2]
+    out = tmp_path / "r1"
+    out.mkdir()
+    (out / "deck.pptx").write_bytes(FIXTURE.read_bytes())
+    second = deck_export.export_revision(
+        out / "deck.pptx",
+        out,
+        prefix="original/r1/",
+        composed_deck=deck,
+        deck_title="Исходная",
+        settings=settings,
+        prerendered=preview,
+    )
+    assert second.report["renderer"] != "prerendered"
