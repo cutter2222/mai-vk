@@ -17,8 +17,18 @@ export interface AssetResolver {
   sourceUrl: (source: NonNullable<Override["picture"]>["source"]) => string | null;
 }
 
-/** Порядок применения совпадает с композером: текст → стиль → положение → картинка, фон последним. */
-const OP_ORDER: Record<OverrideOp, number> = { text: 0, style: 1, geometry: 2, picture: 3, background: 4 };
+/**
+ * Порядок применения совпадает с композером: сначала появляются свои надписи, затем текст,
+ * стиль, положение и картинка, удаление — после них, фон последним.
+ */
+const OP_ORDER: Record<OverrideOp, number> = { add_text: 0, text: 1, style: 2, geometry: 3, picture: 4, delete: 5, background: 6 };
+
+/** Придуманный адрес своей надписи: по нему её узнают и черновик, и композер. */
+export const NEW_TEXT_PREFIX = "usr_";
+
+export function isNewText(objectId: string | null | undefined): boolean {
+  return Boolean(objectId?.startsWith(NEW_TEXT_PREFIX));
+}
 
 export function sortOverrides(list: Override[]): Override[] {
   return list.map((o, i) => [o, i] as const).sort((a, b) => OP_ORDER[a[0].op] - OP_ORDER[b[0].op] || a[1] - b[1]).map(([o]) => o);
@@ -29,6 +39,12 @@ export function applyOverrides(slide: DeckSlide, overrides: Override[], resolve?
   if (overrides.length === 0) return slide;
   const objects = slide.objects.map((o) => ({ ...o }));
   const byId = new Map(objects.map((o) => [o.object_id, o]));
+  const removed = new Set<string>();
+  // Эхо применённой ревизии несёт ту же правку add_text, а надпись в колоде уже есть: рисовать
+  // её второй раз нельзя. Узнаём по придуманному адресу в user_overrides готового объекта.
+  const materialized = new Set(
+    slide.objects.flatMap((o) => (o.user_overrides ?? []).filter((u) => u.op === "add_text").map((u) => u.target?.object_id ?? "")),
+  );
   let background = slide.background;
   let backgroundUrl: string | null | undefined;
   for (const ov of sortOverrides(overrides)) {
@@ -44,8 +60,36 @@ export function applyOverrides(slide: DeckSlide, overrides: Override[], resolve?
       continue;
     }
     const id = ov.target?.object_id ?? "";
+    // Своя надпись: объекта в колоде нет, холст рисует его из самой правки.
+    if (ov.op === "add_text") {
+      if (byId.has(id) || materialized.has(id) || !ov.geometry?.bbox) continue;
+      const text = ov.text ?? "";
+      const font = ov.style?.font ?? {};
+      const added: DeckObject = {
+        object_id: id,
+        name: "Своя надпись",
+        kind: "text",
+        bbox: { ...ov.geometry.bbox },
+        z_order: Math.max(0, ...objects.map((o) => o.z_order ?? 0)) + 1,
+        role: "content",
+        content_source: "user",
+        text: {
+          plain: text,
+          paragraphs: text.split("\n").map((line) => ({ text: line, ...(ov.style?.align ? { align: ov.style.align } : {}) })),
+          computed_style: { font: stripUndefined(font) },
+        },
+        user_overrides: [ov],
+      } as DeckObject;
+      objects.push(added);
+      byId.set(id, added);
+      continue;
+    }
     const obj = byId.get(id);
     if (!obj) continue;
+    if (ov.op === "delete") {
+      removed.add(id);
+      continue;
+    }
     if (ov.op === "text" && ov.text !== undefined) {
       const lines = ov.text.split("\n");
       const first = obj.text?.paragraphs?.[0];
@@ -88,7 +132,8 @@ export function applyOverrides(slide: DeckSlide, overrides: Override[], resolve?
     }
     obj.user_overrides = [...(obj.user_overrides ?? []), ov];
   }
-  const out: DeckSlide & { _draft_bg_url?: string | null } = { ...slide, objects, background };
+  const kept = removed.size > 0 ? objects.filter((o) => !removed.has(o.object_id)) : objects;
+  const out: DeckSlide & { _draft_bg_url?: string | null } = { ...slide, objects: kept, background };
   if (backgroundUrl !== undefined) out._draft_bg_url = backgroundUrl;
   return out;
 }
@@ -167,13 +212,20 @@ export function objectLabel(obj: DeckObject | undefined): string {
   }
 }
 
+function short(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > 24 ? `${flat.slice(0, 24)}…` : flat;
+}
+
 /** Что изменится при применении: «слайд 3: заголовок (текст, кегль); фон». */
 export function describeDraft(overrides: Override[], slide: DeckSlide): string {
   const byObject = new Map<string, string[]>();
   for (const ov of sortOverrides(overrides)) {
     const id = ov.op === "background" ? "" : (ov.target?.object_id ?? "");
     const item = byObject.get(id) ?? [];
-    if (ov.op === "text") item.push("текст");
+    if (ov.op === "add_text") item.push(`новая надпись${ov.text ? ` «${short(ov.text)}»` : ""}`);
+    else if (ov.op === "delete") item.push("удалён");
+    else if (ov.op === "text") item.push("текст");
     else if (ov.op === "style") {
       const f = ov.style?.font ?? {};
       if (f.size_pt !== undefined) item.push(`кегль ${f.size_pt}`);
@@ -196,6 +248,7 @@ export function describeDraft(overrides: Override[], slide: DeckSlide): string {
   const parts: string[] = [];
   for (const [id, items] of byObject) {
     if (id === "") parts.push(items.join(", "));
+    else if (isNewText(id)) parts.push(items.join(", "));
     else parts.push(`${objectLabel(slide.objects.find((o) => o.object_id === id))}: ${items.join(", ")}`);
   }
   return parts.join("; ");

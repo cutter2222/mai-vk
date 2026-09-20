@@ -1,8 +1,8 @@
 "use client";
 
 import { ActionIcon, Badge, Button, Group, Loader, SegmentedControl, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
-import { IconListCheck, IconPencil, IconStar, IconStarFilled, IconX } from "@tabler/icons-react";
-import { useEffect, useRef } from "react";
+import { IconArrowBackUp, IconArrowForwardUp, IconListCheck, IconPencil, IconStar, IconStarFilled, IconTextPlus, IconX } from "@tabler/icons-react";
+import { useEffect, useState } from "react";
 
 import type { Outline } from "@/components/common/SlideImage";
 import { PropertiesPanel } from "@/components/project/editor/PropertiesPanel";
@@ -13,6 +13,7 @@ import { RevisionsPanel } from "@/components/workspace/RevisionsPanel";
 import { VariantCard } from "@/components/workspace/VariantCard";
 import { api, type TemplateDetail } from "@/lib/api/client";
 import type { ContentPackage } from "@/lib/api/types";
+import { isHollow } from "@/lib/editor/hit";
 import { objectLabel } from "@/lib/editor/overrides";
 import { formatMs, STAGE_LABELS, VARIANT_LABELS } from "@/lib/format";
 import { useElapsed } from "@/lib/hooks/useElapsed";
@@ -37,22 +38,9 @@ const VARIANT_DOT: Record<string, string> = { pending: "gray", running: "blue", 
 export function GenerationPreview({ session, editor, templateDetail, pkg, projectId, chosenVariant, onChoose }: Props) {
   const { jobId, result, variant } = session;
   const elapsed = useElapsed(result?.created_at, session.terminal ? (result?.finished_at ?? result?.created_at) : null);
-  const panelRef = useRef<HTMLDivElement | null>(null);
-
-  // Высота панели свойств уходит в CSS-переменную: слайд ужимается, чтобы панель не уехала за экран.
-  useEffect(() => {
-    const el = panelRef.current;
-    const main = el?.closest<HTMLElement>(".viewer-main");
-    if (!el || !main) return;
-    const update = () => main.style.setProperty("--object-panel-h", `${el.getBoundingClientRect().height}px`);
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => {
-      ro.disconnect();
-      main.style.removeProperty("--object-panel-h");
-    };
-  }, [editor.editing, editor.selectedObjectId]);
+  // Свойства слайда (фон) — тот же ящик, что и свойства объекта, но открывается кнопкой:
+  // без выбранного объекта ящик закрыт, иначе правка снова начиналась бы с полей ни о чём.
+  const [slideProps, setSlideProps] = useState(false);
 
   if (!jobId || !result) return null;
 
@@ -69,18 +57,45 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
   const slides: ViewerSlide[] = deck
     ? editor.slides.map((s, position) => ({
         key: s.slide_id,
+        deckIndex: s.index,
         src: thumbByDeckIndex(s.index),
         label: `Слайд ${s.index + 1}`,
         flagged: issueSlides.has(s.index),
         edited: editor.changedSlides.some((c) => c.slide_id === s.slide_id) || (editor.orderChanged && deck.slides[position]?.slide_id !== s.slide_id),
       }))
-    : thumbs.map((t) => ({ key: t.name, src: thumbUrl(t.name), label: `Слайд ${t.slide_index + 1}`, flagged: issueSlides.has(t.slide_index) }));
+    : thumbs.map((t) => ({ key: t.name, deckIndex: t.slide_index, src: thumbUrl(t.name), label: `Слайд ${t.slide_index + 1}`, flagged: issueSlides.has(t.slide_index) }));
+  // Выбранный слайд хранится номером в колоде, а лента живёт местами: после перестановки в
+  // черновике место и номер расходятся, и раньше рамки аудита, миниатюра в чипе правки и
+  // холст редактора начинали показывать разные слайды.
+  const found = slides.findIndex((s) => s.deckIndex === session.slideIndex);
+  // Слайда с таким номером в варианте нет (короче предыдущего, ревизия пересобрана): берём
+  // ближайший существующий, а не первый, и сразу выравниваем выбор, чтобы правка ушла туда же.
+  const position = found >= 0 ? found : Math.min(Math.max(session.slideIndex, 0), Math.max(slides.length - 1, 0));
+  useEffect(() => {
+    if (found < 0 && slides.length > 0) {
+      const fallback = slides[Math.min(Math.max(session.slideIndex, 0), slides.length - 1)];
+      if (fallback && fallback.deckIndex !== session.slideIndex) session.selectSlide(fallback.deckIndex);
+    }
+  }, [found, slides, session]);
+  const selectByPosition = (pos: number) => {
+    const target = slides[pos] ?? slides[slides.length - 1];
+    if (target) session.selectSlide(target.deckIndex);
+  };
   const running = !session.terminal;
+  const multi = result.variants.length > 1;
+  // Пропорция слайда — из описания колоды: у шаблона не 16:9 рамки находок иначе считались бы
+  // от другого прямоугольника, чем показанная картинка.
+  const ratio =
+    deck?.slide_size?.width_emu && deck.slide_size.height_emu
+      ? deck.slide_size.width_emu / deck.slide_size.height_emu
+      : undefined;
   const isChosen = Boolean(variant && chosenVariant === variant.variant_id);
   const current = editor.currentSlide;
   const outlines: Outline[] =
     editor.available && current && !editor.editing
-      ? current.objects.filter((o) => o.kind !== "group" && o.kind !== "connector" && o.kind !== "other").map((o) => ({ id: o.object_id, bbox: o.bbox, label: objectLabel(o) }))
+      ? current.objects
+          .filter((o) => o.kind !== "group" && o.kind !== "connector" && o.kind !== "other")
+          .map((o) => ({ id: o.object_id, bbox: o.bbox, label: objectLabel(o), z: o.z_order, hollow: isHollow(o) }))
       : [];
   const layoutUrl =
     current && templateDetail?.previews.includes(`previews/layout-${current.layout_id}.png`) && templateDetail.profile
@@ -95,28 +110,60 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
   const openEditor = (objectId: string | null) => {
     editor.setEditing(true);
     editor.selectObject(objectId);
+    if (objectId) setSlideProps(false);
   };
+  const leaveEditor = () => {
+    editor.setEditing(false);
+    setSlideProps(false);
+  };
+  // Выбор на холсте: объект открывает ящик свойств, пустое место закрывает правку целиком —
+  // и ящик, и холст уходят одним движением, слайд возвращается к прежнему размеру.
+  // Нажатие по объекту на холсте неприменённого черновика снова включает правку.
+  const selectOnCanvas = (objectId: string | null) => {
+    if (objectId) {
+      if (!editor.editing) editor.setEditing(true);
+      editor.selectObject(objectId);
+      setSlideProps(false);
+      return;
+    }
+    leaveEditor();
+  };
+  // Холст показывает слайд и после выхода из правки, пока черновик этого слайда не применён:
+  // картинка ревизии ещё старая, и «Готово» выглядело так, будто набранный текст пропал.
+  const showCanvas = Boolean(deck && editor.previewSlide && (editor.editing || editor.slideDirty));
+  // Ящик правки выезжает под выбранный объект и уезжает, когда выделение снято нажатием на
+  // пустое место: вход в режим правки сам по себе полей не показывает.
+  const drawerOpen = editor.editing && (Boolean(editor.selectedObjectId) || slideProps);
 
   return (
     <>
       <div className="preview-toolbar">
-        <Group gap="sm" wrap="nowrap">
-          <SegmentedControl
-            size="xs"
-            value={variant?.variant_id ?? ""}
-            onChange={session.setSelectedVariant}
-            data={result.variants.map((v) => ({
-              value: v.variant_id,
-              label: (
-                <Group gap={6} wrap="nowrap">
-                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: `var(--mantine-color-${VARIANT_DOT[v.status] ?? "gray"}-6)` }} />
-                  {VARIANT_LABELS[v.variant_id] ?? v.variant_id}
-                </Group>
-              ),
-            }))}
-            data-testid="variant-switch"
-          />
-          {variant && (
+        {/* Переключатель вариантов и сравнение появляются, только когда вариантов больше одного:
+            у готовой презентации вариант один, и оба элемента были бы выбором без выбора. */}
+        <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
+          {multi ? (
+            <SegmentedControl
+              size="xs"
+              value={variant?.variant_id ?? ""}
+              onChange={session.setSelectedVariant}
+              data={result.variants.map((v) => ({
+                value: v.variant_id,
+                label: (
+                  <Group gap={6} wrap="nowrap">
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: `var(--mantine-color-${VARIANT_DOT[v.status] ?? "gray"}-6)` }} />
+                    {VARIANT_LABELS[v.variant_id] ?? v.variant_id}
+                  </Group>
+                ),
+              }))}
+              data-testid="variant-switch"
+            />
+          ) : variant ? (
+            <Group gap={7} wrap="nowrap" data-testid="variant-single">
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: `var(--mantine-color-${VARIANT_DOT[variant.status] ?? "gray"}-6)`, flex: "0 0 auto" }} />
+              <Text size="sm" fw={500} truncate>{VARIANT_LABELS[variant.variant_id] ?? variant.variant_id}</Text>
+            </Group>
+          ) : null}
+          {variant && multi && (
             <Tooltip label={isChosen ? "Выбранный вариант для демонстрации" : "Отметить как выбранный для демонстрации"}>
               <ActionIcon variant="subtle" color={isChosen ? "yellow" : "gray"} onClick={() => onChoose(isChosen ? null : variant.variant_id)} aria-label="Выбрать вариант" data-testid={`choose-${variant.variant_id}`}>
                 {isChosen ? <IconStarFilled size={18} /> : <IconStar size={18} />}
@@ -124,14 +171,16 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
             </Tooltip>
           )}
         </Group>
-        <Group gap="sm" wrap="nowrap">
-          <SegmentedControl size="xs" value={session.layout} onChange={(v) => session.setLayout(v as "single" | "side")} data={[{ value: "single", label: "Один вариант" }, { value: "side", label: "Сравнить" }]} data-testid="layout-switch" />
+        <Group gap="xs" wrap="nowrap">
+          {multi && (
+            <SegmentedControl size="xs" value={session.layout} onChange={(v) => session.setLayout(v as "single" | "side")} data={[{ value: "single", label: "Один вариант" }, { value: "side", label: "Сравнить" }]} data-testid="layout-switch" />
+          )}
           {editor.available && (
             <Button
               size="xs"
               variant={editor.editing ? "filled" : "default"}
               leftSection={<IconPencil size={14} />}
-              onClick={() => (editor.editing ? editor.setEditing(false) : openEditor(null))}
+              onClick={() => (editor.editing ? leaveEditor() : openEditor(null))}
               data-testid="toggle-editor"
             >
               {editor.editing ? "Готово" : "Редактировать"}
@@ -144,7 +193,7 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
               leftSection={<IconListCheck size={14} />}
               onClick={() => {
                 session.setLayout("single");
-                editor.setEditing(false);
+                leaveEditor();
                 session.setAuditOpen(!session.auditOpen);
               }}
               data-testid="toggle-audit"
@@ -156,11 +205,9 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
       </div>
 
       {running && (
-        <div style={{ padding: "8px 20px", borderBottom: "1px solid var(--mantine-color-gray-2)", background: "var(--mantine-color-body)" }} data-testid="preview-progress">
-          <Group justify="space-between" wrap="nowrap">
-            <Group gap={6} wrap="nowrap"><Loader size={12} /><Text size="xs">{result.progress?.message ?? STAGE_LABELS[result.stage]}</Text></Group>
-            <Text size="xs" fw={600} style={{ whiteSpace: "nowrap" }}>{formatMs(elapsed)}</Text>
-          </Group>
+        <div className="preview-progress" data-testid="preview-progress">
+          <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}><Loader size={12} /><Text size="xs" truncate>{result.progress?.message ?? STAGE_LABELS[result.stage]}</Text></Group>
+          <Text size="xs" fw={600} style={{ whiteSpace: "nowrap" }}>{formatMs(elapsed)}</Text>
         </div>
       )}
 
@@ -192,8 +239,9 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
       ) : variant ? (
         <SlideViewer
           slides={slides}
-          index={session.slideIndex}
-          onIndex={session.selectSlide}
+          ratio={ratio}
+          index={position}
+          onIndex={selectByPosition}
           overlays={editor.editing ? [] : session.overlays}
           activeOverlay={session.activeIssue}
           onOverlayClick={session.setActiveIssue}
@@ -202,16 +250,17 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
           editing={editor.editing}
           onReorder={editor.available ? editor.reorder : undefined}
           stage={
-            editor.editing && deck && editor.previewSlide ? (
+            showCanvas && deck && editor.previewSlide ? (
               <SlideCanvas
                 deck={deck}
                 slide={editor.previewSlide}
                 layoutUrl={layoutUrl}
                 thumbUrl={current ? thumbByDeckIndex(current.index) : undefined}
                 mediaUrl={mediaUrl}
-                selectedObjectId={editor.selectedObjectId}
-                onSelect={editor.selectObject}
-                editable
+                selectedObjectId={editor.editing ? editor.selectedObjectId : null}
+                onSelect={selectOnCanvas}
+                editable={editor.editing}
+                onDelete={editor.deleteObject}
                 onGeometry={(objectId, bbox) => {
                   const obj = current?.objects.find((o) => o.object_id === objectId);
                   editor.setOp({ op: "geometry", target: { object_id: objectId, ...(obj?.source_object_id ? { source_object_id: obj.source_object_id } : {}) }, geometry: { bbox } });
@@ -226,8 +275,13 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
               <Text size="xs" c="dimmed">ревизия {session.viewRevision}</Text>
               {session.viewRevision !== session.currentRevision && <Badge size="xs" color="orange" variant="light">устаревшая</Badge>}
               {variant.status === "running" && <Badge size="xs" color="blue" variant="light" data-testid="preview-provisional">предварительный показ · сборка идёт</Badge>}
-              {editor.dirty && <Badge size="xs" color="graphite" variant="light" data-testid="draft-badge">черновик: {editor.draftCount}</Badge>}
-              {variant.audit && variant.audit.status !== "pending" && !editor.editing && (
+              {editor.dirty && <Badge size="xs" color="ink" variant="light" data-testid="draft-badge">черновик: {editor.draftCount}</Badge>}
+              {editor.slideDirty && !editor.editing && (
+                <Badge size="xs" color="orange" variant="light" data-testid="draft-preview">показан черновик · нажмите «Применить»</Badge>
+              )}
+              {/* При открытой панели аудита сводка находок не дублируется в подписи: там она
+                  подробнее, а в узкой строке обрезалась до «80 …». */}
+              {variant.audit && variant.audit.status !== "pending" && !editor.editing && !session.auditOpen && (
                 <Badge size="xs" variant="light" color={variant.audit.status === "running" ? "blue" : variant.audit.issues_total ? "yellow" : variant.audit.coverage_complete ? "green" : "gray"}>
                   {variant.audit.status === "running" ? "аудит идёт" : `${variant.audit.issues_total} находок${variant.audit.coverage_complete ? "" : " · аудит неполный"}`}
                 </Badge>
@@ -235,14 +289,109 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
             </>
           }
           actions={
-            <Tooltip label="Клавиши ↑ ↓ и ← → листают слайды, Esc снимает выделение">
-              <Button variant="subtle" size="compact-xs" onClick={() => session.setShowHowBuilt(!session.showHowBuilt)} data-testid="toggle-how-built">
-                {session.showHowBuilt ? "Скрыть «как собран»" : "Как собран слайд"}
-              </Button>
-            </Tooltip>
+            <>
+              {/* В правке под слайдом только то, что относится к черновику: фон слайда и его
+                  применение. Поля объекта живут в ящике справа и появляются по выбору объекта. */}
+              {editor.editing && (
+                <Button
+                  variant="subtle"
+                  size="compact-xs"
+                  leftSection={<IconTextPlus size={14} />}
+                  onClick={editor.addText}
+                  data-testid="editor-add-text"
+                >
+                  Текст
+                </Button>
+              )}
+              {editor.editing && (
+                <Button
+                  variant={slideProps ? "light" : "subtle"}
+                  size="compact-xs"
+                  onClick={() => {
+                    if (slideProps) {
+                      setSlideProps(false);
+                      return;
+                    }
+                    editor.selectObject(null);
+                    setSlideProps(true);
+                  }}
+                  data-testid="toggle-slide-props"
+                >
+                  Фон слайда
+                </Button>
+              )}
+              {/* Шаги черновика: те же Ctrl+Z и Ctrl+Shift+Z, но видимые. Кнопки остаются и после
+                  выхода из правки — черновик жив, пока его не применили или не отменили. */}
+              {editor.available && (editor.editing || editor.dirty) && (
+                <>
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray"
+                    size="sm"
+                    disabled={!editor.canUndo}
+                    onClick={editor.undo}
+                    title="Шаг назад · Ctrl+Z"
+                    aria-label="Шаг назад"
+                    data-testid="editor-undo"
+                  >
+                    <IconArrowBackUp size={16} />
+                  </ActionIcon>
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray"
+                    size="sm"
+                    disabled={!editor.canRedo}
+                    onClick={editor.redo}
+                    title="Шаг вперёд · Ctrl+Shift+Z"
+                    aria-label="Шаг вперёд"
+                    data-testid="editor-redo"
+                  >
+                    <IconArrowForwardUp size={16} />
+                  </ActionIcon>
+                </>
+              )}
+              {editor.dirty && !drawerOpen && (
+                <>
+                  <Button variant="subtle" color="gray" size="compact-xs" onClick={editor.discard} data-testid="editor-cancel-bar">
+                    Отменить
+                  </Button>
+                  <Button size="compact-xs" loading={editor.applying} onClick={() => void editor.apply()} data-testid="editor-apply-bar">
+                    Применить
+                  </Button>
+                </>
+              )}
+                <Tooltip label="↑ ↓ и ← → листают слайды, Esc закрывает правку, Ctrl+Z отменяет шаг">
+                <Button variant="subtle" size="compact-xs" onClick={() => session.setShowHowBuilt(!session.showHowBuilt)} data-testid="toggle-how-built">
+                  {session.showHowBuilt ? "Скрыть «как собран»" : "Как собран слайд"}
+                </Button>
+              </Tooltip>
+            </>
           }
           aside={
-            session.auditOpen && !editor.editing ? (
+            drawerOpen ? (
+              <div className="editor-drawer" data-testid="editor-drawer">
+                <Group justify="space-between" mb="xs">
+                  <Text fw={600}>{editor.selectedObjectId ? "Объект" : "Слайд"}</Text>
+                  <Button
+                    size="compact-xs"
+                    variant="subtle"
+                    color="gray"
+                    onClick={() => {
+                      editor.selectObject(null);
+                      setSlideProps(false);
+                    }}
+                    data-testid="editor-done"
+                  >
+                    Закрыть
+                  </Button>
+                </Group>
+                {editor.deckError ? (
+                  <Text size="xs" c="red">Описание колоды не загружено: {editor.deckError}</Text>
+                ) : (
+                  <PropertiesPanel editor={editor} profile={templateDetail?.profile} pkg={pkg} projectId={projectId} />
+                )}
+              </div>
+            ) : session.auditOpen && !editor.editing ? (
               <div className="audit-drawer" data-testid="audit-drawer">
                 <Group justify="space-between" mb="sm">
                   <Text fw={600}>Аудит</Text>
@@ -275,17 +424,10 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
             ) : null
           }
         >
-          <Stack gap="md" mt="xs">
-            {editor.editing && (
-              <div ref={panelRef}>
-                {editor.deckError ? (
-                  <Text size="xs" c="red">Описание колоды не загружено: {editor.deckError}</Text>
-                ) : (
-                  <PropertiesPanel editor={editor} profile={templateDetail?.profile} pkg={pkg} projectId={projectId} />
-                )}
-              </div>
+          <Stack gap="md">
+            {!editor.editing && variant.rationale && (
+              <Text size="xs" c="dimmed" lineClamp={2} title={variant.rationale}>{variant.rationale}</Text>
             )}
-            {!editor.editing && <Text size="xs" c="dimmed" lineClamp={2} title={variant.rationale}>Ось «плотность»: {variant.rationale}</Text>}
             {session.showHowBuilt && <HowBuiltPanel jobId={jobId} result={result} variantId={variant.variant_id} slideIndex={current?.index ?? session.slideIndex} />}
           </Stack>
         </SlideViewer>

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { ComposedDeck } from "@/lib/api/types";
+import { EDGE_PX, hitTest, isHollow } from "@/lib/editor/hit";
 import type { DeckObject, DeckSlide } from "@/lib/editor/overrides";
 
 const EMU_PER_PT = 12700;
@@ -31,6 +32,8 @@ interface Props {
   /** Перетаскивание и ручки включены; иначе холст только показывает и выделяет. */
   editable: boolean;
   onGeometry?: (objectId: string, bbox: CanvasBox) => void;
+  /** Delete или Backspace на выделенном объекте. */
+  onDelete?: (objectId: string) => void;
   /** Тон подложки, если превью макета нет: цвет фона. */
   fallbackBackground?: string;
 }
@@ -48,9 +51,10 @@ const CROP_KINDS = new Set(["table", "chart", "other", "connector"]);
  * фигуры — заливка и линия; таблицы и диаграммы — вырезка из миниатюры. Клик выделяет объект,
  * перетаскивание и ручки меняют положение и размер в долях слайда, стрелки двигают на шаг.
  */
-export function SlideCanvas({ deck, slide, layoutUrl, thumbUrl, mediaUrl, selectedObjectId, onSelect, editable, onGeometry, fallbackBackground }: Props) {
+export function SlideCanvas({ deck, slide, layoutUrl, thumbUrl, mediaUrl, selectedObjectId, onSelect, editable, onGeometry, onDelete, fallbackBackground }: Props) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [hovered, setHovered] = useState<string | null>(null);
   const widthPt = (deck.slide_size.width_emu || 12192000) / EMU_PER_PT;
   const ratio = (deck.slide_size.width_emu || 12192000) / (deck.slide_size.height_emu || 6858000);
   const background = slide.background ?? { kind: "inherited" };
@@ -65,10 +69,74 @@ export function SlideCanvas({ deck, slide, layoutUrl, thumbUrl, mediaUrl, select
     return [dx / rect.width, dy / rect.height];
   }, []);
 
-  const startMove = (e: React.PointerEvent, obj: DeckObject) => {
+  /** Прямоугольники самих букв объекта (в долях слайда): рамка текста бывает втрое выше строки. */
+  const glyphBox = useCallback((objectId: string): CanvasBox | null => {
+    const root = ref.current;
+    const el = root?.querySelector<HTMLElement>(`[data-testid="canvas-object-${objectId}"]`);
+    if (!root || !el) return null;
+    const paragraphs = [...el.querySelectorAll("p")];
+    if (paragraphs.length === 0) return null;
+    const canvas = root.getBoundingClientRect();
+    if (!canvas.width || !canvas.height) return null;
+    let left = Infinity;
+    let top = Infinity;
+    let right = -Infinity;
+    let bottom = -Infinity;
+    for (const par of paragraphs) {
+      const range = document.createRange();
+      range.selectNodeContents(par);
+      for (const r of range.getClientRects()) {
+        if (r.width < 1 || r.height < 1) continue;
+        left = Math.min(left, r.left);
+        top = Math.min(top, r.top);
+        right = Math.max(right, r.right);
+        bottom = Math.max(bottom, r.bottom);
+      }
+    }
+    if (!Number.isFinite(left) || right <= left || bottom <= top) return null;
+    return {
+      x: (left - canvas.left) / canvas.width,
+      y: (top - canvas.top) / canvas.height,
+      width: (right - left) / canvas.width,
+      height: (bottom - top) / canvas.height,
+    };
+  }, []);
+
+  /**
+   * Объект под точкой: сверху вниз по стопке. У текста ловят сами буквы, а не рамка вокруг
+   * них: место́ рамки часто втрое больше строки, и клик рядом с текстом выделял «контейнер».
+   * Мимо букв рамка ведёт себя как пустая — ловит только края и пропускает клик ниже.
+   */
+  const hit = (clientX: number, clientY: number): DeckObject | null => {
+    const rect = ref.current?.getBoundingClientRect();
+    if (!rect || !rect.width || !rect.height) return null;
+    const fx = (clientX - rect.left) / rect.width;
+    const fy = (clientY - rect.top) / rect.height;
+    const padX = EDGE_PX / rect.width;
+    const padY = EDGE_PX / rect.height;
+    // Буквы меряются только у тех объектов, чья рамка накрыла точку: на каждое движение мыши
+    // обходить весь слайд незачем.
+    const near = objects.filter((o) => fx >= o.bbox.x && fx <= o.bbox.x + o.bbox.width && fy >= o.bbox.y && fy <= o.bbox.y + o.bbox.height);
+    const found = hitTest(
+      near.map((o) => {
+        const g = glyphBox(o.object_id);
+        const inGlyphs = g !== null && fx >= g.x - padX && fx <= g.x + g.width + padX && fy >= g.y - padY && fy <= g.y + g.height + padY;
+        return { obj: o, bbox: o.bbox, z: o.z_order, hollow: g ? !inGlyphs : isHollow(o) };
+      }),
+      fx,
+      fy,
+      padX,
+      padY,
+    );
+    return found?.obj ?? null;
+  };
+
+  /** Нажатие на слайде: выбран тот объект, что под указателем; на пустом месте выделение снимается. */
+  const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
-    onSelect(obj.object_id);
-    if (!editable || !movable(obj)) return;
+    const obj = hit(e.clientX, e.clientY);
+    onSelect(obj?.object_id ?? null);
+    if (!obj || !editable || !movable(obj)) return;
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     setDrag({ kind: "move", id: obj.object_id, startX: e.clientX, startY: e.clientY, box: { ...obj.bbox }, current: { ...obj.bbox }, moved: false });
@@ -83,7 +151,14 @@ export function SlideCanvas({ deck, slide, layoutUrl, thumbUrl, mediaUrl, select
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!drag) return;
+    if (!drag) {
+      // Подсвечивается тот объект, который выделится нажатием: подсветка по :hover бралась от
+      // самого верхнего прямоугольника DOM, и контейнер загорался, пока указатель шёл к буквам.
+      const under = hit(e.clientX, e.clientY);
+      const id = under?.object_id ?? null;
+      if (id !== hovered) setHovered(id);
+      return;
+    }
     const [dx, dy] = toFraction(e.clientX - drag.startX, e.clientY - drag.startY);
     const moved = drag.moved || Math.abs(e.clientX - drag.startX) > 2 || Math.abs(e.clientY - drag.startY) > 2;
     let current: CanvasBox;
@@ -108,6 +183,13 @@ export function SlideCanvas({ deck, slide, layoutUrl, thumbUrl, mediaUrl, select
       return;
     }
     if (!editable || !selectedObjectId) return;
+    // Delete (и Backspace — на маке это «стереть») убирает выделенный объект со слайда.
+    if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      e.stopPropagation();
+      onDelete?.(selectedObjectId);
+      return;
+    }
     const obj = slide.objects.find((o) => o.object_id === selectedObjectId);
     if (!obj || !movable(obj)) return;
     const step = e.shiftKey ? NUDGE_BIG : NUDGE;
@@ -126,6 +208,9 @@ export function SlideCanvas({ deck, slide, layoutUrl, thumbUrl, mediaUrl, select
   const objects = [...slide.objects].filter((o) => o.kind !== "group").sort((a, b) => a.z_order - b.z_order);
   const selected = objects.find((o) => o.object_id === selectedObjectId);
   const selectedBox = drag && selected && drag.id === selected.object_id ? drag.current : selected?.bbox;
+  // Подсказка наведения обводит то, что видно: буквы у текста, рамку у остальных объектов.
+  const hoverObj = hovered && hovered !== selectedObjectId ? objects.find((o) => o.object_id === hovered) : undefined;
+  const hoverBox = hoverObj ? (glyphBox(hoverObj.object_id) ?? hoverObj.bbox) : null;
 
   return (
     <div
@@ -138,10 +223,9 @@ export function SlideCanvas({ deck, slide, layoutUrl, thumbUrl, mediaUrl, select
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
+      onPointerLeave={() => setHovered(null)}
       onKeyDown={onKeyDown}
-      onPointerDown={(e) => {
-        if (e.target === e.currentTarget) onSelect(null);
-      }}
+      onPointerDown={onPointerDown}
     >
       {showLayout && layoutUrl && (
         // eslint-disable-next-line @next/next/no-img-element
@@ -162,10 +246,11 @@ export function SlideCanvas({ deck, slide, layoutUrl, thumbUrl, mediaUrl, select
             thumbUrl={thumbUrl}
             mediaUrl={mediaUrl}
             selected={obj.object_id === selectedObjectId}
-            onPointerDown={(e) => startMove(e, obj)}
+            hovered={obj.object_id === hovered}
           />
         );
       })}
+      {hoverObj && hoverBox && !drag && <div className="canvas-hover" style={percentBox(hoverBox)} data-testid="canvas-hover" />}
       {editable && selected && selectedBox && movable(selected) && (
         <div className="canvas-selection" style={percentBox(selectedBox)} data-testid="canvas-selection">
           {HANDLES.map((h) => (
@@ -213,10 +298,10 @@ interface ObjectProps {
   thumbUrl: string | undefined;
   mediaUrl: (assetId: string) => string | undefined;
   selected: boolean;
-  onPointerDown: (e: React.PointerEvent) => void;
+  hovered: boolean;
 }
 
-function CanvasObject({ obj, box, widthPt, thumbUrl, mediaUrl, selected, onPointerDown }: ObjectProps) {
+function CanvasObject({ obj, box, widthPt, thumbUrl, mediaUrl, selected, hovered }: ObjectProps) {
   const style: React.CSSProperties = { ...percentBox(box) };
   if (obj.rotation_deg) style.transform = `rotate(${obj.rotation_deg}deg)`;
   if (obj.fill?.kind === "solid" && obj.fill.color) style.background = obj.fill.color;
@@ -228,8 +313,8 @@ function CanvasObject({ obj, box, widthPt, thumbUrl, mediaUrl, selected, onPoint
     "data-testid": `canvas-object-${obj.object_id}`,
     "data-kind": obj.kind,
     "data-selected": selected || undefined,
+    "data-hover": hovered || undefined,
     "data-user": obj.user_overrides && obj.user_overrides.length > 0 ? true : undefined,
-    onPointerDown,
     title: obj.name ?? undefined,
   } as const;
 

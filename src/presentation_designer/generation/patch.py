@@ -27,13 +27,16 @@ JsonDict = dict[str, Any]
 PATCH_VERSION = "0.1.0"
 PATCH_SCHEMA_VERSION = "1.0"
 
-# Какие виды объектов ComposedDeck принимают операцию.
+# Какие виды объектов ComposedDeck принимают операцию. `delete` подходит любому объекту,
+# `add_text` объекта в базовой ревизии не имеет — обе проверяются отдельно.
 OP_KINDS: dict[str, tuple[str, ...]] = {
     "text": ("text", "placeholder_empty", "shape"),
     "style": ("text", "placeholder_empty", "shape"),
     "picture": ("picture",),
     "geometry": ("text", "placeholder_empty", "shape", "picture", "table", "chart", "group"),
 }
+# Что можно делать со своей надписью, созданной этим же патчем.
+NEW_TEXT_OPS = ("text", "style", "geometry", "delete")
 SLOT_LABELS = {
     "title": "заголовок",
     "subtitle": "подзаголовок",
@@ -142,12 +145,43 @@ def validate_patch(
             out.append(Violation("slide_unknown", f"слайда {slide_id} нет в плане", spath))
             continue
         slide_objects = objects.get(slide_id)
+        # Свои надписи этого патча: остальные правки могут адресовать их придуманным id.
+        created = {
+            str((o.get("target") or {}).get("object_id") or "")
+            for o in entry.get("overrides") or []
+            if str(o.get("op") or "") == "add_text"
+        }
         for i, override in enumerate(entry.get("overrides") or []):
             op = str(override.get("op") or "")
             opath = f"{spath}.overrides[{i}]"
             if op == "background":
                 continue
             object_id = str((override.get("target") or {}).get("object_id") or "")
+            if op == "add_text":
+                if not str(override.get("text") or "").strip():
+                    out.append(Violation("text_empty", "у новой надписи нет текста", opath))
+                if not ((override.get("geometry") or {}).get("bbox")):
+                    out.append(Violation("bbox_missing", "у новой надписи нет рамки", opath))
+                if slide_objects is not None and object_id in slide_objects:
+                    out.append(
+                        Violation(
+                            "object_exists",
+                            f"объект {object_id} на слайде {slide_id} уже есть: "
+                            "своя надпись не может занять чужой адрес",
+                            opath,
+                        )
+                    )
+                continue
+            if object_id in created:
+                if op not in NEW_TEXT_OPS:
+                    out.append(
+                        Violation(
+                            "override_unsupported",
+                            f"правка {op} не подходит своей надписи ({object_id})",
+                            opath,
+                        )
+                    )
+                continue
             if slide_objects is None:
                 continue
             obj = slide_objects.get(object_id)
@@ -208,7 +242,8 @@ def patch_is_noop(patch: JsonDict, plan: JsonDict) -> bool:
 
 def _object_label(obj: JsonDict | None, object_id: str) -> str:
     if obj is None:
-        return f"объект {object_id}"
+        # Своей надписи в базовой ревизии нет: её и называем по-человечески.
+        return "своя надпись" if object_id.startswith("usr_") else f"объект {object_id}"
     slot_kind = str(obj.get("slot_kind") or obj.get("block_kind") or "")
     if slot_kind in SLOT_LABELS:
         return SLOT_LABELS[slot_kind]
@@ -225,6 +260,12 @@ def _describe_override(override: JsonDict, obj: JsonDict | None) -> str:
     op = str(override.get("op") or "")
     object_id = str((override.get("target") or {}).get("object_id") or "")
     label = _object_label(obj, object_id)
+    if op == "add_text":
+        text = " ".join(str(override.get("text") or "").split())
+        short = text[:24] + ("…" if len(text) > 24 else "")
+        return f"новая надпись «{short}»" if short else "новая надпись"
+    if op == "delete":
+        return f"{label}: удалён"
     if op == "text":
         return f"{label}: текст"
     if op == "style":

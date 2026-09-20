@@ -84,11 +84,28 @@ export function buildDeck(g: MockGeneration, variantId: string, revision: number
       content_source: "template",
       picture: { asset_id: "asset_logo", natural_width_px: 64, natural_height_px: 64, origin: "template", fit: "as_is" },
     };
+    const removed = new Set(overrides.filter((o) => o.op === "delete").map((o) => o.target?.object_id));
     const objects: DeckObject[] = [
       textObject("2", "Title 1", "title", { x: 0.05, y: 0.06, width: 0.9, height: 0.12 }, title, TITLE_FONT, 1),
       textObject("3", "Body 2", "body", { x: 0.05, y: 0.3, width: 0.6, height: 0.4 }, `Вариант ${variantId}: тезис слайда и пояснение к нему`, BODY_FONT, 2),
       logo,
-    ].map((o) => applyEcho(o, overrides));
+      // Свои надписи правки: в настоящей колоде их создаёт композер, здесь — сам эхо-слой.
+      ...overrides
+        .filter((o) => o.op === "add_text" && o.geometry?.bbox)
+        .map((o, i) =>
+          textObject(
+            String(o.target?.object_id ?? `usr_${i}`),
+            "Своя надпись",
+            "body",
+            { ...o.geometry!.bbox },
+            o.text ?? "",
+            { ...BODY_FONT, ...(o.style?.font ?? {}) },
+            10 + i,
+          ),
+        ),
+    ]
+      .filter((o) => !removed.has(o.object_id))
+      .map((o) => applyEcho(o, overrides));
     const bg = overrides.find((o) => o.op === "background")?.background;
     const slide: DeckSlide = {
       slide_id: slideId,

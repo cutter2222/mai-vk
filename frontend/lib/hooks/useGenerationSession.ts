@@ -137,7 +137,24 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editDone, editJob, handledEdit]);
 
-  const maxSlides = useMemo(() => Math.max(1, ...(result?.variants.map((v) => v.artifacts?.thumbnails?.length ?? v.slide_count ?? 0) ?? [1])), [result]);
+  // Слайдов у показываемого варианта, а не у самого длинного: варианты разной длины, и с
+  // общим пределом стрелка с последнего слайда компактного уезжала на несуществующий номер,
+  // а лента, не найдя его, показывала первый слайд — со стороны это «провалился в другой слайд».
+  const variantSlides = useMemo(
+    () => variant?.artifacts?.thumbnails?.length ?? variant?.slide_count ?? 0,
+    [variant],
+  );
+  const maxSlides = useMemo(
+    () =>
+      variantSlides ||
+      Math.max(1, ...(result?.variants.map((v) => v.artifacts?.thumbnails?.length ?? v.slide_count ?? 0) ?? [1])),
+    [variantSlides, result],
+  );
+
+  // Смена варианта на более короткий: выбранный слайд подтягивается к последнему существующему.
+  useEffect(() => {
+    if (variantSlides > 0 && slideIndex > variantSlides - 1) setSlideIndex(variantSlides - 1);
+  }, [variantSlides, slideIndex]);
 
   useEffect(() => {
     if (!jobId) return;

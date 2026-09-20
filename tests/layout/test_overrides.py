@@ -524,3 +524,55 @@ def test_object_ids_stable_across_recompose(
     ids_second = [[o["object_id"] for o in s["objects"]] for s in second.deck["slides"]]
     assert ids_first == ids_second
     assert any(o["content_source"] == "generated" for o in first.deck["slides"][1]["objects"])
+
+def test_delete_removes_object_and_add_text_creates_shape(
+    rich_profile: dict[str, Any],
+    rich_template_path: pathlib.Path,
+    example_package: dict[str, Any],
+    tmp_path: Any,
+) -> None:
+    """Удаление объекта и своя надпись: объекта в колоде нет, надпись есть с текстом и
+    оформлением, правки на её придуманный адрес попадают в неё же, а id повторяем."""
+    cards = _cards(rich_profile)
+    body_id = _ref(cards, "body_1")
+    label_id = _ref(cards, "label_1")
+    overrides = [
+        {"op": "delete", "target": {"object_id": body_id, "slot_id": "body_1"}},
+        {
+            "op": "add_text",
+            "target": {"object_id": "usr_a"},
+            "text": "Своя надпись",
+            "geometry": {"bbox": {"x": 0.2, "y": 0.4, "width": 0.4, "height": 0.1}},
+            "style": {"font": {"size_pt": 20, "color": "#123456", "bold": True}},
+        },
+        # правка на придуманный адрес должна найти созданную надпись
+        {
+            "op": "geometry",
+            "target": {"object_id": "usr_a"},
+            "geometry": {"bbox": {"x": 0.25, "y": 0.6, "width": 0.5, "height": 0.12}},
+        },
+    ]
+    plan = _cards_plan(rich_profile, overrides)
+    result = _compose(plan, rich_profile, rich_template_path, example_package, tmp_path / "t.pptx")
+    objects = _objects(result)
+    assert body_id not in objects, "удалённый объект в колоду не попал"
+    assert label_id in objects, "соседние объекты на месте"
+
+    added = [o for o in objects.values() if (o.get("text") or {}).get("plain") == "Своя надпись"]
+    assert len(added) == 1, "своя надпись одна"
+    new_id = added[0]["object_id"]
+    assert new_id not in ("usr_a", body_id), "адрес редактора номером фигуры не стал"
+    assert new_id.isdigit(), "у фигуры числовой номер"
+    bbox = added[0]["bbox"]
+    assert abs(bbox["x"] - 0.25) < 0.01 and abs(bbox["y"] - 0.6) < 0.01, "положение из правки"
+    assert abs(bbox["width"] - 0.5) < 0.01 and abs(bbox["height"] - 0.12) < 0.01
+
+    shape = _shape(result, new_id)
+    rpr = shape._element.findall(".//a:r/a:rPr", NS)
+    assert rpr and rpr[0].get("sz") == "2000" and rpr[0].get("b") == "1"
+    fill = rpr[0].find("a:solidFill/a:srgbClr", NS)
+    assert fill is not None and fill.get("val") == "123456"
+
+    # тот же план — та же нумерация: ревизия пересобирается из плана
+    again = _compose(plan, rich_profile, rich_template_path, example_package, tmp_path / "t2.pptx")
+    assert set(_objects(again)) == set(objects)

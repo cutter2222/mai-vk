@@ -57,7 +57,7 @@ export function PropertiesPanel({ editor, profile, pkg, projectId }: Props) {
                 {capitalize(objectLabel(obj))}
               </Text>
               <Badge size="xs" variant="light" color="gray">{KIND_LABELS[obj.kind] ?? obj.kind}</Badge>
-              {edited && <Badge size="xs" variant="light" color="graphite" data-testid="badge-user-edited">изменено вручную</Badge>}
+              {edited && <Badge size="xs" variant="light" color="ink" data-testid="badge-user-edited">изменено вручную</Badge>}
               {outside.length > 0 && (
                 <Tooltip label={outside.join(", ")}>
                   <Badge size="xs" variant="light" color="yellow" data-testid="badge-off-template">не из шаблона</Badge>
@@ -68,13 +68,25 @@ export function PropertiesPanel({ editor, profile, pkg, projectId }: Props) {
             <Text fw={600} size="sm">Слайд {slide ? editor.slideOrder.indexOf(slide.slide_id) + 1 : ""}</Text>
           )}
           <Text size="xs" c="dimmed" mt={2}>
-            {obj ? "Правки видны сразу; точная картинка появится после «Применить»." : "Нажмите объект на слайде, чтобы изменить текст, оформление или положение."}
+            {obj ? "Правки видны сразу; точная картинка появится после «Применить». Delete убирает объект." : "Нажмите объект на слайде, чтобы изменить текст, оформление или положение."}
           </Text>
         </div>
         <Group gap="xs" wrap="nowrap">
           {obj && edited && (
             <Button size="compact-xs" variant="subtle" color="gray" onClick={() => editor.resetObject(obj.object_id)} data-testid="editor-reset-object">
               Сбросить объект
+            </Button>
+          )}
+          {obj && (
+            <Button
+              size="compact-xs"
+              variant="subtle"
+              color="red"
+              onClick={() => editor.deleteObject(obj.object_id)}
+              title="Убрать объект со слайда · Delete"
+              data-testid="editor-delete-object"
+            >
+              Удалить
             </Button>
           )}
         </Group>
@@ -86,7 +98,8 @@ export function PropertiesPanel({ editor, profile, pkg, projectId }: Props) {
       {obj && !canText && !canMove && <Text size="xs" c="dimmed">Этот объект правится только через чат.</Text>}
       {!obj && <BackgroundProperties editor={editor} tokens={editor.tokens} picker={pickerProps} />}
 
-      <Group justify="space-between" mt="md" pt="sm" style={{ borderTop: "1px solid var(--mantine-color-gray-2)" }} wrap="wrap">
+      {/* Подвал прилипает к низу колонки: «Применить» всегда на виду, сколько бы полей ни было. */}
+      <Group className="object-panel-foot" justify="space-between" wrap="wrap">
         <Text size="xs" c="dimmed" data-testid="editor-draft-count">
           {editor.dirty ? `Черновик: ${editor.draftCount} ${plural(editor.draftCount, "правка", "правки", "правок")}${editor.orderChanged ? ", порядок изменён" : ""}` : "Черновик пуст"}
         </Text>

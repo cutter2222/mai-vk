@@ -16,7 +16,14 @@ geometry → picture, фон слайда последним; внутри од�
   с обрезкой `cover` обрезка пересчитывается под новую рамку;
 * `picture` — картинка или иконка из ресурсов шаблона, пакета или файла проекта, с
   режимом `cover`/`contain` и перекраской монохромной иконки;
-* `background` — сплошной цвет, картинка или наследование от макета.
+* `background` — сплошной цвет, картинка или наследование от макета;
+* `delete` — объект убирается со слайда (опустевшие группы и лишние связи снимаются);
+* `add_text` — своя надпись: рамка из `geometry`, текст из `text`, оформление из `style`.
+
+Свою надпись редактор адресует придуманным `object_id` (объекта с таким идентификатором в
+базовой ревизии нет). Идентификатор готовой фигуры выводится из него детерминированно, поэтому
+пересборка ревизии из плана повторяема, а правки текста и положения той же надписи в том же
+патче находят её по придуманному адресу.
 
 Значения вне токенов шаблона (гарнитура, кегль, цвет) применяются, но помечаются
 предупреждением `override_off_template`; текст, не помещающийся в рамку по метрикам
@@ -28,6 +35,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import pathlib
+import zlib
 from typing import Any
 
 from presentation_designer.generation import capacity
@@ -39,10 +47,13 @@ from presentation_designer.layout.composed import SlideRecord, SlotFill
 from presentation_designer.layout.images import cover_crop, image_size, read_crop, set_crop
 from presentation_designer.layout.ooxml import NS_R
 from presentation_designer.layout.shapes import (
+    CNVPR,
     element_box,
     element_box_absolute,
+    element_ids,
     emu_box,
     part_by_name,
+    remove_shape,
     set_element_box_absolute,
     shape_element,
 )
@@ -50,7 +61,17 @@ from presentation_designer.layout.shapes import (
 log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
-OP_ORDER = {"text": 0, "style": 1, "geometry": 2, "picture": 3, "background": 4}
+# Сначала появляются свои надписи, потом правки (в том числе их же), удаление — последним:
+# иначе правка искала бы объект, которого уже нет.
+OP_ORDER = {
+    "add_text": 0,
+    "text": 1,
+    "style": 2,
+    "geometry": 3,
+    "picture": 4,
+    "delete": 5,
+    "background": 6,
+}
 A_BLIP = "{http://schemas.openxmlformats.org/drawingml/2006/main}blip"
 
 
@@ -134,6 +155,8 @@ def apply_overrides(
     fills_by_id = {f.element_id: f for f in record.fills}
     fills_by_slot = {f.slot_id: f for f in record.fills}
     touched: dict[str, _Touched] = {}
+    # Свои надписи этого патча: остальные правки находят их по придуманному адресу.
+    created: dict[str, Any] = {}
     ordered = sorted(
         enumerate(overrides),
         key=lambda item: (OP_ORDER.get(str(item[1].get("op")), 9), item[0]),
@@ -146,11 +169,18 @@ def apply_overrides(
             if op == "background":
                 _apply_background(ctx, slide, override)
                 record.background_override = override
+            elif op == "add_text":
+                element = _apply_add_text(ctx, slide, override, tokens, slide_index)
+                created[object_id] = element
+                object_id = _element_id(element) or object_id
             else:
-                element = _resolve_target(slide, override, fills_by_id, fills_by_slot)
+                element = _resolve_target(slide, override, fills_by_id, fills_by_slot, created)
+                object_id = _element_id(element) or object_id
                 fill = fills_by_id.get(object_id)
                 slot = pinfo.slots.get(fill.slot_id) if fill is not None else None
-                if op == "text":
+                if op == "delete":
+                    _apply_delete(slide, element, touched)
+                elif op == "text":
                     _apply_text(ctx, element, override, fill, touched, slot)
                 elif op == "style":
                     _apply_style(ctx, element, override, fill, touched, slot, tokens, slide_index)
@@ -186,11 +216,15 @@ def _resolve_target(
     override: JsonDict,
     fills_by_id: dict[str, SlotFill],
     fills_by_slot: dict[str, SlotFill],
+    created: dict[str, Any] | None = None,
 ) -> Any:
     target = override.get("target") or {}
     object_id = str(target.get("object_id") or "")
     if not object_id:
         raise OverrideDroppedError("override_target_missing", "у правки нет object_id")
+    if created and object_id in created:
+        # Своя надпись, созданная этим же патчем: охрана адреса ей не нужна.
+        return created[object_id]
     element = shape_element(slide, object_id)
     if element is None:
         raise OverrideDroppedError(
@@ -215,6 +249,72 @@ def _resolve_target(
                 f"объект {object_id} больше не заполняет слот {claimed_slot}",
             )
     return element
+
+
+def _new_object_id(slide: Any, temp_id: str) -> int:
+    """Идентификатор своей надписи: тот же придуманный адрес — тот же номер фигуры, поэтому
+    пересборка ревизии из плана повторяема. Совпадения с номерами слайда разводятся вверх."""
+    taken = {int(i) for i in element_ids(slide) if i.isdigit()}
+    candidate = 90000 + (zlib.crc32(temp_id.encode("utf-8")) % 9000)
+    while candidate in taken:
+        candidate += 1
+    return candidate
+
+
+def _apply_add_text(
+    ctx: Any,
+    slide: Any,
+    override: JsonDict,
+    tokens: dict[str, set[Any]],
+    slide_index: int,
+) -> Any:
+    """Своя надпись: пустая рамка без заливки и рамки, текст и оформление — из правки."""
+    temp_id = str((override.get("target") or {}).get("object_id") or "")
+    if not temp_id:
+        raise OverrideDroppedError("override_target_missing", "у новой надписи нет object_id")
+    if shape_element(slide, temp_id) is not None:
+        raise OverrideDroppedError(
+            "override_guard_mismatch", f"объект {temp_id} на слайде уже есть"
+        )
+    box = emu_box((override.get("geometry") or {}).get("bbox") or {}, ctx.slide_w, ctx.slide_h)
+    if box[2] <= 0 or box[3] <= 0:
+        raise OverrideDroppedError("override_unsupported", "рамка нулевого размера")
+    shape = slide.shapes.add_textbox(*box)
+    element = shape._element
+    cnvpr = element.find(f".//{CNVPR}")
+    if cnvpr is not None:
+        cnvpr.set("id", str(_new_object_id(slide, temp_id)))
+        cnvpr.set("name", "Своя надпись")
+    shape.text_frame.word_wrap = True
+    tx.fill_text(element, str(override.get("text") or ""), size_pt=None, facts=ctx.facts)
+    style = override.get("style") or {}
+    font = style.get("font") or {}
+    tx.set_run_style(
+        element,
+        family=font.get("family") or None,
+        size_pt=float(font["size_pt"]) if font.get("size_pt") else None,
+        bold=font.get("bold"),
+        italic=font.get("italic"),
+        color=font.get("color") or None,
+        align=style.get("align") or None,
+    )
+    outside = off_template(style, tokens)
+    if outside:
+        ctx.warn(
+            "override_off_template",
+            f"новая надпись: не из шаблона — {', '.join(outside)}",
+            slide_index,
+        )
+    return element
+
+
+def _apply_delete(slide: Any, element: Any, touched: dict[str, _Touched]) -> None:
+    """Объект убирается со слайда; его прежние правки текста измерять уже незачем."""
+    removed = remove_shape(slide, element)
+    if not removed:
+        raise OverrideDroppedError("override_unsupported", "объект не удалось снять со слайда")
+    for object_id in removed:
+        touched.pop(str(object_id), None)
 
 
 def _is_picture(element: Any) -> bool:

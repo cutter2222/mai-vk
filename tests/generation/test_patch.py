@@ -271,6 +271,68 @@ def test_validation_against_deck_and_plan(
     assert result.changed_slide_ids == [first]
 
 
+def test_delete_and_add_text(
+    base_plan: dict[str, Any],  # noqa: F811
+    mini_profile: dict[str, Any],  # noqa: F811
+    example_package: dict[str, Any],  # noqa: F811
+) -> None:
+    """Удаление объекта и своя надпись: адрес, обязательные поля, сводка."""
+    first = sorted(base_plan["slides"], key=lambda s: s["order"])[0]["slide_id"]
+    deck = _deck_for(base_plan)
+    add = {
+        "op": "add_text",
+        "target": {"object_id": "usr_1"},
+        "text": "Своя строка",
+        "geometry": {"bbox": {"x": 0.2, "y": 0.4, "width": 0.4, "height": 0.1}},
+    }
+    ok = [
+        {
+            "slide_id": first,
+            "overrides": [
+                add,
+                {"op": "text", "target": {"object_id": "usr_1"}, "text": "Правка своей строки"},
+                {"op": "delete", "target": {"object_id": "9"}},
+            ],
+        }
+    ]
+    patch = {"job_id": "job_1", "variant_id": "compact", "base_revision": 1, "slides": ok}
+    assert pt.validate_patch(patch, base_plan, deck, mini_profile, example_package) == []
+    result = pt.apply_patch(base_plan, patch, deck, mini_profile, example_package)
+    assert "новая надпись «Своя строка»" in result.summary
+    assert "удалён" in result.summary
+    changed = next(s for s in result.plan["slides"] if s["slide_id"] == first)
+    assert [o["op"] for o in changed["overrides"]] == ["add_text", "text", "delete"]
+
+    def codes(overrides: list[dict[str, Any]]) -> list[str]:
+        bad = {"job_id": "job_1", "variant_id": "compact", "base_revision": 1}
+        bad["slides"] = [{"slide_id": first, "overrides": overrides}]
+        found = pt.validate_patch(bad, base_plan, deck, mini_profile, example_package)
+        return [v.code for v in found]
+
+    # своя надпись без текста и без рамки
+    assert codes([{"op": "add_text", "target": {"object_id": "usr_2"}, "text": " "}]) == [
+        "text_empty",
+        "bbox_missing",
+    ]
+    # чужой адрес занимать нельзя
+    assert "object_exists" in codes(
+        [{**add, "target": {"object_id": "2"}}]
+    )
+    # картинка на свою надпись не ставится
+    assert "override_unsupported" in codes(
+        [
+            add,
+            {
+                "op": "picture",
+                "target": {"object_id": "usr_1"},
+                "picture": {"source": {"kind": "template", "asset_id": "asset_logo"}},
+            },
+        ]
+    )
+    # удалять можно только существующий объект
+    assert codes([{"op": "delete", "target": {"object_id": "404"}}]) == ["object_unknown"]
+
+
 def test_normalize_and_describe() -> None:
     raw = {
         "slides": [

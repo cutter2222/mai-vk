@@ -292,17 +292,43 @@ def stub_deck(plan: dict[str, Any], titles: list[str], *, prefix: str = "") -> d
                 },
             },
         ]
+        # Порядок правок в плане уже упорядочен редактором: своя надпись появляется до правок
+        # на неё, удаление — последним.
         for override in plan_slide.get("overrides") or []:
+            op = str(override.get("op") or "")
             target = override.get("target") or {}
+            object_id = str(target.get("object_id") or "")
+            if op == "add_text":
+                text = str(override.get("text") or "")
+                objects.append(
+                    {
+                        "object_id": object_id,
+                        "name": "Своя надпись",
+                        "kind": "text",
+                        "bbox": dict((override.get("geometry") or {}).get("bbox") or {}),
+                        "z_order": len(objects) + 1,
+                        "role": "content",
+                        "content_source": "user",
+                        "text": {
+                            "plain": text,
+                            "paragraphs": [{"text": line} for line in text.split("\n")],
+                        },
+                        "user_overrides": [copy.deepcopy(override)],
+                    }
+                )
+                continue
+            if op == "delete":
+                objects = [o for o in objects if o["object_id"] != object_id]
+                continue
             for obj in objects:
-                if obj["object_id"] == str(target.get("object_id") or ""):
+                if obj["object_id"] == object_id:
                     obj.setdefault("user_overrides", []).append(copy.deepcopy(override))
-                    if override.get("op") == "text" and override.get("text") is not None:
+                    if op == "text" and override.get("text") is not None:
                         text = str(override["text"])
                         obj["text"]["plain"] = text
                         obj["text"]["paragraphs"][0]["text"] = text
                         obj["content_source"] = "user"
-                    if override.get("op") == "geometry":
+                    if op == "geometry":
                         obj["bbox"] = dict(
                             (override.get("geometry") or {}).get("bbox") or obj["bbox"]
                         )

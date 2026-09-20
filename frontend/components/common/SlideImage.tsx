@@ -4,6 +4,7 @@ import { Box, Text } from "@mantine/core";
 import { useEffect, useRef, useState } from "react";
 
 import type { Bbox } from "@/lib/api/types";
+import { EDGE_PX, hitTest } from "@/lib/editor/hit";
 
 export interface Overlay {
   id: string;
@@ -16,6 +17,10 @@ export interface Outline {
   id: string;
   bbox: Bbox;
   label: string;
+  /** Порядок в стопке слайда: под указателем выбирается верхний. */
+  z: number;
+  /** Пустая рамка-контейнер: ловит только края, клик по буквам достаётся тексту под ней. */
+  hollow: boolean;
 }
 
 interface Props {
@@ -36,7 +41,9 @@ interface Props {
  */
 export function SlideImage({ src, alt, overlays = [], activeOverlay, onOverlayClick, outlines = [], onOutlineClick }: Props) {
   const ref = useRef<HTMLImageElement | null>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
   const [rect, setRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  const [hover, setHover] = useState<string | null>(null);
 
   useEffect(() => {
     const img = ref.current;
@@ -61,8 +68,41 @@ export function SlideImage({ src, alt, overlays = [], activeOverlay, onOverlayCl
     };
   }, [src]);
 
+  // Что под указателем: тем же правилом, что и на холсте редактора. Пустая середина
+  // контейнера пропускает указатель дальше, а на голом фоне не выделяется ничего.
+  const pick = (clientX: number, clientY: number): Outline | null => {
+    const frame = frameRef.current;
+    if (!frame || !rect || !rect.width || !rect.height) return null;
+    const box = frame.getBoundingClientRect();
+    return hitTest(
+      outlines,
+      (clientX - box.left - rect.left) / rect.width,
+      (clientY - box.top - rect.top) / rect.height,
+      EDGE_PX / rect.width,
+      EDGE_PX / rect.height,
+    );
+  };
+
+  const interactive = outlines.length > 0 && Boolean(onOutlineClick);
+
   return (
-    <Box className="slide-frame" data-testid="slide-frame">
+    <Box
+      className="slide-frame"
+      data-testid="slide-frame"
+      ref={frameRef}
+      data-pick={interactive && hover ? true : undefined}
+      onPointerMove={interactive ? (e) => {
+        const id = pick(e.clientX, e.clientY)?.id ?? null;
+        if (id !== hover) setHover(id);
+      } : undefined}
+      onPointerLeave={interactive ? () => setHover(null) : undefined}
+      onClick={interactive ? (e) => {
+        // Рамки находок аудита лежат тут же и живут своим кликом.
+        if ((e.target as HTMLElement).closest(".issue-box")) return;
+        const found = pick(e.clientX, e.clientY);
+        if (found) onOutlineClick?.(found.id);
+      } : undefined}
+    >
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img ref={ref} src={src} alt={alt} />
@@ -78,6 +118,7 @@ export function SlideImage({ src, alt, overlays = [], activeOverlay, onOverlayCl
             type="button"
             className="object-outline"
             data-testid={`object-outline-${o.id}`}
+            data-hover={hover === o.id || undefined}
             title={o.label}
             aria-label={o.label}
             onClick={() => onOutlineClick?.(o.id)}

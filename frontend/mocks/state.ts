@@ -603,7 +603,10 @@ export function createPatch(
     if (!ids.includes(s.slide_id)) return { invalid: `slide_unknown: слайда ${s.slide_id} нет в плане` };
     for (const o of s.overrides) {
       const id = o.target?.object_id;
-      if (o.op !== "background" && !["2", "3", "5"].includes(id ?? "")) return { invalid: `object_unknown: объекта ${id} нет на слайде ${s.slide_id}` };
+      if (o.op === "background") continue;
+      // Своя надпись адресуется придуманным id: объекта с таким адресом в колоде и не должно быть.
+      if (o.op === "add_text" || (id ?? "").startsWith("usr_")) continue;
+      if (!["2", "3", "5"].includes(id ?? "")) return { invalid: `object_unknown: объекта ${id} нет на слайде ${s.slide_id}` };
     }
   }
   if (order && [...order].sort().join("|") !== [...ids].sort().join("|")) return { invalid: "order_invalid: порядок должен быть перестановкой всех slide_id" };
@@ -635,7 +638,7 @@ function describePatch(slides: Array<{ slide_id: string; overrides: Override[] }
   const parts = slides.map((s) => {
     const n = ids.indexOf(s.slide_id) + 1;
     if (s.overrides.length === 0) return `Слайд ${n}: сброс правок`;
-    const labels = s.overrides.map((o) => ({ text: "заголовок: текст", style: "заголовок: стиль", geometry: "положение", picture: "картинка", background: "фон" })[o.op]);
+    const labels = s.overrides.map((o) => ({ text: "заголовок: текст", style: "заголовок: стиль", geometry: "положение", picture: "картинка", background: "фон", add_text: "новая надпись", delete: "объект удалён" })[o.op]);
     return `Слайд ${n}: ${labels.join("; ")}`;
   });
   if (order) parts.push("порядок слайдов изменён");

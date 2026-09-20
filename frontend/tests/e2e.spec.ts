@@ -351,8 +351,9 @@ test.describe("сквозной сценарий в чате на заглушк
     // Редактор доступен, когда задание завершено целиком (все варианты собраны и проверены).
     await page.locator('[data-testid="thumb-strip"] button').first().click();
     await expect(page.getByTestId("toggle-editor")).toBeVisible({ timeout: WAIT.variantsDone });
-    // Первый слайд — на картинке контуры объектов, клик по заголовку открывает холст с панелью
-    await page.locator(".preview-stage").getByRole("button", { name: "заголовок" }).first().click();
+    // Первый слайд — на картинке контуры объектов, клик по заголовку открывает холст с панелью.
+    // Контуры событий не ловят (попадание считается по координатам), поэтому клик принудительный.
+    await page.locator(".preview-stage").getByRole("button", { name: "заголовок" }).first().click({ force: true });
     await expect(page.getByTestId("slide-canvas")).toBeVisible();
     await expect(page.getByTestId("object-panel")).toBeVisible();
     await expect(page.getByTestId("object-title")).toHaveText("Заголовок");
@@ -378,6 +379,13 @@ test.describe("сквозной сценарий в чате на заглушк
     await page.getByTestId("prop-x").fill("10");
     await page.getByTestId("prop-x").press("Tab");
     await expect(object).toHaveCSS("left", /px/);
+    await expect(page.getByTestId("editor-draft-count")).toContainText("Черновик: 3");
+
+    // История черновика: Ctrl+Z снимает последний шаг, Ctrl+Shift+Z возвращает
+    await object.locator("p").first().click();
+    await page.keyboard.press("Control+z");
+    await expect(page.getByTestId("editor-draft-count")).toContainText("Черновик: 2");
+    await page.keyboard.press("Control+Shift+z");
     await expect(page.getByTestId("editor-draft-count")).toContainText("Черновик: 3");
 
     // Перестановка: первый слайд перетаскивается на место третьего
@@ -408,7 +416,8 @@ test.describe("сквозной сценарий в чате на заглушк
     await expect(page.getByTestId("slide-counter")).toHaveText(/Слайд 3 из/);
     await expect(object).toContainText("Новый текст заголовка");
     await expect(page.getByTestId("badge-user-edited")).toHaveCount(0);
-    await object.click();
+    // Выделяют сами буквы: середина рамки заголовка приходится на пустое место под строкой.
+    await object.locator("p").first().click();
     await expect(page.getByTestId("badge-user-edited")).toBeVisible();
     await shot(page, "editor-applied");
 
@@ -418,6 +427,26 @@ test.describe("сквозной сценарий в чате на заглушк
     await page.getByTestId("editor-cancel").click();
     await expect(object).toContainText("Новый текст заголовка");
     await expect(page.getByTestId("chat-draft-hint")).toHaveCount(0);
+
+    // Своя надпись: появляется выделенной, правится в панели и убирается кнопкой
+    await page.getByTestId("editor-add-text").click();
+    const added = page.locator('[data-testid^="canvas-object-usr_"]');
+    await expect(added).toHaveCount(1);
+    await expect(page.getByTestId("object-panel")).toBeVisible();
+    await page.getByTestId("prop-text").fill("Своя надпись");
+    await expect(added).toContainText("Своя надпись");
+    await expect(page.getByTestId("editor-draft-count")).toContainText("Черновик:");
+    await page.getByTestId("editor-delete-object").click();
+    await expect(added).toHaveCount(0);
+    await expect(page.getByTestId("editor-draft-count")).toContainText("Черновик пуст");
+
+    // Delete убирает объект колоды, «Отменить» возвращает его
+    await object.locator("p").first().click();
+    await page.keyboard.press("Delete");
+    await expect(object).toHaveCount(0);
+    await expect(page.getByTestId("editor-draft-count")).toContainText("Черновик: 1");
+    await page.getByTestId("editor-cancel-bar").click();
+    await expect(object).toHaveCount(1);
     await page.getByTestId("toggle-editor").click();
     await expect(page.getByTestId("slide-canvas")).toHaveCount(0);
     await expect(page.locator(".preview-stage").getByTestId("slide-frame")).toBeVisible();
@@ -467,8 +496,13 @@ test.describe("сквозной сценарий в чате на заглушк
       await chooser.setFiles([{ name: "photo.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64") }]);
       await expect(page.getByTestId("picture-properties")).toContainText("photo.png", { timeout: 15000 });
     }
-    // Фон слайда: клик по пустому месту холста, цвет из палитры
+    // Клик по пустому месту холста закрывает правку целиком: ящик уезжает, слайд возвращается
     await page.getByTestId("slide-canvas").click({ position: { x: 4, y: 4 } });
+    await expect(page.getByTestId("object-panel")).toHaveCount(0);
+    await expect(page.getByTestId("slide-canvas")).toHaveCount(0);
+    // Фон слайда: своя кнопка под слайдом, цвет из палитры
+    await page.getByTestId("toggle-editor").click();
+    await page.getByTestId("toggle-slide-props").click();
     await expect(page.getByTestId("background-panel")).toBeVisible();
     await page.getByTestId("bg-kind").getByText("Цвет").click();
     await page.locator('[data-testid^="bg-color-swatch-"]').first().click();

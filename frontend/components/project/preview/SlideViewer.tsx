@@ -1,6 +1,6 @@
 "use client";
 
-import { ActionIcon, Group, Text } from "@mantine/core";
+import { ActionIcon, Text } from "@mantine/core";
 import { IconChevronDown, IconChevronUp, IconGripVertical } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -8,6 +8,8 @@ import { SlideImage, type Outline, type Overlay } from "@/components/common/Slid
 
 export interface ViewerSlide {
   key: string;
+  /** Номер слайда в колоде. Место в ленте может отличаться: черновик редактора переставляет слайды. */
+  deckIndex: number;
   src?: string;
   label: string;
   /** Отметка на миниатюре: на слайде есть находки аудита. */
@@ -38,22 +40,44 @@ interface Props {
   /** Перестановка миниатюр перетаскиванием (за иконку захвата или удержанием) и Alt+стрелками. */
   onReorder?: (from: number, to: number) => void;
   editing?: boolean;
+  /** Пропорция слайда колоды (ширина к высоте). По умолчанию 16:9. */
+  ratio?: number;
 }
 
 const HOLD_MS = 250;
 const HOLD_SLOP = 6;
+/** Длительность выезда правой колонки; совпадает с --side-ms в globals.css. */
+const SIDE_MS = 240;
 
 /**
  * Вертикальная лента миниатюр слева и крупный слайд справа, как в редакторах презентаций.
  * Слайды вариантов генерации; образцы шаблона показываются в его карточке в библиотеке.
  */
-export function SlideViewer({ slides, index, onIndex, overlays, activeOverlay, onOverlayClick, outlines, onOutlineClick, caption, actions, children, aside, stage, onReorder, editing }: Props) {
+export function SlideViewer({ slides, index, onIndex, overlays, activeOverlay, onOverlayClick, outlines, onOutlineClick, caption, actions, children, aside, stage, onReorder, editing, ratio }: Props) {
   const total = slides.length;
   const safeIndex = Math.min(index, Math.max(total - 1, 0));
   const current = slides[safeIndex];
   const stripRef = useRef<HTMLDivElement | null>(null);
   const [drag, setDrag] = useState<{ from: number; to: number; y: number } | null>(null);
   const hold = useRef<{ timer: number; from: number; x: number; y: number; pointerId: number } | null>(null);
+  // Правая колонка выезжает, а не появляется скачком: пока идёт обратный ход, в ней держится
+  // прежнее содержимое, иначе панель схлопывалась бы пустой.
+  const asideOpen = Boolean(aside);
+  const lastAside = useRef<React.ReactNode>(null);
+  if (aside) lastAside.current = aside;
+  const [keepAside, setKeepAside] = useState(asideOpen);
+  useEffect(() => {
+    if (asideOpen) {
+      setKeepAside(true);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      lastAside.current = null;
+      setKeepAside(false);
+    }, SIDE_MS);
+    return () => window.clearTimeout(timer);
+  }, [asideOpen]);
+  const asideNode = aside ?? (keepAside ? lastAside.current : null);
 
   // Активная миниатюра держится в видимой части ленты при листании клавишами.
   useEffect(() => {
@@ -140,7 +164,12 @@ export function SlideViewer({ slides, index, onIndex, overlays, activeOverlay, o
   };
 
   return (
-    <div className="viewer" data-aside={Boolean(aside)} data-editing={Boolean(editing)}>
+    <div
+      className="viewer"
+      data-aside={asideOpen}
+      data-editing={Boolean(editing)}
+      style={ratio ? ({ "--stage-ratio": ratio, "--slide-ratio": ratio } as React.CSSProperties) : undefined}
+    >
       {total > 0 && (
         <div
           className="filmstrip"
@@ -197,37 +226,46 @@ export function SlideViewer({ slides, index, onIndex, overlays, activeOverlay, o
         </div>
       )}
       <div className="viewer-main" data-editing={Boolean(editing)}>
-        <div className="preview-stage">
-          {stage ?? (
-            <SlideImage
-              src={current?.src}
-              alt={current?.label ?? "Слайд"}
-              overlays={overlays}
-              activeOverlay={activeOverlay}
-              onOverlayClick={onOverlayClick}
-              outlines={outlines}
-              onOutlineClick={onOutlineClick}
-            />
-          )}
+        {/* Слайд и подпись под ним — один блок по центру свободной высоты: подпись держится
+            у нижнего края слайда, а не у нижнего края экрана, как было раньше. */}
+        <div className="viewer-stage">
+          <div className="stage-column">
+            <div className="preview-stage">
+              {stage ?? (
+                <SlideImage
+                  src={current?.src}
+                  alt={current?.label ?? "Слайд"}
+                  overlays={overlays}
+                  activeOverlay={activeOverlay}
+                  onOverlayClick={onOverlayClick}
+                  outlines={outlines}
+                  onOutlineClick={onOutlineClick}
+                />
+              )}
+            </div>
+            <div className="viewer-bar">
+              <div className="viewer-bar-meta">{caption}</div>
+              <div className="viewer-bar-pager">
+                <ActionIcon variant="subtle" color="gray" size="md" disabled={safeIndex <= 0} onClick={() => onIndex(safeIndex - 1)} aria-label="Предыдущий слайд">
+                  <IconChevronUp size={16} />
+                </ActionIcon>
+                <Text size="sm" c="dimmed" style={{ minWidth: 104, textAlign: "center" }} data-testid="slide-counter">
+                  {total ? `Слайд ${safeIndex + 1} из ${total}` : "Слайдов нет"}
+                </Text>
+                <ActionIcon variant="subtle" color="gray" size="md" disabled={safeIndex >= total - 1} onClick={() => onIndex(safeIndex + 1)} aria-label="Следующий слайд">
+                  <IconChevronDown size={16} />
+                </ActionIcon>
+              </div>
+              <div className="viewer-bar-actions">{actions}</div>
+            </div>
+          </div>
         </div>
-        <Group justify="space-between" mt="sm" mb="xs" gap="xs" align="center">
-          <Group gap="xs" style={{ flex: "1 1 auto", minWidth: 0 }}>{caption}</Group>
-          <Group gap={6} wrap="nowrap" style={{ flex: "0 0 auto" }}>
-            <ActionIcon variant="default" size="sm" disabled={safeIndex <= 0} onClick={() => onIndex(safeIndex - 1)} aria-label="Предыдущий слайд">
-              <IconChevronUp size={14} />
-            </ActionIcon>
-            <Text size="sm" c="dimmed" style={{ minWidth: 92, textAlign: "center" }} data-testid="slide-counter">
-              {total ? `Слайд ${safeIndex + 1} из ${total}` : "Слайдов нет"}
-            </Text>
-            <ActionIcon variant="default" size="sm" disabled={safeIndex >= total - 1} onClick={() => onIndex(safeIndex + 1)} aria-label="Следующий слайд">
-              <IconChevronDown size={14} />
-            </ActionIcon>
-          </Group>
-          <Group gap="xs" wrap="nowrap" style={{ flex: "0 0 auto" }}>{actions}</Group>
-        </Group>
-        {children}
+        {children ? <div className="viewer-extra">{children}</div> : null}
       </div>
-      {aside}
+      {/* Колонка в разметке всегда: ширина идёт от нуля, поэтому выезд плавный и в обе стороны. */}
+      <div className="viewer-side" data-open={asideOpen} aria-hidden={!asideOpen} inert={!asideOpen}>
+        <div className="viewer-side-inner">{asideNode}</div>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Stack, Text } from "@mantine/core";
+import { Stack, Text } from "@mantine/core";
 import { IconLayoutDashboard } from "@tabler/icons-react";
 
 import { ApiError, type TemplateDetail } from "@/lib/api/client";
@@ -20,11 +20,10 @@ interface Props {
   templateDetail: TemplateDetail | null;
   templateError: Error | null;
   onChoose: (variantId: string | null) => void;
-  onOpenTemplateTab: () => void;
 }
 
 /** Правая часть редактора: слайды задания, иначе выбранный шаблон, иначе подсказка. */
-export function PreviewPane({ project, session, editor, pkg, templateDetail, templateError, onChoose, onOpenTemplateTab }: Props) {
+export function PreviewPane({ project, session, editor, pkg, templateDetail, templateError, onChoose }: Props) {
   if (project.job_id) {
     if (session.job.error && !session.result) {
       const notFound = session.job.error instanceof ApiError && session.job.error.status === 404;
@@ -54,11 +53,12 @@ export function PreviewPane({ project, session, editor, pkg, templateDetail, tem
 
   return (
     <div className="preview-empty">
+      {/* Кнопки «Перейти в чат» здесь нет: чат открыт в соседней колонке, и она вела бы
+          в то же место, где пользователь уже находится. */}
       <Stack align="center" gap="xs" maw={440} data-testid="preview-empty">
-        <IconLayoutDashboard size={44} stroke={1.2} color="var(--mantine-color-gray-5)" />
+        <IconLayoutDashboard size={44} stroke={1.2} color="var(--ink2)" opacity={0.5} />
         <Text fw={600}>Здесь появятся слайды</Text>
-        <Text size="sm" c="dimmed" ta="center">Добавьте в чат шаблон PPTX и материалы: после генерации здесь будут слайды презентации в трёх вариантах с находками аудита.</Text>
-        <Button variant="default" mt="xs" onClick={onOpenTemplateTab}>Перейти в чат</Button>
+        <Text size="sm" c="dimmed" ta="center">Бросьте в чат шаблон PPTX и материалы и опишите задачу: слайды соберутся в трёх вариантах вёрстки.</Text>
       </Stack>
     </div>
   );
