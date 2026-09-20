@@ -125,25 +125,32 @@ def test_organizer_template_profile(organizer_dir: pathlib.Path, name: str) -> N
     if "embedded_fonts" in exp:
         assert profile["stats"]["embedded_fonts"] == exp["embedded_fonts"]
 
+    # Проверяется разбор шаблона, поэтому собственные композиции библиотеки отфильтрованы:
+    # у них нет ни образца-слайда, ни element_ref, ни тона фона.
+    template_patterns = [p for p in profile["patterns"] if p["source"]["kind"] != "builtin"]
+
     classes = {s["slide_index"]: s["classification"] for s in profile["sample_slides"]}
     catalogs = {i for i, c in classes.items() if c == "asset_catalog"}
     guides = {i for i, c in classes.items() if c == "style_guide"}
     assert exp["catalogs"] <= catalogs, f"листы иконок не исключены: {exp['catalogs'] - catalogs}"
     assert exp["style_guides"] <= guides, f"инструкции не исключены: {exp['style_guides'] - guides}"
-    pattern_slides = {p["source"]["slide_index"] for p in profile["patterns"]}
+    # Собственные композиции библиотеки не приходят со слайда шаблона: у них нет slide_index.
+    pattern_slides = {
+        p["source"]["slide_index"] for p in template_patterns
+    }
     assert not (pattern_slides & catalogs) and not (pattern_slides & guides)
     for idx in catalogs:
         assert any(a.get("source_slide_index") == idx for a in profile["assets"]), (
             f"изображения каталога {idx} должны остаться в ресурсах"
         )
 
-    roles = {p["role"] for p in profile["patterns"]}
+    roles = {p["role"] for p in template_patterns}
     missing = exp["roles_present"] - roles
     assert not missing, f"не найдены роли {missing}; есть {sorted(roles)}"
     invented = exp["roles_absent"] & roles
     assert not invented, f"выдуманы роли без соответствующих объектов: {invented}"
-    assert len(profile["patterns"]) >= exp["min_patterns"]
-    for p in profile["patterns"]:
+    assert len(template_patterns) >= exp["min_patterns"]
+    for p in template_patterns:
         assert p["slots"], p["pattern_id"]
         assert all(s["element_ref"] for s in p["slots"])
         if p["role"] == "table":
@@ -166,7 +173,9 @@ def test_organizer_template_profile(organizer_dir: pathlib.Path, name: str) -> N
         and profile["design_tokens"]["typography"]["scale"]
     )
     assert profile["fixed_elements"], "логотипы/номера страниц не найдены"
-    by_slide = {p["source"]["slide_index"]: p for p in profile["patterns"]}
+    by_slide = {
+        p["source"]["slide_index"]: p for p in template_patterns
+    }
     for members in exp.get("groups", ()):
         ids = {by_slide[i]["group_id"] for i in members}
         assert len(ids) == 1, f"образцы {sorted(members)} должны быть одной группой: {ids}"
@@ -174,18 +183,18 @@ def test_organizer_template_profile(organizer_dir: pathlib.Path, name: str) -> N
         assert not others, f"в группу {ids} попали лишние образцы {sorted(others)}"
     for index, tone in exp.get("tones", {}).items():
         assert by_slide[index]["tone"]["background"] == tone, (index, by_slide[index]["tone"])
-    assert all(p["style_key"] for p in profile["patterns"])
+    assert all(p["style_key"] for p in template_patterns)
 
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     report = {
         "template": name,
         "analysis_ms_without_vlm_and_render": elapsed_ms,
         "timings_ms": result.report.timings_ms,
-        "patterns": len(profile["patterns"]),
+        "patterns": len(template_patterns),
         "pattern_groups": result.report.counts.get("pattern_groups"),
         "roles": result.report.roles,
         "mean_confidence": round(
-            sum(p["confidence"] for p in profile["patterns"]) / max(len(profile["patterns"]), 1), 3
+            sum(p["confidence"] for p in template_patterns) / max(len(template_patterns), 1), 3
         ),
         "fixed_elements": {
             kind: sum(1 for f in profile["fixed_elements"] if f["kind"] == kind)

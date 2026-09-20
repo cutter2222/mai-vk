@@ -73,12 +73,18 @@ def test_profile_is_valid_and_complete(rich_template: pathlib.Path) -> None:
     result = analyze(rich_template)
     profile = result.profile
     TemplateProfile.model_validate(profile)
-    roles = {p["pattern_id"]: p["role"] for p in profile["patterns"]}
+    # Паттерны шаблона и собственные композиции библиотеки лежат в одном списке;
+    # здесь проверяется разбор шаблона, поэтому свои композиции отфильтрованы.
+    from_template = [p for p in profile["patterns"] if p["source"]["kind"] != "builtin"]
+    roles = {p["pattern_id"]: p["role"] for p in from_template}
     assert roles["pat_s1"] == "title"
     assert roles["pat_s2"] == "cards" and roles["pat_s3"] == "kpi"
     assert set(roles) == {"pat_s1", "pat_s2", "pat_s3"}, (
         "инструкция, каталог и скрытый — не паттерны"
     )
+    builtin = [p for p in profile["patterns"] if p["source"]["kind"] == "builtin"]
+    assert builtin, "библиотека собственных композиций подключена к профилю"
+    assert all(p["source"].get("composition_id") for p in builtin)
     cards = next(p for p in profile["patterns"] if p["pattern_id"] == "pat_s2")
     kinds = [s["kind"] for s in cards["slots"]]
     assert kinds.count("icon") == 3 and kinds.count("body") >= 3 and kinds.count("title") >= 1
@@ -126,8 +132,12 @@ def test_groups_and_tone(variety_template: pathlib.Path) -> None:
     заливки слайда с источником; style_key — тон, семейство макета и plain."""
     profile = analyze(variety_template).profile
     TemplateProfile.model_validate(profile)
-    assert profile["schema_version"] == "1.2" and profile["analyzer"]["version"] == "0.2.3"
-    by_id = {p["pattern_id"]: p for p in profile["patterns"]}
+    assert profile["schema_version"] == "1.3" and profile["analyzer"]["version"] == "0.2.3"
+    # Группы и тон есть только у образцов шаблона: собственные композиции строятся из
+    # дизайн-кода и своего слайда-источника не имеют.
+    by_id = {
+        p["pattern_id"]: p for p in profile["patterns"] if p["source"]["kind"] != "builtin"
+    }
     assert by_id["pat_s1"]["group_id"] == by_id["pat_s2"]["group_id"], "титулы одного состава"
     assert by_id["pat_s3"]["group_id"] == by_id["pat_s4"]["group_id"], "разделители"
     assert by_id["pat_s5"]["group_id"] == by_id["pat_s6"]["group_id"], "карточки одной сигнатуры"
@@ -149,12 +159,13 @@ def test_groups_and_tone(variety_template: pathlib.Path) -> None:
     mini = analyze(
         pathlib.Path(__file__).resolve().parents[2] / "fixtures" / "pptx" / "mini_template.pptx"
     ).profile
-    assert {p["tone"]["source"] for p in mini["patterns"]} <= {
+    mini_template_patterns = [p for p in mini["patterns"] if p["source"]["kind"] != "builtin"]
+    assert {p["tone"]["source"] for p in mini_template_patterns} <= {
         "theme",
         "master_fill",
         "layout_fill",
     }
-    assert all(p["tone"]["background"] == "light" for p in mini["patterns"])
+    assert all(p["tone"]["background"] == "light" for p in mini_template_patterns)
 
 
 def test_layout_family() -> None:

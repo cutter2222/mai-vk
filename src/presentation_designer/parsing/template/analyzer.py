@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from presentation_designer.contracts import CONTRACTS_VERSION, TemplateProfile
+from presentation_designer.library.register import builtin_patterns
 from presentation_designer.parsing.template import assets as assets_mod
 from presentation_designer.parsing.template.classify import (
     Classification,
@@ -570,7 +571,7 @@ def _assemble_profile(
         sample_slides.append(entry)
 
     profile: dict[str, Any] = {
-        "schema_version": "1.2",
+        "schema_version": "1.3",
         "template_id": template_id,
         "template_hash": f"sha256:{sha256}",
         "source_file": {"name": name, "size_bytes": size_bytes, "format": "pptx"},
@@ -608,6 +609,10 @@ def _assemble_profile(
         "sample_slides": sample_slides,
         "dynamic_fields": dynamic,
     }
+    # Собственные композиции библиотеки: они дополняют пул шаблона, а не заменяют его.
+    # Паттерны шаблона уже в профиле и в отборе идут первыми; эти подключаются, когда
+    # шаблон не покрывает нужную подачу или вместимость.
+    profile["patterns"].extend(builtin_patterns(profile))
     profile["llm_digest"] = build_digest(profile)
     return profile
 

@@ -65,6 +65,9 @@ from presentation_designer.layout.shapes import (
     shape_element,
     shape_map,
 )
+from presentation_designer.library.build import build_slide as build_builtin_slide
+from presentation_designer.library.spec import find_composition
+from presentation_designer.library.tokens import DesignCode
 from presentation_designer.parsing.template.geometry import walk_shapes
 
 log = logging.getLogger(__name__)
@@ -152,6 +155,8 @@ class _Context:
     fit_min_ratio: float = 0.75
     fit_min_body_pt: float = 12.0
     fit_min_title_pt: float = 20.0
+    # Дизайн-код шаблона: нужен только собственным композициям, поэтому считается лениво.
+    design_code: DesignCode | None = None
 
     def fresh_ids(self, element: Any) -> dict[str, str]:
         """Перенумеровывает cNvPr новых объектов (python-pptx заполняет пропуски id)."""
@@ -1323,6 +1328,48 @@ def _distance(center: tuple[float, float], box: tuple[float, float, float, float
 # ---------- сборка колоды ----------
 
 
+def _build_builtin(
+    ctx: _Context, pattern_id: str, pattern_raw: JsonDict, source: JsonDict
+) -> tuple[Any, JsonDict]:
+    """Строит слайд собственной композиции и проставляет слотам ссылки на созданные объекты.
+
+    Дальше паттерн неотличим от образца шаблона: у каждого слота есть `element_ref`, и текст,
+    факты, списки и картинки в него пишет общий путь вёрстки.
+    """
+    composition_id = str(source.get("composition_id") or "")
+    composition = find_composition(composition_id)
+    if composition is None:
+        raise ComposeError(
+            "compose_composition_unknown",
+            f"паттерн {pattern_id}: композиция {composition_id} отсутствует в библиотеке",
+        )
+    layout = layout_by_id(ctx.prs, str(source.get("layout_id") or ""))
+    if layout is None:
+        raise ComposeError(
+            "compose_layout_missing",
+            f"паттерн {pattern_id}: макет {source.get('layout_id')} отсутствует в шаблоне",
+        )
+    if ctx.design_code is None:
+        ctx.design_code = DesignCode.from_profile(ctx.profile)
+    slide, refs, card_ids = build_builtin_slide(ctx.prs, layout, composition, ctx.design_code)
+    patched = dict(pattern_raw)
+    patched["slots"] = [
+        {**slot, "element_ref": refs[str(slot.get("slot_id"))]}
+        if str(slot.get("slot_id")) in refs
+        else dict(slot)
+        for slot in pattern_raw.get("slots") or []
+    ]
+    # Карточки, которым не досталось содержания, убираются вместе с плашками — как у
+    # образцов шаблона по `removable_object_ids`.
+    patched["removable_object_ids"] = card_ids + [
+        refs[str(slot.get("slot_id"))]
+        for slot in patched["slots"]
+        if slot.get("repeat_group") and str(slot.get("slot_id")) in refs
+    ]
+    ctx.count("builtin_slides")
+    return slide, patched
+
+
 def compose_deck(
     plan: JsonDict,
     profile: JsonDict,
@@ -1405,6 +1452,16 @@ def compose_deck(
                 "compose_pattern_unknown", f"паттерн {pattern_id} отсутствует в профиле"
             )
         source = pattern_raw.get("source") or {}
+        if source.get("kind") == "builtin":
+            # Собственная композиция: слайд строится на макете шаблона из его дизайн-кода,
+            # а заполняется дальше тем же путём, что и клон образца.
+            clone, pattern_raw = _build_builtin(ctx, pattern_id, pattern_raw, source)
+            new_slides.append(clone)
+            pinfos[pattern_id] = pattern_info(pattern_raw)
+            records.append(
+                _fill_slide(ctx, clone, plan_slide, pattern_raw, pinfos[pattern_id], None, index)
+            )
+            continue
         sample_index = int(source.get("slide_index") or 0)
         if not 1 <= sample_index <= len(samples):
             raise ComposeError(

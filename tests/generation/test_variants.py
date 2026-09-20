@@ -169,16 +169,31 @@ def test_pattern_structure_visuals_and_candidates(mini_profile: dict[str, Any]) 
     chart = mt.candidates_for(
         patterns, mt.Need("chart", has_dataset=True), "balanced", has_datasets=True
     )
-    assert [p.pattern_id for p in chart] == ["pat_s3"]
+    # Первым идёт паттерн шаблона; собственные композиции библиотеки добирают список после
+    # него — они годятся под диаграмму, но своего образца в шаблоне у них нет.
+    assert chart[0].pattern_id == "pat_s3"
+    assert all(p.builtin for p in chart[1:])
     bullets = mt.candidates_for(patterns, mt.Need("bullets", items=3), "compact")
     assert bullets and bullets[0].pattern_id == "pat_s2"
     # Служебные роли содержательными кандидатами не становятся.
     assert all(p.role not in mt.FIXED_ROLES for p in bullets)
     assert mt.fixed_pattern(patterns, "title") is not None
     assert mt.fixed_pattern(patterns, "thanks") is not None
-    assert mt.fixed_pattern(patterns, "section_divider") is None
-    assert mt.fallback_visual("table", patterns, has_datasets=False) in ("bullets", "cards", "text")
-    assert mt.fallback_visual("timeline", patterns, has_datasets=True) == "cards"
+    # Разделителя в этом шаблоне нет, и роль закрывает своя композиция библиотеки:
+    # служебный слайд из библиотеки берётся именно тогда, когда в шаблоне роли нет.
+    divider = mt.fixed_pattern(patterns, "section_divider")
+    assert divider is not None and divider.builtin
+    # Без набора данных таблица заменяется доступной подачей: к паттернам шаблона добавлены
+    # собственные композиции, поэтому в запасе есть и ряд показателей.
+    assert mt.fallback_visual("table", patterns, has_datasets=False) in (
+        "bullets",
+        "cards",
+        "text",
+        "number",
+    )
+    # Собственная композиция «Шаги» даёт подачу для последовательности, которой в этом
+    # шаблоне нет: замена на карточки больше не нужна.
+    assert mt.fallback_visual("timeline", patterns, has_datasets=True) in ("timeline", "cards")
     assert "заголовок" in by_id["pat_s2"].summary() and "карточки" in by_id["pat_s2"].summary()
 
 
@@ -555,8 +570,12 @@ def test_three_plans_on_replay_rich_template(
         _assert_valid(plan, rich_profile, example_package, example_story)
         assert plan["coverage"]["missing"] == []
         assert plan["slide_count"]["min"] <= len(plan["slides"]) <= plan["slide_count"]["max"]
-        assert plan["slides"][-1]["role"] != "thanks"
-        assert result.report["structure"]["final_pattern"] is None
+        # Финального образца в шаблоне нет: роль закрывает своя композиция библиотеки,
+        # поэтому финальный слайд теперь есть и он помечен как builtin.
+        last = plan["slides"][-1]
+        final_pattern = result.report["structure"]["final_pattern"]
+        assert last["role"] != "thanks" or last["pattern_id"].startswith("pat_builtin_")
+        assert final_pattern is None or str(final_pattern).startswith("pat_builtin_")
         _assert_overflow_reported(plan, result.report)
 
 

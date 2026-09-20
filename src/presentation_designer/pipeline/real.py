@@ -17,9 +17,11 @@ from __future__ import annotations
 
 import logging
 import pathlib
+import time
 from typing import Any
 
 from presentation_designer import design
+from presentation_designer.audit.report import build_report as build_audit_report
 from presentation_designer.generation.edit import EditError, edit_slide
 from presentation_designer.generation.original import VARIANT_ID as ORIGINAL_VARIANT
 from presentation_designer.generation.story import (
@@ -41,6 +43,7 @@ from presentation_designer.parsing.template.analyzer import PackageError, analyz
 from presentation_designer.pipeline.run import (
     AnalyzeInput,
     AnalyzeOutput,
+    AuditInput,
     BriefInput,
     ComposeInput,
     ComposeOutput,
@@ -77,6 +80,9 @@ class RealLayers(StubLayers):
         self.modes["generation.plan"] = "real"
         self.modes["layout"] = "real"
         self.modes["generation.edit"] = "real"
+        # Детерминированные проверки считаются по ComposedDeck и профилю — модель им не нужна.
+        # Контекстные требуют VLM и картинок слайдов: они включаются отдельно.
+        self.modes["audit.deterministic"] = "real"
         # Экспорт настоящий там, где его выполняет воркер с LibreOffice; на машине разработчика
         # со встроенной очередью без рендерера остаётся заглушка, и execution_mode это показывает.
         self.renderer_available = _renderer_available()
@@ -92,6 +98,7 @@ class RealLayers(StubLayers):
         self.last_compose_report: dict[str, Any] | None = None
         self.last_feedback_report: dict[str, Any] | None = None
         self.last_export_report: dict[str, Any] | None = None
+        self.last_audit_report: dict[str, Any] | None = None
 
     # ----- ленивые зависимости -----
 
@@ -592,6 +599,42 @@ class RealLayers(StubLayers):
             else "",
         )
         return ExportOutput(thumbnails=result.thumbnails)
+
+    # ----- аудит (этап 10) -----
+
+    def audit(self, inp: AuditInput) -> dict[str, Any]:
+        """Детерминированные проверки по собранной колоде: реестр в `audit/registry.py`.
+
+        Контекстная часть (11 вопросов Приложения 1 моделью по картинке слайда) пока не
+        выполняется, и отчёт этого не скрывает: такие проверки помечены `not_checked`, а
+        причина записана в `coverage.missing_inputs`.
+        """
+        started = time.perf_counter()
+        try:
+            report = build_audit_report(
+                job_id=inp.job_id,
+                variant_id=inp.variant_id,
+                revision=inp.revision,
+                deck=inp.composed_deck,
+                profile=inp.template_profile or {},
+                staging_prefix=inp.staging.prefix,
+                contextual=False,
+                missing_inputs=["contextual_audit_not_implemented"],
+                started=started,
+            )
+        except Exception:
+            # Сбой проверки не должен ронять готовую колоду: она уже собрана и выгружена.
+            log.exception("аудит не выполнен, остаётся заглушка")
+            return super().audit(inp)
+        # Отчёт кладётся рядом с колодой: интерфейс и исправления читают его артефактом,
+        # как и у заглушки, — без этого сводка есть, а самого отчёта не найти.
+        inp.staging.write_json("audit.json", report)
+        self.last_audit_report = {
+            "issues": report["summary"]["issues_total"],
+            "score": report["summary"]["score"],
+            "duration_ms": report["metrics"]["duration_ms"],
+        }
+        return report
 
     # ----- правка слайда по запросу (этап 20) -----
 

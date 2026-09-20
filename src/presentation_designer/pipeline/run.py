@@ -183,6 +183,8 @@ class AuditInput:
     story: JsonDict
     package: JsonDict
     thumbnails: list[JsonDict]
+    # Профиль шаблона: по нему проверяются шрифты, палитра, шкала кеглей, макеты и поля.
+    template_profile: JsonDict = field(default_factory=dict)
 
 
 @dataclass
@@ -481,6 +483,7 @@ def run_variant(layers: Layers, ctx: VariantContext, emit: Emit) -> VariantOutco
                 ctx.story,
                 ctx.package,
                 exported.thumbnails,
+                ctx.template_profile,
             )
         )
         outcome.report = report
@@ -656,6 +659,7 @@ def run_edit(layers: Layers, ctx: EditContext, emit: Emit) -> EditOutcome:
                 ctx.story,
                 ctx.package,
                 exported.thumbnails,
+                ctx.template_profile,
             )
         )
         # Отчёт уже записан слоем аудита; область повторной проверки дописывается и файл

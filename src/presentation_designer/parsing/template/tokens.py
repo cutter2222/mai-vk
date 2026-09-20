@@ -49,6 +49,13 @@ class TokenStats:
         default_factory=lambda: collections.defaultdict(set)
     )
     occurrences: list[TextOccurrence] = field(default_factory=list)
+    # Форма плашек образцов: по ним собственные композиции повторяют пластику шаблона.
+    geometries: collections.Counter[str] = field(default_factory=collections.Counter)
+    # Скругление roundRect в долях половины меньшей стороны (adj 0…0.5 по формуле OOXML).
+    corner_ratios: list[float] = field(default_factory=list)
+    line_widths_pt: list[float] = field(default_factory=list)
+    shadowed: int = 0
+    shapes_seen: int = 0
 
 
 def _hex_role(hex_color: str, theme_colors: dict[str, str]) -> str:
@@ -103,6 +110,39 @@ def text_role_for(shape: ShapeInfo, style: ResolvedText, slide_h_pt: float) -> s
     return "body"
 
 
+def _collect_shape_form(stats: TokenStats, shape: ShapeInfo) -> None:
+    """Пластика плашки: форма, скругление, толщина обводки, тень.
+
+    Считаются только заметные фигуры: у мелкого декора и волосяных линий пластика своя и
+    к карточкам содержания отношения не имеет.
+    """
+    if shape.element is None or shape.area < 0.004:
+        return
+    stats.shapes_seen += 1
+    if shape.geometry:
+        stats.geometries[shape.geometry] += 1
+    sp_pr = shape.element.find("p:spPr", NS)
+    if sp_pr is None:
+        return
+    if shape.geometry == "roundRect":
+        # adj OOXML задан в тысячных долях половины меньшей стороны: 16667 — «как в PowerPoint».
+        gd = sp_pr.find("a:prstGeom/a:avLst/a:gd", NS)
+        raw = (gd.get("fmla") or "") if gd is not None else ""
+        value = raw.split()[-1] if raw.startswith("val") else ""
+        try:
+            stats.corner_ratios.append(min(float(value) / 100000.0, 0.5) if value else 0.16667)
+        except ValueError:
+            stats.corner_ratios.append(0.16667)
+    ln = sp_pr.find("a:ln", NS)
+    if ln is not None and ln.find("a:noFill", NS) is None and ln.get("w"):
+        try:
+            stats.line_widths_pt.append(float(ln.get("w") or 0) / 12700.0)
+        except ValueError:
+            pass
+    if sp_pr.find("a:effectLst/a:outerShdw", NS) is not None:
+        stats.shadowed += 1
+
+
 def collect_stats(
     pkg: TemplatePackage, sample_indexes: set[int], resolvers: dict[int, StyleResolver]
 ) -> TokenStats:
@@ -133,6 +173,7 @@ def collect_stats(
                         resolved.hex, "theme" if resolved.theme_ref else "slides"
                     )
                     stats.color_scope[resolved.hex].add(slide.index)
+            _collect_shape_form(stats, shape)
             if not shape.has_text_frame:
                 continue
             for paragraph in shape.paragraphs:
@@ -298,8 +339,35 @@ def build_design_tokens(
             "max_font_families": max(1, min(3, len([f for f in fonts if f["usage_count"] > 0]))),
         },
         "spacing": spacing,
+        "shape": _shape_tokens(stats),
     }
     return tokens
+
+
+def _shape_tokens(stats: TokenStats) -> dict[str, Any]:
+    """Пластика шаблона для собственных композиций: форма плашки, скругление, обводка, тень.
+
+    Значения — медианы по заметным фигурам образцов, а не первое встреченное: одна
+    декоративная плашка не должна задавать вид всей колоды. Без образцов ветка пустая,
+    и построитель берёт свои умолчания.
+    """
+    if not stats.shapes_seen:
+        return {}
+    rounded = stats.geometries.get("roundRect", 0)
+    ellipse = stats.geometries.get("ellipse", 0)
+    rect = stats.geometries.get("rect", 0)
+    total = max(rounded + ellipse + rect, 1)
+    corner = statistics.median(stats.corner_ratios) if stats.corner_ratios else 0.0
+    out: dict[str, Any] = {
+        "card_geometry": "roundRect" if rounded >= rect else "rect",
+        "corner_ratio": round(corner, 4),
+        "rounded_share": round(rounded / total, 2),
+        "shadow_share": round(stats.shadowed / stats.shapes_seen, 2),
+        "confidence": round(min(0.9, 0.3 + 0.1 * min(stats.shapes_seen, 6)), 2),
+    }
+    if stats.line_widths_pt:
+        out["stroke_pt"] = round(statistics.median(stats.line_widths_pt), 2)
+    return out
 
 
 def _font_role(role: str) -> str:

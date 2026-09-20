@@ -16,6 +16,8 @@ import collections
 from dataclasses import dataclass, field
 from typing import Any
 
+from presentation_designer.shared.text import plural
+
 JsonDict = dict[str, Any]
 
 TEXT_KINDS = (
@@ -63,6 +65,12 @@ ROLE_AFFINITY: dict[str, dict[str, float]] = {
     "quote": {"quote": 3.0, "text": 1.6, "section_divider": 0.9, "bullets": 0.6},
     "cards": {"cards": 3.0, "bullets": 1.6, "numbers": 1.2, "two_column": 1.2},
 }
+# Штраф собственной композиции в отборе: паттерны загруженного файла идут первыми, своя
+# композиция побеждает только с заметным перевесом по пригодности.
+BUILTIN_PENALTY = 0.7
+# Насколько своя композиция должна быть пригоднее лучшего паттерна шаблона, чтобы встать
+# перед ним: без перевеса она добирает список после паттернов автора.
+BUILTIN_LEAD = 1.25
 # Предпочтения оси плотности: compact тянется к цифрам и коротким спискам, detailed —
 # к карточкам, таблицам и двум колонкам.
 VARIANT_ROLE_BIAS: dict[str, dict[str, float]] = {
@@ -149,6 +157,9 @@ class PatternInfo:
     tone: str = "unknown"
     style_key: str = ""
     slide_index: int = 0
+    # Композиция собственной библиотеки, а не образец шаблона: в отборе идёт после паттернов
+    # автора и выигрывает только там, где шаблон не покрывает подачу или не вмещает содержание.
+    builtin: bool = False
 
     # ----- состав -----
 
@@ -292,7 +303,7 @@ class PatternInfo:
                     parts.append(f"{label} ≤{s.max_chars}")
         nums = len(self.single("number"))
         if nums:
-            parts.append(f"{nums} {_plural(nums, 'показатель', 'показателя', 'показателей')}")
+            parts.append(f"{nums} {plural(nums, 'показатель', 'показателя', 'показателей')}")
         cards = self.cards
         if cards is not None:
             inner = []
@@ -303,7 +314,7 @@ class PatternInfo:
                 inner.append(f"{label} ≤{cards.by_kind[kind][0].max_chars}")
             if "icon" in cards.by_kind:
                 inner.append("иконка")
-            word = _plural(cards.count, "карточка", "карточки", "карточек")
+            word = plural(cards.count, "карточка", "карточки", "карточек")
             parts.append(f"{cards.count} {word} ({', '.join(inner)})")
         if self.has_table:
             parts.append("таблица")
@@ -322,14 +333,6 @@ _KIND_LABEL = {
     "caption": "подпись",
     "bullets": "список",
 }
-
-
-def _plural(n: int, one: str, few: str, many: str) -> str:
-    if n % 10 == 1 and n % 100 != 11:
-        return one
-    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
-        return few
-    return many
 
 
 # ---------- разбор профиля ----------
@@ -413,6 +416,7 @@ def pattern_info(raw: JsonDict) -> PatternInfo:
         tone=str(tone.get("background") or "unknown"),
         style_key=str(raw.get("style_key") or ""),
         slide_index=int((raw.get("source") or {}).get("slide_index") or 0),
+        builtin=(raw.get("source") or {}).get("kind") == "builtin",
     )
 
 
@@ -444,6 +448,11 @@ def fixed_pattern_pool(
     (`slide_index`, при равенстве — идентификатор)."""
 
     def ordered(pool: list[PatternInfo]) -> list[PatternInfo]:
+        # Титул, разделитель, оглавление и финал — лицо колоды, и в шаблоне они почти всегда
+        # нарисованы с декором. Своя композиция служебной роли берётся, только если в шаблоне
+        # такой роли нет вовсе: иначе она попадала бы в чередование стилей по вариантам
+        # наравне с нарисованными образцами.
+        pool = [p for p in pool if not p.builtin] or pool
         pool = [p for p in pool if p.service_safe] or pool
         pool.sort(
             key=lambda p: (
@@ -503,6 +512,10 @@ def pick_style(
     себе: порядок задают `slide_index`, источник тона записан в профиле."""
     if not pool:
         return None
+    # Чередование стилей — про образцы шаблона: у своей композиции стиля шаблона нет, и её
+    # пустой style_key иначе становится ещё одним «стилем», который вариант выбирает наравне
+    # с нарисованными титулами и разделителями.
+    pool = [p for p in pool if not p.builtin] or pool
     if policy != "per_variant":
         return pool[0]
     styles: list[str] = []
@@ -586,6 +599,18 @@ def score_pattern(p: PatternInfo, need: Need, variant_id: str) -> float:
     # Обязательные слоты на несколько символов (единицы, номера) — признак составного образца.
     score -= 0.4 * sum(1 for s in p.required_singles if s.is_text and 0 < s.max_chars < 12)
     score *= VARIANT_ROLE_BIAS.get(variant_id, {}).get(p.role, 1.0)
+    if p.builtin:
+        # У образца шаблона картинка и схема уже нарисованы: под текстовый тезис он всё равно
+        # выглядит цельно. У своей композиции на их месте пустое место, которое вёрстка
+        # уберёт, — поэтому медиа-композиция берётся только под медиа-содержание.
+        if p.has_image_slot and not (need.has_image or need.visual == "image"):
+            return 0.0
+        if "diagram" in p.supports and need.visual != "diagram":
+            return 0.0
+        # Сначала шаблон автора, свои композиции — когда его не хватает. Множитель подобран
+        # так, чтобы годный паттерн шаблона обходил свою композицию той же роли, а заметно
+        # менее пригодный (не та подача, не вмещает содержание) — нет.
+        score *= BUILTIN_PENALTY
     return max(score, 0.0)
 
 
@@ -597,7 +622,12 @@ def candidates_for(
     limit: int = 3,
     has_datasets: bool = False,
 ) -> list[PatternInfo]:
-    """Кандидаты по убыванию оценки; таблица и диаграмма только при наборе данных."""
+    """Кандидаты по убыванию оценки; таблица и диаграмма только при наборе данных.
+
+    Паттерны загруженного файла идут первыми. Своя композиция обгоняет лучший паттерн
+    шаблона, только если заметно пригоднее (`BUILTIN_LEAD`) — то есть когда шаблон не даёт
+    нужной подачи или не вмещает содержание; иначе она добирает список после него.
+    """
     scored: list[tuple[float, PatternInfo]] = []
     for p in patterns:
         if not p.fillable(has_datasets=has_datasets):
@@ -608,7 +638,17 @@ def candidates_for(
         if s > 0:
             scored.append((s, p))
     scored.sort(key=lambda t: (-t[0], t[1].pattern_id))
-    return [p for _, p in scored[:limit]]
+    best_template = max((s for s, p in scored if not p.builtin), default=0.0)
+    ranked = sorted(
+        scored,
+        key=lambda t: (
+            # 0 — паттерн шаблона или своя композиция с заметным перевесом, 1 — остальные свои.
+            0 if not t[1].builtin or t[0] > best_template * BUILTIN_LEAD else 1,
+            -t[0],
+            t[1].pattern_id,
+        ),
+    )
+    return [p for _, p in ranked[:limit]]
 
 
 def fallback_visual(visual: str, patterns: list[PatternInfo], *, has_datasets: bool) -> str:
