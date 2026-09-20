@@ -1943,52 +1943,55 @@ body {
 
 /* ---------- Числовые поля: шаг вверх-вниз ---------- */
 
-/* Стандартный спиннер Mantine растягивает две стрелки на всю высоту поля, и они читаются как
-   два далёких угла. Здесь это маленький отдельный орган: пара стрелок 9 px на светлой плашке
-   по центру поля. Значение и шаг перестают спорить за одно место. */
+/* Стандартный спиннер Mantine растягивает две стрелки на всю высоту поля и подкладывает под
+   них серую заливку: в капсуле поля получается чужеродный прямоугольник. Здесь остаются только
+   стрелки.
+
+   Центровка — флексом на всю высоту поля, без отступов на глаз: подпорка вроде margin-top
+   верна ровно для одной высоты поля, а у размеров xs и sm она разная, и пара уезжала выше
+   середины (замер: 7 px сверху против 3 снизу). */
 .mantine-NumberInput-controls {
-  --ni-chevron-size: 9px;
-  width: 20px;
-  max-width: 20px;
-  height: 20px;
-  margin-top: 4px;
-  margin-inline-end: 4px;
+  --ni-chevron-size: 10px;
+  width: 18px;
+  max-width: 18px;
+  height: 100%;
+  margin: 0 9px 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
   gap: 0;
   border: 0;
-  border-radius: 6px;
-  background: var(--mist);
-  opacity: 0.75;
-  transition: opacity 120ms ease, background 120ms ease;
-}
-
-.mantine-NumberInput-root:hover .mantine-NumberInput-controls,
-.mantine-NumberInput-root:focus-within .mantine-NumberInput-controls {
-  opacity: 1;
+  border-radius: 0;
+  background: transparent;
 }
 
 .mantine-NumberInput-control {
   --control-border: 0;
-  --control-radius: 6px;
+  --control-radius: 0;
   flex: 0 0 auto;
+  height: 10px;
+  width: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 9px;
-  width: 20px;
   border: 0;
-  color: var(--ink2);
+  border-radius: 0;
   background: transparent;
-  transition: color 100ms ease, background 100ms ease;
+  color: var(--ink2);
+  opacity: 0.8;
+  transition: color 100ms ease, opacity 100ms ease;
 }
 
-.mantine-NumberInput-control:hover:not(:disabled) {
-  background: var(--sky);
+.mantine-NumberInput-control:hover:not(:disabled),
+.mantine-NumberInput-control:active:not(:disabled) {
+  background: transparent;
   color: var(--accent);
+  opacity: 1;
 }
 
 .mantine-NumberInput-control:disabled {
-  color: var(--line);
   background: transparent;
+  color: var(--line);
   opacity: 1;
 }
