@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from presentation_designer.pipeline.state import TERMINAL, JsonDict, NotFound, State
+from presentation_designer.shared.text import plural
 
 VARIANT_STAGES = ["plan", "compose", "export", "audit"]
 
@@ -259,7 +260,8 @@ def _progress_message(stage: str, variants: list[JsonDict]) -> str:
     ready = sum(1 for v in variants if v.get("ready_at"))
     audited = sum(1 for v in variants if v.get("audited_at"))
     if stage == "done":
-        return f"Готово: {len(variants)} вариантов, аудит завершён у {audited}"
+        word = plural(len(variants), "вариант", "варианта", "вариантов")
+        return f"Готово: {len(variants)} {word}, аудит завершён у {audited}"
     if stage == "queued":
         return "Задание в очереди"
     if stage == "story":

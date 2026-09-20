@@ -56,6 +56,7 @@ from presentation_designer.pipeline.state import (
     now_iso,
 )
 from presentation_designer.shared.settings import Settings, get_models_config, get_settings
+from presentation_designer.shared.text import plural
 
 log = logging.getLogger(__name__)
 
@@ -1968,7 +1969,8 @@ def _pptx_hash(manifest: JsonDict, prefix: str) -> str | None:
 
 def _final_message(variants: list[JsonDict]) -> str:
     audited = sum(1 for v in variants if v.get("audited_at"))
-    return f"Готово: {len(variants)} вариантов, аудит завершён у {audited}"
+    word = plural(len(variants), "вариант", "варианта", "вариантов")
+    return f"Готово: {len(variants)} {word}, аудит завершён у {audited}"
 
 
 def renderer_check(
