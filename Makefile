@@ -1,5 +1,5 @@
 # Цели проекта. Запуск из корня репозитория.
-.PHONY: setup gen-contracts check test lint typecheck fixtures organizer-data dev dev-real api build build-mock e2e test-server up down deploy rollback backup restore-verify cold-start llm-probe llm-smoke llm-limiter-check llm-test-valkey clean
+.PHONY: setup gen-contracts docs check test lint typecheck fixtures organizer-data dev dev-real api build build-mock e2e test-server up down deploy rollback backup restore-verify cold-start llm-probe llm-smoke llm-limiter-check llm-test-valkey clean
 
 setup: ## установить зависимости Python и frontend
 	uv sync
@@ -7,6 +7,10 @@ setup: ## установить зависимости Python и frontend
 
 gen-contracts: ## сгенерировать Pydantic-модели и TypeScript-типы из contracts/schemas
 	./scripts/gen_contracts.sh
+
+docs: ## пересобрать AUDIT.md и MODELS.md из реестра проверок и конфига моделей
+	uv run scripts/gen_audit_md.py
+	uv run scripts/gen_models_md.py
 
 lint:
 	uv run ruff check .
@@ -20,8 +24,10 @@ typecheck:
 test:
 	uv run pytest -q
 
-check: ## полная проверка: контракты, линтеры, типы, тесты
+check: ## полная проверка: контракты, документы из кода, линтеры, типы, тесты
 	uv run python contracts/validate.py
+	uv run scripts/gen_audit_md.py --check
+	uv run scripts/gen_models_md.py --check
 	$(MAKE) lint
 	$(MAKE) typecheck
 	$(MAKE) test
