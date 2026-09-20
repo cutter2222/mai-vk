@@ -14,6 +14,7 @@ from __future__ import annotations
 import collections
 import logging
 import re
+import statistics
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -657,6 +658,27 @@ def _attach_chart_slot(
     return [i for i in sorted(drawn.element_ids) if i != anchor.element_id]
 
 
+def ring_row(pattern: Pattern) -> bool:
+    """Ряд одинаковых картинок в строку: три кольца с «10 %» — это показатели, не диаграмма.
+
+    Зрение честно называет такой слайд графиком: кольца и есть круговые диаграммы. Но на их
+    месте нельзя построить одну нативную: заменится только одна картинка, а соседние останутся
+    с нарисованными долями и чужими числами. Пока код не умеет собирать кольца в одну
+    диаграмму, роль chart для такого образца не принимается.
+    """
+    images = [s for s in pattern.slots if s.kind == "image"]
+    if len(images) < 2:
+        return False
+    rows = collections.Counter(round(s.shape.y, 1) for s in images)
+    if max(rows.values()) < 2:
+        return False
+    sizes = [s.shape.area for s in images]
+    typical = statistics.median(sizes)
+    if typical <= 0:
+        return False
+    return all(abs(a - typical) / typical <= 0.25 for a in sizes)
+
+
 def attach_drawn_chart(pattern: Pattern) -> bool:
     """Подсказка зрения: на образце график. Код ищет, из чего он собран, мягкими порогами.
 
@@ -913,6 +935,8 @@ def refine_roles_with_vlm(
         "rejected": 0,
         # Образцы, где график нарисован фигурами: зрение сказало «chart», код нашёл ряд.
         "drawn_charts": 0,
+        # Ряды одинаковых колец: зрение зовёт их графиком, собрать в один пока нечем.
+        "ring_rows": 0,
         "errors": [],
     }
     if client is None or skill is None:
@@ -971,6 +995,12 @@ def refine_roles_with_vlm(
             rep = chunk[idx]
             role = str(item.get("role", ""))
             if role not in ROLES or conf < min_confidence:
+                continue
+            if role == "chart" and ring_row(rep):
+                # Ряд одинаковых колец: одна нативная диаграмма встанет на место одной картинки,
+                # а соседние останутся с нарисованными долями и чужими числами.
+                summary["rejected"] += 1
+                summary["ring_rows"] = summary.get("ring_rows", 0) + 1
                 continue
             if not role_matches_structure(role, rep):
                 # Зрение видит график там, где код нашёл только ряд картинок: пороги поиска

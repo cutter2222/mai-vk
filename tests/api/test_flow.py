@@ -540,6 +540,21 @@ def test_slide_patch_flow(client: TestClient, pptx_bytes: bytes, xlsx_bytes: byt
     )
     assert old.status_code == 409 and old.json()["error"]["code"] == "revision_stale"
 
+    # Знак шаблона: правка на всю колоду без единого слайда. Логотип лежит на макетах, и
+    # слайдов в таком запросе нет — маршрут принимает его, план получает флаг, повтор — ничто.
+    logo = client.post(url, json={"base_revision": 3, "slides": [], "template_logo": "drop"})
+    assert logo.status_code == 202, logo.text
+    logo_job = client.get(f"/api/jobs/{logo.json()['patch_job_id']}").json()
+    assert logo_job["status"] == "succeeded", logo_job
+    assert logo_job["result"]["revision"] == 4
+    plan4 = client.get(f"/api/generations/{job_id}/artifacts/balanced/r4/plan.json").json()
+    assert plan4["template_logo"] == "drop"
+    again = client.post(url, json={"base_revision": 4, "slides": [], "template_logo": "drop"})
+    assert again.status_code in (409, 422), again.text
+    assert again.json()["error"]["code"] == "patch_empty", again.text
+    back = client.post(url, json={"base_revision": 4, "slides": [], "template_logo": "keep"})
+    assert back.status_code == 202, back.text
+
 
 def test_template_media_endpoint(client: TestClient, tmp_path: pathlib.Path) -> None:
     """Ресурсы шаблона для панели редактора: байты по asset_id профиля с ETag, 404 для

@@ -170,3 +170,33 @@ def test_clone_keeps_references_when_skipped_rel_precedes_others(tmp_path: pathl
     assert next(s for s in clone.shapes if s.has_chart).chart.plots[0].series[0].name == "s"
     out = _save(prs, tmp_path / "notes.pptx")
     assert ooxml.check_package(out).ok
+
+def test_drop_template_logos_removes_marked_shapes() -> None:
+    """Знак шаблона снимается с макета по профилю: объект уходит, остальное на месте.
+
+    Логотип живёт на макете, а не на слайде, поэтому правкой слайда его не убрать — это
+    отдельный проход по пакету (`template_logo: drop` в плане).
+    """
+    from presentation_designer.layout.package import drop_template_logos
+    from tests.layout.conftest import MINI_TEMPLATE
+
+    prs = Presentation(str(MINI_TEMPLATE))
+    layout = prs.slide_layouts[0]
+    victim = next(sh for sh in layout.shapes)
+    part = str(layout.part.partname).lstrip("/")
+    profile = {
+        "fixed_elements": [
+            {"kind": "logo", "element_ref": str(victim.shape_id), "source_part": part},
+            # Чужая часть: тот же id, но другой макет — трогать нельзя.
+            {"kind": "footer", "element_ref": str(victim.shape_id), "source_part": part},
+        ]
+    }
+    before = len(list(layout.shapes))
+    removed = drop_template_logos(prs, profile)
+    assert removed >= 1
+    after = [str(sh.shape_id) for sh in layout.shapes]
+    assert str(victim.shape_id) not in after
+    assert len(after) == before - 1, "остальные объекты макета на месте"
+    # Профиль без логотипов ничего не трогает.
+    assert drop_template_logos(prs, {"fixed_elements": []}) == 0
+
