@@ -135,7 +135,13 @@ def _shape_style(obj: JsonDict, height_ratio: float) -> list[str]:
     color = _color(line.get("color"))
     if color:
         thickness = float(line.get("width_pt") or 0.75)
-        rules.append(f"box-shadow:inset 0 0 0 {thickness:.3f}pt {color}")
+        # Разделитель — фигура нулевой высоты или ширины: внутренняя тень на ней не видна
+        # совсем, поэтому линия рисуется заливкой нужной толщины.
+        if width <= 0 or height <= 0:
+            rules.append(f"background:{color}")
+            rules.append(f"{'height' if height <= 0 else 'width'}:{thickness:.3f}pt")
+        else:
+            rules.append(f"box-shadow:inset 0 0 0 {thickness:.3f}pt {color}")
     return rules
 
 
@@ -151,9 +157,14 @@ def _object(obj: JsonDict, width_pt: float, ratio: float, media: dict[str, str])
     if rotation:
         style.append(f"transform:rotate({rotation:.2f}deg)")
     fill = obj.get("fill") or {}
-    if fill.get("kind") == "solid" and _color(fill.get("color")):
+    # Фигура произвольной формы (a:custGeom) прямоугольником не рисуется: вместо тонкого
+    # контура получался залитый блок во всю рамку. Текст внутри неё остаётся.
+    custom = obj.get("geometry") == "custom"
+    # Градиент рисуется своим основным цветом: в ComposedDeck точного градиента нет, а плашка
+    # цвета темы ближе к слайду, чем прозрачная дыра на его месте.
+    if not custom and fill.get("kind") in {"solid", "gradient"} and _color(fill.get("color")):
         style.append(f"background:{_color(fill.get('color'))}")
-    shape_rules = _shape_style(obj, ratio)
+    shape_rules = [] if custom else _shape_style(obj, ratio)
     style += shape_rules
 
     kind = obj.get("kind")
@@ -178,7 +189,8 @@ def _object(obj: JsonDict, width_pt: float, ratio: float, media: dict[str, str])
     if not paragraphs:
         # Пустая рамка: она несёт заливку и контур — например, карточка шаблона, внутри
         # которой текст лежит отдельными объектами. Без контура такие рамки пропадали.
-        visible = bool(fill.get("color")) or bool(shape_rules)
+        has_line = bool((obj.get("line") or {}).get("color"))
+        visible = bool(fill.get("color")) or bool(shape_rules) or has_line
         return f'<div class="o" style="{";".join(style)}"></div>' if visible else ""
 
     anchor = str(text.get("anchor") or "")
@@ -198,11 +210,11 @@ def _object(obj: JsonDict, width_pt: float, ratio: float, media: dict[str, str])
         "justify-content:" + _justify(text.get("vertical_align")),
     ]
     base = text.get("computed_style") or {}
-    body = "".join(_paragraph(p, base, width_pt) for p in paragraphs)
+    body = "".join(_paragraph(p, base, width_pt, first=i == 0) for i, p in enumerate(paragraphs))
     return f'<div class="o" style="{";".join(style)}">{body}</div>'
 
 
-def _paragraph(par: JsonDict, base: JsonDict, width_pt: float) -> str:
+def _paragraph(par: JsonDict, base: JsonDict, width_pt: float, *, first: bool = False) -> str:
     style = {**base, **(par.get("style") or {})}
     font = {**(base.get("font") or {}), **((par.get("style") or {}).get("font") or {})}
     size_pt = float(font.get("size_pt") or 0)
@@ -220,18 +232,38 @@ def _paragraph(par: JsonDict, base: JsonDict, width_pt: float) -> str:
     if font.get("italic"):
         rules.append("font-style:italic")
     spacing = float(font.get("line_spacing") or 0)
-    if spacing > 0:
-        rules.append(f"line-height:{spacing:.2f}")
+    # `a:lnSpc/a:spcPct` 100% — это одинарный интервал шрифта (ascent + descent + gap), а не
+    # 1em. Браузер называет его `normal`, поэтому при 100% межстрочный не задаётся вовсе:
+    # иначе строки становились на четверть теснее, чем на слайде. Для других процентов
+    # интервал считается от того же одинарного — его меряет `text_metrics`, как планировщик.
+    if spacing > 0 and abs(spacing - 1.0) > 0.01:
+        rules.append(f"line-height:{spacing * _single_line(family, font, size_pt):.3f}")
     align = str(par.get("align") or "").strip()
     if align in ("center", "right", "justify"):
         rules.append(f"text-align:{align}")
-    if float(style.get("space_before_pt") or 0) and width_pt:
+    # Отступ перед абзацем — только между абзацами: первому абзацу рамки рендерер его не даёт.
+    if not first and float(style.get("space_before_pt") or 0) and width_pt:
         rules.append(f"margin-top:{float(style['space_before_pt']) / width_pt * 100:.3f}cqw")
     if float(style.get("space_after_pt") or 0) and width_pt:
         rules.append(f"margin-bottom:{float(style['space_after_pt']) / width_pt * 100:.3f}cqw")
     bullet = (style.get("bullet") or {}).get("char") if style.get("bullet") else None
     prefix = f"{html.escape(str(bullet))} " if bullet else ""
     return f'<p style="{";".join(rules)}">{prefix}{html.escape(str(par.get("text") or ""))}</p>'
+
+
+def _single_line(family: str, font: JsonDict, size_pt: float) -> float:
+    """Одинарный интервал шрифта долями кегля: тем же измерением, что и ёмкость в плане."""
+    if size_pt <= 0:
+        return 1.2
+    try:
+        from presentation_designer.shared import text_metrics
+
+        resolved = text_metrics.resolve_font(
+            family or None, bold=bool(font.get("bold")), italic=bool(font.get("italic"))
+        )
+        return text_metrics.line_metrics(resolved, size_pt).line_height_pt / size_pt
+    except Exception:
+        return 1.2
 
 
 def _justify(value: Any) -> str:

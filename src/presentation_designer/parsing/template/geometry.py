@@ -80,6 +80,10 @@ class ShapeInfo:
     wrap: bool = True
     fill_hex: str | None = None
     fill_kind: str | None = None  # solid | gradient | picture | none | inherit
+    # Ссылка на заливку темы: p:style/a:fillRef@idx. У фигур, нарисованных в PowerPoint
+    # кнопкой «прямоугольник», своей заливки в файле нет — она вся здесь.
+    fill_ref_idx: int | None = None
+    fill_ref_element: Any = field(default=None, repr=False)
     line_hex: str | None = None
     # Толщина контура в пунктах (a:ln@w). None — не задана у самой фигуры: её берут из темы.
     line_width_pt: float | None = None
@@ -237,6 +241,7 @@ def _hex_of(color_el: Any) -> str | None:
 
 
 def _fill(shape: Any) -> tuple[str | None, str | None]:
+    """Заливка самой фигуры. Ссылка на заливку темы читается отдельно — `_fill_ref`."""
     sp_pr = shape._element.find("p:spPr", NS)
     if sp_pr is None:
         return None, "inherit"
@@ -253,6 +258,24 @@ def _fill(shape: Any) -> tuple[str | None, str | None]:
     if sp_pr.find("a:blipFill", NS) is not None:
         return None, "picture"
     return None, "inherit"
+
+
+def _fill_ref(shape: Any) -> tuple[int | None, Any]:
+    """Заливка из стиля темы: `p:style/a:fillRef@idx` и её цвет.
+
+    То же место, где живёт контур карточек (`a:lnRef`): PowerPoint пишет сюда заливку фигур,
+    нарисованных инструментом, и в `p:spPr` тогда пусто. Пока это не читалось, белая плашка
+    на половину слайда приезжала в ComposedDeck без заливки — на картинке слайда она была,
+    на холсте редактора её не было.
+    """
+    ref = shape._element.find("p:style/a:fillRef", NS)
+    if ref is None:
+        return None, None
+    try:
+        idx = int(ref.get("idx", "0")) or None
+    except ValueError:
+        idx = None
+    return idx, ref
 
 
 def _line(shape: Any) -> tuple[str | None, float | None, int | None, Any]:
@@ -534,8 +557,17 @@ def walk_shapes(container: Any, part: Any, slide_w: int, slide_h: int) -> list[S
                 if info.graphic_uri and "smartArt" in info.graphic_uri.lower():
                     info.kind = "smartart"
             geom = shape._element.find("p:spPr/a:prstGeom", NS)
-            info.geometry = geom.get("prst") if geom is not None else None
+            if geom is not None:
+                info.geometry = geom.get("prst")
+            elif shape._element.find("p:spPr/a:custGeom", NS) is not None:
+                # Нарисованная от руки фигура (мокап телефона, стрелка, кольцо диаграммы):
+                # прямоугольником её рисовать нельзя — вместо тонкого контура получается
+                # залитый блок во всю рамку. Кто рисует, тот и решает, что с ней делать.
+                info.geometry = "custom"
+            else:
+                info.geometry = None
             info.fill_hex, info.fill_kind = _fill(shape)
+            info.fill_ref_idx, info.fill_ref_element = _fill_ref(shape)
             info.line_hex, info.line_width_pt, info.line_ref_idx, info.line_ref_element = _line(
                 shape
             )

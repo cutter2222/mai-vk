@@ -111,8 +111,15 @@ def _paragraph_entry(info: ShapeInfo, para: Paragraph, resolver: StyleResolver |
 
 
 def _fill_entry(info: ShapeInfo, theme: Any) -> JsonDict | None:
+    """Заливка объекта: своя, иначе из стиля темы (`p:style/a:fillRef`).
+
+    У фигур, нарисованных в PowerPoint инструментом, своей заливки в файле нет: и цвет, и вид
+    берутся из темы по номеру. Пока это не читалось, белая плашка на половину слайда была на
+    картинке слайда, но пропадала на холсте редактора и в HTML-экспорте — «Готово» и
+    «Редактировать» показывали разное.
+    """
     if info.fill_kind in (None, "inherit"):
-        return {"kind": "inherited"}
+        return _theme_fill(info, theme) or {"kind": "inherited"}
     if info.fill_kind == "none":
         return {"kind": "none"}
     if info.fill_kind == "picture":
@@ -141,6 +148,32 @@ def _fill_entry(info: ShapeInfo, theme: Any) -> JsonDict | None:
             if resolved.modifiers:
                 source["modifiers"] = resolved.modifiers
             out["source"] = source
+    return out
+
+
+def _theme_fill(info: ShapeInfo, theme: Any) -> JsonDict | None:
+    """Заливка из стиля темы по `a:fillRef@idx`: цвет ссылки, вид — из списка заливок темы.
+
+    Градиент и узор рисуются цветом ссылки: это приближение, но плашка своего цвета ближе к
+    слайду, чем её отсутствие. Вид записан честно, поэтому по ComposedDeck видно, где было
+    упрощение.
+    """
+    if info.fill_ref_element is None or not info.fill_ref_idx:
+        return None
+    resolved = resolve_color(info.fill_ref_element, theme)
+    if resolved is None:
+        return None
+    kinds = getattr(theme, "fill_kinds", []) or []
+    kind = kinds[info.fill_ref_idx - 1] if 0 < info.fill_ref_idx <= len(kinds) else "solid"
+    if kind == "none":
+        return {"kind": "none"}
+    out: JsonDict = {"kind": "gradient" if kind == "gradient" else "solid", "color": resolved.hex}
+    source: JsonDict = {"level": "theme"}
+    if resolved.theme_ref:
+        source["theme_ref"] = resolved.theme_ref
+    if resolved.modifiers:
+        source["modifiers"] = resolved.modifiers
+    out["source"] = source
     return out
 
 

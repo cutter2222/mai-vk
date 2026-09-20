@@ -48,6 +48,35 @@ const DEFAULT_ROUND_ADJ = 0.16667;
 const CROP_KINDS = new Set(["table", "chart", "other", "connector"]);
 
 /**
+ * Одинарный интервал шрифта долями кегля. В OOXML `a:lnSpc/a:spcPct` 100% — это «одинарный»
+ * интервал шрифта (ascent + descent + gap), а не 1em: ставить `line-height: 1` значило делать
+ * строки на четверть теснее, чем на слайде. В CSS одинарный называется `normal`, умножить его
+ * нельзя, поэтому он меряется один раз на гарнитуру скрытым образцом.
+ */
+const NATURAL_LINE = new Map<string, number>();
+
+function naturalLine(family: string, bold: boolean, italic: boolean): number {
+  const key = `${family}|${bold}|${italic}`;
+  const cached = NATURAL_LINE.get(key);
+  if (cached !== undefined) return cached;
+  if (typeof document === "undefined") return 1.2;
+  const probe = document.createElement("div");
+  probe.textContent = "Ag";
+  probe.style.cssText = "position:absolute;left:-9999px;top:0;visibility:hidden;white-space:pre;line-height:normal;font-size:100px";
+  probe.style.fontFamily = family ? `"${family}", "Play", system-ui, sans-serif` : "system-ui, sans-serif";
+  if (bold) probe.style.fontWeight = "700";
+  if (italic) probe.style.fontStyle = "italic";
+  document.body.appendChild(probe);
+  const ratio = probe.getBoundingClientRect().height / 100;
+  probe.remove();
+  if (!ratio) return 1.2;
+  // Пока шрифт колоды не загрузился, мерится запасная гарнитура — такое значение не храним.
+  const loaded = !family || (document.fonts?.check?.(`100px "${family}"`) ?? true);
+  if (loaded) NATURAL_LINE.set(key, ratio);
+  return ratio;
+}
+
+/**
  * Живой холст слайда из объектов ComposedDeck: подложка макета, фон, объекты по z-order.
  * Текст — кегль в cqw от ширины слайда (как в HTML-экспорте), картинки — медиа ревизии,
  * фигуры — заливка и линия; таблицы и диаграммы — вырезка из миниатюры. Клик выделяет объект,
@@ -120,7 +149,9 @@ export function SlideCanvas({ deck, slide, layoutUrl, thumbUrl, mediaUrl, select
     const padY = EDGE_PX / rect.height;
     // Буквы меряются только у тех объектов, чья рамка накрыла точку: на каждое движение мыши
     // обходить весь слайд незачем.
-    const near = objects.filter((o) => fx >= o.bbox.x && fx <= o.bbox.x + o.bbox.width && fy >= o.bbox.y && fy <= o.bbox.y + o.bbox.height);
+    const near = objects.filter(
+      (o) => o.kind !== "group" && fx >= o.bbox.x && fx <= o.bbox.x + o.bbox.width && fy >= o.bbox.y && fy <= o.bbox.y + o.bbox.height,
+    );
     const found = hitTest(
       near.map((o) => {
         const g = glyphBox(o.object_id);
@@ -213,7 +244,24 @@ export function SlideCanvas({ deck, slide, layoutUrl, thumbUrl, mediaUrl, select
     if (selectedObjectId && ref.current) ref.current.focus({ preventScroll: true });
   }, [selectedObjectId]);
 
-  const objects = [...slide.objects].filter((o) => o.kind !== "group").sort((a, b) => a.z_order - b.z_order);
+  // Группа из фигур произвольной формы — иконка, мокап, схема: рисовать её по одной фигуре
+  // нельзя (у каждой только рамка, а не контур), и сотни вырезок из миниатюры браузер не
+  // тянет. Такая группа показывается одной вырезкой, её дети в холст не попадают. Группы с
+  // текстом остаются живыми: текст правится, и дублировать его вырезкой нельзя.
+  const customGroups = new Set<string>();
+  for (const group of slide.objects) {
+    if (group.kind !== "group") continue;
+    const children = slide.objects.filter((o) => (o.group_path ?? []).includes(group.object_id));
+    if (children.length === 0) continue;
+    const anyCustom = children.some((o) => o.geometry === "custom");
+    const anyText = children.some(
+      (o) => (o.text?.paragraphs ?? []).some((p) => (p.text ?? "").trim()) || Boolean(o.text?.plain?.trim()),
+    );
+    if (anyCustom && !anyText) customGroups.add(group.object_id);
+  }
+  const objects = [...slide.objects]
+    .filter((o) => (o.kind === "group" ? customGroups.has(o.object_id) : !(o.group_path ?? []).some((g) => customGroups.has(g))))
+    .sort((a, b) => a.z_order - b.z_order);
   const selected = objects.find((o) => o.object_id === selectedObjectId);
   const selectedBox = drag && selected && drag.id === selected.object_id ? drag.current : selected?.bbox;
   // Подсказка наведения обводит то, что видно: буквы у текста, рамку у остальных объектов.
@@ -272,7 +320,9 @@ export function SlideCanvas({ deck, slide, layoutUrl, thumbUrl, mediaUrl, select
 }
 
 function movable(obj: DeckObject): boolean {
-  return obj.kind !== "connector" && obj.kind !== "other";
+  // Группу двигают как целое только в PowerPoint: в плане правка адресуется объекту, и
+  // перенос группы нечем записать. Соединители и «прочее» не двигаем по той же причине.
+  return obj.kind !== "connector" && obj.kind !== "other" && obj.kind !== "group";
 }
 
 function round(v: number): number {
@@ -315,13 +365,23 @@ interface ObjectProps {
 function CanvasObject({ obj, box, widthPt, ratio, thumbUrl, mediaUrl, selected, hovered }: ObjectProps) {
   const style: React.CSSProperties = { ...percentBox(box) };
   if (obj.rotation_deg) style.transform = `rotate(${obj.rotation_deg}deg)`;
-  if (obj.fill?.kind === "solid" && obj.fill.color) style.background = obj.fill.color;
+  // Градиент темы рисуется основным цветом: точного градиента в ComposedDeck нет, а плашка
+  // цвета темы ближе к слайду, чем прозрачная дыра на её месте.
+  if ((obj.fill?.kind === "solid" || obj.fill?.kind === "gradient") && obj.fill.color) style.background = obj.fill.color;
   // Контур и скругление — как в PPTX и в HTML-экспорте: толщина линии в пунктах шаблона,
   // радиус от меньшей стороны фигуры. Раньше здесь стояли «1px» и «8% / 12%», и та же
   // плашка на холсте выглядела иначе, чем на картинке слайда.
   if (obj.line?.color) {
     const thickness = ((obj.line.width_pt ?? 0.75) / widthPt) * 100;
-    style.boxShadow = `inset 0 0 0 ${thickness.toFixed(3)}cqw ${obj.line.color}`;
+    // Разделитель на слайде — фигура нулевой высоты: внутренняя тень на ней не видна вовсе,
+    // а вырезкой из миниатюры её не показать (делить на ноль). Рисуем линию заливкой.
+    if (box.width <= 0 || box.height <= 0) {
+      style.background = obj.line.color;
+      if (box.height <= 0) style.height = `${thickness.toFixed(3)}cqw`;
+      else style.width = `${thickness.toFixed(3)}cqw`;
+    } else {
+      style.boxShadow = `inset 0 0 0 ${thickness.toFixed(3)}cqw ${obj.line.color}`;
+    }
   }
   if (obj.geometry === "ellipse") style.borderRadius = "50%";
   else if (obj.geometry?.startsWith("round") && box.width > 0 && box.height > 0 && ratio > 0) {
@@ -337,6 +397,19 @@ function CanvasObject({ obj, box, widthPt, ratio, thumbUrl, mediaUrl, selected, 
     "data-user": obj.user_overrides && obj.user_overrides.length > 0 ? true : undefined,
     title: obj.name ?? undefined,
   } as const;
+
+  // Фигура произвольной формы (мокап телефона, стрелка, кольцо): её контур в ComposedDeck не
+  // записан, и прямоугольник с той же заливкой давал чёрный блок там, где на слайде тонкая
+  // линия. Показываем вырезку из миниатюры — как таблицы и диаграммы.
+  const custom = obj.geometry === "custom" || obj.kind === "group";
+  // Пустой абзац — не текст: у фигур из PowerPoint почти всегда есть txBody с пустой строкой,
+  // и по «есть абзацы» иконка считалась надписью и исчезала с холста.
+  const hasText = (obj.text?.paragraphs ?? []).some((p) => (p.text ?? "").trim()) || Boolean(obj.text?.plain?.trim());
+  if (custom) {
+    if (!hasText) return <CropObject common={common} style={{ ...percentBox(box) }} box={box} thumbUrl={thumbUrl} />;
+    delete style.background;
+    delete style.boxShadow;
+  }
 
   const draft = obj as DeckObject & { _draft_url?: string | null; _draft_color?: string };
   if (obj.kind === "picture") {
@@ -360,7 +433,11 @@ function CanvasObject({ obj, box, widthPt, ratio, thumbUrl, mediaUrl, selected, 
       </div>
     );
   }
-  if (CROP_KINDS.has(obj.kind)) return <CropObject common={common} style={style} box={box} thumbUrl={thumbUrl} />;
+  // Линию рисуем сами (выше), вырезка из миниатюры для неё невозможна: нулевая сторона.
+  if (CROP_KINDS.has(obj.kind)) {
+    if (obj.line?.color && (box.width <= 0 || box.height <= 0)) return <div {...common} style={style} />;
+    return <CropObject common={common} style={style} box={box} thumbUrl={thumbUrl} />;
+  }
 
   const paragraphs = obj.text?.paragraphs ?? (obj.text?.plain ? [{ text: obj.text.plain }] : []);
   if (paragraphs.length === 0) return <div {...common} style={style} />;
@@ -391,10 +468,15 @@ function CanvasObject({ obj, box, widthPt, ratio, thumbUrl, mediaUrl, selected, 
         if (font.color) ps.color = font.color;
         if (font.bold) ps.fontWeight = 700;
         if (font.italic) ps.fontStyle = "italic";
-        if (font.line_spacing) ps.lineHeight = font.line_spacing;
+        // 100% межстрочного — одинарный интервал шрифта: его браузер и так ставит сам.
+        if (font.line_spacing && Math.abs(font.line_spacing - 1) > 0.01) {
+          ps.lineHeight = (font.line_spacing * naturalLine(font.family ?? "", Boolean(font.bold), Boolean(font.italic))).toFixed(3);
+        }
         if (p.align && p.align !== "left") ps.textAlign = p.align;
         const spacing = p.style ?? base;
-        if (spacing.space_before_pt) ps.marginTop = `${((spacing.space_before_pt / widthPt) * 100).toFixed(3)}cqw`;
+        // Отступ перед абзацем — только между абзацами: рендерер не добавляет его первому
+        // абзацу рамки, и с ним весь текст на холсте стоял на строку ниже, чем на слайде.
+        if (i > 0 && spacing.space_before_pt) ps.marginTop = `${((spacing.space_before_pt / widthPt) * 100).toFixed(3)}cqw`;
         if (spacing.space_after_pt) ps.marginBottom = `${((spacing.space_after_pt / widthPt) * 100).toFixed(3)}cqw`;
         const bullet = p.bullet ? (spacing.bullet?.char ?? "•") : "";
         return (

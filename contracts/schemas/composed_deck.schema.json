@@ -415,7 +415,7 @@
     },
     "geometry": {
      "type": "string",
-     "description": "форма фигуры (a:prstGeom@prst): rect, roundRect, ellipse…; отсутствует у произвольной геометрии"
+     "description": "форма фигуры (a:prstGeom@prst): rect, roundRect, ellipse…; custom — произвольная геометрия (a:custGeom), её нельзя рисовать прямоугольником"
     },
     "geometry_adjust": {
      "type": "number",

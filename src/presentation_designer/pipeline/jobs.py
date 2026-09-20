@@ -1630,8 +1630,6 @@ def _plan_distinctness(o: Orchestrator, job_id: str, variants: list[JsonDict]) -
     return [indistinct_warning(entry) for entry in compare_plans(plans)["indistinct"]]
 
 
-
-
 def _repair_overrides(
     o: Orchestrator,
     job_id: str,
@@ -1681,7 +1679,6 @@ def _finish_repair_unchanged(o: Orchestrator, repair_job_id: str, job_id: str, f
         },
         progress={"percent": 100, "message": "Исправлять нечего"},
     )
-
 
 
 def task_repair(repair_job_id: str) -> None:

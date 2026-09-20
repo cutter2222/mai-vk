@@ -3178,7 +3178,7 @@ class Object(BaseModel):
     rotation_deg: float | None = None
     geometry: str | None = None
     """
-    форма фигуры (a:prstGeom@prst): rect, roundRect, ellipse…; отсутствует у произвольной геометрии
+    форма фигуры (a:prstGeom@prst): rect, roundRect, ellipse…; custom — произвольная геометрия (a:custGeom), её нельзя рисовать прямоугольником
     """
     geometry_adjust: float | None = Field(None, ge=0.0, le=0.5)
     """

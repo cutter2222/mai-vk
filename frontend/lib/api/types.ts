@@ -803,7 +803,7 @@ export interface Object {
   bbox: Bbox1;
   rotation_deg?: number;
   /**
-   * форма фигуры (a:prstGeom@prst): rect, roundRect, ellipse…; отсутствует у произвольной геометрии
+   * форма фигуры (a:prstGeom@prst): rect, roundRect, ellipse…; custom — произвольная геометрия (a:custGeom), её нельзя рисовать прямоугольником
    */
   geometry?: string;
   /**

@@ -45,6 +45,14 @@ DEFAULT_CLR_MAP = {
     "folHlink": "folHlink",
 }
 SYSTEM_COLORS = {"windowText": "#000000", "window": "#FFFFFF"}
+# Виды заливок темы: чем заполнена фигура, сославшаяся на стиль номером.
+FILL_TAGS = {
+    "solidFill": "solid",
+    "gradFill": "gradient",
+    "pattFill": "pattern",
+    "blipFill": "image",
+    "noFill": "none",
+}
 
 
 @dataclass
@@ -58,6 +66,9 @@ class Theme:
     # Толщины линий темы (a:fmtScheme/a:lnStyleLst) в пунктах: фигура ссылается на них
     # номером в p:style/a:lnRef@idx и своей толщины не хранит.
     line_widths_pt: list[float] = field(default_factory=list)
+    # Вид заливок темы (a:fmtScheme/a:fillStyleLst) по номеру: solid, gradient, pattern, image.
+    # Фигура ссылается на них номером в p:style/a:fillRef@idx.
+    fill_kinds: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -177,13 +188,25 @@ def parse_theme(theme_part: Any) -> Theme:
             widths.append(round(int(ln.get("w", "9525")) / 12700, 3))
         except ValueError:
             widths.append(0.75)
+    fills: list[str] = []
+    fill_list = root.find(".//a:fmtScheme/a:fillStyleLst", NS)
+    for entry in fill_list if fill_list is not None else []:
+        tag = etree_tag(entry)
+        fills.append(FILL_TAGS.get(tag, "solid"))
     return Theme(
         name=name,
         colors=colors,
         major_font=major,
         minor_font=minor,
         line_widths_pt=widths,
+        fill_kinds=fills,
     )
+
+
+def etree_tag(element: Any) -> str:
+    """Имя тега без пространства имён."""
+    tag = str(getattr(element, "tag", ""))
+    return tag.rsplit("}", 1)[-1]
 
 
 def clr_map_of(master_element: Any) -> dict[str, str]:
