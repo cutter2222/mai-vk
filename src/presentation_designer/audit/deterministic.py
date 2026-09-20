@@ -885,7 +885,8 @@ _R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 
 
 def _rels_of(part: str) -> str:
-    """Имя файла связей части пакета: `ppt/slides/slide1.xml` → `ppt/slides/_rels/slide1.xml.rels`."""
+    """Имя файла связей части пакета:
+    `ppt/slides/slide1.xml` → `ppt/slides/_rels/slide1.xml.rels`."""
     directory, name = posixpath.split(part)
     return posixpath.join(directory, "_rels", name + ".rels")
 

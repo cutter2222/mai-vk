@@ -11,7 +11,7 @@ from presentation_designer.audit.deterministic import check_package
 from presentation_designer.layout.merge import _SLD_LAYOUT_ID, merge_presentation
 
 
-def _ids(prs) -> list[int]:  # noqa: ANN001
+def _ids(prs) -> list[int]:
     lst = prs.part._element.get_or_add_sldMasterIdLst()
     ids = [int(e.get("id")) for e in lst.sldMasterId_lst]
     for master in prs.slide_masters:

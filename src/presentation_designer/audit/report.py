@@ -9,10 +9,9 @@
 
 from __future__ import annotations
 
+import pathlib
 import time
 from typing import Any
-
-import pathlib
 
 from presentation_designer.audit.deterministic import Issue, check_package, run_slide_checks
 from presentation_designer.audit.registry import ALL_CHECKS, BY_ID, Check

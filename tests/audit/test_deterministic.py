@@ -161,7 +161,8 @@ def test_moved_slot_object_is_checked_against_margins() -> None:
     """Объект слота стоит там, где его поставил автор шаблона, пока пользователь не сдвинул."""
     from presentation_designer.audit.deterministic import check_margins
 
-    profile = _profile(spacing={"margins": {"left": 0.05, "right": 0.05, "top": 0.05, "bottom": 0.05}})
+    margins = {"left": 0.05, "right": 0.05, "top": 0.05, "bottom": 0.05}
+    profile = _profile(spacing={"margins": margins})
     ctx = Context(deck={"slides": []}, profile=profile)
     box = {"x": 0.0, "y": 0.3, "width": 0.4, "height": 0.2}
     base = {"object_id": "7", "kind": "text", "role": "content", "bbox": box}
@@ -169,10 +170,17 @@ def test_moved_slot_object_is_checked_against_margins() -> None:
     assert check_margins(_plain_slide([inherited]), ctx) == []
     moved = {
         **inherited,
-        "user_overrides": [{"op": "geometry", "target": {"object_id": "7"}, "geometry": {"bbox": box}}],
+        "user_overrides": [
+            {"op": "geometry", "target": {"object_id": "7"}, "geometry": {"bbox": box}}
+        ],
     }
     assert [i.check_id for i in check_margins(_plain_slide([moved]), ctx)] == ["layout.margins"]
-    added = {**base, "object_id": "usr_1", "content_source": "user", "user_overrides": [{"op": "add_text"}]}
+    added = {
+        **base,
+        "object_id": "usr_1",
+        "content_source": "user",
+        "user_overrides": [{"op": "add_text"}],
+    }
     assert [i.check_id for i in check_margins(_plain_slide([added]), ctx)] == ["layout.margins"]
 
 
@@ -242,7 +250,13 @@ def test_report_marks_deck_checks_and_package(tmp_path: Any) -> None:
     from presentation_designer.audit.report import build_report
 
     text = {"plain": "Одно и то же", "paragraphs": []}
-    obj = {"object_id": "2", "kind": "text", "role": "content", "content_source": "plan", "text": text}
+    obj = {
+        "object_id": "2",
+        "kind": "text",
+        "role": "content",
+        "content_source": "plan",
+        "text": text,
+    }
     deck = {
         "slide_size": {"width_emu": 12192000, "height_emu": 6858000},
         "slides": [
