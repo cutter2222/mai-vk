@@ -32,7 +32,7 @@ def _check_entry(check: Check, *, implemented: bool) -> JsonDict:
     # видно, что список не выдуман, а покрывает ориентир заказчика.
     entry["origin"] = "appendix1"
     entry["implemented"] = implemented
-    entry["inputs"] = _inputs_for(check)
+    entry["inputs"] = inputs_for(check)
     return entry
 
 
@@ -56,7 +56,7 @@ _INPUTS_BY_CHECK = {
 }
 
 
-def _inputs_for(check: Check) -> list[str]:
+def inputs_for(check: Check) -> list[str]:
     return list(
         _INPUTS_BY_CHECK.get(
             check.check_id, _INPUTS_BY_CATEGORY.get(check.category, ["composed_deck"])
@@ -118,9 +118,12 @@ def _results(
     issues: list[Issue],
     *,
     contextual: bool,
-    not_checked: frozenset[str] = frozenset(),
+    not_checked: dict[str, str] | None = None,
+    outcomes: dict[tuple[str, int | None], tuple[str, str]] | None = None,
 ) -> list[JsonDict]:
-    """Исход каждой проверки по каждой области: пройдено, найдено или не запускалось."""
+    """Исход каждой проверки по каждой области: пройдено, найдено, неприменимо или не
+    запускалось. `not_checked` — проверки, пропущенные целиком (с причиной); `outcomes` —
+    отдельные области, которые контекстный слой не спрашивал или не получил ответа."""
     failed: dict[tuple[str, int | None], int] = {}
     # Находка проверки уровня колоды может указывать на конкретный слайд (повтор слайда):
     # исход такой проверки считается по всей колоде, а не по ключу без слайда.
@@ -131,15 +134,20 @@ def _results(
         )
         failed_deck[issue.check_id] = failed_deck.get(issue.check_id, 0) + 1
     slides = deck.get("slides") or []
+    skipped_checks = dict(not_checked or {})
+    per_area = dict(outcomes or {})
     out: list[JsonDict] = []
     for check in ALL_CHECKS:
-        skipped = (check.kind == "contextual" and not contextual) or check.check_id in not_checked
+        reason = skipped_checks.get(check.check_id)
+        if check.kind == "contextual" and not contextual:
+            reason = reason or "контекстные проверки не выполнялись"
         if check.scope == "deck":
             entry: JsonDict = {"check_id": check.check_id, "scope": "deck"}
-            entry["outcome"] = (
-                "not_checked"
-                if skipped
-                else ("failed" if failed_deck.get(check.check_id) else "passed")
+            _set_outcome(
+                entry,
+                reason=reason,
+                area=per_area.get((check.check_id, None)),
+                failed=bool(failed_deck.get(check.check_id)),
             )
             out.append(entry)
             continue
@@ -151,13 +159,33 @@ def _results(
                 "slide_id": str(slide.get("slide_id") or ""),
                 "slide_index": index,
             }
-            entry["outcome"] = (
-                "not_checked"
-                if skipped
-                else ("failed" if failed.get((check.check_id, index)) else "passed")
+            _set_outcome(
+                entry,
+                reason=reason,
+                area=per_area.get((check.check_id, index)),
+                failed=bool(failed.get((check.check_id, index))),
             )
             out.append(entry)
     return out
+
+
+def _set_outcome(
+    entry: JsonDict, *, reason: str | None, area: tuple[str, str] | None, failed: bool
+) -> None:
+    """Находка важнее пропуска: если проверка что-то нашла, её исход — `failed`, даже когда
+    для этой же области записана причина пропуска."""
+    if failed:
+        entry["outcome"] = "failed"
+        return
+    if reason is not None:
+        entry["outcome"] = "not_checked"
+        entry["reason"] = reason
+        return
+    if area is not None:
+        entry["outcome"] = area[0]
+        entry["reason"] = area[1]
+        return
+    entry["outcome"] = "passed"
 
 
 def _summary(issues_json: list[JsonDict], deck: JsonDict) -> JsonDict:
@@ -200,6 +228,7 @@ def build_report(
     contextual: bool,
     contextual_answers: list[JsonDict] | None = None,
     contextual_issues: list[Issue] | None = None,
+    contextual_outcomes: dict[tuple[str, int | None], tuple[str, str]] | None = None,
     missing_inputs: list[str] | None = None,
     started: float | None = None,
     llm_metrics: JsonDict | None = None,
@@ -209,12 +238,12 @@ def build_report(
     целостность пакета; без файла эта проверка честно помечается `not_checked`."""
     began = started if started is not None else time.perf_counter()
     issues = run_slide_checks(deck, profile)
-    unchecked: set[str] = set()
+    unchecked: dict[str, str] = {}
     missing = list(missing_inputs or [])
     if pptx_path is not None and pptx_path.exists():
         issues += check_package(pptx_path)
     else:
-        unchecked.add("integrity.package")
+        unchecked["integrity.package"] = "файла PPTX нет рядом с отчётом"
         missing.append("pptx_file")
     issues += list(contextual_issues or [])
     issues_json = issues_to_json(issues)
@@ -223,8 +252,15 @@ def build_report(
     checks = [
         _check_entry(c, implemented=c.kind == "deterministic" or contextual) for c in ALL_CHECKS
     ]
-    results = _results(deck, issues, contextual=contextual, not_checked=frozenset(unchecked))
+    results = _results(
+        deck,
+        issues,
+        contextual=contextual,
+        not_checked=unchecked,
+        outcomes=contextual_outcomes,
+    )
     not_checked = sum(1 for r in results if r["outcome"] == "not_checked")
+    not_applicable = sum(1 for r in results if r["outcome"] == "not_applicable")
     fonts = [
         {
             "requested": str(f.get("family") or ""),
@@ -253,10 +289,12 @@ def build_report(
         "summary": _summary(issues_json, deck),
         "results": results,
         "coverage": {
+            # Неприменимая проверка (вопрос про таблицу слайду без таблицы) покрытие не
+            # ломает: её нечего проверять. Ломает только непроверенная.
             "complete": not_checked == 0,
-            "checked": len(results) - not_checked,
+            "checked": len(results) - not_checked - not_applicable,
             "not_checked": not_checked,
-            "not_applicable": 0,
+            "not_applicable": not_applicable,
             **({"missing_inputs": missing} if missing else {}),
         },
         "metrics": {

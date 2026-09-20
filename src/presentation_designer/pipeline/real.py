@@ -21,6 +21,7 @@ import time
 from typing import Any
 
 from presentation_designer import design
+from presentation_designer.audit.contextual import ContextualResult, run_contextual_checks
 from presentation_designer.audit.report import build_report as build_audit_report
 from presentation_designer.generation.edit import EditError, edit_slide
 from presentation_designer.generation.original import VARIANT_ID as ORIGINAL_VARIANT
@@ -81,8 +82,10 @@ class RealLayers(StubLayers):
         self.modes["layout"] = "real"
         self.modes["generation.edit"] = "real"
         # Детерминированные проверки считаются по ComposedDeck и профилю — модель им не нужна.
-        # Контекстные требуют VLM и картинок слайдов: они включаются отдельно.
         self.modes["audit.deterministic"] = "real"
+        # Контекстные требуют VLM и картинок слайдов. Слой настоящий; когда провайдер не
+        # настроен или проверки выключены, это видно в coverage отчёта, а не в режиме.
+        self.modes["audit.contextual"] = "real"
         # Экспорт настоящий там, где его выполняет воркер с LibreOffice; на машине разработчика
         # со встроенной очередью без рендерера остаётся заглушка, и execution_mode это показывает.
         self.renderer_available = _renderer_available()
@@ -603,13 +606,15 @@ class RealLayers(StubLayers):
     # ----- аудит (этап 10) -----
 
     def audit(self, inp: AuditInput) -> dict[str, Any]:
-        """Детерминированные проверки по собранной колоде: реестр в `audit/registry.py`.
+        """Проверки по собранной колоде: реестр в `audit/registry.py`.
 
-        Контекстная часть (11 вопросов Приложения 1 моделью по картинке слайда) пока не
-        выполняется, и отчёт этого не скрывает: такие проверки помечены `not_checked`, а
-        причина записана в `coverage.missing_inputs`.
+        Детерминированная часть считается по ComposedDeck и файлу. Контекстная — 11 вопросов
+        Приложения 1 моделью по картинке слайда — выполняется, когда она включена в настройках
+        и провайдер моделей настроен; иначе такие проверки помечены `not_checked`, а причина
+        записана в `coverage.missing_inputs`, и отчёт не выдаёт пропуск за успех.
         """
         started = time.perf_counter()
+        ctx = self._contextual_audit(inp)
         try:
             report = build_audit_report(
                 job_id=inp.job_id,
@@ -618,8 +623,12 @@ class RealLayers(StubLayers):
                 deck=inp.composed_deck,
                 profile=inp.template_profile or {},
                 staging_prefix=inp.staging.prefix,
-                contextual=False,
-                missing_inputs=["contextual_audit_not_implemented"],
+                contextual=ctx.ran,
+                contextual_answers=ctx.answers,
+                contextual_issues=ctx.issues,
+                contextual_outcomes=ctx.outcomes,
+                missing_inputs=ctx.missing_inputs,
+                llm_metrics=ctx.metrics,
                 started=started,
                 pptx_path=inp.staging.path("deck.pptx"),
             )
@@ -634,8 +643,65 @@ class RealLayers(StubLayers):
             "issues": report["summary"]["issues_total"],
             "score": report["summary"]["score"],
             "duration_ms": report["metrics"]["duration_ms"],
+            "contextual_answers": len(report.get("contextual_answers") or []),
         }
+        log.info(
+            "аудит %s/%s r%s: находок %s (контекстных %s), оценка %s, покрытие %s из %s",
+            inp.job_id,
+            inp.variant_id,
+            inp.revision,
+            report["summary"]["issues_total"],
+            report["summary"]["by_kind"].get("contextual", 0),
+            report["summary"]["score"],
+            report["coverage"]["checked"],
+            len(report["results"]),
+        )
         return report
+
+    def _contextual_audit(self, inp: AuditInput) -> ContextualResult:
+        """Контекстная часть аудита. Её сбой не должен ронять готовую колоду: всё, что не
+        удалось спросить, возвращается как непроверенное с причиной."""
+        if not (inp.contextual and self.settings.audit.contextual_enabled):
+            return ContextualResult(missing_inputs=["contextual_disabled"])
+        client = self.llm_client()
+        skill = self.skill("auditor")
+        if client is None or skill is None:
+            return ContextualResult(missing_inputs=["vlm_unavailable"])
+        params = (skill.manifest.params or {}) if hasattr(skill, "manifest") else {}
+        budget = min(
+            float(params.get("time_budget_s", 120)),
+            max(30.0, float(self.settings.timeouts.stage_audit_s) - 10),
+        )
+        try:
+            return run_contextual_checks(
+                inp.composed_deck,
+                inp.package,
+                inp.story,
+                images=self._slide_images(inp),
+                client=client,
+                skill=skill,
+                concurrency=int(
+                    params.get("concurrency", self.settings.audit.contextual_concurrency)
+                ),
+                deadline_s=budget,
+            )
+        except Exception as e:
+            log.exception("контекстный аудит не выполнен")
+            return ContextualResult(missing_inputs=["vlm_error"], errors=[str(e)[:200]])
+
+    def _slide_images(self, inp: AuditInput) -> dict[int, bytes]:
+        """Миниатюры страниц, отрендеренные на экспорте: по ним модель и смотрит слайд."""
+        images: dict[int, bytes] = {}
+        for thumb in inp.thumbnails:
+            name = str(thumb.get("name") or "").removeprefix(inp.staging.prefix)
+            if not name:
+                continue
+            path = inp.staging.dir / name
+            try:
+                images[int(thumb.get("slide_index", 0))] = path.read_bytes()
+            except OSError:
+                log.warning("миниатюра %s недоступна для аудита", name)
+        return images
 
     # ----- правка слайда по запросу (этап 20) -----
 

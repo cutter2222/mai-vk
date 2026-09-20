@@ -1,24 +1,30 @@
 # Манифест скилла по contracts/schemas/skill_manifest.schema.json
 schema_version: '1.1'
 name: auditor
-version: 0.1.0
+version: 0.2.0
 stage: audit
 description: 'Контекстные проверки готовых слайдов: 11 вопросов Приложения 1 по картинке,
   извлечённому тексту и источникам'
 model_role: vlm
 response_format: json_schema
 reasoning:
-  mode: low
-  max_output_tokens: 10000
+  mode: 'off'
+  max_output_tokens: 4000
 prompts:
 - id: audit.content_questions
-  path: prompts/audit.content_questions.v0.1.0.md
-  version: 0.1.0
+  path: prompts/audit.content_questions.v0.2.0.md
+  version: 0.2.0
 params:
-  temperature: 0.2
+  temperature: 0.0
+  time_budget_s: 120     # общий бюджет всех вызовов аудита одного варианта
+  concurrency: 4         # одновременных вызовов (лимитер провайдера строже)
 input_schema: composed_deck
 output_schema: audit_report
 changelog:
+- version: 0.2.0
+  date: '2026-09-21'
+  note: 'этап 10: рабочий промпт по 11 вопросам Приложения 1; рассуждение выключено
+    (провайдер делит бюджет ответа с рассуждением), температура 0'
 - version: 0.1.0
   date: '2026-09-15'
   note: 'каркас: манифест и заглушка промпта; содержание промпта пишется на этапе
