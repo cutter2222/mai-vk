@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-20T11:58:06Z",
+ "entry_version": 1,
+ "key": "75eb36600a4b8cae63d28c05e76fec7a32220f7c6c7b1c9d73898b25efdb749f",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3937,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 1181,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"slides\": [{\"slide_id\": \"s9\", \"title\": \"Главный вывод\", \"key_message\": \"Пилот умных уведомлений показал рост открываемости до 44% и экономию 12,5 млн ₽, что обосновывает расширение на все продукты в ",
+  "prompt": [
+   "fill.slots",
+   "0.1.0"
+  ],
+  "response_format": "json_object",
+  "role": "llm",
+  "skill": [
+   "slot_filler",
+   "0.1.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 1079,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"s9\": {\n    \"support\": \"Экономическая эффективность\"\n  }\n}",
+  "usage": {
+   "completion_tokens": 26,
+   "prompt_tokens": 1708,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

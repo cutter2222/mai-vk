@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-20T11:58:22Z",
+ "entry_version": 1,
+ "key": "ebe1765b6b04f6d42c30bb78582a60670cc054c6675a9b7b45e41156e9f92a5c",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3937,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 1321,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"slides\": [{\"slide_id\": \"s14\", \"title\": \"Управление рисками\", \"key_message\": \"Идентифицированные риски являются управляемыми и не ставят под угрозу бизнес-результаты проекта.\", \"filled\": [\"Управление",
+  "prompt": [
+   "fill.slots",
+   "0.1.0"
+  ],
+  "response_format": "json_object",
+  "role": "llm",
+  "skill": [
+   "slot_filler",
+   "0.1.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4592,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"s14\": {\n    \"card_3_title\": \"Резервные каналы\",\n    \"card_3_body\": \"Наличие резервных каналов связи снижает зависимость от push-провайдера и гарантирует доставку уведомлений.\",\n    \"card_4_title\": \"Усиление команды\",\n    \"card_4_body\": \"План усиления команды поддержки позволяет справиться с повышенной нагрузкой в первые недели запуска.\"\n  }\n}",
+  "usage": {
+   "completion_tokens": 103,
+   "prompt_tokens": 1742,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

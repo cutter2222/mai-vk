@@ -1415,7 +1415,13 @@
       ],
       "confidence": 0.8,
       "role_source": "manual",
-      "notes": "Построена из дизайн-кода шаблона на его макете; образца в шаблоне нет"
+      "notes": "Построена из дизайн-кода шаблона на его макете; образца в шаблоне нет",
+      "tone": {
+        "background": "light",
+        "luminance": 0.886,
+        "source": "design_code"
+      },
+      "style_key": "light|фактоида + текст|plain"
     }
   ],
   "guidelines": [

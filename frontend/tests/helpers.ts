@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 /** Настоящие файлы из tests/fixtures: рабочий режим проверяет их на сервере, заглушки содержимое не читают. */
 const FIXTURES = path.resolve(__dirname, "../../tests/fixtures");
@@ -143,4 +143,26 @@ export async function waitForAllVariantsDone(page: Page): Promise<void> {
   await expect(
     panel.locator('[data-testid="status-needs_review"], [data-testid="status-succeeded"], [data-testid="status-failed"]').first(),
   ).toBeVisible({ timeout: WAIT.variantsDone });
+}
+
+/**
+ * Индикатор состояния в шапке списков: в рабочем режиме — «health» с зелёным тоном (текст —
+ * название модели или «Сервис работает»), в режиме заглушек — плашка «Режим заглушек».
+ */
+export async function expectServiceStatus(page: Page): Promise<void> {
+  const status = page.getByTestId("health").or(page.getByTestId("mode-badge"));
+  await expect(status).toBeVisible();
+  await expect(status).toHaveAttribute("data-tone", /^(ok|warn)$/);
+}
+
+/**
+ * Клик по буквам текста объекта на холсте. Попадание считается по самим буквам, а середина
+ * абзаца у короткой строки в широкой рамке приходится на пустое место — такой клик холст
+ * считает промахом и снимает выделение. Поэтому клик — в начало первой строки.
+ */
+export async function clickText(page: Page, object: Locator): Promise<void> {
+  const p = object.locator("p").first();
+  const box = await p.boundingBox();
+  if (!box) throw new Error("у объекта нет абзаца текста");
+  await page.mouse.click(box.x + Math.min(10, box.width / 2), box.y + Math.min(box.height / 2, 14));
 }

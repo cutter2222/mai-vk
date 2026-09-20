@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-20T11:56:42Z",
+ "entry_version": 1,
+ "key": "b04c4108fcaf68035c31159d1e6e2cba1346af4dba9c3d192fddcfc4f61385ae",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3672,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: balanced. Сбалансированная подача: один тезис на слайд, заголовок-вывод, короткое пояснение (одно-два предложения) и до четырёх пунктов или показателей. Ряды данных — диаграмма с подписями; т",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 15093,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t2\"\n      ],\n      \"pattern\": \"pat_s3\",\n      \"title\": \"Отсутствие приоритизации снижает эффективность\",\n      \"message\": \"Высокий объем входящих уведомлений приводит к пропуску важных сообщений.\",\n      \"visual\": \"number\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Пользователи пропускают до {fact:f1} важных уведомлений\",\n          \"sub\": \"Пропуск важного\",\n          \"facts\": [\n            \"f1\"\n          ]\n        },\n        {\n          \"text\": \"В среднем каждый пользователь получает {fact:f2} уведомлений в день\",\n          \"sub\": \"Объем входящих\",\n          \"facts\": [\n            \"f2\"\n          ]\n        }\n      ],\n      \"facts\": [\n        \"f1\",\n        \"f2\"\n      ],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t4\"\n      ],\n      \"pattern\": \"pat_builtin_bullets_pane_cols1\",\n      \"title\": \"Единый центр и тихие часы повышают релевантность\",\n      \"message\": \"Сервис объединяет каналы и внедряет механизмы приоритизации для снижения шума.\",\n      \"visual\": \"bullets\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Приоритизация по контексту: важные уведомления поднимаются наверх\",\n          \"sub\": \"\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Единый центр уведомлений вместо трёх разрозненных каналов\",\n          \"sub\": \"\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Тихие часы с отложенной доставкой\",\n          \"sub\": \"\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"img_1\",\n      \"notes\": \"\"\n    }\n  ],\n  \"rationale\": \"Слайды разделены по одному тезису на слайд в соответствии с правилом balanced, использованы KPI для количественного контекста и список для функциональных преимуществ.\"\n}",
+  "usage": {
+   "completion_tokens": 570,
+   "prompt_tokens": 2501,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

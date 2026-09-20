@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-20T11:46:27Z",
+ "entry_version": 1,
+ "key": "d4feb2db6cdb09efb52f0f38cffe374c812c2751858d00ae559394de282ecb8c",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3499,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 1419,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 299,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: в пакете 2 слайд(ов) при допустимых 3–4 (цель 3) — раскрой тезисы t9, t10 на отдельные слайды по разным сторонам (контекст, механизм, следствия, пример), каждый с 2–4 пункта",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 10805,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t9\"\n      ],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"План масштабирования на Q4\",\n      \"message\": \"Поэтапное внедрение сервиса в течение квартала.\",\n      \"visual\": \"timeline\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Октябрь: два новых продукта\",\n          \"sub\": \"Октябрь\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Ноябрь: тихие часы\",\n          \"sub\": \"Ноябрь\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Декабрь: все регионы\",\n          \"sub\": \"Декабрь\",\n          \"facts\": [\n            \"f11\"\n          ]\n        }\n      ],\n      \"facts\": [\n        \"f11\"\n      ],\n      \"dataset\": \"\",\n      \"chart_type\": \"line\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t10\"\n      ],\n      \"pattern\": \"pat_builtin_bullets_pane_cols1\",\n      \"title\": \"Готовность к расширению\",\n      \"message\": \"Пилот подтвердил эффективность для всех направлений.\",\n      \"visual\": \"bullets\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Пилот доказал эффективность\",\n          \"sub\": \"\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Готов к расширению на все продукты\",\n          \"sub\": \"\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"line\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t9\",\n        \"t10\"\n      ],\n      \"pattern\": \"pat_builtin_statement\",\n      \"title\": \"Итог: запуск в этом квартале\",\n      \"message\": \"Синтез плана и готовности к действию.\",\n      \"visual\": \"text\",\n      \"text\": \"План на Q4 и подтвержденная эффективность позволяют запустить сервис на все продукты в этом квартале.\",\n      \"items\": [],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"line\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    }\n  ],\n  \"rationale\": \"Добавлен третий слайд-синтез, объединяющий план и вывод, чтобы достичь целевого количества слайдов и усилить финальный посыл.\"\n}",
+  "usage": {
+   "completion_tokens": 657,
+   "prompt_tokens": 2983,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

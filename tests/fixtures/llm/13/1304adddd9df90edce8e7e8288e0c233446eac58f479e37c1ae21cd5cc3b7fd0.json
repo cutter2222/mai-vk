@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-20T11:44:18Z",
+ "entry_version": 1,
+ "key": "1304adddd9df90edce8e7e8288e0c233446eac58f479e37c1ae21cd5cc3b7fd0",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3074,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 44,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Сделай слайды про итоги квартала для команды",
+  "prompt": [
+   "brief.extract",
+   "0.2.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "brief_extractor",
+   "0.2.0"
+  ],
+  "stage": "brief"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 980,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"purpose\": null,\n  \"title\": \"Итоги квартала\",\n  \"audience\": \"команды\",\n  \"goal\": null,\n  \"tone\": null,\n  \"language\": null,\n  \"must_include\": [],\n  \"avoid\": [],\n  \"slide_count\": null,\n  \"variants\": [],\n  \"intent\": \"generate\"\n}",
+  "usage": {
+   "completion_tokens": 90,
+   "prompt_tokens": 862,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

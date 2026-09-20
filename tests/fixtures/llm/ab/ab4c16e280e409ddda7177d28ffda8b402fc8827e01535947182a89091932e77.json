@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-20T11:55:14Z",
+ "entry_version": 1,
+ "key": "ab4c16e280e409ddda7177d28ffda8b402fc8827e01535947182a89091932e77",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 5737,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 3110,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 327,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Рост открываемости до {fact:f4}» (pat_builtin_comparison): 2 пункт(ов) на композицию из 16 карточек — раскрой тезис до 4 пунктов по пояснению (без выдуманных цифр) ил",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 14587,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t6\"\n      ],\n      \"pattern\": \"pat_builtin_matrix\",\n      \"title\": \"Рост открываемости до {fact:f4}\",\n      \"message\": \"Сравнение показателей до и после пилота демонстрирует значительное улучшение вовлеченности.\",\n      \"visual\": \"comparison\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Открываемость: {fact:f3} → {fact:f4}\",\n          \"sub\": \"Ключевой рост\",\n          \"facts\": [\n            \"f3\",\n            \"f4\"\n          ]\n        },\n        {\n          \"text\": \"Отписки: {fact:f5} → {fact:f6}\",\n          \"sub\": \"Снижение оттока\",\n          \"facts\": [\n            \"f5\",\n            \"f6\"\n          ]\n        },\n        {\n          \"text\": \"Период: 3 месяца\",\n          \"sub\": \"Длительность пилота\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Качество коммуникации повышено\",\n          \"sub\": \"Вывод\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [\n        \"f3\",\n        \"f4\",\n        \"f5\",\n        \"f6\"\n      ],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t7\"\n      ],\n      \"pattern\": \"pat_builtin_kpi_row_cardTrue_count4\",\n      \"title\": \"Устойчивый рост вовлеченности\",\n      \"message\": \"Динамика ключевых метрик за три месяца подтверждает стабильное улучшение качества сервиса.\",\n      \"visual\": \"number\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Открываемость: {fact:f12} → {fact:f13}\",\n          \"sub\": \"Май — Июль\",\n          \"facts\": [\n            \"f12\",\n            \"f13\"\n          ]\n        },\n        {\n          \"text\": \"Отписки: {fact:f15} → {fact:f16}\",\n          \"sub\": \"Май — Июль\",\n          \"facts\": [\n            \"f15\",\n            \"f16\"\n          ]\n        },\n        {\n          \"text\": \"Пользователи: {fact:f18} → {fact:f19}\",\n          \"sub\": \"Май — Июль\",\n          \"facts\": [\n            \"f18\",\n            \"f19\"\n          ]\n        },\n        {\n          \"text\": \"Тренд: положительный\",\n          \"sub\": \"3 месяца\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [\n        \"f12\",\n        \"f13\",\n        \"f15\",\n        \"f16\",\n        \"f18\",\n        \"f19\"\n      ],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t8\"\n      ],\n      \"pattern\": \"pat_builtin_chart_kpi_count2\",\n      \"title\": \"Экономическая эффективность\",\n      \"message\": \"Пилот окупился многократно, а масштабирование принесет еще больший эффект.\",\n      \"visual\": \"chart\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Экономия: {fact:f7}\",\n          \"sub\": \"За год\",\n          \"facts\": [\n            \"f7\"\n          ]\n        },\n        {\n          \"text\": \"Затраты: {fact:f8}\",\n          \"sub\": \"На пилот\",\n          \"facts\": [\n            \"f8\"\n          ]\n        }\n      ],\n      \"facts\": [\n        \"f7\",\n        \"f8\",\n        \"f22\"\n      ],\n      \"dataset\": \"ds2\",\n      \"chart_type\": \"column\",\n      \"columns\": [\n        \"Статья\",\n        \"Сумма (млн ₽)\"\n      ],\n      \"image\": \"\",\n      \"notes\": \"\"\n    }\n  ],\n  \"rationale\": \"Компактная подача объединяет ключевые метрики в сравнение и KPI, а экономику показывает через диаграмму, исключая необязательную цитату для соблюдения лимита слайдов.\"\n}",
+  "usage": {
+   "completion_tokens": 1116,
+   "prompt_tokens": 4448,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

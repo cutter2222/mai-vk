@@ -12,7 +12,9 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from presentation_designer.audit.deterministic import Issue, run_slide_checks
+import pathlib
+
+from presentation_designer.audit.deterministic import Issue, check_package, run_slide_checks
 from presentation_designer.audit.registry import ALL_CHECKS, BY_ID, Check
 
 JsonDict = dict[str, Any]
@@ -112,23 +114,33 @@ def issues_to_json(issues: list[Issue]) -> list[JsonDict]:
     return out
 
 
-def _results(deck: JsonDict, issues: list[Issue], *, contextual: bool) -> list[JsonDict]:
+def _results(
+    deck: JsonDict,
+    issues: list[Issue],
+    *,
+    contextual: bool,
+    not_checked: frozenset[str] = frozenset(),
+) -> list[JsonDict]:
     """Исход каждой проверки по каждой области: пройдено, найдено или не запускалось."""
     failed: dict[tuple[str, int | None], int] = {}
+    # Находка проверки уровня колоды может указывать на конкретный слайд (повтор слайда):
+    # исход такой проверки считается по всей колоде, а не по ключу без слайда.
+    failed_deck: dict[str, int] = {}
     for issue in issues:
         failed[(issue.check_id, issue.slide_index)] = (
             failed.get((issue.check_id, issue.slide_index), 0) + 1
         )
+        failed_deck[issue.check_id] = failed_deck.get(issue.check_id, 0) + 1
     slides = deck.get("slides") or []
     out: list[JsonDict] = []
     for check in ALL_CHECKS:
-        skipped = check.kind == "contextual" and not contextual
+        skipped = (check.kind == "contextual" and not contextual) or check.check_id in not_checked
         if check.scope == "deck":
             entry: JsonDict = {"check_id": check.check_id, "scope": "deck"}
             entry["outcome"] = (
                 "not_checked"
                 if skipped
-                else ("failed" if failed.get((check.check_id, None)) else "passed")
+                else ("failed" if failed_deck.get(check.check_id) else "passed")
             )
             out.append(entry)
             continue
@@ -192,10 +204,19 @@ def build_report(
     missing_inputs: list[str] | None = None,
     started: float | None = None,
     llm_metrics: JsonDict | None = None,
+    pptx_path: pathlib.Path | None = None,
 ) -> JsonDict:
-    """Отчёт аудита по собранной колоде."""
+    """Отчёт аудита по собранной колоде. `pptx_path` — сам файл: по нему проверяется
+    целостность пакета; без файла эта проверка честно помечается `not_checked`."""
     began = started if started is not None else time.perf_counter()
     issues = run_slide_checks(deck, profile)
+    unchecked: set[str] = set()
+    missing = list(missing_inputs or [])
+    if pptx_path is not None and pptx_path.exists():
+        issues += check_package(pptx_path)
+    else:
+        unchecked.add("integrity.package")
+        missing.append("pptx_file")
     issues += list(contextual_issues or [])
     issues_json = issues_to_json(issues)
     answers = list(contextual_answers or [])
@@ -203,7 +224,7 @@ def build_report(
     checks = [
         _check_entry(c, implemented=c.kind == "deterministic" or contextual) for c in ALL_CHECKS
     ]
-    results = _results(deck, issues, contextual=contextual)
+    results = _results(deck, issues, contextual=contextual, not_checked=frozenset(unchecked))
     not_checked = sum(1 for r in results if r["outcome"] == "not_checked")
     fonts = [
         {
@@ -237,7 +258,7 @@ def build_report(
             "checked": len(results) - not_checked,
             "not_checked": not_checked,
             "not_applicable": 0,
-            **({"missing_inputs": list(missing_inputs)} if missing_inputs else {}),
+            **({"missing_inputs": missing} if missing else {}),
         },
         "metrics": {
             "duration_ms": int((time.perf_counter() - began) * 1000),

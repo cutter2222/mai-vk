@@ -17,9 +17,13 @@
 from __future__ import annotations
 
 import math
+import pathlib
+import posixpath
 import re
+import zipfile
 from dataclasses import dataclass, field
 from typing import Any, NamedTuple
+from xml.etree import ElementTree as ET
 
 from presentation_designer.audit.registry import threshold
 
@@ -196,6 +200,13 @@ def _slide_ref(slide: JsonDict) -> dict[str, Any]:
     return {"slide_id": str(slide.get("slide_id") or ""), "slide_index": int(slide.get("index", 0))}
 
 
+def _user_moved(obj: JsonDict) -> bool:
+    """Геометрию объекта задал пользователь: сдвинул его в редакторе или добавил свою надпись."""
+    return any(
+        str(o.get("op") or "") in ("geometry", "add_text") for o in obj.get("user_overrides") or []
+    )
+
+
 # ---------- вёрстка ----------
 
 
@@ -318,9 +329,14 @@ def check_margins(slide: JsonDict, ctx: Context) -> list[Issue]:
     for obj in slide.get("objects") or []:
         # Проверять есть смысл только там, где геометрию задал сервис или пользователь.
         # Объект, заполнивший слот образца (у него есть source_object_id), стоит на месте,
-        # которое выбрал автор шаблона: предъявлять ему его же вёрстку незачем.
-        inherited = bool(obj.get("source_object_id")) and not obj.get("user_edited")
-        if obj.get("content_source") != "plan" or inherited or _area(obj) < TINY_AREA:
+        # которое выбрал автор шаблона: предъявлять ему его же вёрстку незачем — пока
+        # пользователь не сдвинул его в редакторе.
+        inherited = bool(obj.get("source_object_id")) and not _user_moved(obj)
+        if (
+            obj.get("content_source") not in ("plan", "generated", "user")
+            or inherited
+            or _area(obj) < TINY_AREA
+        ):
             continue
         x, y, w, h = _box(obj)
         if x < left or y < top or x + w > right or y + h > bottom:
@@ -348,8 +364,8 @@ def check_image_distorted(slide: JsonDict, ctx: Context) -> list[Issue]:
     out: list[Issue] = []
     for obj in slide.get("objects") or []:
         pic = obj.get("picture") or {}
-        natural = pic.get("natural_size") or {}
-        nw, nh = float(natural.get("width") or 0), float(natural.get("height") or 0)
+        nw = float(pic.get("natural_width_px") or 0)
+        nh = float(pic.get("natural_height_px") or 0)
         if obj.get("kind") != "picture" or nw <= 0 or nh <= 0 or pic.get("fit") == "cover":
             continue
         _, _, w, h = _box(obj)
@@ -817,7 +833,7 @@ def check_chart_labels(slide: JsonDict, ctx: Context) -> list[Issue]:
             missing.append("легенды")
         if not chart.get("categories_count"):
             missing.append("подписей категорий")
-        if not chart.get("units") and not chart.get("axis_title"):
+        if not chart.get("units") and not chart.get("has_axis_titles"):
             missing.append("единиц")
         if len(missing) >= 2:
             out.append(
@@ -861,6 +877,87 @@ def check_duplicate_slides(deck: JsonDict, ctx: Context) -> list[Issue]:
         else:
             seen[key] = slide
     return out
+
+
+_RELS_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+_PRES_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
+_R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+
+
+def _rels_of(part: str) -> str:
+    """Имя файла связей части пакета: `ppt/slides/slide1.xml` → `ppt/slides/_rels/slide1.xml.rels`."""
+    directory, name = posixpath.split(part)
+    return posixpath.join(directory, "_rels", name + ".rels")
+
+
+def check_package(pptx: pathlib.Path) -> list[Issue]:
+    """Файл открывается как пакет OOXML, части читаются, внутренние связи ведут на
+    существующие части, а список слайдов презентации ссылается на известные связи.
+
+    Ровно то, из-за чего PowerPoint предлагает «восстановить» файл; python-pptx при сборке
+    такие ошибки не ловит, а рендерер в PDF их прощает."""
+
+    def issue(message: str, **evidence: Any) -> list[Issue]:
+        return [Issue("integrity.package", message, evidence=evidence)]
+
+    try:
+        archive = zipfile.ZipFile(pptx)
+    except (OSError, zipfile.BadZipFile) as e:
+        return issue(f"Файл не открывается как пакет: {e}", measured="bad_zip")
+    with archive:
+        broken = archive.testzip()
+        if broken is not None:
+            return issue(f"Часть {broken} повреждена", measured="crc", part=broken)
+        names = set(archive.namelist())
+        for required in ("[Content_Types].xml", "_rels/.rels", "ppt/presentation.xml"):
+            if required not in names:
+                return issue(f"В пакете нет части {required}", measured="missing", part=required)
+        dangling: list[str] = []
+        rels_by_part: dict[str, dict[str, str]] = {}
+        for name in sorted(names):
+            if not name.endswith(".rels"):
+                continue
+            try:
+                root = ET.fromstring(archive.read(name))
+            except ET.ParseError as e:
+                return issue(f"Связи {name} не разбираются: {e}", measured="bad_xml", part=name)
+            base = posixpath.dirname(posixpath.dirname(name))
+            ids: dict[str, str] = {}
+            for rel in root.findall(f"{{{_RELS_NS}}}Relationship"):
+                target = rel.get("Target") or ""
+                ids[rel.get("Id") or ""] = target
+                if rel.get("TargetMode") == "External" or not target:
+                    continue
+                resolved = (
+                    target.lstrip("/")
+                    if target.startswith("/")
+                    else posixpath.normpath(posixpath.join(base, target))
+                )
+                if resolved not in names:
+                    dangling.append(f"{name} → {target}")
+            rels_by_part[name] = ids
+        if dangling:
+            return issue(
+                f"Связи ведут на отсутствующие части: {', '.join(dangling[:5])}",
+                measured=len(dangling),
+                dangling=dangling[:20],
+            )
+        try:
+            pres = ET.fromstring(archive.read("ppt/presentation.xml"))
+        except ET.ParseError as e:
+            return issue(f"presentation.xml не разбирается: {e}", measured="bad_xml")
+        known = rels_by_part.get(_rels_of("ppt/presentation.xml"), {})
+        unknown = [
+            sld.get(f"{{{_R_NS}}}id") or ""
+            for sld in pres.iter(f"{{{_PRES_NS}}}sldId")
+            if (sld.get(f"{{{_R_NS}}}id") or "") not in known
+        ]
+        if unknown:
+            return issue(
+                f"Список слайдов ссылается на неизвестные связи: {', '.join(unknown[:5])}",
+                measured=len(unknown),
+            )
+    return []
 
 
 # Проверки уровня слайда в порядке реестра.

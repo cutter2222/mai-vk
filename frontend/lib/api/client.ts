@@ -50,6 +50,8 @@ export interface TemplateListItem {
   pattern_count?: number;
   /** Имя миниатюры первого образца для карточки библиотеки (см. templates.assetUrl). */
   preview?: string;
+  /** Первые цвета палитры шаблона (до пяти, hex): стиль виден прямо в списке. */
+  colors?: string[];
   created_at: string;
 }
 

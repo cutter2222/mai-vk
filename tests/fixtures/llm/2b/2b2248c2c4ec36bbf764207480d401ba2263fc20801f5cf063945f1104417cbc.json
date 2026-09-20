@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-20T11:44:49Z",
+ "entry_version": 1,
+ "key": "2b2248c2c4ec36bbf764207480d401ba2263fc20801f5cf063945f1104417cbc",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3492,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 1454,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 299,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: в пакете 2 слайд(ов) при допустимых 3–4 (цель 3) — раскрой тезисы t9, t10 на отдельные слайды по разным сторонам (контекст, механизм, следствия, пример), каждый с 2–4 пункта",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 10005,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t9\"\n      ],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"Этапы масштабирования в Q4\",\n      \"message\": \"Поэтапное внедрение сервиса по месяцам.\",\n      \"visual\": \"timeline\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Октябрь: два новых продукта\",\n          \"sub\": \"\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Ноябрь: тихие часы\",\n          \"sub\": \"\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Декабрь: все регионы, цель {fact:f11}\",\n          \"sub\": \"\",\n          \"facts\": [\n            \"f11\"\n          ]\n        }\n      ],\n      \"facts\": [\n        \"f11\"\n      ],\n      \"dataset\": \"\",\n      \"chart_type\": \"line\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t10\"\n      ],\n      \"pattern\": \"pat_builtin_bullets_pane_cols1\",\n      \"title\": \"Пилот подтвердил эффективность\",\n      \"message\": \"Результаты пилота обосновывают расширение.\",\n      \"visual\": \"bullets\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Рост вовлечённости пользователей\",\n          \"sub\": \"\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Снижение нагрузки на поддержку\",\n          \"sub\": \"\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Готовность к расширению на все продукты\",\n          \"sub\": \"\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"line\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t10\"\n      ],\n      \"pattern\": \"pat_builtin_statement\",\n      \"title\": \"Готовность к запуску\",\n      \"message\": \"Сервис готов к работе во всех направлениях.\",\n      \"visual\": \"text\",\n      \"text\": \"Пилот доказал эффективность и готов к расширению на все продуктовые направления.\",\n      \"items\": [],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"line\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    }\n  ],\n  \"rationale\": \"Раскрыт тезис t9 на слайде с этапами, а t10 разбит на два слайда: аргументация эффективности и итоговый вывод, что соответствует требованию 3 слайдов.\"\n}",
+  "usage": {
+   "completion_tokens": 683,
+   "prompt_tokens": 2986,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

@@ -58,26 +58,26 @@ export function SlideViewer({ slides, index, onIndex, overlays, activeOverlay, o
   const safeIndex = Math.min(index, Math.max(total - 1, 0));
   const current = slides[safeIndex];
   const stripRef = useRef<HTMLDivElement | null>(null);
-  const [drag, setDrag] = useState<{ from: number; to: number; y: number } | null>(null);
+  // Перетаскивание в ленте: откуда, куда сейчас, смещение указателя от точки захвата и
+  // шаг сдвига соседей (высота миниатюры с зазором). Пока кнопка не отпущена, порядок не
+  // меняется: карточка приподнята и едет за указателем, остальные лишь расступаются.
+  const [drag, setDrag] = useState<{ from: number; to: number; y: number; startY: number; step: number } | null>(null);
+  // Положения миниатюр на момент захвата (в координатах прокрутки ленты): по ним считается
+  // место вставки, потому что во время перетаскивания сами миниатюры сдвинуты трансформами.
+  const origins = useRef<{ top: number; height: number }[]>([]);
   const hold = useRef<{ timer: number; from: number; x: number; y: number; pointerId: number } | null>(null);
   // Правая колонка выезжает, а не появляется скачком: пока идёт обратный ход, в ней держится
-  // прежнее содержимое, иначе панель схлопывалась бы пустой.
+  // прежнее содержимое, иначе панель схлопывалась бы пустой. Прежнее содержимое — состояние,
+  // которое обновляется при рендере, пока панель открыта, и снимается таймером после закрытия.
   const asideOpen = Boolean(aside);
-  const lastAside = useRef<React.ReactNode>(null);
-  if (aside) lastAside.current = aside;
-  const [keepAside, setKeepAside] = useState(asideOpen);
+  const [lastAside, setLastAside] = useState<React.ReactNode>(aside);
+  if (aside && aside !== lastAside) setLastAside(aside);
   useEffect(() => {
-    if (asideOpen) {
-      setKeepAside(true);
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      lastAside.current = null;
-      setKeepAside(false);
-    }, SIDE_MS);
+    if (asideOpen) return;
+    const timer = window.setTimeout(() => setLastAside(null), SIDE_MS);
     return () => window.clearTimeout(timer);
   }, [asideOpen]);
-  const asideNode = aside ?? (keepAside ? lastAside.current : null);
+  const asideNode = aside ?? lastAside;
 
   // Активная миниатюра держится в видимой части ленты при листании клавишами.
   useEffect(() => {
@@ -85,26 +85,47 @@ export function SlideViewer({ slides, index, onIndex, overlays, activeOverlay, o
     active?.scrollIntoView({ block: "nearest" });
   }, [safeIndex]);
 
-  // Место вставки: сколько миниатюр (кроме перетаскиваемой) лежат серединой выше указателя.
+  // Место вставки: сколько миниатюр (кроме перетаскиваемой) лежат серединой выше указателя —
+  // по положениям на момент захвата, а не по текущим рамкам.
   const targetIndex = (clientY: number, from: number): number => {
-    const buttons = Array.from(stripRef.current?.querySelectorAll<HTMLElement>("[data-thumb]") ?? []);
+    const strip = stripRef.current;
+    if (!strip) return from;
+    const y = clientY - strip.getBoundingClientRect().top + strip.scrollTop;
     let count = 0;
-    buttons.forEach((b, i) => {
+    origins.current.forEach((o, i) => {
       if (i === from) return;
-      const r = b.getBoundingClientRect();
-      if (clientY > r.top + r.height / 2) count += 1;
+      if (y > o.top + o.height / 2) count += 1;
     });
-    return Math.min(count, Math.max(buttons.length - 1, 0));
+    return Math.min(count, Math.max(origins.current.length - 1, 0));
   };
 
   const beginDrag = (from: number, y: number, pointerId: number) => {
-    if (!onReorder) return;
+    const strip = stripRef.current;
+    if (!onReorder || !strip) return;
     try {
-      stripRef.current?.setPointerCapture(pointerId);
+      strip.setPointerCapture(pointerId);
     } catch {
       // захват недоступен (например, в тестах) — перетаскивание работает внутри ленты
     }
-    setDrag({ from, to: from, y });
+    const stripTop = strip.getBoundingClientRect().top - strip.scrollTop;
+    const buttons = Array.from(strip.querySelectorAll<HTMLElement>("[data-thumb]"));
+    origins.current = buttons.map((b) => {
+      const r = b.getBoundingClientRect();
+      return { top: r.top - stripTop, height: r.height };
+    });
+    const first = origins.current[0];
+    const second = origins.current[1];
+    const step = first && second ? second.top - first.top : (first?.height ?? 0) + 12;
+    setDrag({ from, to: from, y, startY: y, step });
+  };
+
+  /** Сдвиг миниатюры во время перетаскивания: своя едет за указателем, соседи расступаются. */
+  const dragShift = (i: number): string | undefined => {
+    if (!drag) return undefined;
+    if (i === drag.from) return `translateY(${drag.y - drag.startY}px)`;
+    if (drag.from < drag.to && i > drag.from && i <= drag.to) return `translateY(${-drag.step}px)`;
+    if (drag.to < drag.from && i >= drag.to && i < drag.from) return `translateY(${drag.step}px)`;
+    return undefined;
   };
 
   const onStripPointerMove = (e: React.PointerEvent) => {
@@ -132,6 +153,16 @@ export function SlideViewer({ slides, index, onIndex, overlays, activeOverlay, o
       setDrag(null);
     }
   };
+
+  // Escape во время перетаскивания возвращает карточку на место без перестановки.
+  useEffect(() => {
+    if (!drag) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDrag(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drag]);
 
   const onThumbPointerDown = (e: React.PointerEvent, i: number, grip: boolean) => {
     if (!onReorder || e.button !== 0) return;
@@ -193,7 +224,8 @@ export function SlideViewer({ slides, index, onIndex, overlays, activeOverlay, o
               data-thumb
               data-active={i === safeIndex}
               data-drag-source={drag && drag.from === i ? "true" : undefined}
-              data-drop-target={drag && drag.to === i && drag.to !== drag.from ? (drag.to < drag.from ? "before" : "after") : undefined}
+              data-drag-shifted={drag && drag.from !== i && dragShift(i) ? "true" : undefined}
+              style={{ transform: dragShift(i) }}
               onClick={() => onIndex(i)}
               onPointerDown={(e) => onThumbPointerDown(e, i, false)}
               onKeyDown={(e) => onThumbKeyDown(e, i)}

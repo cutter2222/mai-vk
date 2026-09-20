@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-20T11:56:22Z",
+ "entry_version": 1,
+ "key": "cc13d69c50febcf4aac3bb42564fc8af3fb04b7467e8d479d2565b32991889de",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3862,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: compact. Компактная подача: слайдов ближе к нижней границе, один слайд может объединять два-три родственных тезиса одного раздела. Заголовок-вывод и два-три коротких пункта (до 8 слов) или по",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 14407,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t2\"\n      ],\n      \"pattern\": \"pat_s3\",\n      \"title\": \"Информационный шум снижает вовлеченность\",\n      \"message\": \"Высокая частота уведомлений без приоритизации приводит к пропуску важных сообщений.\",\n      \"visual\": \"number\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Пропуск важных уведомлений\",\n          \"sub\": \"\",\n          \"facts\": [\n            \"f1\"\n          ]\n        },\n        {\n          \"text\": \"Среднее кол-во уведомлений в день\",\n          \"sub\": \"\",\n          \"facts\": [\n            \"f2\"\n          ]\n        }\n      ],\n      \"facts\": [\n        \"f1\",\n        \"f2\"\n      ],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t4\"\n      ],\n      \"pattern\": \"pat_builtin_bullets_pane_cols1\",\n      \"title\": \"Решение: приоритизация и тишина\",\n      \"message\": \"Сервис объединяет каналы и вводит тихие часы для повышения релевантности.\",\n      \"visual\": \"bullets\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Приоритизация по контексту\",\n          \"sub\": \"\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Единый центр уведомлений\",\n          \"sub\": \"\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Тихие часы с отложенной доставкой\",\n          \"sub\": \"\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"img_1\",\n      \"notes\": \"\"\n    }\n  ],\n  \"rationale\": \"Компактная подача: t2 вынесен в KPI-слайд с ключевыми цифрами, t4 — в список функций с иллюстрацией, что соответствует стилю compact и объему пакета.\"\n}",
+  "usage": {
+   "completion_tokens": 547,
+   "prompt_tokens": 2549,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

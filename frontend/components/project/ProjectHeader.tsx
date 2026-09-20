@@ -95,7 +95,17 @@ export function ProjectHeader({ project, session, onTitle, onSelectTemplate, onU
       <div className="editor-header-actions">
         {result && <StatusBadge status={result.status} />}
         {result?.partial && <Badge color="ink" variant="light">частичный результат</Badge>}
-        <Menu withinPortal position="bottom-end" shadow="md" opened={menuOpen} onChange={setMenuOpen} width={360}>
+        <Menu
+          withinPortal
+          position="bottom-end"
+          shadow="md"
+          opened={menuOpen}
+          onChange={setMenuOpen}
+          width={380}
+          // Длинное имя шаблона не должно раздвигать список и уводить его за край окна:
+          // ширина списка ограничена окном, подпись сжимается и обрезается многоточием.
+          styles={{ dropdown: { maxWidth: "calc(100vw - 24px)" }, itemLabel: { minWidth: 0 } }}
+        >
           {/* Menu.Target держит кнопку напрямую. Раньше он был вложен в HoverCard.Target с
               превью шаблона, и два компонента спорили за ссылку на элемент: выпадающий список
               оставался непозиционированным и открывался в левом верхнем углу окна вместо
@@ -105,14 +115,18 @@ export function ProjectHeader({ project, session, onTitle, onSelectTemplate, onU
               variant="subtle"
               color="gray"
               size="xs"
-              leftSection={analyzing ? <Loader size={12} /> : thumb(currentTemplate) ? <img src={thumb(currentTemplate)} alt="" width={36} height={20} style={{ borderRadius: 3, objectFit: "cover", border: "1px solid var(--line)", display: "block" }} data-testid="template-thumb" /> : <IconTemplate size={14} />}
+              leftSection={analyzing ? <Loader size={12} /> : thumb(currentTemplate) ? <img src={thumb(currentTemplate)} alt="" width={40} height={22} style={{ borderRadius: 3, objectFit: "cover", border: "1px solid var(--line)", display: "block", marginRight: 4 }} data-testid="template-thumb" /> : <IconTemplate size={14} />}
               rightSection={<IconChevronDown size={12} />}
-              style={{ fontWeight: 500, color: project.template_id ? "var(--ink)" : undefined, maxWidth: 260 }}
-              styles={{ label: { display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }}
+              style={{ fontWeight: 500, color: project.template_id ? "var(--ink)" : undefined, maxWidth: 280 }}
+              // Подпись обрезается многоточием и стоит по центру высоты рядом с миниатюрой
+              // (блочная подпись прижималась к верху), между ними — заметный зазор.
+              styles={{ label: { display: "flex", alignItems: "center", minWidth: 0, gap: 6 } }}
               data-testid="template-menu"
             >
-              {currentTemplate ? currentTemplate.name.replace(/\.pptx$/i, "") : project.template_id ? "Шаблон" : "Шаблон не выбран"}
-              {analyzing && <Text component="span" size="xs" c="dimmed" ml={6}>анализируется</Text>}
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {currentTemplate ? currentTemplate.name.replace(/\.pptx$/i, "") : project.template_id ? "Шаблон" : "Шаблон не выбран"}
+              </span>
+              {analyzing && <Text component="span" size="xs" c="dimmed">анализируется</Text>}
             </Button>
           </Menu.Target>
           <Menu.Dropdown>
@@ -122,14 +136,23 @@ export function ProjectHeader({ project, session, onTitle, onSelectTemplate, onU
               <Menu.Item
                 key={t.template_id}
                 onClick={() => onSelectTemplate(t.template_id)}
-                leftSection={thumb(t) ? <img src={thumb(t)} alt="" width={64} height={36} style={{ borderRadius: 3, objectFit: "cover", border: "1px solid var(--mantine-color-gray-3)", display: "block" }} /> : <div style={{ width: 64, height: 36, borderRadius: 3, background: "var(--mantine-color-gray-1)" }} />}
+                leftSection={thumb(t) ? <img src={thumb(t)} alt="" width={77} height={43} style={{ borderRadius: 3, objectFit: "cover", border: "1px solid var(--line)", display: "block" }} /> : <div style={{ width: 77, height: 43, borderRadius: 3, background: "var(--mantine-color-gray-1)" }} />}
                 rightSection={t.template_id === project.template_id ? <IconCheck size={14} /> : undefined}
                 data-testid={`template-option-${t.template_id}`}
               >
-                <Group gap={0} style={{ flexDirection: "column", alignItems: "flex-start" }}>
+                <div style={{ minWidth: 0 }}>
                   <Text size="sm" truncate>{t.name.replace(/\.pptx$/i, "")}</Text>
-                  <Text size="xs" c="dimmed">{t.status === "succeeded" ? `${t.slide_count ?? "—"} слайдов в файле` : t.status === "failed" ? "анализ не удался" : "анализируется"}</Text>
-                </Group>
+                  {/* Под именем — первые цвета палитры: стиль шаблона виден без открытия карточки. */}
+                  {t.status === "succeeded" && t.colors?.length ? (
+                    <Group gap={4} mt={4} wrap="nowrap" aria-label="Цвета шаблона">
+                      {t.colors.slice(0, 5).map((hex, i) => (
+                        <span key={`${hex}-${i}`} title={hex} style={{ width: 12, height: 12, borderRadius: "50%", background: hex, border: "1px solid var(--line)", display: "block" }} />
+                      ))}
+                    </Group>
+                  ) : t.status !== "succeeded" ? (
+                    <Text size="xs" c="dimmed">{t.status === "failed" ? "анализ не удался" : "анализируется"}</Text>
+                  ) : null}
+                </div>
               </Menu.Item>
             ))}
             <Menu.Divider />

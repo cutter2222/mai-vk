@@ -169,7 +169,8 @@ export const handlers = [
       [...store.templates.values()].map((t) => {
         const status = templateStatus(t);
         const preview = status === "succeeded" ? t.profile.patterns.find((p) => p.preview_path)?.preview_path : undefined;
-        return { template_id: t.template_id, name: t.name, status, slide_count: t.profile.stats.slides, pattern_count: t.profile.patterns.length, ...(preview ? { preview } : {}), created_at: t.created_at };
+        const colors = Array.from(new Set(t.profile.design_tokens.colors.palette.map((c) => c.hex))).slice(0, 5);
+        return { template_id: t.template_id, name: t.name, status, slide_count: t.profile.stats.slides, pattern_count: t.profile.patterns.length, ...(preview ? { preview } : {}), ...(colors.length ? { colors } : {}), created_at: t.created_at };
       }),
     );
   }),

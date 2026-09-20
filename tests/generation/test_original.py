@@ -68,7 +68,9 @@ def test_original_story_and_plan_are_valid_and_cover_every_slide(
     # Обязательные слоты таблицы и диаграммы заполнены самим образцом — композер их сохраняет.
     assert {v.code for v in violations} <= {"slot_required"}, violations
     slides = plan["slides"]
-    assert len(slides) == len(story["theses"]) == len(mini_profile["patterns"])
+    # Слайд на каждый образец шаблона; собственные композиции библиотеки образцами не считаются.
+    samples = [p for p in mini_profile["patterns"] if p["source"]["kind"] == "sample_slide"]
+    assert len(slides) == len(story["theses"]) == len(samples)
     assert plan["variant"]["variant_id"] == "original" and plan["slide_count"]["exact"] == len(
         slides
     )

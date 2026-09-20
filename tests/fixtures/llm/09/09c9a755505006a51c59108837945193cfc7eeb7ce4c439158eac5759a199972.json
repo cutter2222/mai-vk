@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-20T11:55:12Z",
+ "entry_version": 1,
+ "key": "09c9a755505006a51c59108837945193cfc7eeb7ce4c439158eac5759a199972",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 4038,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 1867,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 350,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Информационный шум снижает вовлеченность» (pat_builtin_kpi_row_cardFalse_count2), слот title: текст не помещается — 40 символов / 2 строк при ёмкости 35 символов / 1 ",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 14888,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n      \"t2\"\n      ],\n      \"pattern\": \"pat_builtin_kpi_row_cardFalse_count2\",\n      \"title\": \"Информационный шум снижает вовлеченность\",\n      \"message\": \"Высокая частота уведомлений без приоритизации приводит к пропуску важных сообщений.\",\n      \"visual\": \"number\",\n      \"text\": \"Пользователи пропускают до {fact:f1} важных уведомлений из-за отсутствия приоритизации.\",\n\n      \"items\": [\n        {\n          \"text\": \"Пропуск важных уведомлений\",\n          \"sub\": \"Доля пропущенных\",\n          \"facts\": [\n          \"f1\"\n          ]\n        },\n       \n        {\n          \"text\": \"Среднее количество в день\",\n          \"sub\": \"Уведомлений на пользователя\",\n          \"facts\": [\n          \"f2\"\n          ]\n        }\n      ],\n      \"facts\": [\n      \"f1\",\n      \"f2\"\n      ]\n    },\n    {\n      \"theses\": [\n      \"t4\"\n      ],\n      \"pattern\": \"pat_s2\",  \"title\": \"Приоритизация и тишина повышают релевантность\",\n      \"message\": \"Сервис объединяет пояснительный текст не нужен. Цифры выносятся в показатели (number), ряды данных — в диаграмму, если для тезиса допустимо chart_to_number — достаточно итогового показателя; таблицы заменяются диаграммой или показателями. Тезисы с required=false и допустимым drop_entirely не показываются.\",\"visual\": \"cards\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"function: приоритизация по контексту\",\n          \"sub\": \"Важное наверх\",\n         \n          \"facts\": []\n        },\n        {\n          \"text\": \"Единый центр уведомлений\",\n          \"sub\": \"Вместо 3 каналов\",\n          \"facts\": []\n        },\n       \n       \n        {\n          \"text\": \"Тихие часы\",\n          \"sub\": \"explanation: отложенная доставка\",\n          \"facts\": []\n        }\n      ],\n\n      \"facts\": [],\n      \"image\": \"img_1\"\n    }\n  ],\n  \"rationale\": \"Компактный вариант: первый слайд выносит метрики проблемы в показатели, второй раскрывает решение через карточки с визуальным акцентом, соблюдая лимиты длины.\"\n}",
+  "usage": {
+   "completion_tokens": 607,
+   "prompt_tokens": 3304,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-20T11:47:38Z",
+ "entry_version": 1,
+ "key": "da5b4f6d00291843bb7862c502cf4b611b6c8dd9b69c90600d17436bbed3dcfd",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 4336,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: balanced. Сбалансированная подача: один тезис на слайд, заголовок-вывод, короткое пояснение (одно-два предложения) и до четырёх пунктов или показателей. Ряды данных — диаграмма с подписями; т",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 9128,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t3\"\n      ],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"Три механизма борьбы с шумом\",\n      \"message\": \"Сервис решает проблему информационного шума через автоматизацию и консолидацию.\",\n      \"visual\": \"cards\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Автоматическая сортировка сообщений по приоритету\",\n          \"sub\": \"Приоритизация\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Режим тихих часов для снижения прерываний\",\n          \"sub\": \"Тихие часы\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Объединение каналов в единый центр уведомлений\",\n          \"sub\": \"Единый центр\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t5\"\n      ],\n      \"pattern\": \"pat_builtin_kpi_row_cardFalse_count4\",\n      \"title\": \"Рост вовлеченности и снижение отписок\",\n      \"message\": \"Пилот показал значительное улучшение ключевых метрик взаимодействия пользователей.\",\n      \"visual\": \"number\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Открываемость до пилота\",\n          \"sub\": \"Было\",\n          \"facts\": [\n            \"f3\"\n          ]\n        },\n        {\n          \"text\": \"Открываемость после пилота\",\n          \"sub\": \"Стало\",\n          \"facts\": [\n            \"f4\"\n          ]\n        },\n        {\n          \"text\": \"Доля отписок до пилота\",\n          \"sub\": \"Было\",\n          \"facts\": [\n            \"f5\"\n          ]\n        },\n        {\n          \"text\": \"Доля отписок после пилота\",\n          \"sub\": \"Стало\",\n          \"facts\": [\n            \"f6\"\n          ]\n        }\n      ],\n      \"facts\": [\n        \"f3\",\n        \"f4\",\n        \"f5\",\n        \"f6\"\n      ],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t6\"\n      ],\n      \"pattern\": \"pat_builtin_kpi_row_cardFalse_count2\",\n      \"title\": \"Экономическая эффективность пилота\",\n      \"message\": \"Затраты на пилот многократно окуплены экономией на поддержке.\",\n      \"visual\": \"number\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Экономия на поддержке за год\",\n          \"sub\": \"Выгода\",\n          \"facts\": [\n            \"f7\"\n          ]\n        },\n        {\n          \"text\": \"Затраты на пилот за год\",\n          \"sub\": \"Инвестиции\",\n          \"facts\": [\n            \"f8\"\n          ]\n        }\n      ],\n      \"facts\": [\n        \"f7\",\n        \"f8\"\n      ],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t7\"\n      ],\n      \"pattern\": \"pat_builtin_quote_photoFalse\",\n      \"title\": \"Качественная обратная связь\",\n      \"message\": \"Поддержка отмечает изменение восприятия уведомлений пользователями.\",\n      \"visual\": \"quote\",\n      \"text\": \"«Впервые уведомления стали помогать, а не отвлекать»\",\n      \"items\": [],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"Цитата из обратной связи команды поддержки.\"\n    }\n  ],\n  \"rationale\": \"Сбалансированная подача: каждый тезис вынесен на отдельный слайд с соответствующей композицией (карточки для механизмов, KPI для метрик, цитата для обратной связи), что соответствует правилу одного тезиса на слайд и вместимости шаблонов.\"\n}",
+  "usage": {
+   "completion_tokens": 1084,
+   "prompt_tokens": 2759,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

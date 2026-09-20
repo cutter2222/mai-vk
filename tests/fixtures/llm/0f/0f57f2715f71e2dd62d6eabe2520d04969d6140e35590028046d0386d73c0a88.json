@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-20T11:48:12Z",
+ "entry_version": 1,
+ "key": "0f57f2715f71e2dd62d6eabe2520d04969d6140e35590028046d0386d73c0a88",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3937,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 1550,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"slides\": [{\"slide_id\": \"s2\", \"title\": \"Внедрение приоритизации и единого центра решает проблему информационного шума.\", \"key_message\": \"Внедрение приоритизации и единого центра решает проблему инфор",
+  "prompt": [
+   "fill.slots",
+   "0.1.0"
+  ],
+  "response_format": "json_object",
+  "role": "llm",
+  "skill": [
+   "slot_filler",
+   "0.1.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 2104,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"s2\": {\n    \"lead\": \"Приоритизация и единый центр снижают информационный шум, помогая команде фокусироваться на ключевых задачах.\"\n  },\n  \"s4\": {\n    \"lead\": \"Результаты трёхмесячного пилота показали рост вовлечённости пользователей и снижение нагрузки на службу поддержки.\"\n  },\n  \"s8\": {\n    \"lead\": \"Масштабирование сервиса запланировано на четвёртый квартал и будет реализовано в три последовательных этапа.\"\n  }\n}",
+  "usage": {
+   "completion_tokens": 132,
+   "prompt_tokens": 1751,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

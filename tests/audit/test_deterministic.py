@@ -151,3 +151,122 @@ def test_low_contrast_on_solid_background_is_reported() -> None:
     )
     issues = check_contrast(slide, Context(deck={"slides": [slide]}, profile=_profile()))
     assert [i.check_id for i in issues] == ["template.contrast"]
+
+
+def _plain_slide(objects: list[JsonDict]) -> JsonDict:
+    return {"slide_id": "sld_1", "index": 0, "objects": objects}
+
+
+def test_moved_slot_object_is_checked_against_margins() -> None:
+    """Объект слота стоит там, где его поставил автор шаблона, пока пользователь не сдвинул."""
+    from presentation_designer.audit.deterministic import check_margins
+
+    profile = _profile(spacing={"margins": {"left": 0.05, "right": 0.05, "top": 0.05, "bottom": 0.05}})
+    ctx = Context(deck={"slides": []}, profile=profile)
+    box = {"x": 0.0, "y": 0.3, "width": 0.4, "height": 0.2}
+    base = {"object_id": "7", "kind": "text", "role": "content", "bbox": box}
+    inherited = {**base, "content_source": "plan", "source_object_id": "7"}
+    assert check_margins(_plain_slide([inherited]), ctx) == []
+    moved = {
+        **inherited,
+        "user_overrides": [{"op": "geometry", "target": {"object_id": "7"}, "geometry": {"bbox": box}}],
+    }
+    assert [i.check_id for i in check_margins(_plain_slide([moved]), ctx)] == ["layout.margins"]
+    added = {**base, "object_id": "usr_1", "content_source": "user", "user_overrides": [{"op": "add_text"}]}
+    assert [i.check_id for i in check_margins(_plain_slide([added]), ctx)] == ["layout.margins"]
+
+
+def test_image_distortion_reads_natural_size_of_deck() -> None:
+    from presentation_designer.audit.deterministic import check_image_distorted
+
+    deck = {"slide_size": {"width_emu": 12192000, "height_emu": 6858000}, "slides": []}
+    ctx = Context(deck=deck, profile=_profile())
+    square = {"natural_width_px": 800, "natural_height_px": 800, "fit": "as_is"}
+    stretched = {
+        "object_id": "3",
+        "kind": "picture",
+        "role": "content",
+        "content_source": "plan",
+        "bbox": {"x": 0.1, "y": 0.1, "width": 0.5, "height": 0.2},
+        "picture": square,
+    }
+    found = check_image_distorted(_plain_slide([stretched]), ctx)
+    assert [i.check_id for i in found] == ["layout.image_distorted"]
+    proper = {**stretched, "bbox": {"x": 0.1, "y": 0.1, "width": 0.225, "height": 0.4}}
+    assert check_image_distorted(_plain_slide([proper]), ctx) == []
+
+
+def test_chart_with_axis_titles_has_units() -> None:
+    from presentation_designer.audit.deterministic import check_chart_labels
+
+    ctx = Context(deck={"slides": []}, profile=_profile())
+    chart = {"object_id": "5", "kind": "chart", "role": "content", "content_source": "generated"}
+    bare = {**chart, "chart": {"type": "bar", "has_legend": False, "categories_count": 3}}
+    assert [i.check_id for i in check_chart_labels(_plain_slide([bare]), ctx)] == [
+        "integrity.chart_labels"
+    ]
+    titled = {**chart, "chart": {**bare["chart"], "has_axis_titles": True}}
+    assert check_chart_labels(_plain_slide([titled]), ctx) == []
+
+
+def test_package_check_finds_dangling_relationship(tmp_path: Any) -> None:
+    """Проверка пакета: собранный python-pptx файл цел, файл без части слайда — нет."""
+    import zipfile
+
+    from pptx import Presentation
+
+    from presentation_designer.audit.deterministic import check_package
+
+    prs = Presentation()
+    prs.slides.add_slide(prs.slide_layouts[5]).shapes.title.text = "Целый"
+    good = tmp_path / "good.pptx"
+    prs.save(good)
+    assert check_package(good) == []
+
+    broken = tmp_path / "broken.pptx"
+    with zipfile.ZipFile(good) as src, zipfile.ZipFile(broken, "w") as dst:
+        for item in src.infolist():
+            if item.filename != "ppt/slides/slide1.xml":
+                dst.writestr(item, src.read(item.filename))
+    found = check_package(broken)
+    assert [i.check_id for i in found] == ["integrity.package"]
+    assert "slide1.xml" in found[0].message
+    assert check_package(tmp_path / "нет.pptx")[0].evidence["measured"] == "bad_zip"
+
+
+def test_report_marks_deck_checks_and_package(tmp_path: Any) -> None:
+    """Исход проверки уровня колоды считается по всем её находкам, а без файла проверка
+    пакета помечается как не выполненная."""
+    from pptx import Presentation
+
+    from presentation_designer.audit.report import build_report
+
+    text = {"plain": "Одно и то же", "paragraphs": []}
+    obj = {"object_id": "2", "kind": "text", "role": "content", "content_source": "plan", "text": text}
+    deck = {
+        "slide_size": {"width_emu": 12192000, "height_emu": 6858000},
+        "slides": [
+            {"slide_id": "sld_1", "index": 0, "pattern_id": "p1", "objects": [dict(obj)]},
+            {"slide_id": "sld_2", "index": 1, "pattern_id": "p1", "objects": [dict(obj)]},
+        ],
+    }
+
+    def outcome(report: JsonDict, check_id: str) -> str:
+        return next(r["outcome"] for r in report["results"] if r["check_id"] == check_id)
+
+    report = build_report(
+        job_id="job_1", variant_id="v", revision=1, deck=deck, profile=_profile(),
+        staging_prefix="v/r1/", contextual=False,
+    )
+    assert outcome(report, "integrity.duplicate_slides") == "failed"
+    assert outcome(report, "integrity.package") == "not_checked"
+    assert "pptx_file" in report["coverage"]["missing_inputs"]
+
+    pptx = tmp_path / "deck.pptx"
+    Presentation().save(pptx)
+    report = build_report(
+        job_id="job_1", variant_id="v", revision=1, deck=deck, profile=_profile(),
+        staging_prefix="v/r1/", contextual=False, pptx_path=pptx,
+    )
+    assert outcome(report, "integrity.package") == "passed"
+    assert "pptx_file" not in report["coverage"].get("missing_inputs", [])

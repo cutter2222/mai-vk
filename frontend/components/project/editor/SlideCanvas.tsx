@@ -54,7 +54,9 @@ const CROP_KINDS = new Set(["table", "chart", "other", "connector"]);
 export function SlideCanvas({ deck, slide, layoutUrl, thumbUrl, mediaUrl, selectedObjectId, onSelect, editable, onGeometry, onDelete, fallbackBackground }: Props) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
-  const [hovered, setHovered] = useState<string | null>(null);
+  // Объект под указателем и рамка его букв: меряется в обработчике движения, а не при
+  // рендере, — подсказка наведения рисуется по ней без чтения DOM во время рендера.
+  const [hovered, setHovered] = useState<{ id: string; box: CanvasBox | null } | null>(null);
   const widthPt = (deck.slide_size.width_emu || 12192000) / EMU_PER_PT;
   const ratio = (deck.slide_size.width_emu || 12192000) / (deck.slide_size.height_emu || 6858000);
   const background = slide.background ?? { kind: "inherited" };
@@ -136,6 +138,10 @@ export function SlideCanvas({ deck, slide, layoutUrl, thumbUrl, mediaUrl, select
     if (e.button !== 0) return;
     const obj = hit(e.clientX, e.clientY);
     onSelect(obj?.object_id ?? null);
+    // Фокус — холсту при каждом нажатии, а не только при смене выделения: после правки в
+    // панели свойств клик по уже выбранному объекту иначе оставлял фокус в поле ввода, и
+    // Ctrl+Z, Delete и стрелки уходили туда, а preventDefault ниже фокус сам не переносит.
+    ref.current?.focus({ preventScroll: true });
     if (!obj || !editable || !movable(obj)) return;
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -156,7 +162,7 @@ export function SlideCanvas({ deck, slide, layoutUrl, thumbUrl, mediaUrl, select
       // самого верхнего прямоугольника DOM, и контейнер загорался, пока указатель шёл к буквам.
       const under = hit(e.clientX, e.clientY);
       const id = under?.object_id ?? null;
-      if (id !== hovered) setHovered(id);
+      if (id !== (hovered?.id ?? null)) setHovered(id ? { id, box: glyphBox(id) } : null);
       return;
     }
     const [dx, dy] = toFraction(e.clientX - drag.startX, e.clientY - drag.startY);
@@ -209,8 +215,8 @@ export function SlideCanvas({ deck, slide, layoutUrl, thumbUrl, mediaUrl, select
   const selected = objects.find((o) => o.object_id === selectedObjectId);
   const selectedBox = drag && selected && drag.id === selected.object_id ? drag.current : selected?.bbox;
   // Подсказка наведения обводит то, что видно: буквы у текста, рамку у остальных объектов.
-  const hoverObj = hovered && hovered !== selectedObjectId ? objects.find((o) => o.object_id === hovered) : undefined;
-  const hoverBox = hoverObj ? (glyphBox(hoverObj.object_id) ?? hoverObj.bbox) : null;
+  const hoverObj = hovered && hovered.id !== selectedObjectId ? objects.find((o) => o.object_id === hovered.id) : undefined;
+  const hoverBox = hoverObj ? (hovered?.box ?? hoverObj.bbox) : null;
 
   return (
     <div
@@ -246,7 +252,7 @@ export function SlideCanvas({ deck, slide, layoutUrl, thumbUrl, mediaUrl, select
             thumbUrl={thumbUrl}
             mediaUrl={mediaUrl}
             selected={obj.object_id === selectedObjectId}
-            hovered={obj.object_id === hovered}
+            hovered={obj.object_id === hovered?.id}
           />
         );
       })}

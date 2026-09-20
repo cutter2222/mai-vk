@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-20T11:58:14Z",
+ "entry_version": 1,
+ "key": "ea9e90b756a10acf1645fde2a9f1142ce2deb4f51c0ef872c0729e41430a107f",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3937,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 1075,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"slides\": [{\"slide_id\": \"s6\", \"title\": \"Рост открываемости до 44%\", \"key_message\": \"Сравнение показателей до и после пилота демонстрирует значительное улучшение качества коммуникации.\", \"filled\": [\"Р",
+  "prompt": [
+   "fill.slots",
+   "0.1.0"
+  ],
+  "response_format": "json_object",
+  "role": "llm",
+  "skill": [
+   "slot_filler",
+   "0.1.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 1107,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"s6\": {\n    \"cell_3_title\": \"Открываемость\"\n  }\n}",
+  "usage": {
+   "completion_tokens": 29,
+   "prompt_tokens": 1704,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

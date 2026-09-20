@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-20T11:44:19Z",
+ "entry_version": 1,
+ "key": "a1cac3e0e01c929ad0530669d12af9c8c49e1d9aa3e1a6c3e9939fb99ce8f6c2",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3074,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 63,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Поменяй местами второй и третий слайды и удали слайд с командой",
+  "prompt": [
+   "brief.extract",
+   "0.2.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "brief_extractor",
+   "0.2.0"
+  ],
+  "stage": "brief"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 877,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\"purpose\": null, \"title\": null, \"audience\": null, \"goal\": null, \"tone\": null, \"language\": null, \"must_include\": [], \"avoid\": [], \"slide_count\": null, \"variants\": [], \"intent\": \"edit\"}",
+  "usage": {
+   "completion_tokens": 57,
+   "prompt_tokens": 870,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

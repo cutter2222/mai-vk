@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-20T11:45:23Z",
+ "entry_version": 1,
+ "key": "3854f9ecd24fca60a29d97d21bd5d84e6c957ea79aa658837b3b6a32c62564b7",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 4336,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 3458,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 340,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Качественная обратная связь от команды» (pat_builtin_quote_photoFalse), слот title: текст не помещается — 38 символов / 2 строк при ёмкости 35 символов / 1 строк — со",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 8619,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t3\"\n      ],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"Три механизма снижения информационного шума\",\n      \"message\": \"Сервис автоматизирует сортировку, тишину и объединение каналов.\",\n      \"visual\": \"cards\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Автоматическая сортировка сообщений по приоритету\",\n          \"sub\": \"Сортировка\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Режим тихих часов для критичных уведомлений\",\n          \"sub\": \"Тихие часы\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Объединение каналов в единый центр уведомлений\",\n          \"sub\": \"Единый центр\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t5\"\n      ],\n      \"pattern\": \"pat_builtin_kpi_row_cardFalse_count4\",\n      \"title\": \"Рост вовлечённости и снижение отписок\",\n      \"message\": \"Пилот показал улучшение ключевых метрик качества уведомлений.\",\n      \"visual\": \"number\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Открываемость до пилота\",\n          \"sub\": \"Было\",\n          \"facts\": [\n            \"f3\"\n          ]\n        },\n        {\n          \"text\": \"Открываемость после пилота\",\n          \"sub\": \"Стало\",\n          \"facts\": [\n            \"f4\"\n          ]\n        },\n        {\n          \"text\": \"Доля отписок до пилота\",\n          \"sub\": \"Было\",\n          \"facts\": [\n            \"f5\"\n          ]\n        },\n        {\n          \"text\": \"Доля отписок после пилота\",\n          \"sub\": \"Стало\",\n          \"facts\": [\n            \"f6\"\n          ]\n        }\n      ],\n      \"facts\": [\n        \"f3\",\n        \"f4\",\n        \"f5\",\n        \"f6\"\n      ],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t6\"\n      ],\n      \"pattern\": \"pat_builtin_kpi_row_cardFalse_count2\",\n      \"title\": \"Экономическая эффективность пилота\",\n      \"message\": \"Затраты на пилот окупились за счёт экономии на поддержке.\",\n      \"visual\": \"number\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Экономия на поддержке за год\",\n          \"sub\": \"Экономия\",\n          \"facts\": [\n            \"f7\"\n          ]\n        },\n        {\n          \"text\": \"Затраты на пилот за год\",\n          \"sub\": \"Затраты\",\n          \"facts\": [\n            \"f8\"\n          ]\n        }\n      ],\n      \"facts\": [\n        \"f7\",\n        \"f8\"\n      ],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t7\"\n      ],\n      \"pattern\": \"pat_builtin_quote_photoFalse\",\n      \"title\": \"Обратная связь от поддержки\",\n      \"message\": \"Поддержка отмечает позитивное изменение восприятия уведомлений.\",\n      \"visual\": \"quote\",\n      \"text\": \"«Впервые уведомления стали помогать, а не отвлекать»\",\n      \"items\": [],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"Обратная связь от поддержки\"\n    }\n  ],\n  \"rationale\": \"Сбалансированная подача: каждый тезис вынесен на отдельный слайд с соответствующей композицией (карточки для механизмов, KPI для метрик, цитата для обратной связи), что соответствует стилю balanced и объёму данных.\"\n}",
+  "usage": {
+   "completion_tokens": 1073,
+   "prompt_tokens": 3947,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

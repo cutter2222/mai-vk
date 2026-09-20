@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-20T11:47:09Z",
+ "entry_version": 1,
+ "key": "76a2ba561a6b2354c5e2ff0c7ceb2b4626f73e6d396f4eb4598a37d3e557ff58",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3232,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: detailed. Подробная подача: слайдов ближе к верхней границе, разделы получают разделители. Тезис раскрывается пояснением и примерами, до шести пунктов с подписями (sub), карточки и две колонк",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 20223,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t9\"\n      ],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"План масштабирования на Q4\",\n      \"message\": \"Поэтапное внедрение сервиса в течение четвёртого квартала.\",\n      \"visual\": \"timeline\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Октябрь: запуск на двух новых продуктах\",\n          \"sub\": \"Октябрь\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Ноябрь: внедрение тихих часов\",\n          \"sub\": \"Ноябрь\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Декабрь: покрытие всех регионов, цель {fact:f11}\",\n          \"sub\": \"Декабрь\",\n          \"facts\": [\n            \"f11\"\n          ]\n        }\n      ],\n      \"facts\": [\n        \"f11\"\n      ],\n      \"dataset\": \"\",\n      \"chart_type\": \"line\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t10\"\n      ],\n      \"pattern\": \"pat_builtin_statement\",\n      \"title\": \"Пилот доказал эффективность\",\n      \"message\": \"Результаты пилота подтверждают готовность к расширению.\",\n      \"visual\": \"text\",\n      \"text\": \"Пилот доказал эффективность и готов к расширению на все продуктовые направления.\",\n      \"items\": [],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"line\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t10\"\n      ],\n      \"pattern\": \"pat_builtin_bullets_pane_cols1\",\n      \"title\": \"Готовность к масштабированию\",\n      \"message\": \"Ключевые аргументы в пользу расширения сервиса.\",\n      \"visual\": \"bullets\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Рост вовлечённости пользователей подтверждён данными пилота\",\n          \"sub\": \"\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Снижение нагрузки на службу поддержки за счёт умной сортировки\",\n          \"sub\": \"\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Готовность инфраструктуры к подключению новых продуктовых направлений\",\n          \"sub\": \"\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"line\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    }\n  ],\n  \"rationale\": \"Тезис t9 раскрыт через таймлайн с тремя этапами, t10 разделён на два слайда: первый — краткий вывод, второй — аргументация готовности, что соответствует детальной подаче и бюджету.\"\n}",
+  "usage": {
+   "completion_tokens": 732,
+   "prompt_tokens": 2336,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

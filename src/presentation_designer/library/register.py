@@ -16,6 +16,8 @@ from typing import Any
 
 from presentation_designer.library.spec import Composition, load_families
 from presentation_designer.library.tokens import DesignCode
+from presentation_designer.parsing.template.layouts import layout_family
+from presentation_designer.parsing.template.tone import LIGHT_THRESHOLD, relative_luminance
 from presentation_designer.shared import text_metrics
 
 JsonDict = dict[str, Any]
@@ -40,10 +42,20 @@ def builtin_patterns(
     layout = layout_id or _base_layout(profile)
     if not layout:
         return []
+    layout_name = next(
+        (
+            str(item.get("name") or "")
+            for item in profile.get("layouts") or []
+            if str(item.get("layout_id")) == layout
+        ),
+        "",
+    )
     out: list[JsonDict] = []
     for family in load_families():
         for composition in family.expand():
-            out.append(_as_pattern(composition, design, width_emu, height_emu, layout))
+            out.append(
+                _as_pattern(composition, design, width_emu, height_emu, layout, layout_name)
+            )
     return out
 
 
@@ -83,6 +95,7 @@ def _as_pattern(
     width_emu: int,
     height_emu: int,
     layout_id: str,
+    layout_name: str = "",
 ) -> JsonDict:
     slots: list[JsonDict] = []
     for slot in composition.slots:
@@ -101,6 +114,15 @@ def _as_pattern(
             raw["font"]["bold"] = True
         raw["capacity"] = _capacity(slot.bbox, size_pt, family, width_emu, height_emu, slot.kind)
         slots.append(raw)
+    # Тон и стиль — как у паттернов шаблона: по ним планировщик держит служебные слайды
+    # (титул, разделители, финал) в одном стиле внутри колоды и разводит варианты. Фон
+    # композиции — фон дизайн-кода, под него подобраны цвета текста.
+    luminance = relative_luminance(code.background)
+    tone = {
+        "background": "light" if luminance >= LIGHT_THRESHOLD else "dark",
+        "luminance": round(luminance, 3),
+        "source": "design_code",
+    }
     return {
         "pattern_id": pattern_id_for(composition.composition_id),
         "name": composition.name,
@@ -111,6 +133,8 @@ def _as_pattern(
             "composition_id": composition.composition_id,
         },
         "slots": slots,
+        "tone": tone,
+        "style_key": f"{tone['background']}|{layout_family(layout_name)}|plain",
         "constraints": {
             "min_items": composition.min_items,
             "max_items": composition.max_items,

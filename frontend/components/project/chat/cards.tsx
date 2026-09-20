@@ -2,8 +2,10 @@
 
 import { Accordion, Anchor, Badge, Button, ColorSwatch, Group, Loader, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
 import { IconFile, IconFileTypePpt, IconRocket } from "@tabler/icons-react";
+import { useState } from "react";
 
 import { SlideImage } from "@/components/common/SlideImage";
+import { SlideCompareModal } from "@/components/project/chat/SlideCompareModal";
 import { ProgressPanel } from "@/components/workspace/ProgressPanel";
 import { MetricsPanel } from "@/components/workspace/MetricsPanel";
 import { api, ApiError, TERMINAL_STATES, type ContentDetail, type TemplateDetail } from "@/lib/api/client";
@@ -260,6 +262,8 @@ export function AuditCard({ m, ctx }: { m: Msg<"audit_card">; ctx: CardContext }
  */
 export function EditCard({ m, ctx }: { m: Msg<"edit_card">; ctx: CardContext }) {
   const { session } = ctx;
+  // Крупный просмотр «до/после»: миниатюры в карточке малы, разницу на них не разглядеть.
+  const [compare, setCompare] = useState<"before" | "after" | null>(null);
   const entry = session.result?.edits?.find((e) => e.edit_job_id === m.edit_job_id);
   const settled = Boolean(entry && entry.result !== undefined);
   const status = usePolling<JobStatus>(!settled ? () => api.jobs.get(m.edit_job_id) : null, (s) => TERMINAL_STATES.has(s.status), [m.edit_job_id, settled]);
@@ -297,19 +301,28 @@ export function EditCard({ m, ctx }: { m: Msg<"edit_card">; ctx: CardContext }) 
       session.setLayout("single");
       session.selectSlide(m.slide_index);
     };
+    const before = { label: `до · r${entry.base_revision}`, src: api.generations.artifactUrl(m.job_id, name(entry.base_revision)) };
+    const after = { label: `после · r${entry.new_revision}`, src: api.generations.artifactUrl(m.job_id, name(entry.new_revision)) };
     return (
       <Card title={title} aside={<Badge color="green" size="xs">ревизия {entry.new_revision}</Badge>} testId="edit-card">
         <Text size="sm" mb={8} data-testid="edit-note">{(manual ? entry.summary : undefined) || entry.change_note || (manual ? "Правки применены" : "Слайд переделан по просьбе")}</Text>
         <SimpleGrid cols={2} spacing="xs" mb={8}>
-          <div>
-            <SlideImage src={api.generations.artifactUrl(m.job_id, name(entry.base_revision))} alt="до" />
-            <Text size="xs" ta="center" c="dimmed">до · r{entry.base_revision}</Text>
-          </div>
-          <div>
-            <SlideImage src={api.generations.artifactUrl(m.job_id, name(entry.new_revision))} alt="после" />
-            <Text size="xs" ta="center" c="dimmed">после · r{entry.new_revision}</Text>
-          </div>
+          {([["before", before], ["after", after]] as const).map(([key, side]) => (
+            <button key={key} type="button" className="compare-thumb" onClick={() => setCompare(key)} aria-label={`Открыть крупно: ${side.label}`} data-testid={`edit-compare-${key}`}>
+              <SlideImage src={side.src} alt={side.label} />
+              <Text size="xs" ta="center" c="dimmed">{side.label}</Text>
+            </button>
+          ))}
         </SimpleGrid>
+        <SlideCompareModal
+          opened={compare !== null}
+          onClose={() => setCompare(null)}
+          title={`${title} · ${variantLabel}`}
+          before={before}
+          after={after}
+          initial={compare ?? "after"}
+          onShow={show}
+        />
         <Group gap="xs">
           <Button size="xs" variant="default" onClick={show} data-testid="edit-show">Показать слайд</Button>
           <Text size="xs" c="dimmed">

@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-20T11:57:09Z",
+ "entry_version": 1,
+ "key": "b510eb6b578e960b60f307b816bdc8ec68e8cc15af96b6b3780ef6faaa3637b1",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3829,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: detailed. Подробная подача: слайдов ближе к верхней границе, разделы получают разделители. Тезис раскрывается пояснением и примерами, до шести пунктов с подписями (sub), карточки и две колонк",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 18007,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t11\"\n      ],\n      \"pattern\": \"pat_builtin_process_count3\",\n      \"title\": \"План масштабирования на Q4\",\n      \"message\": \"Поэтапное расширение сервиса в течение квартала с целевым показателем открываемости.\",\n      \"visual\": \"timeline\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Подключение двух новых продуктов\",\n          \"sub\": \"Октябрь\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Внедрение персональных тихих часов\",\n          \"sub\": \"Ноябрь\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Расширение на все регионы, цель {fact:f11}\",\n          \"sub\": \"Декабрь\",\n          \"facts\": [\n            \"f11\"\n          ]\n        }\n      ],\n      \"facts\": [\n        \"f11\"\n      ],\n      \"dataset\": \"\",\n      \"chart_type\": \"line\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"Акцент на последовательности шагов и итоговой цели по открываемости.\"\n    },\n    {\n      \"theses\": [\n        \"t13\"\n      ],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"Управление ключевыми рисками\",\n      \"message\": \"Идентифицированные риски управляемы и не блокируют достижение бизнес-целей.\",\n      \"visual\": \"cards\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Зависимость от push-провайдера\",\n          \"sub\": \"Риск 1\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Нагрузка на поддержку в первые недели\",\n          \"sub\": \"Риск 2\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"Подчеркнуть, что риски имеют план митигации и не влияют на сроки.\"\n    }\n  ],\n  \"rationale\": \"Использована процессная схема для наглядного отображения квартального плана и карточки для краткого перечисления рисков, что соответствует детальной подаче и объему тезисов.\"\n}",
+  "usage": {
+   "completion_tokens": 580,
+   "prompt_tokens": 2514,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

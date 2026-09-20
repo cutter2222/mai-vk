@@ -566,6 +566,10 @@ def test_delete_removes_object_and_add_text_creates_shape(
     bbox = added[0]["bbox"]
     assert abs(bbox["x"] - 0.25) < 0.01 and abs(bbox["y"] - 0.6) < 0.01, "положение из правки"
     assert abs(bbox["width"] - 0.5) < 0.01 and abs(bbox["height"] - 0.12) < 0.01
+    # для аудита это текст пользователя, а не статика шаблона
+    assert added[0]["role"] == "content" and added[0]["content_source"] == "user"
+    assert "source_object_id" not in added[0]
+    assert [o["op"] for o in added[0]["user_overrides"]] == ["add_text", "geometry"]
 
     shape = _shape(result, new_id)
     rpr = shape._element.findall(".//a:r/a:rPr", NS)

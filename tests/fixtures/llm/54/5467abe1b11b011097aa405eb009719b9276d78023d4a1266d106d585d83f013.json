@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-20T11:44:39Z",
+ "entry_version": 1,
+ "key": "5467abe1b11b011097aa405eb009719b9276d78023d4a1266d106d585d83f013",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3492,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: compact. Компактная подача: слайдов ближе к нижней границе, один слайд может объединять два-три родственных тезиса одного раздела. Заголовок-вывод и два-три коротких пункта (до 8 слов) или по",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 12423,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t9\"\n      ],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"План масштабирования на Q4\",\n      \"message\": \"Поэтапное внедрение сервиса в течение квартала.\",\n      \"visual\": \"timeline\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Октябрь: два новых продукта\",\n          \"sub\": \"\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Ноябрь: тихие часы\",\n          \"sub\": \"\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Декабрь: все регионы, цель {fact:f11}\",\n          \"sub\": \"\",\n          \"facts\": [\n            \"f11\"\n          ]\n        }\n      ],\n      \"facts\": [\n        \"f11\"\n      ],\n      \"dataset\": \"\",\n      \"chart_type\": \"line\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t10\"\n      ],\n      \"pattern\": \"pat_builtin_statement\",\n      \"title\": \"Готовность к расширению\",\n      \"message\": \"Пилот подтвердил эффективность для всех направлений.\",\n      \"visual\": \"text\",\n      \"text\": \"Пилот доказал эффективность и готов к расширению на все продуктовые направления.\",\n      \"items\": [],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"line\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    }\n  ],\n  \"rationale\": \"Компактная подача объединяет план этапов в один слайд с карточками, а вывод — в отдельный слайд с текстом, соблюдая лимиты и избегая дублирования композиций.\"\n}",
+  "usage": {
+   "completion_tokens": 453,
+   "prompt_tokens": 2418,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

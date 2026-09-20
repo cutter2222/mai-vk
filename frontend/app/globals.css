@@ -819,6 +819,33 @@ body {
   line-height: 1.5;
 }
 
+/* Миниатюры «до/после» в карточке правки: нажатие открывает крупный просмотр. */
+.compare-thumb {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+  text-align: inherit;
+  font: inherit;
+  color: inherit;
+}
+
+.compare-thumb .slide-frame {
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.compare-thumb:hover .slide-frame,
+.compare-thumb:focus-visible .slide-frame {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.compare-thumb:focus-visible {
+  outline: none;
+}
+
 .chat-card {
   padding: 12px 14px;
   border: 1px solid var(--line);
@@ -1142,9 +1169,11 @@ body {
     position: relative;
   }
 
+  /* Номер — в правом верхнем углу: в левом стоит захват перестановки, и метка поверх него
+     перехватывала нажатие, так что перетащить слайд в узкой ленте было нельзя. */
   .viewer[data-aside="true"] .filmstrip .thumb-number {
     position: absolute;
-    left: 3px;
+    right: 3px;
     top: 3px;
     z-index: 1;
     padding: 1px 4px;
@@ -1401,16 +1430,27 @@ body {
   cursor: grabbing;
 }
 
+/* Перетаскивание: своя карточка приподнята (тень, чуть крупнее) и едет за указателем без
+   задержки, соседи расступаются плавно. Порядок меняется только после отпускания. */
+.filmstrip button[data-drag-shifted="true"] {
+  transition: transform 160ms ease;
+}
+
+.filmstrip button[data-drag-source="true"] {
+  position: relative;
+  z-index: 2;
+  cursor: grabbing;
+}
+
 .filmstrip button[data-drag-source="true"] .thumb-image {
-  opacity: 0.45;
+  transform: scale(1.04);
+  box-shadow: 0 10px 24px rgba(20, 28, 44, 0.28), 0 0 0 2px var(--accent);
+  transition: transform 120ms ease, box-shadow 120ms ease;
 }
 
-.filmstrip button[data-drop-target="before"] .thumb-image {
-  box-shadow: 0 -7px 0 -5px var(--accent);
-}
-
-.filmstrip button[data-drop-target="after"] .thumb-image {
-  box-shadow: 0 7px 0 -5px var(--accent);
+/* Во время перетаскивания подсветка наведения на соседях только мешает. */
+.filmstrip[data-dragging="true"] button:not([data-drag-source="true"]):hover .thumb-image {
+  border-color: var(--line);
 }
 
 .filmstrip .thumb-edited {

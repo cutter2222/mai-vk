@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-20T11:44:23Z",
+ "entry_version": 1,
+ "key": "f48f9ba5ae4093b73e58e91f2f845bd3588266be95735b369643e8efa5b2be39",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3074,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 40,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "А какие форматы файлов вы поддерживаете?",
+  "prompt": [
+   "brief.extract",
+   "0.2.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "brief_extractor",
+   "0.2.0"
+  ],
+  "stage": "brief"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 802,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\"purpose\": null, \"title\": null, \"audience\": null, \"goal\": null, \"tone\": null, \"language\": null, \"must_include\": [], \"avoid\": [], \"slide_count\": null, \"variants\": [], \"intent\": \"none\"}",
+  "usage": {
+   "completion_tokens": 57,
+   "prompt_tokens": 859,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

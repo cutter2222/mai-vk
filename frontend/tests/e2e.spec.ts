@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 
-import { attach, cleanupProjects, collectConsoleErrors, createProject, DOCX, DOCX_MIME, openBriefEditor, PPTX, PPTX_MIME, REAL_STACK, rememberProjectFromUrl, sendMaterialsAndBrief, sendMessage, speedUp, startGeneration, uploadTemplate, WAIT, waitForAllVariantsDone } from "./helpers";
+import { attach, cleanupProjects, clickText, collectConsoleErrors, createProject, DOCX, DOCX_MIME, expectServiceStatus, openBriefEditor, PPTX, PPTX_MIME, REAL_STACK, rememberProjectFromUrl, sendMaterialsAndBrief, sendMessage, speedUp, startGeneration, uploadTemplate, WAIT, waitForAllVariantsDone } from "./helpers";
 
 const SHOTS = process.env.SHOT_DIR;
 const shot = async (page: Page, name: string) => {
@@ -18,8 +18,10 @@ test.describe("сквозной сценарий в чате на заглушк
     await speedUp(page, 8);
     const errors = collectConsoleErrors(page);
 
+    // Состояние сервиса — в шапке списка; у открытой презентации своя шапка без разделов.
+    await page.goto("/");
+    await expectServiceStatus(page);
     const projectId = await createProject(page);
-    await expect(page.getByTestId("health")).toContainText("Сервис работает");
     await expect(page.getByTestId("chat-intro")).toBeVisible();
     await expect(page.getByTestId("preview-empty")).toBeVisible();
 
@@ -134,6 +136,16 @@ test.describe("сквозной сценарий в чате на заглушк
     await expect(page.getByText("Слайд изменён")).toHaveCount(1);
     await expect(page.getByTestId("slide-target")).toContainText("r3");
     await expect(page.getByTestId("preview-pane")).toContainText("ревизия 3");
+    // Миниатюра «после» открывает крупный просмотр; стрелка влево переключает на «до»
+    await page.getByTestId("edit-compare-after").last().click();
+    await expect(page.getByTestId("compare-toggle")).toBeVisible();
+    await expect(page.getByTestId("compare-after")).toBeVisible();
+    await page.keyboard.press("ArrowLeft");
+    await expect(page.getByTestId("compare-before")).toBeVisible();
+    await shot(page, "edit-compare");
+    await page.getByTestId("compare-show").click();
+    await expect(page.getByTestId("compare-toggle")).toHaveCount(0);
+    await expect(page.getByTestId("slide-counter")).toHaveText(/Слайд 3 из/);
     await page.getByTestId("edit-show").last().click();
     await expect(page.getByTestId("slide-counter")).toHaveText(/Слайд 3 из/);
     // Невыполнимая просьба: отказ с причиной, ревизия прежняя
@@ -238,6 +250,8 @@ test.describe("сквозной сценарий в чате на заглушк
     const templateId = (await page.getByTestId("template-open-library").last().getAttribute("href"))?.match(/id=([^&]+)/)?.[1] as string;
     expect(templateId).toBeTruthy();
 
+    // Разделы есть только у списков: из презентации сначала возврат к списку, затем «Шаблоны».
+    await page.getByTestId("back-home").click();
     await page.getByTestId("nav-templates").click();
     await expect(page.getByTestId("templates-grid")).toBeVisible();
     const card = page.getByTestId(`template-card-${templateId}`);
@@ -246,25 +260,22 @@ test.describe("сквозной сценарий в чате на заглушк
     await card.click();
     await page.waitForURL(new RegExp(`/templates\\?id=${templateId}`));
 
-    // Карточка шаблона: композиции со слотами, слайды файла, дизайн-система, макеты, дайджест и JSON.
+    // Карточка шаблона: четыре раздела — стиль, слайды файла, композиции со слотами и разбор
+    // (дизайн-система, макеты, дайджест и JSON одной страницей).
     await expect(page.getByTestId("template-detail")).toContainText("Корпоративный шаблон");
-    await expect(page.getByTestId("template-tabs")).toBeVisible();
+    await expect(page.getByTestId("section-style")).toBeVisible();
+    await page.getByTestId("section-patterns").click();
     await page.locator('[data-testid^="pattern-card-"]').first().click();
     await expect(page.getByTestId("pattern-modal")).toBeVisible();
     await expect(page.getByTestId("slots-table")).toBeVisible();
     await expect(page.locator('[data-testid^="issue-box-"]').first()).toBeVisible();
     await page.keyboard.press("Escape");
-    await page.getByRole("tab", { name: /Слайды файла/ }).click();
+    await page.getByTestId("section-slides").click();
     await expect(page.locator('[data-testid^="sample-slide-"]').first()).toBeVisible();
-    await page.getByRole("tab", { name: "Дизайн-система" }).click();
-    await expect(page.getByTestId("design-palette")).toBeVisible();
+    await page.getByTestId("section-details").click();
     await expect(page.getByTestId("frame-sketch")).toBeVisible();
-    await page.getByRole("tab", { name: "Макеты и ресурсы" }).click();
     await expect(page.getByTestId("structure-layouts")).toBeVisible();
-    await page.getByRole("tab", { name: /Для модели/ }).click();
     await expect(page.getByTestId("digest-text")).toBeVisible();
-    await page.getByRole("tab", { name: "JSON" }).click();
-    await expect(page.getByTestId("profile-json")).toContainText('"schema_version"');
     await page.getByTestId("back-templates").click();
     await expect(page.getByTestId("templates-grid")).toBeVisible();
     expect(errors, errors.join("\n")).toEqual([]);
@@ -382,7 +393,7 @@ test.describe("сквозной сценарий в чате на заглушк
     await expect(page.getByTestId("editor-draft-count")).toContainText("Черновик: 3");
 
     // История черновика: Ctrl+Z снимает последний шаг, Ctrl+Shift+Z возвращает
-    await object.locator("p").first().click();
+    await clickText(page, object);
     await page.keyboard.press("Control+z");
     await expect(page.getByTestId("editor-draft-count")).toContainText("Черновик: 2");
     await page.keyboard.press("Control+Shift+z");
@@ -410,14 +421,15 @@ test.describe("сквозной сценарий в чате на заглушк
     await expect(page.getByTestId("edit-note").last()).toContainText("Слайд 1");
     await expect(page.getByText("Правки применены", { exact: true })).toBeVisible();
     await expect(page.getByTestId("preview-pane")).toContainText("ревизия 2");
-    await expect(page.getByTestId("editor-draft-count")).toContainText("Черновик пуст");
+    // Панель объекта закрыта вместе с выделением; пустой черновик виден по метке на ленте.
+    await expect(page.getByTestId("draft-badge")).toHaveCount(0);
     await expect(page.getByTestId("chat-draft-hint")).toHaveCount(0);
     // Слайд с правкой стоит третьим и несёт новый текст
     await expect(page.getByTestId("slide-counter")).toHaveText(/Слайд 3 из/);
     await expect(object).toContainText("Новый текст заголовка");
     await expect(page.getByTestId("badge-user-edited")).toHaveCount(0);
     // Выделяют сами буквы: середина рамки заголовка приходится на пустое место под строкой.
-    await object.locator("p").first().click();
+    await clickText(page, object);
     await expect(page.getByTestId("badge-user-edited")).toBeVisible();
     await shot(page, "editor-applied");
 
@@ -438,13 +450,14 @@ test.describe("сквозной сценарий в чате на заглушк
     await expect(page.getByTestId("editor-draft-count")).toContainText("Черновик:");
     await page.getByTestId("editor-delete-object").click();
     await expect(added).toHaveCount(0);
-    await expect(page.getByTestId("editor-draft-count")).toContainText("Черновик пуст");
+    await expect(page.getByTestId("draft-badge")).toHaveCount(0);
 
     // Delete убирает объект колоды, «Отменить» возвращает его
-    await object.locator("p").first().click();
+    await clickText(page, object);
     await page.keyboard.press("Delete");
     await expect(object).toHaveCount(0);
-    await expect(page.getByTestId("editor-draft-count")).toContainText("Черновик: 1");
+    // Выделение снято вместе с объектом, панель закрыта: черновик виден меткой на ленте.
+    await expect(page.getByTestId("draft-badge")).toContainText("черновик: 1");
     await page.getByTestId("editor-cancel-bar").click();
     await expect(object).toHaveCount(1);
     await page.getByTestId("toggle-editor").click();
@@ -496,10 +509,11 @@ test.describe("сквозной сценарий в чате на заглушк
       await chooser.setFiles([{ name: "photo.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64") }]);
       await expect(page.getByTestId("picture-properties")).toContainText("photo.png", { timeout: 15000 });
     }
-    // Клик по пустому месту холста закрывает правку целиком: ящик уезжает, слайд возвращается
+    // Клик по пустому месту холста закрывает правку: ящик уезжает. Холст остаётся, пока
+    // черновик слайда не применён (картинка ревизии ещё старая), но уже без правки.
     await page.getByTestId("slide-canvas").click({ position: { x: 4, y: 4 } });
     await expect(page.getByTestId("object-panel")).toHaveCount(0);
-    await expect(page.getByTestId("slide-canvas")).toHaveCount(0);
+    await expect(page.getByTestId("slide-canvas")).toHaveAttribute("data-editable", "false");
     // Фон слайда: своя кнопка под слайдом, цвет из палитры
     await page.getByTestId("toggle-editor").click();
     await page.getByTestId("toggle-slide-props").click();
@@ -512,7 +526,7 @@ test.describe("сквозной сценарий в чате на заглушк
     // Применить: ревизия с картинкой и фоном
     await page.getByTestId("editor-apply").click();
     await expect(page.getByTestId("edit-card").last()).toContainText("ревизия 2", { timeout: WAIT.audit * 4 });
-    await expect(page.getByTestId("editor-draft-count")).toContainText("Черновик пуст");
+    await expect(page.getByTestId("draft-badge")).toHaveCount(0);
     await expect(page.getByTestId("slide-canvas")).toHaveCSS("background-color", /rgb/);
     if (hasPicture) {
       await pictures.first().click();

@@ -97,6 +97,11 @@ def list_templates(orch: Orch) -> list[dict[str, Any]]:
             item["slide_count"] = stats["slides"]
         if profile.get("patterns") is not None:
             item["pattern_count"] = len(profile["patterns"])
+        # Первые цвета палитры — по ним в списке видно стиль шаблона без открытия карточки.
+        palette = ((profile.get("design_tokens") or {}).get("colors") or {}).get("palette") or []
+        colors = [str(c["hex"]) for c in palette if str(c.get("hex", "")).startswith("#")]
+        if colors:
+            item["colors"] = list(dict.fromkeys(colors))[:5]
         # Миниатюра для карточки библиотеки: первый образец профиля, иначе первый рендер файла.
         previews = t.get("previews") or []
         if t["status"] == "succeeded" and previews:

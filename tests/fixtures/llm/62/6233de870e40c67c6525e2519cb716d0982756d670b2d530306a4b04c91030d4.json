@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-20T11:46:41Z",
+ "entry_version": 1,
+ "key": "6233de870e40c67c6525e2519cb716d0982756d670b2d530306a4b04c91030d4",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3202,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: balanced. Сбалансированная подача: один тезис на слайд, заголовок-вывод, короткое пояснение (одно-два предложения) и до четырёх пунктов или показателей. Ряды данных — диаграмма с подписями; т",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 13029,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t9\"\n      ],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"План масштабирования на Q4\",\n      \"message\": \"Поэтапное расширение сервиса в четвёртом квартале с целевым показателем на декабрь.\",\n      \"visual\": \"timeline\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Октябрь: два новых продукта\",\n          \"sub\": \"Октябрь\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Ноябрь: тихие часы\",\n          \"sub\": \"Ноябрь\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Декабрь: все регионы, цель {fact:f11}\",\n          \"sub\": \"Декабрь\",\n          \"facts\": [\n            \"f11\"\n          ]\n        }\n      ],\n      \"facts\": [\n        \"f11\"\n      ],\n      \"dataset\": \"\",\n      \"chart_type\": \"line\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t10\"\n      ],\n      \"pattern\": \"pat_builtin_statement\",\n      \"title\": \"Пилот доказал эффективность\",\n      \"message\": \"Результаты пилота подтверждают готовность сервиса к расширению на все продуктовые направления.\",\n      \"visual\": \"text\",\n      \"text\": \"Пилот доказал эффективность и готов к расширению на все продуктовые направления.\",\n      \"items\": [],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"line\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    }\n  ],\n  \"rationale\": \"Слайды соответствуют правилу balanced: один тезис на слайд, использование подходящих композиций (карточки для таймлайна, текст для вывода) и соблюдение ёмкостей.\"\n}",
+  "usage": {
+   "completion_tokens": 479,
+   "prompt_tokens": 2336,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

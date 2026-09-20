@@ -621,6 +621,7 @@ class RealLayers(StubLayers):
                 contextual=False,
                 missing_inputs=["contextual_audit_not_implemented"],
                 started=started,
+                pptx_path=inp.staging.path("deck.pptx"),
             )
         except Exception:
             # Сбой проверки не должен ронять готовую колоду: она уже собрана и выгружена.

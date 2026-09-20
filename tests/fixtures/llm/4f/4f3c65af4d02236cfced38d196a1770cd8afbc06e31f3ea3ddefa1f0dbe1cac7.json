@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-20T11:56:50Z",
+ "entry_version": 1,
+ "key": "4f3c65af4d02236cfced38d196a1770cd8afbc06e31f3ea3ddefa1f0dbe1cac7",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 5499,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: balanced. Сбалансированная подача: один тезис на слайд, заголовок-вывод, короткое пояснение (одно-два предложения) и до четырёх пунктов или показателей. Ряды данных — диаграмма с подписями; т",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 22694,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t6\"\n      ],\n      \"pattern\": \"pat_builtin_matrix\",\n      \"title\": \"Рост открываемости до {fact:f4}\",\n      \"message\": \"Сравнение ключевых метрик до и после внедрения показывает значительное улучшение качества коммуникации.\",\n      \"visual\": \"comparison\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Открываемость до пилота\",\n          \"sub\": \"Было\",\n          \"facts\": [\n            \"f3\"\n          ]\n        },\n        {\n          \"text\": \"Открываемость после пилота\",\n          \"sub\": \"Стало\",\n          \"facts\": [\n            \"f4\"\n          ]\n        },\n        {\n          \"text\": \"Доля отписок до пилота\",\n          \"sub\": \"Было\",\n          \"facts\": [\n            \"f5\"\n          ]\n        },\n        {\n          \"text\": \"Доля отписок после пилота\",\n          \"sub\": \"Стало\",\n          \"facts\": [\n            \"f6\"\n          ]\n        }\n      ],\n      \"facts\": [\n        \"f3\",\n        \"f4\",\n        \"f5\",\n        \"f6\"\n      ],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t7\"\n      ],\n      \"pattern\": \"pat_builtin_chart_kpi_count3\",\n      \"title\": \"Устойчивый рост вовлеченности\",\n      \"message\": \"Динамика за три месяца демонстрирует последовательное увеличение активных пользователей и снижение оттока.\",\n      \"visual\": \"chart\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Рост активных пользователей\",\n          \"sub\": \"Май → Июль\",\n          \"facts\": [\n            \"f18\",\n            \"f19\"\n          ]\n        },\n        {\n          \"text\": \"Снижение доли отписок\",\n          \"sub\": \"Май → Июль\",\n          \"facts\": [\n            \"f15\",\n            \"f16\"\n          ]\n        },\n        {\n          \"text\": \"Рост открываемости\",\n          \"sub\": \"Май → Июль\",\n          \"facts\": [\n            \"f12\",\n            \"f13\"\n          ]\n        }\n      ],\n      \"facts\": [\n        \"f18\",\n        \"f19\",\n        \"f15\",\n        \"f16\",\n        \"f12\",\n        \"f13\"\n      ],\n      \"dataset\": \"ds1\",\n      \"chart_type\": \"line\",\n      \"columns\": [\n        \"Открываемость (%)\",\n        \"Отписки (%)\",\n        \"Активные пользователи\"\n      ],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t8\"\n      ],\n      \"pattern\": \"pat_builtin_table_sheet_leadTrue\",\n      \"title\": \"Экономическая эффективность пилота\",\n      \"message\": \"Пилот окупился многократно, а масштабирование обещает значительный рост экономии.\",\n      \"visual\": \"table\",\n      \"text\": \"Затраты на пилот составили {fact:f8}, при этом экономия на поддержке достигла {fact:f7}.\",\n      \"items\": [],\n      \"facts\": [\n        \"f7\",\n        \"f8\",\n        \"f22\"\n      ],\n      \"dataset\": \"ds2\",\n      \"chart_type\": \"column\",\n      \"columns\": [\n        \"Статья\",\n        \"Сумма (млн ₽)\"\n      ],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t9\"\n      ],\n      \"pattern\": \"pat_builtin_quote_photoFalse\",\n      \"title\": \"Голос пользователя\",\n      \"message\": \"Обратная связь от службы поддержки подтверждает изменение восприятия уведомлений.\",\n      \"visual\": \"quote\",\n      \"text\": \"«Впервые уведомления стали помогать, а не отвлекать» — руководитель службы поддержки региона «Север».\",\n      \"items\": [],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    }\n  ],\n  \"rationale\": \"Сбалансированная подача с одним тезисом на слайд, использованием сравнения для ключевых метрик, диаграммы для динамики, таблицы для экономики и цитаты для эмоционального акцента.\"\n}",
+  "usage": {
+   "completion_tokens": 1152,
+   "prompt_tokens": 3196,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

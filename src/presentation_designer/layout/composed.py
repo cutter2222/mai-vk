@@ -233,6 +233,7 @@ def build_composed_deck(
                 obj["geometry"] = str(info.geometry)
             if info.group_path:
                 obj["group_path"] = list(info.group_path)
+            user_ops = record.overrides_applied.get(info.element_id) or []
             if fill is not None:
                 obj["slot_id"] = fill.slot_id
                 obj["slot_kind"] = fill.slot_kind
@@ -250,6 +251,11 @@ def build_composed_deck(
                 obj["block_kind"] = parent.block_kind
                 obj["content_source"] = "generated"
                 obj["role"] = "content"
+            elif any(o.get("op") == "add_text" for o in user_ops):
+                # Своя надпись из редактора: слота у неё нет, но и к образцу она не относится —
+                # иначе аудит счёл бы её статикой шаблона и пропустил бы текст пользователя.
+                obj["content_source"] = "user"
+                obj["role"] = "content"
             else:
                 obj["source_object_id"] = info.element_id
                 obj["content_source"] = "template"
@@ -262,7 +268,6 @@ def build_composed_deck(
                     obj["role"] = "fixed"
                 else:
                     obj["role"] = "decoration"
-            user_ops = record.overrides_applied.get(info.element_id) or []
             if user_ops:
                 obj["user_overrides"] = [copy.deepcopy(o) for o in user_ops]
                 if any(o.get("op") in ("text", "picture") for o in user_ops):

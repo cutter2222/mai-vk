@@ -152,15 +152,17 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
   );
 
   // Смена варианта на более короткий: выбранный слайд подтягивается к последнему существующему.
-  useEffect(() => {
-    if (variantSlides > 0 && slideIndex > variantSlides - 1) setSlideIndex(variantSlides - 1);
-  }, [variantSlides, slideIndex]);
+  // Прямо при рендере, а не в эффекте: иначе один кадр показывал бы слайд, которого у варианта нет.
+  if (variantSlides > 0 && slideIndex > variantSlides - 1) setSlideIndex(variantSlides - 1);
 
   useEffect(() => {
     if (!jobId) return;
     const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement | null)?.isContentEditable) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
+      // В открытом диалоге (крупный просмотр правки) стрелки принадлежат ему.
+      if (target?.closest('[role="dialog"]')) return;
       // Слайды листаются и по вертикали, как в редакторах презентаций, и стрелками влево-вправо.
       if (e.key === "ArrowRight" || e.key === "ArrowDown") {
         e.preventDefault();

@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-20T11:46:26Z",
+ "entry_version": 1,
+ "key": "4130512f820ada3ee913e65929660930b1f63370b6ada19c0d44a9636682d794",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 4233,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: compact. Компактная подача: слайдов ближе к нижней границе, один слайд может объединять два-три родственных тезиса одного раздела. Заголовок-вывод и два-три коротких пункта (до 8 слов) или по",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 20962,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t3\"\n      ],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"Три механизма умных уведомлений\",\n      \"message\": \"Сервис автоматизирует сортировку, тишину и объединение каналов.\",\n      \"visual\": \"cards\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Автоматическая сортировка сообщений\",\n          \"sub\": \"Приоритизация\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Режим тихих часов\",\n          \"sub\": \"Тишина\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Объединение каналов доставки\",\n          \"sub\": \"Единый центр\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t5\"\n      ],\n      \"pattern\": \"pat_builtin_kpi_row_cardFalse_count4\",\n      \"title\": \"Рост вовлечённости и снижение отписок\",\n      \"message\": \"Пилот показал значительный рост открываемости и падение отписок.\",\n      \"visual\": \"number\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Открываемость до пилота\",\n          \"sub\": \"Было\",\n          \"facts\": [\n            \"f3\"\n          ]\n        },\n        {\n          \"text\": \"Открываемость после пилота\",\n          \"sub\": \"Стало\",\n          \"facts\": [\n            \"f4\"\n          ]\n        },\n        {\n          \"text\": \"Доля отписок до пилота\",\n          \"sub\": \"Было\",\n          \"facts\": [\n            \"f5\"\n          ]\n        },\n        {\n          \"text\": \"Доля отписок после пилота\",\n          \"sub\": \"Стало\",\n          \"facts\": [\n            \"f6\"\n          ]\n        }\n      ],\n      \"facts\": [\n        \"f3\",\n        \"f4\",\n        \"f5\",\n        \"f6\"\n      ],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t6\"\n      ],\n      \"pattern\": \"pat_builtin_kpi_row_cardFalse_count2\",\n      \"title\": \"Экономическая эффективность пилота\",\n      \"message\": \"Экономия на поддержке многократно превышает затраты на пилот.\",\n      \"visual\": \"number\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Экономия на поддержке за год\",\n          \"sub\": \"Выгода\",\n          \"facts\": [\n            \"f7\"\n          ]\n        },\n        {\n          \"text\": \"Затраты на пилот за год\",\n          \"sub\": \"Инвестиции\",\n          \"facts\": [\n            \"f8\"\n          ]\n        }\n      ],\n      \"facts\": [\n        \"f7\",\n        \"f8\"\n      ],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t7\"\n      ],\n      \"pattern\": \"pat_builtin_quote_photoFalse\",\n      \"title\": \"Отзыв команды поддержки\",\n      \"message\": \"Поддержка отмечает качественное изменение восприятия уведомлений.\",\n      \"visual\": \"quote\",\n      \"text\": \"«Впервые уведомления стали помогать, а не отвлекать»\",\n      \"items\": [],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    }\n  ],\n  \"rationale\": \"Компактная подача: каждый тезис вынесен на отдельный слайд с минимальным набором элементов (карточки, KPI, цитата), что соответствует стилю compact и позволяет быстро передать суть без перегруза.\"\n}",
+  "usage": {
+   "completion_tokens": 1040,
+   "prompt_tokens": 2725,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

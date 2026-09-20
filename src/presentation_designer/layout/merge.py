@@ -194,16 +194,48 @@ def _partname_template(src_part: Any) -> str:
     return f"{stem}%d.{ext}"
 
 
+_SLD_LAYOUT_ID = "{http://schemas.openxmlformats.org/presentationml/2006/main}sldLayoutId"
+_SLD_LAYOUT_ID_LST = "{http://schemas.openxmlformats.org/presentationml/2006/main}sldLayoutIdLst"
+# Нижняя граница id мастеров и макетов по ECMA-376: PowerPoint выдаёт их от 2147483648.
+_MIN_MASTER_ID = 2147483648
+
+
 def _attach_master(base: Any, master_part: Any) -> None:
-    """Регистрирует мастер в презентации: связь и запись в `sldMasterIdLst`."""
+    """Регистрирует мастер в презентации: связь и запись в `sldMasterIdLst`.
+
+    Id мастера и его макетов — один общий счётчик на всю презентацию. Импортированный мастер
+    приносит номера из своего файла, и у двух файлов PowerPoint они почти наверняка
+    совпадают (оба начинают с 2147483648): PowerPoint тогда предлагает «восстановить» файл.
+    Поэтому макетам перенесённого мастера выдаются номера следом за занятыми.
+    """
     rid = base.part.relate_to(master_part, RT.SLIDE_MASTER)
     lst = base.part._element.get_or_add_sldMasterIdLst()
     # У python-pptx нет публичного добавления мастера (в отличие от слайдов): элемент
     # создаётся напрямую, id берётся на единицу больше максимального — так делает PowerPoint.
     entry = lst._add_sldMasterId()
     entry.rId = rid
+    taken = _master_and_layout_ids(base, exclude=master_part)
+    next_id = max(taken) + 1 if taken else _MIN_MASTER_ID
+    entry.set("id", str(next_id))
+    next_id += 1
+    for layout_id in master_part._element.iter(_SLD_LAYOUT_ID):
+        layout_id.set("id", str(next_id))
+        next_id += 1
+
+
+def _master_and_layout_ids(base: Any, *, exclude: Any) -> list[int]:
+    """Id мастеров и макетов, уже занятые в презентации (кроме только что добавленного)."""
+    lst = base.part._element.get_or_add_sldMasterIdLst()
     ids = [int(e.get("id")) for e in lst.sldMasterId_lst if e.get("id")]
-    entry.set("id", str(max(ids) + 1 if ids else 2147483648))
+    for master in base.slide_masters:
+        if master.part is exclude:
+            continue
+        ids += [
+            int(e.get("id"))
+            for e in master.part._element.iter(_SLD_LAYOUT_ID)
+            if e.get("id")
+        ]
+    return ids
 
 
 def _attach_slide(base: Any, slide_part: Any) -> None:

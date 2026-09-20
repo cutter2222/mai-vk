@@ -63,6 +63,9 @@ export function useSlideEditor(session: GenerationSession, options: SlideEditorO
   const [past, setPast] = useState<DraftSnapshot[]>([]);
   const [future, setFuture] = useState<DraftSnapshot[]>([]);
   const lastMark = useRef<{ key: string; at: number } | null>(null);
+  // Номер слайда, который надо выбрать, когда придёт ревизия с применёнными правками: после
+  // перестановки слайд, который правили, получает в новой ревизии номер своего места.
+  const pendingSelect = useRef<number | null>(null);
 
   // Новый ключ (задание, вариант, ревизия) — черновик отброшен: применённые правки уже в эхе.
   const [prevKey, setPrevKey] = useState(key);
@@ -73,8 +76,13 @@ export function useSlideEditor(session: GenerationSession, options: SlideEditorO
     setSelectedObjectId(null);
     setPast([]);
     setFuture([]);
-    lastMark.current = null;
   }
+  useEffect(() => {
+    const position = pendingSelect.current;
+    if (position === null) return;
+    pendingSelect.current = null;
+    if (position >= 0 && position !== session.slideIndex) session.selectSlide(position);
+  }, [key, session]);
   // Смена слайда снимает выделение объекта.
   const [prevSlide, setPrevSlide] = useState(slideIndex);
   if (prevSlide !== slideIndex) {
@@ -142,15 +150,18 @@ export function useSlideEditor(session: GenerationSession, options: SlideEditorO
   const commit = useCallback(
     (next: (cur: DraftSnapshot) => { drafts: Record<string, Override[]>; order: string[] | null }, mark?: string) => {
       const now = Date.now();
-      const glued = Boolean(mark) && lastMark.current?.key === mark && now - (lastMark.current?.at ?? 0) < COALESCE_MS;
+      // Метка привязана к ключу черновика: правка в другом задании или ревизии не склеится с
+      // прежней, и сбрасывать метку при смене ключа не нужно.
+      const marked = mark ? `${key}|${mark}` : null;
+      const glued = Boolean(marked) && lastMark.current?.key === marked && now - (lastMark.current?.at ?? 0) < COALESCE_MS;
       if (!glued) setPast((p) => [...p, { drafts, order, slideIndex }].slice(-HISTORY_MAX));
-      lastMark.current = mark ? { key: mark, at: now } : null;
+      lastMark.current = marked ? { key: marked, at: now } : null;
       setFuture([]);
       const result = next({ drafts, order, slideIndex });
       setDrafts(result.drafts);
       setOrder(result.order);
     },
-    [drafts, order, slideIndex],
+    [drafts, order, slideIndex, key],
   );
 
   const setOp = useCallback(
@@ -244,8 +255,11 @@ export function useSlideEditor(session: GenerationSession, options: SlideEditorO
         changedSlides,
         orderChanged ? slideOrder : undefined,
       );
-      const firstChanged = changedSlides[0] ? slidesById.get(changedSlides[0].slide_id)?.index : slideIndex;
-      options.onPatchStarted?.(patchJobId, Math.max(firstChanged ?? slideIndex, 0));
+      // Новая ревизия нумерует слайды по применённому порядку: номер изменённого слайда в
+      // ней — его место в черновом порядке, а не прежний номер в колоде.
+      const firstChanged = changedSlides[0] ? slideOrder.indexOf(changedSlides[0].slide_id) : slideIndex;
+      options.onPatchStarted?.(patchJobId, Math.max(firstChanged, 0));
+      pendingSelect.current = currentSlide ? slideOrder.indexOf(currentSlide.slide_id) : null;
     } catch (e) {
       const code = e instanceof ApiError ? e.code : "";
       const message = e instanceof ApiError ? e.message : "неизвестная ошибка";
@@ -256,7 +270,7 @@ export function useSlideEditor(session: GenerationSession, options: SlideEditorO
       setApplying(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deck, jobId, variant, dirty, applying, session, currentRevision, changedSlides, orderChanged, slideOrder, slidesById, slideIndex, options.onPatchStarted]);
+  }, [deck, jobId, variant, dirty, applying, session, currentRevision, changedSlides, orderChanged, slideOrder, slideIndex, currentSlide, options.onPatchStarted]);
 
   const tokens = useMemo(() => templateTokens(options.profile), [options.profile]);
 

@@ -42,12 +42,11 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
   // без выбранного объекта ящик закрыт, иначе правка снова начиналась бы с полей ни о чём.
   const [slideProps, setSlideProps] = useState(false);
 
-  if (!jobId || !result) return null;
-
-  const thumbs = variant?.artifacts?.thumbnails ?? [];
+  // Лента считается до раннего выхода: ниже есть эффект, а хуки должны вызываться в одном порядке.
+  const thumbs = jobId && result ? (variant?.artifacts?.thumbnails ?? []) : [];
   const issueSlides = new Set(session.audit.data?.issues.map((i) => i.slide_index) ?? []);
   const thumbUrl = (name: string) =>
-    api.generations.artifactUrl(jobId, session.viewRevision !== session.currentRevision ? name.replace(`/r${session.currentRevision}/`, `/r${session.viewRevision}/`) : name);
+    api.generations.artifactUrl(jobId ?? "", session.viewRevision !== session.currentRevision ? name.replace(`/r${session.currentRevision}/`, `/r${session.viewRevision}/`) : name);
   const thumbByDeckIndex = (deckIndex: number) => {
     const t = thumbs.find((x) => x.slide_index === deckIndex);
     return t ? thumbUrl(t.name) : undefined;
@@ -71,12 +70,14 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
   // Слайда с таким номером в варианте нет (короче предыдущего, ревизия пересобрана): берём
   // ближайший существующий, а не первый, и сразу выравниваем выбор, чтобы правка ушла туда же.
   const position = found >= 0 ? found : Math.min(Math.max(session.slideIndex, 0), Math.max(slides.length - 1, 0));
+  const fallbackDeckIndex = found < 0 && slides.length > 0 ? slides[position].deckIndex : null;
+  const { selectSlide, slideIndex } = session;
   useEffect(() => {
-    if (found < 0 && slides.length > 0) {
-      const fallback = slides[Math.min(Math.max(session.slideIndex, 0), slides.length - 1)];
-      if (fallback && fallback.deckIndex !== session.slideIndex) session.selectSlide(fallback.deckIndex);
-    }
-  }, [found, slides, session]);
+    if (fallbackDeckIndex !== null && fallbackDeckIndex !== slideIndex) selectSlide(fallbackDeckIndex);
+  }, [fallbackDeckIndex, slideIndex, selectSlide]);
+
+  if (!jobId || !result) return null;
+
   const selectByPosition = (pos: number) => {
     const target = slides[pos] ?? slides[slides.length - 1];
     if (target) session.selectSlide(target.deckIndex);

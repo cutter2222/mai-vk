@@ -150,7 +150,7 @@ def validate_patch(
             str((o.get("target") or {}).get("object_id") or "")
             for o in entry.get("overrides") or []
             if str(o.get("op") or "") == "add_text"
-        }
+        } - {""}
         for i, override in enumerate(entry.get("overrides") or []):
             op = str(override.get("op") or "")
             opath = f"{spath}.overrides[{i}]"
@@ -158,6 +158,8 @@ def validate_patch(
                 continue
             object_id = str((override.get("target") or {}).get("object_id") or "")
             if op == "add_text":
+                if not object_id:
+                    out.append(Violation("target_missing", "у новой надписи нет object_id", opath))
                 if not str(override.get("text") or "").strip():
                     out.append(Violation("text_empty", "у новой надписи нет текста", opath))
                 if not ((override.get("geometry") or {}).get("bbox")):

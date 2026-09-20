@@ -8,6 +8,7 @@ import { defineConfig, devices } from "@playwright/test";
  * или адрес сервера); локальный сервер out/ тогда не запускается.
  */
 const externalBaseURL = process.env.PLAYWRIGHT_BASE_URL;
+const VIEWPORT = { width: 1440, height: 900 };
 
 export default defineConfig({
   testDir: "./tests",
@@ -22,7 +23,7 @@ export default defineConfig({
     baseURL: externalBaseURL ?? "http://127.0.0.1:4173",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
-    viewport: { width: 1440, height: 900 },
+    viewport: VIEWPORT,
   },
   webServer: externalBaseURL
     ? undefined
@@ -32,9 +33,12 @@ export default defineConfig({
         reuseExistingServer: !process.env.CI,
         timeout: 30_000,
       },
+  // Профили устройств несут свой viewport (1280×720) и перекрывали общий: на такой ширине
+  // лента миниатюр при открытой панели свойств убирается совсем, и перестановка слайдов
+  // в редакторе недоступна. Ширина задаётся явно в каждом проекте.
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
-    { name: "webkit", use: { ...devices["Desktop Safari"] } },
+    { name: "chromium", use: { ...devices["Desktop Chrome"], viewport: VIEWPORT } },
+    { name: "firefox", use: { ...devices["Desktop Firefox"], viewport: VIEWPORT } },
+    { name: "webkit", use: { ...devices["Desktop Safari"], viewport: VIEWPORT } },
   ],
 });

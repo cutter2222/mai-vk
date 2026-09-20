@@ -331,6 +331,13 @@ def test_delete_and_add_text(
     )
     # удалять можно только существующий объект
     assert codes([{"op": "delete", "target": {"object_id": "404"}}]) == ["object_unknown"]
+    # своя надпись без object_id не даёт другим правкам без адреса проскочить проверку
+    assert codes(
+        [
+            {**add, "target": {}},
+            {"op": "text", "target": {}, "text": "куда?"},
+        ]
+    ) == ["target_missing", "object_unknown"]
 
 
 def test_normalize_and_describe() -> None:

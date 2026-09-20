@@ -693,6 +693,12 @@ def test_default_range_relaxes_for_short_content(
     short = json.loads(json.dumps(example_story))
     short["effective_brief"] = {"language": "ru", "purpose": short["purpose"]}
     short["theses"] = [t for t in short["theses"] if t["order"] <= 4]
+    # Без пояснений и ссылок на блоки: тезису нечего раскрывать и нечего делить на два
+    # слайда, так что добор до точного числа упирается в содержание, а не в форму записи
+    # модели — иначе исход зависел бы от того, сколько пунктов она вынесла в первые тезисы.
+    for t in short["theses"]:
+        t["explanation"] = ""
+        t["source_refs"] = []
     short["allowed_reductions"] = []
     result = vr.build_variant_plan(
         short,
@@ -773,7 +779,9 @@ def test_bad_packet_is_retried_with_hint_only_for_that_packet(
 
     def good_answer(packet: vr.Packet) -> dict[str, Any]:
         """Ответ в допустимом числе слайдов пакета (иначе повтор из-за недобора) и без
-        пустых слайдов: два пункта на карточки mini_template."""
+        пустых слайдов: два пункта на карточки mini_template. Заголовок короткий, чтобы
+        поместиться и в узкий слот собственных композиций (цитата — 35 символов): иначе
+        повтор случился бы из-за переполнения, а не из-за чужого тезиса."""
         slides = []
         theses = list(packet.theses)
         while len(theses) < packet.lo:
@@ -784,7 +792,7 @@ def test_bad_packet_is_retried_with_hint_only_for_that_packet(
                 {
                     "theses": [t.id],
                     "pattern": cands[0].pattern_id,
-                    "title": f"{t.statement[:36]} {i + 1}",
+                    "title": f"{t.statement[:20]} {i + 1}",
                     "message": t.statement[:80],
                     "visual": "bullets",
                     "items": [{"text": "Пункт один"}, {"text": "Пункт два"}],

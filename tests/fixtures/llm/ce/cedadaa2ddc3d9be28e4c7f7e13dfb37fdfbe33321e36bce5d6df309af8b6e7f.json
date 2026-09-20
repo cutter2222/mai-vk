@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-20T11:58:11Z",
+ "entry_version": 1,
+ "key": "cedadaa2ddc3d9be28e4c7f7e13dfb37fdfbe33321e36bce5d6df309af8b6e7f",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3937,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 1501,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"slides\": [{\"slide_id\": \"s3\", \"title\": \"Решение: приоритизация и единый центр\", \"key_message\": \"Решение: приоритизация и единый центр\", \"filled\": [\"Решение: приоритизация и единый центр\"], \"empty_slo",
+  "prompt": [
+   "fill.slots",
+   "0.1.0"
+  ],
+  "response_format": "json_object",
+  "role": "llm",
+  "skill": [
+   "slot_filler",
+   "0.1.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4371,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"s3\": {\n    \"lead\": \"Приоритизация и единый центр управления\"\n  },\n  \"s5\": {\n    \"lead\": \"Результаты пилота: рост вовлеченности\"\n  },\n  \"s6\": {\n    \"cell_3_title\": \"Открываемость\",\n    \"cell_3_body\": \"Выросла с {fact:f3} до {fact:f4} за три месяца пилота\",\n    \"cell_4_title\": \"Отписки\",\n    \"cell_4_body\": \"Доля снизилась с {fact:f5} до {fact:f6}, подтверждая рост качества\"\n  }\n}",
+  "usage": {
+   "completion_tokens": 162,
+   "prompt_tokens": 1842,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}
