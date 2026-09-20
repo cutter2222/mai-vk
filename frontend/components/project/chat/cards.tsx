@@ -6,7 +6,9 @@ import { useState } from "react";
 
 import { SlideImage } from "@/components/common/SlideImage";
 import { SlideCompareModal } from "@/components/project/chat/SlideCompareModal";
+import { AuditPanel } from "@/components/workspace/AuditPanel";
 import { ProgressPanel } from "@/components/workspace/ProgressPanel";
+import { RevisionsPanel } from "@/components/workspace/RevisionsPanel";
 import { MetricsPanel } from "@/components/workspace/MetricsPanel";
 import { api, ApiError, TERMINAL_STATES, type ContentDetail, type TemplateDetail } from "@/lib/api/client";
 import type { JobStatus } from "@/lib/api/types";
@@ -227,31 +229,70 @@ export function JobCard({ m, ctx }: { m: Msg<"job_card">; ctx: CardContext }) {
   );
 }
 
+/**
+ * Аудит целиком в ленте: находки, выбор и исправление живут здесь, а не в отдельной панели
+ * справа. Панель отнимала половину ширины у слайда — того самого, на котором находки и надо
+ * смотреть, — и была единственным шагом конвейера со своим окном: остальные отчитываются
+ * карточкой. Связь с местом на слайде осталась: нажатие на находку подсвечивает рамку.
+ */
 export function AuditCard({ m, ctx }: { m: Msg<"audit_card">; ctx: CardContext }) {
   const { session } = ctx;
   if (session.jobId !== m.job_id || !session.result) return null;
   const variants = session.result.variants;
   const total = variants.reduce((n, v) => n + (v.audit?.issues_total ?? 0), 0);
-  const worst = [...variants].sort((a, b) => (b.audit?.issues_total ?? 0) - (a.audit?.issues_total ?? 0))[0];
   const incomplete = variants.some((v) => v.audit && !v.audit.coverage_complete);
+  const variant = session.variant;
+  const busy = session.busy || Boolean(session.repairJob) || Boolean(session.editJob);
   return (
     <Card title="Аудит" aside={<Badge color={total ? "yellow" : "green"} size="xs">{total ? `${total} находок` : "находок нет"}</Badge>} testId="audit-card">
-      <Stack gap={4} mb={8}>
-        {variants.map((v) => (
-          <Group key={v.variant_id} justify="space-between" wrap="nowrap">
-            <Text size="sm">{VARIANT_LABELS[v.variant_id] ?? v.variant_id}</Text>
-            <Text size="xs" c="dimmed">{v.status === "failed" ? STATUS_LABELS.failed : v.audit ? `${v.audit.issues_total} находок${v.audit.coverage_complete ? "" : " · аудит неполный"}` : "—"}</Text>
-          </Group>
-        ))}
-      </Stack>
-      <Text size="xs" c="dimmed" mb={8}>
-        {total ? "Находки отмечены на слайдах; исправление создаёт новую ревизию." : "Все проверки пройдены."}
-        {incomplete ? " Часть проверок не выполнена." : ""}
-      </Text>
-      <Group gap="xs">
-        <Button size="xs" variant="default" onClick={() => ctx.onOpenAudit(worst?.variant_id)} data-testid="open-audit">Показать находки</Button>
-        {total > 0 && <Button size="xs" onClick={ctx.onRepairAll} data-testid="repair-all">Исправить всё исправимое</Button>}
-      </Group>
+      {/* Несколько вариантов — строка на каждый: она же переключатель, чей отчёт показан ниже. */}
+      {variants.length > 1 && (
+        <Stack gap={2} mb={8}>
+          {variants.map((v) => (
+            <Group
+              key={v.variant_id}
+              justify="space-between"
+              wrap="nowrap"
+              className="audit-variant"
+              data-active={v.variant_id === session.selectedVariant || undefined}
+              onClick={() => session.setSelectedVariant(v.variant_id)}
+              data-testid={`audit-variant-${v.variant_id}`}
+            >
+              <Text size="sm">{VARIANT_LABELS[v.variant_id] ?? v.variant_id}</Text>
+              <Text size="xs" c="dimmed">{v.status === "failed" ? STATUS_LABELS.failed : v.audit ? `${v.audit.issues_total} находок${v.audit.coverage_complete ? "" : " · аудит неполный"}` : "—"}</Text>
+            </Group>
+          ))}
+        </Stack>
+      )}
+      {incomplete && <Text size="xs" c="dimmed" mb={8}>Часть проверок не выполнена, поэтому статус «требует проверки».</Text>}
+      <AuditPanel
+        report={session.audit.data}
+        loading={session.audit.loading}
+        stale={session.viewRevision !== session.currentRevision}
+        selected={session.selectedIssues}
+        activeIssue={session.activeIssue}
+        onToggle={session.toggleIssue}
+        onFocus={session.focusIssue}
+        onRepair={() => void session.repair()}
+        repairing={busy}
+      />
+      {total > 0 && (
+        <Button size="xs" variant="default" mt="xs" onClick={ctx.onRepairAll} data-testid="repair-all">
+          Исправить всё исправимое
+        </Button>
+      )}
+      {(variant?.revisions?.length ?? 0) > 1 && session.jobId && variant && (
+        <div className="panel-section">
+          <RevisionsPanel
+            jobId={session.jobId}
+            variant={variant}
+            revision={session.viewRevision}
+            onRevision={session.setRevision}
+            issuesBefore={session.prevAudit.data?.summary.issues_total}
+            issuesAfter={session.audit.data?.summary.issues_total}
+          />
+        </div>
+      )}
     </Card>
   );
 }

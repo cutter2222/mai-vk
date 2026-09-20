@@ -36,7 +36,6 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
   const [busy, setBusy] = useState(false);
   const [repairJob, setRepairJob] = useState<string | null>(null);
   const [showHowBuilt, setShowHowBuilt] = useState(false);
-  const [auditOpen, setAuditOpen] = useState(false);
   const [editJob, setEditJob] = useState<string | null>(null);
   // Задание правки: инструкция из чата (edit) или ручные правки редактора (patch).
   const [editJobKind, setEditJobKind] = useState<"edit" | "patch">("edit");
@@ -280,11 +279,11 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
     });
   }, []);
 
+  /** Находка ведёт к своему месту: тот же слайд и подсвеченная рамка рядом с лентой. */
   const focusIssue = useCallback((issue: Issue) => {
     setSlideIndex(issue.slide_index);
     setActiveIssue(issue.issue_id);
     setLayout("single");
-    setAuditOpen(true);
   }, []);
 
   const overlays: Overlay[] =
@@ -334,8 +333,6 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
     repair,
     showHowBuilt,
     setShowHowBuilt,
-    auditOpen,
-    setAuditOpen,
     overlays,
     thumbName,
     slideTarget,

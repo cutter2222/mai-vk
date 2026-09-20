@@ -117,10 +117,12 @@ export function ProjectEditor({ project }: { project: Project }) {
 
   const chat = useChat(project, session, generate);
 
+  // Аудит живёт в ленте под своей меткой: панель справа отнимала место у слайда, на котором
+  // находки и надо смотреть.
   const openAudit = (variantId?: string) => {
     if (variantId) session.setSelectedVariant(variantId);
     session.setLayout("single");
-    session.setAuditOpen(true);
+    showPanel(true, "audit");
   };
 
   const repairAll = () => {
@@ -239,6 +241,7 @@ export function ProjectEditor({ project }: { project: Project }) {
             templateDetail={template.data}
             templateError={template.error}
             onChoose={(variantId) => patch({ chosen_variant: variantId })}
+            onShowAudit={() => openAudit()}
           />
         </section>
       </div>

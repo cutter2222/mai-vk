@@ -1154,7 +1154,6 @@ body {
   transition-delay: 70ms;
 }
 
-.audit-drawer,
 .editor-drawer {
   flex: 1;
   width: 100%;
@@ -1164,16 +1163,9 @@ body {
   background: var(--page);
 }
 
-.audit-drawer {
-  padding: 16px 18px 24px;
-}
 
 /* Mantine кладёт внутрь области прокрутки обёртку display: table — она растёт по
    содержимому, и длинные строки находок уходили за правый край панели. */
-.audit-drawer .mantine-ScrollArea-viewport > div {
-  display: block !important;
-  min-width: 0;
-}
 
 /* Правка объекта идёт в той же колонке, что и аудит: вход в режим правки не двигает слайд
    и не подсовывает под него форму во всю ширину — меняется только содержимое колонки.
@@ -1997,4 +1989,20 @@ body {
   background: transparent;
   color: var(--line);
   opacity: 1;
+}
+
+/* Строка варианта в карточке аудита: она же переключатель, чей отчёт показан ниже. */
+.audit-variant {
+  padding: 4px 8px;
+  border-radius: var(--mantine-radius-xs);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.audit-variant:hover {
+  background: var(--mist);
+}
+
+.audit-variant[data-active] {
+  background: var(--sky);
 }

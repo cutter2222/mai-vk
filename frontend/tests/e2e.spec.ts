@@ -96,11 +96,13 @@ test.describe("сквозной сценарий в чате на заглушк
       await page.keyboard.press("Escape");
     }
 
-    // Аудит: карточка в чате открывает панель рядом со слайдом на варианте с находками
-    await page.getByTestId("open-audit").click();
-    await expect(page.getByTestId("audit-drawer")).toBeVisible();
+    // Аудит живёт в ленте под своей меткой, а не в панели справа: кнопка в шапке просто
+    // переключает ленту на «Аудит», находки и выбор — в карточке.
+    await page.getByTestId("toggle-audit").click();
+    await expect(page.getByTestId("audit-panel")).toBeVisible();
     await expect(page.getByTestId("audit-coverage")).toContainText("неполное");
     await page.getByTestId("issue-iss_1").click();
+    // Связь находки с местом на слайде осталась: рамка подсвечивается рядом с лентой.
     await expect(page.getByTestId("issue-box-iss_1")).toBeVisible();
     await page.getByTestId("toggle-how-built").click();
     await expect(page.getByTestId("how-built")).toBeVisible();
@@ -114,9 +116,8 @@ test.describe("сквозной сценарий в чате на заглушк
     await expect(page.getByTestId("issue-iss_1")).toHaveCount(0);
     await shot(page, "chat-revision");
 
-    // Лента миниатюр скрыта, пока открыт аудит; закрываем его и листаем клавиатурой
-    await page.getByTestId("toggle-audit").click();
-    await expect(page.getByTestId("audit-drawer")).toHaveCount(0);
+    // Ящика аудита справа больше нет — слайд занимает всю ширину, лента миниатюр на месте.
+    await expect(page.locator(".audit-drawer")).toHaveCount(0);
     await page.locator('[data-testid="thumb-strip"] button').first().click();
     await expect(page.getByTestId("slide-counter")).toHaveText(/Слайд 1 из/);
     await page.keyboard.press("ArrowDown");

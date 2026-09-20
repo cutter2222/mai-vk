@@ -143,7 +143,6 @@ export function useSlideEditor(session: GenerationSession, options: SlideEditorO
       setEditingRaw(value);
       if (value) {
         session.setLayout("single");
-        session.setAuditOpen(false);
       } else {
         setSelectedObjectId(null);
       }

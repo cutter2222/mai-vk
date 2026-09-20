@@ -7,9 +7,7 @@ import { useEffect, useState } from "react";
 import type { Outline } from "@/components/common/SlideImage";
 import { PropertiesPanel } from "@/components/project/editor/PropertiesPanel";
 import { SlideCanvas } from "@/components/project/editor/SlideCanvas";
-import { AuditPanel } from "@/components/workspace/AuditPanel";
 import { HowBuiltPanel } from "@/components/workspace/HowBuiltPanel";
-import { RevisionsPanel } from "@/components/workspace/RevisionsPanel";
 import { VariantCard } from "@/components/workspace/VariantCard";
 import { api, type TemplateDetail } from "@/lib/api/client";
 import type { ComposedDeck, ContentPackage } from "@/lib/api/types";
@@ -30,6 +28,8 @@ interface Props {
   projectId: string | null;
   chosenVariant: string | null;
   onChoose: (variantId: string | null) => void;
+  /** Показать аудит: лента слева переключается на метку «Аудит». */
+  onShowAudit: () => void;
 }
 
 const VARIANT_DOT: Record<string, string> = { pending: "gray", running: "blue", ready: "green", needs_review: "yellow", failed: "red" };
@@ -62,7 +62,7 @@ function useDeckFonts(jobId: string | null, deck: ComposedDeck | null): void {
 }
 
 /** Слайды сгенерированной презентации: переключение вариантов, просмотр по одному или рядом, рамки аудита, редактор. */
-export function GenerationPreview({ session, editor, templateDetail, pkg, projectId, chosenVariant, onChoose }: Props) {
+export function GenerationPreview({ session, editor, templateDetail, pkg, projectId, chosenVariant, onChoose, onShowAudit }: Props) {
   const { jobId, result, variant } = session;
   const elapsed = useElapsed(result?.created_at, session.terminal ? (result?.finished_at ?? result?.created_at) : null);
   // Свойства слайда (фон) — тот же ящик, что и свойства объекта, но открывается кнопкой:
@@ -218,12 +218,12 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
           {variant?.audit && variant.audit.status !== "pending" && (
             <Button
               size="xs"
-              variant={session.auditOpen ? "filled" : "default"}
+              variant="default"
               leftSection={<IconListCheck size={14} />}
               onClick={() => {
                 session.setLayout("single");
                 leaveEditor();
-                session.setAuditOpen(!session.auditOpen);
+                onShowAudit();
               }}
               data-testid="toggle-audit"
             >
@@ -321,7 +321,7 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
               )}
               {/* При открытой панели аудита сводка находок не дублируется в подписи: там она
                   подробнее, а в узкой строке обрезалась до «80 …». */}
-              {variant.audit && variant.audit.status !== "pending" && !editor.editing && !session.auditOpen && (
+              {variant.audit && variant.audit.status !== "pending" && !editor.editing && (
                 <Badge size="xs" variant="light" color={variant.audit.status === "running" ? "blue" : variant.audit.issues_total ? "yellow" : variant.audit.coverage_complete ? "green" : "gray"}>
                   {variant.audit.status === "running" ? "аудит идёт" : `${variant.audit.issues_total} находок${variant.audit.coverage_complete ? "" : " · аудит неполный"}`}
                 </Badge>
@@ -461,36 +461,6 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
                 {/* Подсказки по клавишам стояли в подсказке кнопки «как собран» — там их никто
                     не искал. Здесь они видны ровно тогда, когда правят слайд. */}
                 <Text size="xs" c="dimmed" mt="sm">↑ ↓ листают слайды · Esc закрывает правку · Ctrl+Z отменяет шаг · Delete убирает объект</Text>
-              </div>
-            ) : session.auditOpen && !editor.editing ? (
-              <div className="audit-drawer" data-testid="audit-drawer">
-                <Group justify="space-between" mb="sm">
-                  <Text fw={600}>Аудит</Text>
-                  <ActionIcon variant="subtle" color="gray" size="sm" onClick={() => session.setAuditOpen(false)} aria-label="Закрыть аудит"><IconX size={14} /></ActionIcon>
-                </Group>
-                <AuditPanel
-                  report={session.audit.data}
-                  loading={session.audit.loading}
-                  stale={session.viewRevision !== session.currentRevision}
-                  selected={session.selectedIssues}
-                  activeIssue={session.activeIssue}
-                  onToggle={session.toggleIssue}
-                  onFocus={session.focusIssue}
-                  onRepair={() => void session.repair()}
-                  repairing={session.busy || Boolean(session.repairJob) || Boolean(session.editJob)}
-                />
-                {(variant.revisions?.length ?? 0) > 1 && (
-                  <div className="panel-section">
-                    <RevisionsPanel
-                      jobId={jobId}
-                      variant={variant}
-                      revision={session.viewRevision}
-                      onRevision={session.setRevision}
-                      issuesBefore={session.prevAudit.data?.summary.issues_total}
-                      issuesAfter={session.audit.data?.summary.issues_total}
-                    />
-                  </div>
-                )}
               </div>
             ) : null
           }
