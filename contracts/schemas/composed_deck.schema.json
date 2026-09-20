@@ -182,7 +182,21 @@
      },
      "embedded": {
       "type": "boolean"
-     }
+     },
+      "files": {
+       "type": "array",
+       "description": "файлы гарнитуры, приложенные к ревизии: по ним страница и холст редактора показывают текст тем же шрифтом, каким колода мерилась и рисовалась",
+       "items": {
+        "type": "object",
+        "required": ["weight", "artifact"],
+        "additionalProperties": false,
+        "properties": {
+         "weight": { "type": "integer", "enum": [400, 700] },
+         "artifact": { "type": "string" },
+         "format": { "type": "string", "enum": ["truetype", "opentype"] }
+        }
+       }
+      }
     }
    }
   },

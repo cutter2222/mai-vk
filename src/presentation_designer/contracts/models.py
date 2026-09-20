@@ -500,6 +500,15 @@ class FallbackElement(BaseModel):
     fallback: Literal["raster_from_render", "omitted"] | None = None
 
 
+class File(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    weight: Literal[400, 700]
+    artifact: str
+    format: Literal["truetype", "opentype"] | None = None
+
+
 class Font2(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -508,6 +517,10 @@ class Font2(BaseModel):
     available_in_renderer: bool | None = None
     fallback: str | None = None
     embedded: bool | None = None
+    files: list[File] | None = None
+    """
+    файлы гарнитуры, приложенные к ревизии: по ним страница и холст редактора показывают текст тем же шрифтом, каким колода мерилась и рисовалась
+    """
 
 
 class Stats(BaseModel):

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import pathlib
+import re
 import time
 from typing import Any
 
@@ -66,6 +67,52 @@ from presentation_designer.shared.settings import Settings
 JsonDict = dict[str, Any]
 
 log = logging.getLogger(__name__)
+
+
+def attach_deck_fonts(deck: JsonDict, staging: Any) -> None:
+    """Кладёт файлы гарнитур колоды в ревизию и записывает их в описание.
+
+    Холст редактора рисует текст в браузере, а шрифта шаблона в системе пользователя обычно
+    нет: браузер подставляет свой, и «Редактировать» меняло вид слайда. Файлы берутся тем же
+    резолвером, которым мерилась вместимость слотов, поэтому на холсте стоит ровно тот шрифт,
+    по которому считалась вёрстка. Подменённые гарнитуры не прикладываются: подмена — это уже
+    не шрифт шаблона, и показывать её как настоящую нечестно.
+    """
+    from presentation_designer.shared import text_metrics
+
+    seen: dict[str, str] = {}
+    for entry in deck.get("fonts") or []:
+        family = str(entry.get("family") or "").strip()
+        if not family:
+            continue
+        files: list[JsonDict] = []
+        for weight, bold in ((400, False), (700, True)):
+            resolved = text_metrics.resolve_font(family, bold=bold)
+            if resolved.substituted or not resolved.file:
+                continue
+            source = pathlib.Path(resolved.file)
+            if not source.is_file():
+                continue
+            name = seen.get(str(source))
+            if name is None:
+                suffix = source.suffix.lower() if source.suffix else ".ttf"
+                slug = re.sub(r"[^a-z0-9]+", "-", family.lower()).strip("-") or "font"
+                name = f"fonts/{slug}-{weight}{suffix}"
+                try:
+                    staging.write_bytes(name, source.read_bytes())
+                except OSError:
+                    log.warning("шрифт %s не приложен к ревизии", source)
+                    continue
+                seen[str(source)] = name
+            files.append(
+                {
+                    "weight": weight,
+                    "artifact": f"{staging.prefix}{name}",
+                    "format": "opentype" if name.endswith(".otf") else "truetype",
+                }
+            )
+        if files:
+            entry["files"] = files
 
 
 class RealLayers(StubLayers):
@@ -448,6 +495,7 @@ class RealLayers(StubLayers):
             )
         except ComposeError as e:
             raise StageError(e.code, str(e), retryable=e.retryable, stage="compose") from e
+        attach_deck_fonts(result.deck, inp.staging)
         inp.staging.write_json("composed.json", result.deck)
         inp.staging.write_json("plan.json", plan)
         inp.staging.write_json("story.json", inp.story)

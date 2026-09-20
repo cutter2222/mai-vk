@@ -687,6 +687,14 @@ export interface ComposedDeck {
     available_in_renderer?: boolean;
     fallback?: string;
     embedded?: boolean;
+    /**
+     * файлы гарнитуры, приложенные к ревизии: по ним страница и холст редактора показывают текст тем же шрифтом, каким колода мерилась и рисовалась
+     */
+    files?: {
+      weight: 400 | 700;
+      artifact: string;
+      format?: "truetype" | "opentype";
+    }[];
   }[];
   stats?: {
     slides?: number;

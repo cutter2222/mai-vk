@@ -12,7 +12,7 @@ import { HowBuiltPanel } from "@/components/workspace/HowBuiltPanel";
 import { RevisionsPanel } from "@/components/workspace/RevisionsPanel";
 import { VariantCard } from "@/components/workspace/VariantCard";
 import { api, type TemplateDetail } from "@/lib/api/client";
-import type { ContentPackage } from "@/lib/api/types";
+import type { ComposedDeck, ContentPackage } from "@/lib/api/types";
 import { isHollow } from "@/lib/editor/hit";
 import { objectLabel } from "@/lib/editor/overrides";
 import { formatMs, STAGE_LABELS, VARIANT_LABELS } from "@/lib/format";
@@ -34,6 +34,33 @@ interface Props {
 
 const VARIANT_DOT: Record<string, string> = { pending: "gray", running: "blue", ready: "green", needs_review: "yellow", failed: "red" };
 
+/**
+ * Шрифты колоды — в страницу: холст рисует текст браузером, а гарнитуры шаблона в системе
+ * пользователя обычно нет, и «Редактировать» меняло вид слайда. Файлы приложены к ревизии
+ * тем же резолвером, которым мерилась вместимость, поэтому на холсте стоит тот же шрифт,
+ * по которому считалась вёрстка.
+ */
+function useDeckFonts(jobId: string | null, deck: ComposedDeck | null): void {
+  const faces = (deck?.fonts ?? [])
+    .flatMap((font) =>
+      (font.files ?? []).map((file) => ({ family: font.family, weight: file.weight, artifact: file.artifact, format: file.format ?? "truetype" })),
+    )
+    .filter((f) => f.artifact);
+  const key = jobId ? `${jobId}|${faces.map((f) => `${f.family}:${f.weight}:${f.artifact}`).join(",")}` : "";
+  useEffect(() => {
+    if (!jobId || faces.length === 0) return;
+    const style = document.createElement("style");
+    style.dataset.deckFonts = jobId;
+    style.textContent = faces
+      .map((f) => `@font-face{font-family:"${f.family}";font-weight:${f.weight};font-display:block;src:url("${api.generations.artifactUrl(jobId, f.artifact)}") format("${f.format}")}`)
+      .join("");
+    document.head.appendChild(style);
+    return () => style.remove();
+    // Набор граней описан ключом: пересобирать <style> на каждый рендер незачем.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+}
+
 /** Слайды сгенерированной презентации: переключение вариантов, просмотр по одному или рядом, рамки аудита, редактор. */
 export function GenerationPreview({ session, editor, templateDetail, pkg, projectId, chosenVariant, onChoose }: Props) {
   const { jobId, result, variant } = session;
@@ -41,6 +68,7 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
   // Свойства слайда (фон) — тот же ящик, что и свойства объекта, но открывается кнопкой:
   // без выбранного объекта ящик закрыт, иначе правка снова начиналась бы с полей ни о чём.
   const [slideProps, setSlideProps] = useState(false);
+  useDeckFonts(jobId, editor.deck);
 
   // Лента считается до раннего выхода: ниже есть эффект, а хуки должны вызываться в одном порядке.
   const thumbs = jobId && result ? (variant?.artifacts?.thumbnails ?? []) : [];
