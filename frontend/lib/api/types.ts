@@ -798,6 +798,10 @@ export interface Object {
    * форма фигуры (a:prstGeom@prst): rect, roundRect, ellipse…; отсутствует у произвольной геометрии
    */
   geometry?: string;
+  /**
+   * скругление углов (a:prstGeom/a:avLst «adj») долей от меньшей стороны фигуры: в PowerPoint радиус считается от неё, а не от каждой стороны отдельно
+   */
+  geometry_adjust?: number;
   z_order: number;
   /**
    * идентификаторы групп от внешней к внутренней
@@ -829,6 +833,10 @@ export interface Object {
       bottom?: number;
     };
     autofit?: "none" | "shrink" | "resize_shape";
+    /**
+     * вертикальная привязка текста в рамке (a:bodyPr@anchor): по ней текст стоит там же, где в PowerPoint
+     */
+    anchor?: "top" | "middle" | "bottom";
     fact_refs?: string[];
   };
   picture?: {

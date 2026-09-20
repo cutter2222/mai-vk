@@ -81,6 +81,14 @@ class ShapeInfo:
     fill_hex: str | None = None
     fill_kind: str | None = None  # solid | gradient | picture | none | inherit
     line_hex: str | None = None
+    # Толщина контура в пунктах (a:ln@w). None — не задана у самой фигуры: её берут из темы.
+    line_width_pt: float | None = None
+    # Ссылка на стиль темы: p:style/a:lnRef@idx. Контур карточек шаблонов чаще всего только
+    # здесь и живёт, у самой фигуры ни цвета, ни толщины нет.
+    line_ref_idx: int | None = None
+    line_ref_element: Any = field(default=None, repr=False)
+    # Скругление roundRect: «adj» из a:prstGeom/a:avLst долей от меньшей стороны фигуры.
+    geometry_adjust: float | None = None
     media_part: str | None = None
     media_sha256: str | None = None
     media_ext: str | None = None
@@ -247,15 +255,62 @@ def _fill(shape: Any) -> tuple[str | None, str | None]:
     return None, "inherit"
 
 
-def _line(shape: Any) -> str | None:
-    sp_pr = shape._element.find("p:spPr", NS)
-    if sp_pr is None:
+def _line(shape: Any) -> tuple[str | None, float | None, int | None, Any]:
+    """Контур фигуры: цвет, толщина в пунктах и ссылка на линию темы.
+
+    У фигур из шаблонов контур обычно не записан в самой фигуре: `a:ln` пустой, а цвет и
+    толщина берутся из стиля темы по `p:style/a:lnRef@idx`. Пока это не читалось, карточки
+    шаблона приезжали в ComposedDeck без контура и пропадали на холсте редактора и в HTML.
+    """
+    element = shape._element
+    sp_pr = element.find("p:spPr", NS)
+    ln = sp_pr.find("a:ln", NS) if sp_pr is not None else None
+    if ln is not None and ln.find("a:noFill", NS) is not None:
+        return None, None, None, None
+    color: str | None = None
+    width: float | None = None
+    if ln is not None:
+        solid = ln.find("a:solidFill", NS)
+        if solid is not None:
+            scheme = solid.find("a:schemeClr", NS)
+            ref = f"scheme:{scheme.get('val')}" if scheme is not None else None
+            color = _hex_of(solid) or ref
+        raw = ln.get("w")
+        if raw:
+            try:
+                width = round(int(raw) / 12700, 3)
+            except ValueError:
+                width = None
+    ref = element.find("p:style/a:lnRef", NS)
+    idx: int | None = None
+    if ref is not None:
+        try:
+            idx = int(ref.get("idx", "0")) or None
+        except ValueError:
+            idx = None
+    return color, width, idx, ref
+
+
+def _geometry_adjust(shape: Any) -> float | None:
+    """Скругление углов: «adj» из a:avLst долей от меньшей стороны фигуры.
+
+    В PowerPoint радиус скругления считается от меньшей стороны, поэтому в отличие от
+    процентов CSS одно и то же значение на широкой и на узкой фигуре даёт разный вид.
+    """
+    geom = shape._element.find("p:spPr/a:prstGeom", NS)
+    if geom is None:
         return None
-    ln = sp_pr.find("a:ln", NS)
-    if ln is None or ln.find("a:noFill", NS) is not None:
-        return None
-    solid = ln.find("a:solidFill", NS)
-    return _hex_of(solid) if solid is not None else None
+    for gd in geom.findall("a:avLst/a:gd", NS):
+        if gd.get("name") != "adj":
+            continue
+        formula = gd.get("fmla") or ""
+        if not formula.startswith("val "):
+            continue
+        try:
+            return round(int(formula[4:]) / 100000, 5)
+        except ValueError:
+            return None
+    return None
 
 
 _FIELD_RE = re.compile(r"\s+")
@@ -481,7 +536,10 @@ def walk_shapes(container: Any, part: Any, slide_w: int, slide_h: int) -> list[S
             geom = shape._element.find("p:spPr/a:prstGeom", NS)
             info.geometry = geom.get("prst") if geom is not None else None
             info.fill_hex, info.fill_kind = _fill(shape)
-            info.line_hex = _line(shape)
+            info.line_hex, info.line_width_pt, info.line_ref_idx, info.line_ref_element = _line(
+                shape
+            )
+            info.geometry_adjust = _geometry_adjust(shape)
             info.hyperlink = shape._element.find(".//a:hlinkClick", NS) is not None
             out.append(info)
 

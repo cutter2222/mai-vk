@@ -144,10 +144,46 @@ def _fill_entry(info: ShapeInfo, theme: Any) -> JsonDict | None:
     return out
 
 
-def _line_entry(info: ShapeInfo) -> JsonDict | None:
-    if not info.line_hex:
+def _line_entry(info: ShapeInfo, theme: Any) -> JsonDict | None:
+    """Контур фигуры: цвет и толщина.
+
+    Цвет ищется там же, где его ищет PowerPoint: сначала у самой фигуры, потом в стиле темы
+    (`p:style/a:lnRef`). Толщина — своя, иначе из списка линий темы по тому же номеру. Без
+    этого рамки карточек шаблона терялись: в файле у них пусто, всё живёт в стиле.
+    """
+    color: str | None = None
+    if info.line_hex and info.line_hex.startswith("#"):
+        color = info.line_hex
+    elif info.line_hex and info.line_hex.startswith("scheme:") and info.element is not None:
+        sp_pr = info.element.find(
+            "{http://schemas.openxmlformats.org/presentationml/2006/main}spPr"
+        )
+        ln = (
+            sp_pr.find("{http://schemas.openxmlformats.org/drawingml/2006/main}ln")
+            if sp_pr is not None
+            else None
+        )
+        solid = (
+            ln.find("{http://schemas.openxmlformats.org/drawingml/2006/main}solidFill")
+            if ln is not None
+            else None
+        )
+        resolved = resolve_color(solid, theme) if solid is not None else None
+        color = resolved.hex if resolved else None
+    if color is None and info.line_ref_element is not None:
+        resolved = resolve_color(info.line_ref_element, theme)
+        color = resolved.hex if resolved else None
+    if color is None:
         return None
-    return {"color": info.line_hex}
+    out: JsonDict = {"color": color}
+    width = info.line_width_pt
+    if width is None and info.line_ref_idx and theme is not None:
+        widths = getattr(theme, "line_widths_pt", []) or []
+        if 0 < info.line_ref_idx <= len(widths):
+            width = widths[info.line_ref_idx - 1]
+    if width:
+        out["width_pt"] = width
+    return out
 
 
 def _content_type(partname: str) -> str:
@@ -231,6 +267,8 @@ def build_composed_deck(
                 obj["rotation_deg"] = round(info.rotation_deg, 2)
             if info.geometry:
                 obj["geometry"] = str(info.geometry)
+            if info.geometry_adjust is not None:
+                obj["geometry_adjust"] = info.geometry_adjust
             if info.group_path:
                 obj["group_path"] = list(info.group_path)
             user_ops = record.overrides_applied.get(info.element_id) or []
@@ -291,6 +329,11 @@ def build_composed_deck(
                     }
                 if info.autofit:
                     text["autofit"] = info.autofit
+                # Куда прижат текст в рамке: без этого подпись карточки, выровненная в
+                # PowerPoint по центру, на холсте и в HTML стояла бы у верхнего края.
+                anchor = {"t": "top", "ctr": "middle", "b": "bottom"}.get(info.anchor or "")
+                if anchor:
+                    text["anchor"] = anchor
                 if fill is not None and fill.fact_refs:
                     text["fact_refs"] = list(fill.fact_refs)
                 obj["text"] = text
@@ -375,7 +418,8 @@ def build_composed_deck(
             fill_entry = _fill_entry(info, theme) if kind in ("shape", "text") else None
             if fill_entry and fill_entry.get("kind") != "inherited":
                 obj["fill"] = fill_entry
-            line_entry = _line_entry(info) if kind in ("shape", "connector", "text") else None
+            line_kinds = ("shape", "connector", "text")
+            line_entry = _line_entry(info, theme) if kind in line_kinds else None
             if line_entry:
                 obj["line"] = line_entry
             if kind == "other":

@@ -55,6 +55,9 @@ class Theme:
     minor_font: str
     clr_map: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_CLR_MAP))
     part: str = ""
+    # Толщины линий темы (a:fmtScheme/a:lnStyleLst) в пунктах: фигура ссылается на них
+    # номером в p:style/a:lnRef@idx и своей толщины не хранит.
+    line_widths_pt: list[float] = field(default_factory=list)
 
 
 @dataclass
@@ -168,7 +171,19 @@ def parse_theme(theme_part: Any) -> Theme:
         minor = (mn.get("typeface") if mn is not None else None) or minor
     theme_el = root if root.tag.endswith("}theme") else root.find(".//a:theme", NS)
     name = (theme_el.get("name") if theme_el is not None else None) or "Тема"
-    return Theme(name=name, colors=colors, major_font=major, minor_font=minor)
+    widths: list[float] = []
+    for ln in root.findall(".//a:fmtScheme/a:lnStyleLst/a:ln", NS):
+        try:
+            widths.append(round(int(ln.get("w", "9525")) / 12700, 3))
+        except ValueError:
+            widths.append(0.75)
+    return Theme(
+        name=name,
+        colors=colors,
+        major_font=major,
+        minor_font=minor,
+        line_widths_pt=widths,
+    )
 
 
 def clr_map_of(master_element: Any) -> dict[str, str]:

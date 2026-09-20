@@ -403,6 +403,12 @@
      "type": "string",
      "description": "форма фигуры (a:prstGeom@prst): rect, roundRect, ellipse…; отсутствует у произвольной геометрии"
     },
+    "geometry_adjust": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 0.5,
+     "description": "скругление углов (a:prstGeom/a:avLst «adj») долей от меньшей стороны фигуры: в PowerPoint радиус считается от неё, а не от каждой стороны отдельно"
+    },
     "z_order": {
      "type": "integer"
     },
@@ -492,6 +498,14 @@
         "shrink",
         "resize_shape"
        ]
+      },
+      "anchor": {
+       "enum": [
+        "top",
+        "middle",
+        "bottom"
+       ],
+       "description": "вертикальная привязка текста в рамке (a:bodyPr@anchor): по ней текст стоит там же, где в PowerPoint"
       },
       "fact_refs": {
        "type": "array",

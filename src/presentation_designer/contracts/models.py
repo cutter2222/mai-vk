@@ -2140,6 +2140,10 @@ class Text(BaseModel):
     computed_style: ComputedTextStyle | None = None
     insets: Insets1 | None = None
     autofit: Literal["none", "shrink", "resize_shape"] | None = None
+    anchor: Literal["top", "middle", "bottom"] | None = None
+    """
+    вертикальная привязка текста в рамке (a:bodyPr@anchor): по ней текст стоит там же, где в PowerPoint
+    """
     fact_refs: list[Id] | None = None
 
 
@@ -3162,6 +3166,10 @@ class Object(BaseModel):
     geometry: str | None = None
     """
     форма фигуры (a:prstGeom@prst): rect, roundRect, ellipse…; отсутствует у произвольной геометрии
+    """
+    geometry_adjust: float | None = Field(None, ge=0.0, le=0.5)
+    """
+    скругление углов (a:prstGeom/a:avLst «adj») долей от меньшей стороны фигуры: в PowerPoint радиус считается от неё, а не от каждой стороны отдельно
     """
     z_order: int
     group_path: list[str] | None = None

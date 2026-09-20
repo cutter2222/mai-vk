@@ -93,7 +93,7 @@ def _slide(
 ) -> str:
     parts: list[str] = []
     for obj in sorted(slide.get("objects", []), key=lambda o: int(o.get("z_order") or 0)):
-        markup = _object(obj, width_pt, media)
+        markup = _object(obj, width_pt, ratio, media)
         if markup:
             parts.append(markup)
     background = _color((slide.get("background") or {}).get("color")) or "#fff"
@@ -105,7 +105,41 @@ def _slide(
     )
 
 
-def _object(obj: JsonDict, width_pt: float, media: dict[str, str]) -> str:
+# Скругление roundRect по умолчанию, когда в файле нет своего «adj» (PowerPoint: 16667/100000).
+DEFAULT_ROUND_ADJ = 0.16667
+
+
+def _shape_style(obj: JsonDict, height_ratio: float) -> list[str]:
+    """Форма и контур фигуры: скругление углов и линия.
+
+    Радиус в PowerPoint считается от меньшей стороны фигуры, а проценты CSS — от каждой
+    стороны своей. Поэтому радиус переводится в cqw: доля ширины слайда одинакова по обеим
+    осям, и широкая плашка не превращается в овал.
+    """
+    rules: list[str] = []
+    box = obj.get("bbox") or {}
+    geometry = str(obj.get("geometry") or "")
+    width = float(box.get("width") or 0)
+    height = float(box.get("height") or 0)
+    if geometry == "ellipse":
+        rules.append("border-radius:50%")
+    elif geometry.startswith("round") and width > 0 and height > 0 and height_ratio > 0:
+        adjust = obj.get("geometry_adjust")
+        adj = float(adjust) if adjust is not None else DEFAULT_ROUND_ADJ
+        # `height_ratio` — высота слайда к ширине: высота фигуры переводится в те же единицы,
+        # что и ширина (доли ширины слайда), и меньшая сторона считается честно.
+        radius = adj * min(width, height * height_ratio) * 100
+        if radius > 0:
+            rules.append(f"border-radius:{radius:.3f}cqw")
+    line = obj.get("line") or {}
+    color = _color(line.get("color"))
+    if color:
+        thickness = float(line.get("width_pt") or 0.75)
+        rules.append(f"box-shadow:inset 0 0 0 {thickness:.3f}pt {color}")
+    return rules
+
+
+def _object(obj: JsonDict, width_pt: float, ratio: float, media: dict[str, str]) -> str:
     box = obj.get("bbox") or {}
     style = [
         f"left:{float(box.get('x') or 0) * 100:.3f}%",
@@ -119,6 +153,8 @@ def _object(obj: JsonDict, width_pt: float, media: dict[str, str]) -> str:
     fill = obj.get("fill") or {}
     if fill.get("kind") == "solid" and _color(fill.get("color")):
         style.append(f"background:{_color(fill.get('color'))}")
+    shape_rules = _shape_style(obj, ratio)
+    style += shape_rules
 
     kind = obj.get("kind")
     if kind == "picture":
@@ -140,9 +176,17 @@ def _object(obj: JsonDict, width_pt: float, media: dict[str, str]) -> str:
         [{"text": text.get("plain")}] if text.get("plain") else []
     )
     if not paragraphs:
-        # Пустая рамка: она несёт заливку, если та есть, и ничего больше.
-        return f'<div class="o" style="{";".join(style)}"></div>' if fill.get("color") else ""
+        # Пустая рамка: она несёт заливку и контур — например, карточка шаблона, внутри
+        # которой текст лежит отдельными объектами. Без контура такие рамки пропадали.
+        visible = bool(fill.get("color")) or bool(shape_rules)
+        return f'<div class="o" style="{";".join(style)}"></div>' if visible else ""
 
+    anchor = str(text.get("anchor") or "")
+    if anchor in {"middle", "bottom"}:
+        # Текст в рамке стоит там же, где в PowerPoint: подписи карточек выровнены по центру.
+        style.append("display:flex")
+        style.append("flex-direction:column")
+        style.append("justify-content:" + ("center" if anchor == "middle" else "flex-end"))
     insets = text.get("insets") or {}
     style += [
         f"padding:{float(insets.get('top') or 0) * 100:.2f}cqw"

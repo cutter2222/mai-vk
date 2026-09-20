@@ -237,6 +237,92 @@ def test_native_html_keeps_geometry_fonts_and_pictures(tmp_path: pathlib.Path) -
     assert "<img" in page and page.count("<section") == 1
 
 
+def test_native_html_draws_card_outlines_and_rounding(tmp_path: pathlib.Path) -> None:
+    """Карточка шаблона — пустая рамка с контуром и скруглением: без них страница теряет
+    сетку, а слайд выглядит не так, как в PowerPoint.
+
+    Радиус считается от меньшей стороны фигуры, как в PPTX, поэтому широкая плашка остаётся
+    плашкой: в процентах CSS она превратилась бы в овал.
+    """
+    from presentation_designer.export.html import build_html as native
+
+    deck = {
+        "slide_size": {"width_emu": 9144000, "height_emu": 5143500},
+        "slides": [
+            {
+                "slide_id": "s1",
+                "index": 0,
+                "layout_id": "l1",
+                "objects": [
+                    {
+                        "object_id": "10",
+                        "kind": "shape",
+                        "z_order": 1,
+                        "bbox": {"x": 0.1, "y": 0.2, "width": 0.25, "height": 0.4},
+                        "geometry": "roundRect",
+                        "geometry_adjust": 0.09821,
+                        "fill": {"kind": "none"},
+                        "line": {"color": "#E4002B", "width_pt": 1.5},
+                    },
+                    {
+                        "object_id": "11",
+                        "kind": "shape",
+                        "z_order": 2,
+                        "bbox": {"x": 0.1, "y": 0.05, "width": 0.8, "height": 0.09},
+                        "geometry": "roundRect",
+                        "geometry_adjust": 0.24229,
+                        "fill": {"kind": "solid", "color": "#520977"},
+                    },
+                ],
+            }
+        ],
+    }
+    pptx = tmp_path / "deck.pptx"
+    with zipfile.ZipFile(pptx, "w") as zf:
+        zf.writestr("ppt/media/none.txt", b"x")
+
+    page = native("Колода", deck, pptx)
+
+    assert "box-shadow:inset 0 0 0 1.500pt #E4002B" in page, "контур карточки нарисован"
+    # Меньшая сторона карточки — её высота: 0,4 холста × 0,5625 = 0,225 ширины;
+    # 0,09821 × 22,5 % ≈ 2,210cqw.
+    assert "border-radius:2.210cqw" in page
+    # У широкой плашки меньшая сторона тоже высота: 0,09 × 0,5625 = 0,0506 ширины.
+    assert "border-radius:1.227cqw" in page
+    assert page.count('<div class="o"') == 2, "пустые рамки не выброшены"
+
+
+def test_native_html_respects_text_anchor(tmp_path: pathlib.Path) -> None:
+    """Подпись, выровненная в PowerPoint по центру рамки, стоит по центру и на странице."""
+    from presentation_designer.export.html import build_html as native
+
+    deck = {
+        "slide_size": {"width_emu": 9144000, "height_emu": 5143500},
+        "slides": [
+            {
+                "slide_id": "s1",
+                "index": 0,
+                "layout_id": "l1",
+                "objects": [
+                    {
+                        "object_id": "1",
+                        "kind": "text",
+                        "z_order": 1,
+                        "bbox": {"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.3},
+                        "text": {"plain": "Подпись", "anchor": "middle"},
+                    }
+                ],
+            }
+        ],
+    }
+    pptx = tmp_path / "deck.pptx"
+    with zipfile.ZipFile(pptx, "w") as zf:
+        zf.writestr("ppt/media/none.txt", b"x")
+
+    page = native("Колода", deck, pptx)
+    assert "justify-content:center" in page and "flex-direction:column" in page
+
+
 def _png_bytes() -> bytes:
     buf = io.BytesIO()
     Image.new("RGB", (8, 8), "#0077ff").save(buf, format="PNG")

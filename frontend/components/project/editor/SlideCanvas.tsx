@@ -43,6 +43,8 @@ type DragState =
   | { kind: "resize"; id: string; handle: string; startX: number; startY: number; box: CanvasBox; current: CanvasBox; moved: boolean };
 
 const HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const;
+/** Скругление roundRect по умолчанию, когда в файле нет своего «adj» (PowerPoint: 16667/100000). */
+const DEFAULT_ROUND_ADJ = 0.16667;
 const CROP_KINDS = new Set(["table", "chart", "other", "connector"]);
 
 /**
@@ -249,6 +251,7 @@ export function SlideCanvas({ deck, slide, layoutUrl, thumbUrl, mediaUrl, select
             obj={obj}
             box={box}
             widthPt={widthPt}
+            ratio={ratio}
             thumbUrl={thumbUrl}
             mediaUrl={mediaUrl}
             selected={obj.object_id === selectedObjectId}
@@ -301,19 +304,30 @@ interface ObjectProps {
   obj: DeckObject;
   box: CanvasBox;
   widthPt: number;
+  /** Ширина слайда к высоте: радиус скругления в PowerPoint считается от меньшей стороны. */
+  ratio: number;
   thumbUrl: string | undefined;
   mediaUrl: (assetId: string) => string | undefined;
   selected: boolean;
   hovered: boolean;
 }
 
-function CanvasObject({ obj, box, widthPt, thumbUrl, mediaUrl, selected, hovered }: ObjectProps) {
+function CanvasObject({ obj, box, widthPt, ratio, thumbUrl, mediaUrl, selected, hovered }: ObjectProps) {
   const style: React.CSSProperties = { ...percentBox(box) };
   if (obj.rotation_deg) style.transform = `rotate(${obj.rotation_deg}deg)`;
   if (obj.fill?.kind === "solid" && obj.fill.color) style.background = obj.fill.color;
-  if (obj.line?.color) style.boxShadow = `inset 0 0 0 1px ${obj.line.color}`;
+  // Контур и скругление — как в PPTX и в HTML-экспорте: толщина линии в пунктах шаблона,
+  // радиус от меньшей стороны фигуры. Раньше здесь стояли «1px» и «8% / 12%», и та же
+  // плашка на холсте выглядела иначе, чем на картинке слайда.
+  if (obj.line?.color) {
+    const thickness = ((obj.line.width_pt ?? 0.75) / widthPt) * 100;
+    style.boxShadow = `inset 0 0 0 ${thickness.toFixed(3)}cqw ${obj.line.color}`;
+  }
   if (obj.geometry === "ellipse") style.borderRadius = "50%";
-  else if (obj.geometry === "roundRect") style.borderRadius = "8% / 12%";
+  else if (obj.geometry?.startsWith("round") && box.width > 0 && box.height > 0 && ratio > 0) {
+    const adjust = obj.geometry_adjust ?? DEFAULT_ROUND_ADJ;
+    style.borderRadius = `${(adjust * Math.min(box.width, box.height / ratio) * 100).toFixed(3)}cqw`;
+  }
   const common = {
     className: "canvas-object",
     "data-testid": `canvas-object-${obj.object_id}`,
@@ -353,8 +367,22 @@ function CanvasObject({ obj, box, widthPt, thumbUrl, mediaUrl, selected, hovered
   const insets = obj.text?.insets ?? {};
   const pad = (v: number | undefined) => `${((v ?? 0) * 100).toFixed(2)}cqw`;
   const base = obj.text?.computed_style ?? {};
+  // Вертикальная привязка: в шаблонах подписи карточек стоят по центру рамки, и без этого
+  // текст на холсте оказывался выше, чем на картинке слайда.
+  const anchor = obj.text?.anchor;
+  const anchorStyle: React.CSSProperties =
+    anchor === "middle" || anchor === "bottom"
+      ? { display: "flex", flexDirection: "column", justifyContent: anchor === "middle" ? "center" : "flex-end" }
+      : {};
   return (
-    <div {...common} style={{ ...style, padding: `${pad(insets.top)} ${pad(insets.right)} ${pad(insets.bottom)} ${pad(insets.left)}` }}>
+    <div
+      {...common}
+      style={{
+        ...style,
+        ...anchorStyle,
+        padding: `${pad(insets.top)} ${pad(insets.right)} ${pad(insets.bottom)} ${pad(insets.left)}`,
+      }}
+    >
       {paragraphs.map((p, i) => {
         const font = { ...(base.font ?? {}), ...(p.style?.font ?? {}) };
         const sizePt = font.size_pt ?? 18;
