@@ -20,6 +20,7 @@ import { setPanelOpen, usePanelOpen } from "@/lib/state/panel";
 import { appendMessage, updateProject, type Project } from "@/lib/state/projects";
 
 import { ChatPanel } from "./chat/ChatPanel";
+import { countTags, TAG_LABELS, TAG_ORDER, type ChatTag } from "./chat/tags";
 import type { CardContext } from "./chat/cards";
 import { useChat } from "./chat/useChat";
 import { FilesPanel } from "./files/FilesPanel";
@@ -28,11 +29,12 @@ import { SettingsPanel, settingsError } from "./panels/SettingsPanel";
 import { PreviewPane } from "./preview/PreviewPane";
 import { ProjectHeader } from "./ProjectHeader";
 
-type Tab = "chat" | "files";
+/** Что показывает левая панель: всю ленту, ленту под меткой или файлы проекта. */
+type Tab = "all" | ChatTag | "files";
 
 /** Редактор проекта: слева чат (или файлы проекта), справа предпросмотр слайдов. */
 export function ProjectEditor({ project }: { project: Project }) {
-  const [tab, setTab] = useState<Tab>("chat");
+  const [tab, setTab] = useState<Tab>("all");
   // Панель с чатом занимает 460 px. На правке слайда это место нужнее слайду, поэтому она
   // сворачивается в рельс с иконками: экран остаётся тем же, а холст становится больше.
   const panelOpen = usePanelOpen();
@@ -157,9 +159,13 @@ export function ProjectEditor({ project }: { project: Project }) {
     onRetryImport: () => void chat.importMaterials(),
   };
 
-  const TABS: Array<{ key: Tab; label: string; icon: React.ReactNode; badge?: number }> = [
-    { key: "chat", label: "Чат", icon: <IconMessage size={16} stroke={1.7} /> },
-    { key: "files", label: "Файлы", icon: <IconFolder size={16} stroke={1.7} />, badge: project.files.length },
+  // Ряд меток вместо вкладок: лента одна, а метка сужает её до шага работы. Пустые метки в
+  // ряд не попадают — иначе он сам становится тем шумом, от которого избавляет.
+  const counts = countTags(project.events);
+  const TABS: Array<{ key: Tab; label: string; icon?: React.ReactNode; badge?: number }> = [
+    { key: "all", label: "Всё", icon: <IconMessage size={16} stroke={1.7} />, badge: project.events.length || undefined },
+    ...TAG_ORDER.filter((tag) => counts[tag] > 0).map((tag) => ({ key: tag as Tab, label: TAG_LABELS[tag], badge: counts[tag] })),
+    { key: "files", label: "Файлы", icon: <IconFolder size={16} stroke={1.7} />, badge: project.files.length || undefined },
   ];
 
   return (
@@ -180,7 +186,7 @@ export function ProjectEditor({ project }: { project: Project }) {
                 <IconLayoutSidebarLeftExpand size={18} stroke={1.7} />
               </ActionIcon>
             </Tooltip>
-            {TABS.map((t) => (
+            {TABS.filter((t) => t.icon).map((t) => (
               <Tooltip key={t.key} label={t.label} position="right">
                 <ActionIcon variant="subtle" color="gray" size="lg" onClick={() => showPanel(true, t.key)} aria-label={t.label} data-testid={`rail-${t.key}`}>
                   {t.icon}
@@ -193,7 +199,7 @@ export function ProjectEditor({ project }: { project: Project }) {
             колонку ради двух кнопок и добавлял четвёртый слой хрома на экран. */}
         <aside className="editor-panel" data-open={panelOpen} aria-hidden={!panelOpen} inert={!panelOpen}>
           <div className="editor-panel-inner">
-            <div className="editor-panel-tabs" role="tablist" aria-label="Разделы проекта">
+            <div className="editor-panel-tabs" role="tablist" aria-label="Метки ленты проекта">
               {TABS.map((t) => (
                 <button
                   key={t.key}
@@ -203,7 +209,7 @@ export function ProjectEditor({ project }: { project: Project }) {
                   data-active={tab === t.key || undefined}
                   aria-selected={tab === t.key}
                   onClick={() => setTab(t.key)}
-                  data-testid={`tab-${t.key}`}
+                  data-testid={t.key === "all" ? "tab-chat" : `tab-${t.key}`}
                 >
                   {t.icon}
                   <span>{t.label}</span>
@@ -216,8 +222,8 @@ export function ProjectEditor({ project }: { project: Project }) {
                 </ActionIcon>
               </Tooltip>
             </div>
-            {tab === "chat" ? (
-              <ChatPanel ctx={ctx} onSend={chat.send} onAttach={chat.attach} staged={chat.staged} onAnswerStaged={chat.answerStaged} />
+            {tab !== "files" ? (
+              <ChatPanel ctx={ctx} onSend={chat.send} onAttach={chat.attach} staged={chat.staged} onAnswerStaged={chat.answerStaged} filter={tab} />
             ) : (
               <FilesPanel project={project} session={session} onAdd={(files) => { const rest = chat.attach(files); if (rest.length) void chat.send("", rest); }} onRemove={(fid) => void chat.removeFile(fid)} onSelectTemplate={chat.selectTemplate} />
             )}

@@ -236,6 +236,31 @@ test.describe("сквозной сценарий в чате на заглушк
     await expect(page.getByTestId("msg-assistant").last()).toContainText("удалён");
   });
 
+  test("метки ленты: аудит и генерация отделяются от разговора", async ({ page }) => {
+    await speedUp(page, 8);
+    await createProject(page);
+    await uploadTemplate(page);
+    await projectIdAfterAction(page);
+    await sendMaterialsAndBrief(page);
+    await startGeneration(page);
+    await waitForAllVariantsDone(page);
+
+    // Ряд меток — оглавление ленты: у каждой свой счётчик, пустых меток в ряду нет.
+    await expect(page.getByTestId("tab-job")).toBeVisible();
+    await expect(page.getByTestId("tab-template")).toBeVisible();
+    await page.getByTestId("tab-audit").click();
+    await expect(page.getByTestId("audit-card")).toBeVisible();
+    await expect(page.getByTestId("job-card")).toHaveCount(0);
+
+    // Метка без сообщений честно об этом говорит, а разговор возвращается кнопкой «Всё».
+    await page.getByTestId("tab-message").click();
+    await expect(page.getByTestId("msg-user").first()).toBeVisible();
+    await expect(page.getByTestId("audit-card")).toHaveCount(0);
+    await page.getByTestId("tab-chat").click();
+    await expect(page.getByTestId("audit-card")).toBeVisible();
+    await expect(page.getByTestId("job-card")).toBeVisible();
+  });
+
   test("пустой экран новой презентации проекта не создаёт", async ({ page }) => {
     // Нажали «Новая презентация», передумали и ушли: в списке ничего не прибавилось.
     await page.goto("/");

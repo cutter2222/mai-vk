@@ -10,6 +10,7 @@ import type { SlideTarget } from "@/lib/hooks/useGenerationSession";
 import type { ChatMessage, PptxAnswer } from "@/lib/state/projects";
 
 import { AuditCard, BriefCard, ContentCard, EditCard, JobCard, PptxQuestion, TemplateCard, TemplateQuestionCard, type CardContext } from "./cards";
+import { TAG_LABELS, tagOf, type ChatTag } from "./tags";
 import type { StagedPptx } from "./useChat";
 
 interface Props {
@@ -19,13 +20,15 @@ interface Props {
   onAttach: (files: File[]) => File[];
   staged: StagedPptx[];
   onAnswerStaged: (localId: string, answer: PptxAnswer) => void;
+  /** Выбранная метка сверху: «all» — вся лента. Ряд меток живёт в шапке панели. */
+  filter?: ChatTag | "all";
 }
 
 /**
  * Чат проекта: лента сообщений и карточек шагов, внизу поле ввода с вложениями; файлы можно бросать в любое место панели.
  * PPTX не ждёт отправки: вопрос «шаблон, готовая презентация или материал» появляется в ленте в момент броска, пока файл грузится.
  */
-export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged }: Props) {
+export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged, filter = "all" }: Props) {
   const { project, session } = ctx;
   // Выбранный справа слайд — адресат сообщения: чип над полем ввода, крестик снимает адресацию.
   const target = session.slideTarget;
@@ -42,6 +45,9 @@ export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged }: Pro
 
   // Лента прокручивается вниз при новом сообщении и когда карточка правки получает результат.
   const count = project.events.length + staged.length;
+  // Метка сужает ленту, но не прячет сам разговор: поле ввода и подсказки остаются на месте.
+  const shown = filter === "all" ? project.events : project.events.filter((m) => tagOf(m) === filter);
+  const stagedShown = filter === "all" || filter === "template" ? staged : [];
   const settledEdits = session.result?.edits?.length ?? 0;
   useEffect(() => {
     const el = listRef.current;
@@ -85,12 +91,17 @@ export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged }: Pro
             <Text size="sm" c="dimmed" mt={6}>Шаблон задаёт оформление, материалы — содержание. Я соберу 10–15 слайдов в трёх вариантах вёрстки, проверю их и покажу справа.</Text>
           </div>
         )}
-        {project.events.map((m) => (
+        {filter !== "all" && shown.length === 0 && stagedShown.length === 0 && (
+          <Text size="sm" c="dimmed" data-testid="chat-tag-empty">
+            Под меткой «{TAG_LABELS[filter]}» пока пусто.
+          </Text>
+        )}
+        {shown.map((m) => (
           <div key={m.event_id} className={`chat-msg chat-msg-${m.role}`} data-testid={`msg-${m.role}`}>
             {renderMessage(m, ctx)}
           </div>
         ))}
-        {staged.map((s) => (
+        {stagedShown.map((s) => (
           <Fragment key={s.local_id}>
             <div className="chat-msg chat-msg-user" data-testid="msg-user">
               <Badge color="gray" size="sm" leftSection={<IconFile size={11} />} rightSection={<Loader size={10} color="gray" />}>{s.name} · {formatBytes(s.size)}</Badge>
