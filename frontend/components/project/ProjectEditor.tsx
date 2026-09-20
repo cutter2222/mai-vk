@@ -20,7 +20,7 @@ import { setPanelOpen, usePanelOpen } from "@/lib/state/panel";
 import { appendMessage, updateProject, type Project } from "@/lib/state/projects";
 
 import { ChatPanel } from "./chat/ChatPanel";
-import { countTags, TAG_LABELS, TAG_ORDER, type ChatTag } from "./chat/tags";
+import { countTags, isStaleStep, TAG_LABELS, TAG_ORDER, type ChatTag } from "./chat/tags";
 import type { CardContext } from "./chat/cards";
 import { useChat } from "./chat/useChat";
 import { FilesPanel } from "./files/FilesPanel";
@@ -184,9 +184,10 @@ export function ProjectEditor({ project }: { project: Project }) {
 
   // Ряд меток вместо вкладок: лента одна, а метка сужает её до шага работы. Пустые метки в
   // ряд не попадают — иначе он сам становится тем шумом, от которого избавляет.
-  const counts = countTags(project.events);
+  const events = project.events.filter((m) => !isStaleStep(m, session.jobId));
+  const counts = countTags(events);
   const TABS: Array<{ key: Tab; label: string; icon?: React.ReactNode; badge?: number }> = [
-    { key: "all", label: "Всё", icon: <IconMessage size={16} stroke={1.7} />, badge: project.events.length || undefined },
+    { key: "all", label: "Всё", icon: <IconMessage size={16} stroke={1.7} />, badge: events.length || undefined },
     ...TAG_ORDER.filter((tag) => counts[tag] > 0).map((tag) => ({ key: tag as Tab, label: TAG_LABELS[tag], badge: counts[tag] })),
     { key: "files", label: "Файлы", icon: <IconFolder size={16} stroke={1.7} />, badge: project.files.length || undefined },
   ];

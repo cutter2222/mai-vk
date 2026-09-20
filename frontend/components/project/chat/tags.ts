@@ -68,6 +68,20 @@ export function tagOf(message: ChatMessage): ChatTag {
   }
 }
 
+/**
+ * Шаги заменённого задания в ленте не показываются. Сообщения читают живое состояние, а у
+ * прошлой сборки его уже нет: после третьей генерации лента превращалась в три строки «это
+ * задание заменено новым» и пустые строки с метками. Разговор и файлы остаются целиком,
+ * артефакты прошлых сборок — на сервере.
+ */
+export function isStaleStep(message: ChatMessage, jobId: string | null): boolean {
+  if (message.role !== "assistant" || !jobId) return false;
+  if (message.kind === "job_card" || message.kind === "audit_card" || message.kind === "edit_card") {
+    return message.job_id !== jobId;
+  }
+  return false;
+}
+
 /** Сколько сообщений под каждой меткой: пустые метки в ряд не попадают. */
 export function countTags(messages: ChatMessage[]): Record<ChatTag, number> {
   const counts = { message: 0, template: 0, materials: 0, brief: 0, job: 0, audit: 0, edit: 0 };

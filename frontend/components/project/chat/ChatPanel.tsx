@@ -10,7 +10,7 @@ import type { SlideTarget } from "@/lib/hooks/useGenerationSession";
 import type { ChatMessage, PptxAnswer } from "@/lib/state/projects";
 
 import { AuditCard, BriefCard, ContentCard, EditCard, JobCard, PptxQuestion, TemplateCard, TemplateQuestionCard, type CardContext } from "./cards";
-import { TAG_HASH, TAG_LABELS, tagOf, type ChatTag } from "./tags";
+import { isStaleStep, TAG_HASH, TAG_LABELS, tagOf, type ChatTag } from "./tags";
 import type { StagedPptx } from "./useChat";
 
 interface Props {
@@ -45,10 +45,11 @@ export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged, filte
     if (rest.length) setPending((p) => [...p, ...rest]);
   };
 
-  // Лента прокручивается вниз при новом сообщении и когда карточка правки получает результат.
-  const count = project.events.length + staged.length;
+  const events = project.events.filter((m) => !isStaleStep(m, session.jobId));
+  // Лента прокручивается вниз при новом сообщении и когда сообщение о правке получает результат.
+  const count = events.length + staged.length;
   // Метка сужает ленту, но не прячет сам разговор: поле ввода и подсказки остаются на месте.
-  const shown = filter === "all" ? project.events : project.events.filter((m) => tagOf(m) === filter);
+  const shown = filter === "all" ? events : events.filter((m) => tagOf(m) === filter);
   const stagedShown = filter === "all" || filter === "template" ? staged : [];
   const settledEdits = session.result?.edits?.length ?? 0;
   useEffect(() => {
