@@ -232,10 +232,10 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
   };
 
   /** Ручные правки редактора: одна ревизия на все перечисленные слайды и новый порядок; ошибки отдаются вызывающему. */
-  const requestPatch = async (target: Pick<SlideTarget, "jobId" | "variantId" | "revision">, slides: SlidePatch["slides"], order?: string[]): Promise<string> => {
+  const requestPatch = async (target: Pick<SlideTarget, "jobId" | "variantId" | "revision">, slides: SlidePatch["slides"], order?: string[], templateLogo?: "keep" | "drop"): Promise<string> => {
     setBusy(true);
     try {
-      const res = await api.generations.patch(target.jobId, target.variantId, target.revision, slides, order);
+      const res = await api.generations.patch(target.jobId, target.variantId, target.revision, slides, order, templateLogo);
       setEditJobKind("patch");
       setEditJob(res.patch_job_id);
       setHandledEdit(null);

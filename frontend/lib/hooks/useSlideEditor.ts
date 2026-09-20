@@ -17,6 +17,7 @@ import {
   type AssetResolver,
   type DeckSlide,
 } from "@/lib/editor/overrides";
+import { countTemplateLogos } from "@/lib/editor/logos";
 import { templateTokens } from "@/lib/editor/tokens";
 
 import { useComposedDeck } from "./useComposedDeck";
@@ -63,6 +64,8 @@ export function useSlideEditor(session: GenerationSession, options: SlideEditorO
   const [past, setPast] = useState<DraftSnapshot[]>([]);
   const [future, setFuture] = useState<DraftSnapshot[]>([]);
   const lastMark = useRef<{ key: string; at: number } | null>(null);
+  // Снят ли знак шаблона в черновике: null — как в ревизии.
+  const [logoDraft, setLogoDraft] = useState<boolean | null>(null);
   // Номер слайда, который надо выбрать, когда придёт ревизия с применёнными правками: после
   // перестановки слайд, который правили, получает в новой ревизии номер своего места.
   const pendingSelect = useRef<number | null>(null);
@@ -76,6 +79,7 @@ export function useSlideEditor(session: GenerationSession, options: SlideEditorO
     setSelectedObjectId(null);
     setPast([]);
     setFuture([]);
+    setLogoDraft(null);
   }
   useEffect(() => {
     const position = pendingSelect.current;
@@ -122,8 +126,12 @@ export function useSlideEditor(session: GenerationSession, options: SlideEditorO
   const previewSlide = currentSlide ? applyOverrides(currentSlide, draft, resolver) : null;
 
   const changedSlides = useMemo(() => (deck ? patchSlides(drafts, deck) : []), [drafts, deck]);
-  const dirty = changedSlides.length > 0 || orderChanged;
-  const draftCount = changedSlides.reduce((n, s) => n + s.overrides.length, 0) + (orderChanged ? 1 : 0);
+  const logoChanged = logoDraft !== null && logoDraft !== (deck?.template_logo === "drop");
+  const dirty = changedSlides.length > 0 || orderChanged || logoChanged;
+  const draftCount =
+    changedSlides.reduce((n, s) => n + s.overrides.length, 0) +
+    (orderChanged ? 1 : 0) +
+    (logoChanged ? 1 : 0);
 
   useEffect(() => {
     session.setEditorDirty(dirty);
@@ -254,6 +262,7 @@ export function useSlideEditor(session: GenerationSession, options: SlideEditorO
         { jobId, variantId: variant.variant_id, revision: currentRevision },
         changedSlides,
         orderChanged ? slideOrder : undefined,
+        logoChanged ? (logoDraft ? "drop" : "keep") : undefined,
       );
       // Новая ревизия нумерует слайды по применённому порядку: номер изменённого слайда в
       // ней — его место в черновом порядке, а не прежний номер в колоде.
@@ -273,6 +282,17 @@ export function useSlideEditor(session: GenerationSession, options: SlideEditorO
   }, [deck, jobId, variant, dirty, applying, session, currentRevision, changedSlides, orderChanged, slideOrder, slideIndex, currentSlide, options.onPatchStarted]);
 
   const tokens = useMemo(() => templateTokens(options.profile), [options.profile]);
+
+  // Знак шаблона: он лежит на макетах, а не на слайдах, поэтому правкой объекта его не снять —
+  // это свойство всей колоды (`template_logo` в плане). Профиль знает, есть ли он вообще.
+  const logoCount = useMemo(() => countTemplateLogos(options.profile), [options.profile]);
+  const logoDropped = logoDraft ?? deck?.template_logo === "drop";
+
+  /** Снимает знак шаблона со всей колоды или возвращает его: шаг черновика, как и остальные. */
+  const toggleLogo = useCallback(() => {
+    if (logoCount === 0) return;
+    setLogoDraft(!logoDropped);
+  }, [logoCount, logoDropped]);
 
   /**
    * Своя надпись на текущем слайде: рамка по центру со смещением, чтобы несколько надписей
@@ -353,6 +373,9 @@ export function useSlideEditor(session: GenerationSession, options: SlideEditorO
     setOp,
     addText,
     deleteObject,
+    toggleLogo,
+    logoCount,
+    logoDropped,
     resetObject,
     discard,
     reorder,

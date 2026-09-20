@@ -225,10 +225,10 @@ export const api = {
         json({ base_revision: baseRevision, slide_index: slideIndex, instruction }),
       ),
     /** Ручные правки из визуального редактора: новая ревизия варианта без модели (документ slide_patch). */
-    patch: (jobId: string, variantId: string, baseRevision: number, slides: SlidePatch["slides"], order?: string[]) =>
+    patch: (jobId: string, variantId: string, baseRevision: number, slides: SlidePatch["slides"], order?: string[], templateLogo?: "keep" | "drop") =>
       request<{ patch_job_id: string }>(
         `/generations/${encodeURIComponent(jobId)}/variants/${encodeURIComponent(variantId)}/patches`,
-        json({ base_revision: baseRevision, slides, ...(order ? { order } : {}) }),
+        json({ base_revision: baseRevision, slides, ...(order ? { order } : {}), ...(templateLogo ? { template_logo: templateLogo } : {}) }),
       ),
     artifactUrl: (jobId: string, name: string) => `${API_BASE}/generations/${encodeURIComponent(jobId)}/artifacts/${name}`,
     /** JSON-артефакт ревизии (план, описание собранной колоды) по имени из манифеста. */

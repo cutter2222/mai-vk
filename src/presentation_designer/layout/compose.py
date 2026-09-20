@@ -47,6 +47,7 @@ from presentation_designer.layout.media import export_media
 from presentation_designer.layout.ooxml import clone_slide, keep_only_slides
 from presentation_designer.layout.overrides import apply_overrides
 from presentation_designer.layout.package import (
+    drop_template_logos,
     ensure_placeholder,
     layout_by_id,
     prune_unused_layouts,
@@ -1063,7 +1064,16 @@ def _cleanup(
             nearest_filled = min((_distance(center, b) for b in filled_cards), default=float("inf"))
             if nearest_unfilled < nearest_filled:
                 drop(oid)
-    # 3а. Легенда картинки диаграммы: на месте картинки построена нативная диаграмма со
+    # 3а. Нарисованная диаграмма образца: столбики, подписи значений и категорий — обычные
+    #     объекты, и после постройки нативной диаграммы на их месте они остались бы поверх неё.
+    #     Убираются только когда слот chart действительно заполнен.
+    chart_built = any(
+        f.block_kind == "chart" and f.built in ("added", "rebuilt") for f in record.fills
+    )
+    if chart_built:
+        for oid in [str(i) for i in pattern_raw.get("chart_parts") or []]:
+            drop(oid)
+    # 3б. Легенда картинки диаграммы: на месте картинки построена нативная диаграмма со
     #     своей легендой, поэтому в паттерне роли chart подписи образца (оставленные планом
     #     как текст образца) и мелкий декор вне постоянных элементов (точки легенды) убираются.
     if ctx.chart_areas and pattern_raw.get("role") == "chart":
@@ -1084,7 +1094,7 @@ def _cleanup(
             if info is None or info.text.strip() or info.area >= 0.002 or oid in fixed_refs:
                 continue
             drop(oid)
-    # 3б. Стрелки и якоря удалённых карточек: соединитель, конец которого упирался в удалённый
+    # 3в. Стрелки и якоря удалённых карточек: соединитель, конец которого упирался в удалённый
     #     объект (или только в такую же удалённую стрелку), убирается; свободные линии декора
     #     остаются. Мелкий статичный декор без текста (точки на кольце) уходит вместе с
     #     ближайшей пустой карточкой.
@@ -1485,12 +1495,18 @@ def compose_deck(
         raise ComposeError("compose_plan_empty", "в плане нет слайдов")
     t0 = time.perf_counter()
     keep_only_slides(prs, new_slides)
+    # Знак шаблона снимается после отбора слайдов: он лежит на макетах, а не на слайдах, и
+    # правкой слайда его не убрать (план: template_logo).
+    drop_logos = str(plan.get("template_logo") or "keep") == "drop"
+    logos_removed = drop_template_logos(prs, profile) if drop_logos else 0
     layouts_removed = prune_unused_layouts(prs) if prune_layouts else 0
     update_slide_numbers(prs)
     out_pptx = pathlib.Path(out_pptx)
     out_pptx.parent.mkdir(parents=True, exist_ok=True)
     prs.save(str(out_pptx))
     timings["save_ms"] = int((time.perf_counter() - t0) * 1000)
+    if logos_removed:
+        ctx.count("logos_removed", logos_removed)
     t0 = time.perf_counter()
     integrity = check_deck(out_pptx, expected_slides=len(new_slides))
     if not integrity.ok:

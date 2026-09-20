@@ -440,6 +440,8 @@ def build_composed_deck(
         "revision": revision,
         "plan_id": str(plan.get("plan_id")),
         "template_id": str(profile.get("template_id")),
+        # Знак шаблона: drop — логотипы сняты с макетов и мастеров при сборке (план template_logo).
+        "template_logo": str(plan.get("template_logo") or "keep"),
         "pptx_hash": "sha256:" + _sha256(pathlib.Path(pptx_path)),
         "pptx_artifact": pptx_artifact,
         "composer": composer,

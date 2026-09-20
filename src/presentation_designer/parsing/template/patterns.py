@@ -19,6 +19,7 @@ from typing import Any
 
 from presentation_designer.parsing.template.assets import Asset
 from presentation_designer.parsing.template.classify import Classification, is_marker
+from presentation_designer.parsing.template.drawn_charts import find_drawn_chart
 from presentation_designer.parsing.template.geometry import ShapeInfo, normalize_text
 from presentation_designer.parsing.template.layouts import layout_family
 from presentation_designer.parsing.template.package import SlideInfo, TemplatePackage
@@ -79,13 +80,16 @@ class Slot:
     required: bool = False
     paragraphs: int = 1
     capacity: dict[str, Any] | None = None
+    # Слот шире своего объекта: у нарисованной диаграммы это вся область ряда, а `shape` —
+    # только один столбик, с которого вёрстка начинает замену.
+    bbox_override: dict[str, float] | None = None
 
     def as_dict(self, slide_w: int, slide_h: int) -> dict[str, Any]:
         s = self.shape
         out: dict[str, Any] = {
             "slot_id": self.slot_id,
             "kind": self.kind,
-            "bbox": s.bbox,
+            "bbox": self.bbox_override or s.bbox,
             "z_order": s.z_order,
             "required": self.required,
             "element_ref": s.element_id,
@@ -153,6 +157,8 @@ class Pattern:
     static_ids: list[str]
     removable_ids: list[str]
     repeat_counts: dict[str, int]
+    # Части нарисованной диаграммы образца: убираются, когда на их месте построена нативная.
+    chart_parts: list[str] = field(default_factory=list)
     notes: str = ""
     group_id: str = ""
     tags: list[str] = field(default_factory=list)
@@ -198,6 +204,7 @@ class Pattern:
             "role_source": self.role_source,
             "static_object_ids": self.static_ids,
             "removable_object_ids": self.removable_ids,
+            **({"chart_parts": self.chart_parts} if self.chart_parts else {}),
             "sequence_hints": sequence_hints(self.role),
             "tone": self.tone.as_dict(),
             "style_key": self.style_key,
@@ -568,6 +575,25 @@ def build_pattern(
         per_card[g] = max(sizes.values()) if sizes else len(members)
     repeat_counts = {g: per_card.get(g, n) for g, n in repeat_counts.items()}
 
+    # Нарисованная диаграмма: ряд столбиков вместо нативного графика. Его части перестают
+    # быть слотами (иначе план запишет числа в картинки), а на их месте появляется один слот
+    # chart на всю область ряда — вёрстка построит там настоящую диаграмму.
+    chart_parts: list[str] = []
+    drawn = find_drawn_chart([s for s in shapes if (slide.part, s.element_id) not in fixed_refs])
+    if drawn is not None and not any(sl.kind == "chart" for sl in slots):
+        anchor = max(
+            (s for s in shapes if s.element_id in drawn.parts),
+            key=lambda s: s.area,
+            default=None,
+        )
+        if anchor is not None:
+            slots = [sl for sl in slots if sl.shape.element_id not in drawn.element_ids]
+            static_ids = [i for i in static_ids if i not in drawn.element_ids]
+            removable = [i for i in removable if i not in drawn.element_ids]
+            candidates = [c for c in candidates if c.element_id not in drawn.element_ids]
+            slots.append(Slot("", "chart", anchor, bbox_override=drawn.bbox, required=True))
+            chart_parts = [i for i in sorted(drawn.element_ids) if i != anchor.element_id]
+
     _single_title(slots)
     slots.sort(key=lambda sl: (round(sl.shape.y, 2), sl.shape.x))
     counters: collections.Counter[str] = collections.Counter()
@@ -601,6 +627,7 @@ def build_pattern(
         slots=slots,
         static_ids=static_ids,
         removable_ids=removable,
+        chart_parts=chart_parts,
         repeat_counts=repeat_counts,
         notes=notes,
         layout_kind=layout_kind,

@@ -19,7 +19,7 @@ from presentation_designer.contracts.models import (
 )
 from presentation_designer.contracts.validators import ContractError, Violation, raise_if
 
-CONTRACTS_VERSION = "1.10"
+CONTRACTS_VERSION = "1.11"
 
 __all__ = [
     "CONTRACTS_VERSION",

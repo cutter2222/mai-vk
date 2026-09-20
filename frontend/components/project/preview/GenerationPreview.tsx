@@ -1,7 +1,7 @@
 "use client";
 
 import { ActionIcon, Badge, Button, Group, Loader, SegmentedControl, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
-import { IconArrowBackUp, IconArrowForwardUp, IconListCheck, IconPencil, IconStar, IconStarFilled, IconTextPlus, IconX } from "@tabler/icons-react";
+import { IconArrowBackUp, IconArrowForwardUp, IconEraser, IconListCheck, IconPencil, IconStar, IconStarFilled, IconTextPlus, IconX } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 
 import type { Outline } from "@/components/common/SlideImage";
@@ -303,6 +303,21 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
                 >
                   Текст
                 </Button>
+              )}
+              {/* Знак шаблона: чужой логотип делает шаблон непригодным для другого
+                  подразделения, а снимать его со всех слайдов вручную никто не станет. */}
+              {editor.editing && editor.logoCount > 0 && (
+                <Tooltip label="Знак шаблона стоит на макетах, поэтому снимается со всей колоды разом">
+                  <Button
+                    variant={editor.logoDropped ? "light" : "subtle"}
+                    size="compact-xs"
+                    leftSection={<IconEraser size={14} />}
+                    onClick={editor.toggleLogo}
+                    data-testid="editor-drop-logos"
+                  >
+                    {editor.logoDropped ? "Вернуть логотип" : "Убрать логотип"}
+                  </Button>
+                </Tooltip>
               )}
               {editor.editing && (
                 <Button

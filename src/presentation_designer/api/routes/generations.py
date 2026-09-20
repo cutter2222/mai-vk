@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import quote
 
 from fastapi import APIRouter
@@ -38,11 +38,13 @@ class EditRequest(BaseModel):
 
 class PatchRequest(BaseModel):
     """Ручные правки из визуального редактора: списки overrides по слайдам (замена
-    целиком) и, при перестановке, новый порядок всех слайдов."""
+    целиком), при перестановке — новый порядок всех слайдов, а `template_logo` снимает или
+    возвращает знак шаблона во всей колоде (он живёт на макетах, а не на слайде)."""
 
     base_revision: int = Field(..., ge=1)
     slides: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
     order: list[str] | None = Field(None, max_length=500)
+    template_logo: Literal["keep", "drop"] | None = None
 
 
 def _generation(orch: Orchestrator, job_id: str) -> dict[str, Any]:
@@ -153,7 +155,7 @@ def create_patch(job_id: str, variant_id: str, body: PatchRequest, orch: Orch) -
     схеме slide_patch и против ComposedDeck базовой ревизии; конфликты — как у правок из
     чата (409 revision_stale / repair_in_progress, 422 остальное)."""
     _generation(orch, job_id)
-    if not body.slides and body.order is None:
+    if not body.slides and body.order is None and body.template_logo is None:
         raise ApiError(422, "patch_empty", "В запросе нет ни правок, ни нового порядка")
     document = {
         "schema_version": "1.0",
@@ -162,6 +164,7 @@ def create_patch(job_id: str, variant_id: str, body: PatchRequest, orch: Orch) -
         "base_revision": body.base_revision,
         "slides": body.slides,
         **({"order": body.order} if body.order is not None else {}),
+        **({"template_logo": body.template_logo} if body.template_logo is not None else {}),
     }
     try:
         m.SlidePatch.model_validate(document)
@@ -177,7 +180,14 @@ def create_patch(job_id: str, variant_id: str, body: PatchRequest, orch: Orch) -
             {"violations": errors},
         ) from e
     try:
-        job = orch.submit_patch(job_id, variant_id, body.base_revision, body.slides, body.order)
+        job = orch.submit_patch(
+            job_id,
+            variant_id,
+            body.base_revision,
+            body.slides,
+            body.order,
+            body.template_logo,
+        )
     except NotFound as e:
         raise ApiError(404, "variant_not_found", "Вариант не найден") from e
     return {"patch_job_id": job["job_id"]}

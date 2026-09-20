@@ -132,7 +132,9 @@ def test_groups_and_tone(variety_template: pathlib.Path) -> None:
     заливки слайда с источником; style_key — тон, семейство макета и plain."""
     profile = analyze(variety_template).profile
     TemplateProfile.model_validate(profile)
-    assert profile["schema_version"] == "1.3" and profile["analyzer"]["version"] == "0.2.3"
+    # Версии не вписаны числом: профиль и анализатор меняются вместе с ключом кэша.
+    assert profile["schema_version"] == an.PROFILE_SCHEMA_VERSION
+    assert profile["analyzer"]["version"] == an.ANALYZER_VERSION
     # Группы и тон есть только у образцов шаблона: собственные композиции строятся из
     # дизайн-кода и своего слайда-источника не имеют.
     by_id = {

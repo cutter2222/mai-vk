@@ -734,6 +734,7 @@ class Orchestrator:
         base_revision: int,
         slides: list[JsonDict],
         order: list[str] | None = None,
+        template_logo: str | None = None,
     ) -> JsonDict:
         """Ручные правки из визуального редактора (документ slide_patch): то же задание
         ревизии, что и правка из чата, с видом `patch`, без модели. Правки проверяются
@@ -776,9 +777,14 @@ class Orchestrator:
                 "base_revision": base_revision,
                 "slides": slides,
                 **({"order": order} if order is not None else {}),
+                **({"template_logo": template_logo} if template_logo is not None else {}),
             }
         )
-        if not patch["slides"] and patch.get("order") is None:
+        if (
+            not patch["slides"]
+            and patch.get("order") is None
+            and patch.get("template_logo") is None
+        ):
             raise ConflictError("patch_empty", "В запросе нет ни правок, ни нового порядка")
         from presentation_designer.pipeline.stubs import explicit_plan
 

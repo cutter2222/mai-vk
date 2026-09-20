@@ -223,3 +223,114 @@ def test_vkedu_overrides_deterministic(
         assert title["text"]["computed_style"]["font"]["color"] == "#0077FF"
     ComposedDeck.model_validate(result.deck)
     assert ids(result.deck) == ids(base.deck), "правки не меняют идентификаторы объектов"
+
+def test_vktech_drawn_chart_and_logo_removal(
+    organizer_dir: pathlib.Path,
+    example_package: dict[str, Any],
+    tmp_path: pathlib.Path,
+) -> None:
+    """Две ловушки шаблона VK Tech: диаграмма, нарисованная картинками, и логотип на макетах.
+
+    Первая: слайд-образец 44 — это ряд столбиков из картинок с подписями значений. Заполнять
+    его числами нельзя, высоты нарисованы заранее; на его месте строится нативная диаграмма,
+    а части ряда убираются. Вторая: знак VK лежит на макетах, объекта на слайде нет, и
+    правкой слайда его не снять — снимает флаг колоды `template_logo: drop`.
+    """
+    name = "VK Tech шаблон.pptx"
+    path = organizer_dir / name
+    if not path.exists():
+        pytest.fail(f"нет файла {path}: прогон организаторов не должен пропускаться молча")
+    profile = analyze_template(
+        path,
+        template_id="tpl_org",
+        name=name,
+        size_bytes=path.stat().st_size,
+        render=False,
+        use_vlm=False,
+    ).profile
+    package = {k: v for k, v in example_package.items() if not k.startswith("_")}
+    assets = pathlib.Path(example_package["_assets_dir"])
+    pattern = next(p for p in profile["patterns"] if p.get("chart_parts"))
+    title_slot = next(sl["slot_id"] for sl in pattern["slots"] if sl["kind"] == "title")
+    chart_slot = next(sl["slot_id"] for sl in pattern["slots"] if sl["kind"] == "chart")
+    dataset = package["datasets"][0]
+
+    def plan_with(logo: str) -> dict[str, Any]:
+        return {
+            "schema_version": "1.3",
+            "plan_id": "plan_org",
+            "template_id": profile["template_id"],
+            "package_id": package["package_id"],
+            "story_id": "story_org",
+            "language": "ru",
+            "variant": {"variant_id": "balanced", "axis": "density", "value": "balanced"},
+            "slide_count": {"exact": 1},
+            "template_logo": logo,
+            "slides": [
+                {
+                    "slide_id": "s1",
+                    "order": 1,
+                    "pattern_id": pattern["pattern_id"],
+                    "title": "Динамика",
+                    "blocks": [
+                        {"slot_id": title_slot, "kind": "title", "text": "Динамика"},
+                        {
+                            "slot_id": chart_slot,
+                            "kind": "chart",
+                            "chart": {
+                                "dataset_id": dataset["dataset_id"],
+                                "chart_type": "column",
+                                "category_column": dataset["columns"][0]["name"],
+                                "series_columns": [dataset["columns"][1]["name"]],
+                                "legend": True,
+                            },
+                        },
+                    ],
+                }
+            ],
+            "coverage": {"required_thesis_ids": [], "covered": []},
+            "generation_meta": {"skills": [], "models": []},
+        }
+
+    kept = compose_deck(
+        plan_with("keep"),
+        profile,
+        path,
+        package,
+        out_pptx=tmp_path / "keep.pptx",
+        package_dir=assets,
+    )
+    ComposedDeck.model_validate(kept.deck)
+    slide = kept.deck["slides"][0]
+    charts = [o for o in slide["objects"] if o["kind"] == "chart"]
+    assert len(charts) == 1, "на месте нарисованного ряда одна нативная диаграмма"
+    assert charts[0]["chart"]["built"] == "added"
+    assert charts[0]["bbox"]["width"] >= 0.5, "диаграмма занимает область ряда, а не один столбик"
+    assert not [o for o in slide["objects"] if o["kind"] == "picture"], "столбики-картинки убраны"
+    assert len(slide["removed_object_ids"]) >= len(pattern["chart_parts"])
+
+    logos = [f for f in profile["fixed_elements"] if f["kind"] == "logo"]
+    assert logos, "у шаблона VK Tech знак на макетах"
+
+    def logo_shapes(pptx: pathlib.Path) -> int:
+        prs = Presentation(str(pptx))
+        refs = {str(f["element_ref"]) for f in logos}
+        found = 0
+        for master in prs.slide_masters:
+            for layout in master.slide_layouts:
+                found += sum(1 for sh in iter_shapes(layout) if str(sh.shape_id) in refs)
+        return found
+
+    assert logo_shapes(tmp_path / "keep.pptx") > 0, "с флагом keep знак остаётся"
+    dropped = compose_deck(
+        plan_with("drop"),
+        profile,
+        path,
+        package,
+        out_pptx=tmp_path / "drop.pptx",
+        package_dir=assets,
+    )
+    assert dropped.deck["template_logo"] == "drop"
+    assert dropped.report["counts"].get("logos_removed", 0) > 0
+    assert logo_shapes(tmp_path / "drop.pptx") == 0, "знак снят со всех макетов"
+

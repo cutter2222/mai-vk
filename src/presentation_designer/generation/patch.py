@@ -116,6 +116,8 @@ def normalize_patch(raw: JsonDict) -> JsonDict:
     doc["slides"] = slides_out
     if doc.get("order") is not None:
         doc["order"] = [str(s) for s in doc["order"]]
+    if doc.get("template_logo") not in ("keep", "drop"):
+        doc.pop("template_logo", None)
     return doc
 
 
@@ -236,6 +238,9 @@ def patch_is_noop(patch: JsonDict, plan: JsonDict) -> bool:
         ]
         if [str(s) for s in order] != current_order:
             return False
+    logo = patch.get("template_logo")
+    if logo is not None and str(logo) != str(plan.get("template_logo") or "keep"):
+        return False
     return True
 
 
@@ -334,6 +339,10 @@ def describe_patch(patch: JsonDict, deck: JsonDict | None, plan: JsonDict) -> st
         parts.append(f"{head}: " + "; ".join(items))
     if patch.get("order") is not None:
         parts.append("порядок слайдов изменён")
+    if patch.get("template_logo") == "drop":
+        parts.append("логотип шаблона снят со всей колоды")
+    elif patch.get("template_logo") == "keep":
+        parts.append("логотип шаблона возвращён")
     return " · ".join(parts) if parts else "правок нет"
 
 
@@ -363,7 +372,11 @@ def apply_patch(
             "Документ правок не соответствует схеме: " + "; ".join(errors[:6]),
             details={"violations": errors},
         ) from e
-    if not normalized.get("slides") and normalized.get("order") is None:
+    if (
+        not normalized.get("slides")
+        and normalized.get("order") is None
+        and normalized.get("template_logo") is None
+    ):
         raise PatchError("patch_empty", "в патче нет ни правок, ни нового порядка")
     violations = validate_patch(normalized, plan, deck, profile, package)
     if violations:
@@ -389,6 +402,11 @@ def apply_patch(
             slide.pop("overrides", None)
         slide["revision_note"] = describe_patch({"slides": [entry]}, deck, plan)
         changed.append(slide_id)
+    logo = normalized.get("template_logo")
+    if logo is not None and str(logo) != str(doc.get("template_logo") or "keep"):
+        # Знак шаблона живёт на макетах, а не на слайдах: правка относится ко всей колоде.
+        doc["template_logo"] = str(logo)
+        changed = changed or [str(s["slide_id"]) for s in doc.get("slides") or []][:1]
     order = normalized.get("order")
     if order is not None:
         old_positions = {
@@ -429,6 +447,11 @@ def apply_patch(
             "patch_version": PATCH_VERSION,
             "slides": [str(e["slide_id"]) for e in normalized.get("slides") or []],
             "reordered": normalized.get("order") is not None,
+            **(
+                {"template_logo": str(normalized["template_logo"])}
+                if normalized.get("template_logo") is not None
+                else {}
+            ),
             "changed_slide_ids": list(changed),
             "summary": summary,
         },

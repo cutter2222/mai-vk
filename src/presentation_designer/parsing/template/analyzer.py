@@ -55,7 +55,9 @@ from presentation_designer.shared.settings import Settings, get_settings
 log = logging.getLogger(__name__)
 
 ANALYZER_NAME = "template_analyzer"
-ANALYZER_VERSION = "0.2.3"
+ANALYZER_VERSION = "0.3.0"
+# Версия схемы профиля: пишется в документ и входит в ключ кэша разбора.
+PROFILE_SCHEMA_VERSION = "1.4"
 PREVIEW_DIR = "previews"
 
 
@@ -571,7 +573,7 @@ def _assemble_profile(
         sample_slides.append(entry)
 
     profile: dict[str, Any] = {
-        "schema_version": "1.3",
+        "schema_version": PROFILE_SCHEMA_VERSION,
         "template_id": template_id,
         "template_hash": f"sha256:{sha256}",
         "source_file": {"name": name, "size_bytes": size_bytes, "format": "pptx"},

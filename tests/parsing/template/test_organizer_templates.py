@@ -32,8 +32,19 @@ EXPECTED: dict[str, dict[str, Any]] = {
         "style_guides": set(),
         "native_tables": 0,
         "native_charts": 0,
-        "roles_present": {"title", "thanks", "agenda", "section_divider", "code", "speaker"},
-        "roles_absent": {"table", "chart"},
+        "roles_present": {
+            "title",
+            "thanks",
+            "agenda",
+            "section_divider",
+            "code",
+            "speaker",
+            # Слайд 44 — столбчатая диаграмма, нарисованная картинками: распознаётся целиком
+            # и становится ролью chart с одним слотом на всю область ряда.
+            "chart",
+        },
+        "roles_absent": {"table"},
+        "drawn_charts": 1,
         "font_used": "Play",
         "embedded_fonts": 2,
         "min_patterns": 45,
@@ -143,6 +154,19 @@ def test_organizer_template_profile(organizer_dir: pathlib.Path, name: str) -> N
         assert any(a.get("source_slide_index") == idx for a in profile["assets"]), (
             f"изображения каталога {idx} должны остаться в ресурсах"
         )
+
+    # Нарисованная диаграмма: ряд столбиков из картинок стал одним слотом chart, а части ряда
+    # перечислены в chart_parts — вёрстка уберёт их, построив нативную диаграмму.
+    drawn = [p for p in template_patterns if p.get("chart_parts")]
+    assert len(drawn) == exp.get("drawn_charts", 0), (
+        f"нарисованных диаграмм {len(drawn)}, ожидали {exp.get('drawn_charts', 0)}: "
+        f"{[p['pattern_id'] for p in drawn]}"
+    )
+    for pattern in drawn:
+        chart_slots = [sl for sl in pattern["slots"] if sl["kind"] == "chart"]
+        assert len(chart_slots) == 1, "у нарисованной диаграммы один слот на весь ряд"
+        assert chart_slots[0]["bbox"]["width"] >= 0.3, "слот диаграммы шире одного столбика"
+        assert pattern["role"] == "chart"
 
     roles = {p["role"] for p in template_patterns}
     missing = exp["roles_present"] - roles

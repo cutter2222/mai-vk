@@ -340,6 +340,36 @@ def test_delete_and_add_text(
     ) == ["target_missing", "object_unknown"]
 
 
+def test_template_logo_is_deck_wide(
+    base_plan: dict[str, Any],  # noqa: F811
+    mini_profile: dict[str, Any],  # noqa: F811
+    example_package: dict[str, Any],  # noqa: F811
+) -> None:
+    """Знак шаблона лежит на макетах, поэтому снимается флагом на всю колоду, а не правкой
+    объекта: план получает template_logo, сводка это называет, повтор — уже ничего не меняет."""
+    deck = _deck_for(base_plan)
+    patch = {
+        "job_id": "job_1",
+        "variant_id": "compact",
+        "base_revision": 1,
+        "slides": [],
+        "template_logo": "drop",
+    }
+    assert pt.validate_patch(patch, base_plan, deck, mini_profile, example_package) == []
+    assert not pt.patch_is_noop(patch, base_plan)
+    result = pt.apply_patch(base_plan, patch, deck, mini_profile, example_package)
+    assert result.plan["template_logo"] == "drop"
+    assert "логотип шаблона снят" in result.summary
+    assert result.report["template_logo"] == "drop"
+    # Повтор на новом плане ничего не меняет, а возврат знака — снова правка.
+    assert pt.patch_is_noop(patch, result.plan)
+    back = {**patch, "template_logo": "keep"}
+    assert not pt.patch_is_noop(back, result.plan)
+    assert pt.apply_patch(result.plan, back, deck, mini_profile, example_package).plan[
+        "template_logo"
+    ] == "keep"
+
+
 def test_normalize_and_describe() -> None:
     raw = {
         "slides": [

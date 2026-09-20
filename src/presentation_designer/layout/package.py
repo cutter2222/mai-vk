@@ -96,3 +96,41 @@ __all__ = [
     "update_slide_numbers",
     "used_layout_partnames",
 ]
+
+
+def drop_template_logos(prs: Any, profile: dict[str, Any]) -> int:
+    """Снимает знак шаблона со всех макетов, мастеров и слайдов колоды.
+
+    Логотип шаблона живёт не на слайде, а на макете: в колоде объекта с ним нет, и правкой
+    слайда его не убрать. Другому подразделению чужой знак делает шаблон непригодным, поэтому
+    снимается он целиком по профилю (`fixed_elements` вида `logo`): часть пакета и id объекта
+    известны, остальное — обычное удаление фигуры со снятием осиротевших связей.
+    """
+    from presentation_designer.layout.shapes import remove_shape, shape_element
+
+    by_part: dict[str, set[str]] = {}
+    for item in profile.get("fixed_elements") or []:
+        if str(item.get("kind")) != "logo" or not item.get("element_ref"):
+            continue
+        by_part.setdefault(str(item.get("source_part") or ""), set()).add(str(item["element_ref"]))
+    if not by_part:
+        return 0
+    everywhere = {ref for refs in by_part.values() for ref in refs}
+    removed = 0
+
+    def strip(container: Any, refs: set[str]) -> None:
+        nonlocal removed
+        for ref in sorted(refs):
+            element = shape_element(container, ref)
+            if element is None:
+                continue
+            removed += len(remove_shape(container, element))
+
+    for master in prs.slide_masters:
+        strip(master, by_part.get(str(master.part.partname).lstrip("/"), set()))
+        for layout in master.slide_layouts:
+            strip(layout, by_part.get(str(layout.part.partname).lstrip("/"), set()))
+    # Клон образца сохраняет id объектов, поэтому логотип, попавший на слайд, снимается тоже.
+    for slide in prs.slides:
+        strip(slide, everywhere)
+    return removed
