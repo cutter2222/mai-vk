@@ -1,6 +1,7 @@
-"""Копирует материалы организаторов из docs/ в data/organizers/ и пишет manifest.json с хешами.
+"""Копирует материалы организаторов из local/ в data/organizers/ и пишет manifest.json с хешами.
 
-Исходники в docs/ не перемещаются; data/organizers/ вне Git. Запуск: make organizer-data
+Исходники лежат в local/ — папке, которая целиком вне Git (шаблоны организаторов и ТЗ в
+открытый репозиторий не попадают); data/organizers/ тоже вне Git. Запуск: make organizer-data
 """
 
 from __future__ import annotations
@@ -13,10 +14,10 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SOURCES = [
-    ROOT / "docs" / "Датасет" / "VK Tech шаблон.pptx",
-    ROOT / "docs" / "Датасет" / "VK_WorkSpace_Клиентская_конференция_Шаблон_03.pptx",
-    ROOT / "docs" / "Датасет" / "Шаблон презентации VK Education.pptx",
-    ROOT / "docs" / "ЛЦТ2026 Шаблон презентации.pptx",
+    ROOT / "local" / "Датасет" / "VK Tech шаблон.pptx",
+    ROOT / "local" / "Датасет" / "VK_WorkSpace_Клиентская_конференция_Шаблон_03.pptx",
+    ROOT / "local" / "Датасет" / "Шаблон презентации VK Education.pptx",
+    ROOT / "local" / "ЛЦТ2026 Шаблон презентации.pptx",
 ]
 TARGET = ROOT / "data" / "organizers"
 

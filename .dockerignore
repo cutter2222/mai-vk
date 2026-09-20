@@ -9,8 +9,10 @@ __pycache__
 node_modules
 frontend
 docs
+local
 data
 artifacts
+backups
 runs
 deploy
 examples/*
