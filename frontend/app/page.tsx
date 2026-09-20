@@ -1,7 +1,7 @@
 "use client";
 
-import { Button, Container, Group, Modal, SimpleGrid, Stack, Text, TextInput, Title } from "@mantine/core";
-import { IconPlus, IconPresentation } from "@tabler/icons-react";
+import { Button, Container, Group, Modal, SimpleGrid, Text, TextInput, Title } from "@mantine/core";
+import { IconPlus } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -42,26 +42,29 @@ export default function ProjectsPage() {
   return (
     <div className="page-surface">
       <Container size="xl" py="xl">
-        <Group justify="space-between" align="flex-end" mb="lg">
-          <div>
-            <Title order={2} style={{ letterSpacing: "-0.02em" }}>Мои презентации</Title>
-            <Text c="dimmed" size="sm" mt={4}>Каждый проект — одна презентация: шаблон, содержание, три варианта вёрстки и аудит.</Text>
-          </div>
-          <Button leftSection={<IconPlus size={16} />} onClick={() => void create()} loading={creating} data-testid="new-project">Новая презентация</Button>
-        </Group>
+        {/* Создание — первой карточкой в сетке, поэтому отдельной кнопки в шапке нет:
+            одно действие, один вход. */}
+        <Title order={1} style={{ letterSpacing: "-0.03em" }} mb={28}>Презентации</Title>
 
+        {/* Отдельного пустого экрана нет: карточка создания и так первая в сетке, а вторая
+            кнопка «создать первую» была тем же действием в другом месте. */}
         {loaded && projects.length === 0 ? (
-          <Stack align="center" gap="sm" py={80} data-testid="projects-empty">
-            <IconPresentation size={48} stroke={1.2} color="var(--mantine-color-gray-5)" />
-            <Title order={4}>Пока нет ни одной презентации</Title>
-            <Text c="dimmed" size="sm" ta="center" maw={420}>Создайте проект, загрузите фирменный шаблон и материалы: сервис соберёт презентацию в трёх вариантах и проверит её по правилам шаблона.</Text>
-            <Button mt="sm" leftSection={<IconPlus size={16} />} onClick={() => void create()} loading={creating}>Создать первую презентацию</Button>
-          </Stack>
-        ) : (
+          <Text c="dimmed" size="sm" mb="lg" data-testid="projects-empty" maw={560}>
+            Пока пусто. Создайте презентацию, бросьте в чат фирменный шаблон и материалы —
+            сервис соберёт её в трёх вариантах вёрстки и проверит по правилам шаблона.
+          </Text>
+        ) : null}
+        {loaded || projects.length ? (
           <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing="lg" data-testid="projects-grid">
-            <button type="button" className="grid-card-new" onClick={() => void create()} data-testid="new-project-card">
-              <IconPlus size={28} stroke={1.5} />
-              <Text size="sm" fw={500}>Новая презентация</Text>
+            <button
+              type="button"
+              className="grid-card-new"
+              onClick={() => void create()}
+              disabled={creating}
+              data-testid="new-project"
+            >
+              <IconPlus size={26} stroke={1.6} />
+              <Text size="sm" fw={600}>Новая презентация</Text>
             </button>
             {projects.map((p) => (
               <ProjectCard
@@ -73,7 +76,7 @@ export default function ProjectsPage() {
               />
             ))}
           </SimpleGrid>
-        )}
+        ) : null}
       </Container>
 
       <Modal opened={renaming !== null} onClose={() => setRenaming(null)} title="Переименовать презентацию" centered>

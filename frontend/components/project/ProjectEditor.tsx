@@ -1,6 +1,6 @@
 "use client";
 
-import { ActionIcon, Button, Group, Indicator, Modal, Stack, Tabs, Text, Tooltip } from "@mantine/core";
+import { Button, Group, Modal, Stack, Tabs, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconFolder, IconMessage, IconX } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
@@ -143,8 +143,8 @@ export function ProjectEditor({ project }: { project: Project }) {
   };
 
   const TABS: Array<{ key: Tab; label: string; icon: React.ReactNode; badge?: number }> = [
-    { key: "chat", label: "Чат", icon: <IconMessage size={20} stroke={1.6} /> },
-    { key: "files", label: "Файлы проекта", icon: <IconFolder size={20} stroke={1.6} />, badge: project.files.length },
+    { key: "chat", label: "Чат", icon: <IconMessage size={16} stroke={1.7} /> },
+    { key: "files", label: "Файлы", icon: <IconFolder size={16} stroke={1.7} />, badge: project.files.length },
   ];
 
   return (
@@ -157,31 +157,27 @@ export function ProjectEditor({ project }: { project: Project }) {
         onUploadTemplate={(file) => void chat.addTemplate(file)}
       />
       <div className="editor-body">
-        <nav className="editor-rail" aria-label="Разделы проекта">
-          {TABS.map((t) => {
-            const button = (
-              <ActionIcon
-                variant={tab === t.key ? "light" : "subtle"}
-                color="gray"
-                size="lg"
-                style={tab === t.key ? { color: "var(--mantine-color-graphite-8)" } : undefined}
+        {/* Разделы панели переехали с вертикального рельса в её же шапку: рельс занимал
+            колонку ради двух кнопок и добавлял четвёртый слой хрома на экран. */}
+        <aside className="editor-panel">
+          <div className="editor-panel-tabs" role="tablist" aria-label="Разделы проекта">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                className="panel-tab"
+                data-active={tab === t.key || undefined}
+                aria-selected={tab === t.key}
                 onClick={() => setTab(t.key)}
-                aria-label={t.label}
-                aria-current={tab === t.key ? "page" : undefined}
                 data-testid={`tab-${t.key}`}
               >
                 {t.icon}
-              </ActionIcon>
-            );
-            return (
-              <Tooltip key={t.key} label={t.label} position="right">
-                {t.badge ? <Indicator label={t.badge} size={16} color="graphite" offset={4}>{button}</Indicator> : button}
-              </Tooltip>
-            );
-          })}
-        </nav>
-
-        <aside className="editor-panel">
+                <span>{t.label}</span>
+                {t.badge ? <b>{t.badge}</b> : null}
+              </button>
+            ))}
+          </div>
           {tab === "chat" ? (
             <ChatPanel ctx={ctx} onSend={chat.send} onAttach={chat.attach} staged={chat.staged} onAnswerStaged={chat.answerStaged} />
           ) : (
@@ -198,7 +194,6 @@ export function ProjectEditor({ project }: { project: Project }) {
             templateDetail={template.data}
             templateError={template.error}
             onChoose={(variantId) => patch({ chosen_variant: variantId })}
-            onOpenTemplateTab={() => setTab("chat")}
           />
         </section>
       </div>

@@ -109,7 +109,8 @@ export function AuditPanel({ report, loading, stale, selected, activeIssue, onTo
                             aria-label="Выбрать для исправления"
                             data-testid={`issue-check-${issue.issue_id}`}
                           />
-                          <div style={{ flex: 1 }}>
+                          {/* minWidth: 0 — иначе длинная строка находки не переносится, а вылезает за край панели. */}
+                          <div style={{ flex: 1, minWidth: 0 }}>
                             <Group gap={6} mb={2} wrap="nowrap">
                               <span aria-hidden style={{ width: 7, height: 7, borderRadius: "50%", background: `var(--mantine-color-${SEVERITY_COLOR[issue.severity]}-6)`, flex: "0 0 auto" }} />
                               <Text size="xs" fw={600}>{SEVERITY_LABELS[issue.severity]}</Text>

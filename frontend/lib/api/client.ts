@@ -23,6 +23,16 @@ export interface HealthResponse {
   valkey_ok: boolean;
   renderer_ok: boolean;
   version: string;
+  /** Какие слои работают по-настоящему, а какие пока заглушки. */
+  execution_mode?: { mode: "real" | "mixed" | "stub"; layers: Record<string, string> };
+  /** Провайдер модели и роли: что именно отвечает за текст и за картинки. */
+  provider?: {
+    name: string;
+    host?: string;
+    configured: boolean;
+    probed?: boolean;
+    roles?: Record<string, { model?: string; reasoning?: string; verified?: boolean }>;
+  };
 }
 
 export interface CapabilitiesResponse {
@@ -158,6 +168,16 @@ export const api = {
     get: (id: string) => request<TemplateDetail>(`/templates/${encodeURIComponent(id)}`),
     /** Шаблон из уже загруженного файла проекта: байты второй раз не пересылаются. */
     upload: (fileId: string) => request<{ template_id: string; job_id: string; cached: boolean }>("/templates", json({ file_id: fileId })),
+    /** Шаблон прямо из файла: библиотека пополняется без захода в проект. */
+    uploadFile: (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      return request<{ template_id: string; job_id: string; cached: boolean }>("/templates", {
+        method: "POST",
+        body: form,
+        headers: mockFilesHeader([file]),
+      });
+    },
     /** Убирает шаблон из библиотеки; проекты, которые им пользовались, остаются без шаблона. */
     delete: (id: string) => request<void>(`/templates/${encodeURIComponent(id)}`, { method: "DELETE" }),
     assetUrl: (id: string, name: string) => `${API_BASE}/templates/${encodeURIComponent(id)}/assets/${name}`,

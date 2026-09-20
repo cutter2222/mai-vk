@@ -105,7 +105,7 @@ export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged }: Pro
         {target && (
           <Group gap={6} mb={8} data-testid="slide-target">
             <Badge
-              color="graphite"
+              color="ink"
               variant="light"
               size="sm"
               leftSection={<IconSlideshow size={11} />}
@@ -155,7 +155,7 @@ export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged }: Pro
         {blocked ? (
           <Text size="xs" c="orange" mt={6} data-testid="chat-draft-hint">Сначала примените или отмените правки на слайде: черновик редактора ждёт решения.</Text>
         ) : (
-          <Text size="xs" c="dimmed" mt={6}>Enter — отправить, Shift+Enter — новая строка. Файлы можно бросать в чат.</Text>
+          <Text size="xs" c="dimmed" mt={6}>Enter — отправить, Shift+Enter — перенос строки</Text>
         )}
       </div>
     </Dropzone>
@@ -173,7 +173,7 @@ function renderMessage(m: ChatMessage, ctx: CardContext) {
           </Group>
         )}
         {m.slide_ref && (
-          <Badge color="graphite" variant="light" size="sm" leftSection={<IconSlideshow size={11} />} data-testid="msg-slide-ref">
+          <Badge color="ink" variant="light" size="sm" leftSection={<IconSlideshow size={11} />} data-testid="msg-slide-ref">
             к слайду {m.slide_ref.slide_index + 1} · {VARIANT_LABELS[m.slide_ref.variant_id] ?? m.slide_ref.variant_id}
           </Badge>
         )}

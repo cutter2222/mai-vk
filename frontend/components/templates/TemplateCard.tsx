@@ -20,7 +20,12 @@ export function TemplateCard({ item, onOpen, onDelete }: Props) {
   const analyzing = item.status === "queued" || item.status === "running";
   const tone = item.status === "succeeded" ? "ok" : item.status === "failed" ? "bad" : "warn";
   const statusLabel = item.status === "succeeded" ? "Разобран" : item.status === "failed" ? "Анализ не удался" : "Анализируется";
-  const meta = [item.slide_count ? `${item.slide_count} слайдов` : null, item.pattern_count ? `${item.pattern_count} композиций` : null, formatDate(item.created_at)].filter(Boolean).join(" · ");
+  const meta = [
+    item.slide_count ? `${item.slide_count} слайдов` : null,
+    item.pattern_count ? `${item.pattern_count} композиций` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <div className="grid-card" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => e.key === "Enter" && onOpen()} data-testid={`template-card-${item.template_id}`}>
@@ -47,10 +52,11 @@ export function TemplateCard({ item, onOpen, onDelete }: Props) {
       </div>
       <div className="grid-card-body">
         <Text fw={600} size="sm" truncate title={item.name}>{templateTitle(item.name)}</Text>
-        <Group gap={6} wrap="nowrap" mt={4} style={{ minWidth: 0 }}>
+        <Group gap={6} wrap="nowrap" mt={5} style={{ minWidth: 0 }}>
           <span className="quiet-status" data-tone={tone} style={{ fontSize: 12 }} data-testid={`template-status-${item.status}`}><i />{statusLabel}</span>
           {meta && <Text size="xs" c="dimmed" truncate>· {meta}</Text>}
         </Group>
+        <Text size="xs" c="dimmed" mt={2}>{formatDate(item.created_at)}</Text>
       </div>
     </div>
   );

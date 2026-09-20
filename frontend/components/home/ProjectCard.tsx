@@ -16,7 +16,12 @@ interface Props {
 /** Карточка проекта: состояние задания, миниатюра, шаблон и дата приходят из списка проектов с сервера. */
 export function ProjectCard({ item, onOpen, onRename, onDelete }: Props) {
   const src = item.thumbnail_url ? item.thumbnail_url.replace(/^\/api/, API_BASE) : null;
-  const meta = [item.template_name?.replace(/\.pptx$/i, "") ?? "шаблон не выбран", item.slide_count ? `${item.slide_count} слайдов` : null, formatDate(item.updated_at)].filter(Boolean).join(" · ");
+  const meta = [
+    item.template_name?.replace(/\.pptx$/i, "") ?? "шаблон не выбран",
+    item.slide_count ? `${item.slide_count} слайдов` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const status = item.job_status ?? (item.job_id ? "queued" : null);
   const tone = status === "succeeded" ? "ok" : status === "needs_review" ? "warn" : status === "failed" || status === "canceled" ? "bad" : undefined;
   const statusLabel = status ? (STATUS_LABELS[status] ?? status) : "Черновик";
@@ -48,10 +53,11 @@ export function ProjectCard({ item, onOpen, onRename, onDelete }: Props) {
       </div>
       <div className="grid-card-body">
         <Text fw={600} size="sm" truncate title={item.title}>{item.title}</Text>
-        <Group gap={6} wrap="nowrap" mt={4} style={{ minWidth: 0 }}>
+        <Group gap={6} wrap="nowrap" mt={5} style={{ minWidth: 0 }}>
           <span className="quiet-status" data-tone={tone} style={{ fontSize: 12 }} data-testid={status ? `status-${status}` : undefined}><i />{statusLabel}</span>
           <Text size="xs" c="dimmed" truncate>· {meta}</Text>
         </Group>
+        <Text size="xs" c="dimmed" mt={2}>{formatDate(item.updated_at)}</Text>
       </div>
     </div>
   );

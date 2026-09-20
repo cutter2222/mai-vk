@@ -1,7 +1,7 @@
 "use client";
 
-import { ActionIcon, Alert, Anchor, Button, Container, Group, Loader, Progress, Stack, Tabs, Text, Title, Tooltip } from "@mantine/core";
-import { IconAlertTriangle, IconArrowLeft, IconExternalLink, IconTrash } from "@tabler/icons-react";
+import { ActionIcon, Alert, Button, Container, Loader, Menu, Progress, Stack, Text, Title, Tooltip } from "@mantine/core";
+import { IconAlertTriangle, IconArrowLeft, IconDots, IconExternalLink, IconLayoutBoard, IconLayoutGrid, IconListDetails, IconPalette, IconTrash } from "@tabler/icons-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -12,8 +12,9 @@ import { usePolling } from "@/lib/api/usePolling";
 import { formatBytes, formatDate } from "@/lib/format";
 
 import { DeleteTemplateModal } from "./DeleteTemplateModal";
+import { DesignCodeSection } from "./sections/DesignCodeSection";
 import { DesignSystemSection } from "./sections/DesignSystemSection";
-import { DigestSection, JsonSection } from "./sections/DigestSection";
+import { DigestSection } from "./sections/DigestSection";
 import { PatternsSection } from "./sections/PatternsSection";
 import { SlidesSection } from "./sections/SlidesSection";
 import { StructureSection } from "./sections/StructureSection";
@@ -22,12 +23,18 @@ import { templateTitle } from "./TemplateCard";
 const DONE = new Set(["succeeded", "failed"]);
 
 /** Карточка шаблона: что извлёк анализ, по вкладкам. Пока анализ идёт, страница опрашивает сервер. */
+type Section = "style" | "slides" | "patterns" | "details";
+
 export function TemplateDetail({ templateId }: { templateId: string }) {
   const router = useRouter();
   const detail = usePolling<Detail>(() => api.templates.get(templateId), (d) => DONE.has(d.status), [templateId]);
   const [deleting, setDeleting] = useState(false);
+  const [section, setSection] = useState<Section>("style");
   const data = detail.data;
   const profile = data?.profile;
+  // Собственные композиции библиотеки приходят в профиле рядом с паттернами файла
+  // (source.kind = "builtin"). Здесь показывается только то, что извлечено из загрузки.
+  const templatePatterns = (profile?.patterns ?? []).filter((p) => p.source?.kind !== "builtin");
 
   if (detail.error && !data) {
     const missing = detail.error instanceof ApiError && detail.error.status === 404;
@@ -50,67 +57,105 @@ export function TemplateDetail({ templateId }: { templateId: string }) {
   }
 
   const meta = profile
-    ? [`${profile.stats.slides} слайдов в файле`, `${profile.patterns.length} композиций`, `${profile.layouts.length} макетов`, `${profile.assets.length} ресурсов`, formatBytes(profile.source_file.size_bytes), profile.created_at ? formatDate(profile.created_at) : null].filter(Boolean).join(" · ")
+    ? [`${profile.stats.slides} слайдов`, formatBytes(profile.source_file.size_bytes), profile.created_at ? formatDate(profile.created_at) : null].filter(Boolean).join(" · ")
     : null;
 
+  /* Разделы по делу, а не по устройству разбора. Раньше их было шесть, и они назывались
+     внутренними понятиями («макеты и ресурсы», «для модели», «подробности разбора») — читалось
+     как приборная панель. Осталось три: как выглядит, из чего состоит, чем можно верстать.
+     Технические подробности собраны в четвёртый, служебный. */
+  const SECTIONS: Array<{ key: Section; label: string; icon: React.ReactNode; count?: number }> = [
+    { key: "style", label: "Стиль", icon: <IconPalette size={16} stroke={1.7} /> },
+    {
+      key: "slides",
+      label: "Слайды",
+      icon: <IconLayoutGrid size={16} stroke={1.7} />,
+      count: profile?.sample_slides?.length ?? data?.previews.length,
+    },
+    { key: "patterns", label: "Композиции", icon: <IconLayoutBoard size={16} stroke={1.7} />, count: templatePatterns.length },
+    { key: "details", label: "Разбор", icon: <IconListDetails size={16} stroke={1.7} /> },
+  ];
+
   return (
-    <div className="page-surface">
-      <Container size="xl" py="xl">
-        <Group justify="space-between" align="flex-start" mb="lg" wrap="nowrap" data-testid="template-detail">
-          <Group gap="sm" wrap="nowrap" align="flex-start" style={{ minWidth: 0 }}>
-            <Tooltip label="К библиотеке">
-              <ActionIcon component={Link} href="/templates" variant="subtle" color="gray" aria-label="К библиотеке шаблонов" mt={4} data-testid="back-templates">
-                <IconArrowLeft size={18} />
-              </ActionIcon>
-            </Tooltip>
-            <div style={{ minWidth: 0 }}>
-              <Group gap="sm" wrap="nowrap">
-                <Title order={2} style={{ letterSpacing: "-0.02em" }} lineClamp={1} title={data.name}>{templateTitle(data.name)}</Title>
-                <StatusBadge status={data.status === "succeeded" ? "ready" : data.status} />
-              </Group>
-              <Text c="dimmed" size="sm" mt={4}>{meta ?? (data.status === "failed" ? "Профиль не собран." : "Профиль появится, когда закончится анализ.")}</Text>
-            </div>
-          </Group>
-          <Group gap="xs" wrap="nowrap" style={{ flex: "0 0 auto" }}>
-            <Anchor href={api.templates.detailUrl(templateId)} target="_blank" rel="noreferrer" size="sm" c="dimmed"><Group gap={4} wrap="nowrap"><IconExternalLink size={14} />JSON</Group></Anchor>
-            <Button variant="default" size="xs" color="red" leftSection={<IconTrash size={14} />} onClick={() => setDeleting(true)} data-testid="template-delete">Удалить</Button>
-          </Group>
-        </Group>
+    <div className="tpl-page" data-testid="template-detail">
+      <header className="tpl-head">
+        <Tooltip label="К библиотеке">
+          <ActionIcon component={Link} href="/templates" variant="subtle" color="gray" aria-label="К библиотеке шаблонов" data-testid="back-templates">
+            <IconArrowLeft size={18} />
+          </ActionIcon>
+        </Tooltip>
+        <Text fw={600} fz={15} lineClamp={1} title={data.name}>{templateTitle(data.name)}</Text>
+        <StatusBadge status={data.status === "succeeded" ? "ready" : data.status} />
+        <Text size="xs" c="dimmed" lineClamp={1} className="tpl-meta">{meta}</Text>
+        <div style={{ flex: 1 }} />
+        {/* JSON и удаление в ТЗ не требуются: это наши функции, поэтому они в меню. */}
+        <Menu withinPortal position="bottom-end" shadow="md">
+          <Menu.Target>
+            <ActionIcon variant="subtle" color="gray" aria-label="Действия с шаблоном" data-testid="template-actions">
+              <IconDots size={18} />
+            </ActionIcon>
+          </Menu.Target>
+          <Menu.Dropdown>
+            <Menu.Item component="a" href={api.templates.detailUrl(templateId)} target="_blank" rel="noreferrer" leftSection={<IconExternalLink size={14} />}>
+              JSON профиля
+            </Menu.Item>
+            <Menu.Item color="red" leftSection={<IconTrash size={14} />} onClick={() => setDeleting(true)} data-testid="template-delete">
+              Удалить из библиотеки
+            </Menu.Item>
+          </Menu.Dropdown>
+        </Menu>
+      </header>
 
-        {data.status === "failed" && (
-          <Alert color="red" icon={<IconAlertTriangle size={16} />} title="Анализ не удался" mb="lg" data-testid="template-failed">
-            {data.error?.message ?? "Сервер не сообщил причину."}{data.error?.code ? ` (${data.error.code})` : ""} Загрузите файл в проект ещё раз: шаблон будет разобран заново.
+      {data.status === "failed" ? (
+        <div className="tpl-single">
+          <Alert color="red" icon={<IconAlertTriangle size={16} />} title="Анализ не удался" data-testid="template-failed" maw={620}>
+            {data.error?.message ?? "Сервер не сообщил причину."}{data.error?.code ? ` (${data.error.code})` : ""} Загрузите файл ещё раз: шаблон будет разобран заново.
           </Alert>
-        )}
-
-        {!profile && data.status !== "failed" && (
-          <Stack align="center" gap="xs" py={80} data-testid="template-analyzing">
+        </div>
+      ) : !profile ? (
+        <div className="tpl-single">
+          <Stack align="center" gap="xs" data-testid="template-analyzing">
             <Loader size="sm" />
             <Text fw={600}>Шаблон анализируется</Text>
             <Progress value={65} animated size="sm" w={260} />
-            <Text size="sm" c="dimmed" ta="center" maw={440}>Рендерим слайды, классифицируем образцы, собираем палитру, шрифты и композиции. Страница обновится сама.</Text>
+            <Text size="sm" c="dimmed" ta="center" maw={420}>Рендерим слайды, собираем палитру, шрифты и композиции. Страница обновится сама.</Text>
           </Stack>
-        )}
+        </div>
+      ) : (
+        <div className="tpl-body">
+          <nav className="tpl-nav" aria-label="Разделы шаблона">
+            {SECTIONS.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                className="tpl-nav-item"
+                data-active={section === item.key || undefined}
+                onClick={() => setSection(item.key)}
+                data-testid={`section-${item.key}`}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+                {item.count ? <b>{item.count}</b> : null}
+              </button>
+            ))}
+          </nav>
 
-        {profile && (
-          <Tabs defaultValue="patterns" keepMounted={false} data-testid="template-tabs">
-            <Tabs.List mb="lg">
-              <Tabs.Tab value="patterns">Композиции · {profile.patterns.length}</Tabs.Tab>
-              <Tabs.Tab value="slides">Слайды файла · {profile.sample_slides?.length ?? data.previews.length}</Tabs.Tab>
-              <Tabs.Tab value="design">Дизайн-система</Tabs.Tab>
-              <Tabs.Tab value="structure">Макеты и ресурсы</Tabs.Tab>
-              <Tabs.Tab value="digest">Для модели{profile.warnings?.length ? ` · ${profile.warnings.length} ⚠` : ""}</Tabs.Tab>
-              <Tabs.Tab value="json">JSON</Tabs.Tab>
-            </Tabs.List>
-            <Tabs.Panel value="patterns"><PatternsSection templateId={templateId} profile={profile} /></Tabs.Panel>
-            <Tabs.Panel value="slides"><SlidesSection templateId={templateId} profile={profile} previews={data.previews} /></Tabs.Panel>
-            <Tabs.Panel value="design"><DesignSystemSection profile={profile} /></Tabs.Panel>
-            <Tabs.Panel value="structure"><StructureSection profile={profile} /></Tabs.Panel>
-            <Tabs.Panel value="digest"><DigestSection profile={profile} /></Tabs.Panel>
-            <Tabs.Panel value="json"><JsonSection templateId={templateId} profile={profile} /></Tabs.Panel>
-          </Tabs>
-        )}
-      </Container>
+          <main className="tpl-content">
+            {section === "style" && <DesignCodeSection profile={profile} />}
+            {section === "slides" && <SlidesSection templateId={templateId} profile={profile} previews={data.previews} />}
+            {section === "patterns" && (
+              <PatternsSection templateId={templateId} profile={{ ...profile, patterns: templatePatterns }} />
+            )}
+            {section === "details" && (
+              <Stack gap={44}>
+                <DesignSystemSection profile={profile} />
+                <StructureSection profile={profile} />
+                <DigestSection profile={profile} />
+              </Stack>
+            )}
+          </main>
+        </div>
+      )}
 
       <DeleteTemplateModal target={deleting ? { template_id: templateId, name: data.name } : null} onClose={() => setDeleting(false)} onDeleted={() => router.push("/templates")} />
     </div>

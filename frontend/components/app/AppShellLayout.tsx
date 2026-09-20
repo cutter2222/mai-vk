@@ -1,31 +1,62 @@
 "use client";
 
-import { AppShell, Group, Text, Tooltip, UnstyledButton } from "@mantine/core";
+import { AppShell, Container, Group, Text, UnstyledButton } from "@mantine/core";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 import { HealthIndicator } from "./HealthIndicator";
+import { Logo } from "./Logo";
 
 const NAV = [
   { href: "/", label: "Презентации", match: (p: string) => p === "/" || p.startsWith("/project") },
   { href: "/templates", label: "Шаблоны", match: (p: string) => p.startsWith("/templates") },
 ];
 
+/**
+ * Шапка приложения: знак, два раздела, состояние сервиса. На экране проекта не рисуется —
+ * там своя шапка, и две строки подряд были бы лишним слоем.
+ *
+ * Витрина дизайн-системы интерфейса живёт по адресу /design и в навигацию не вынесена:
+ * это служебная страница для разработки, а не раздел продукта.
+ *
+ * По правилу «no clutter in the chrome» здесь нет ничего, на что нельзя нажать.
+ * Режим API больше не висит отдельной плашкой: в рабочем режиме она сообщала то, что и так
+ * норма, а в режиме заглушек об этом говорит индикатор состояния.
+ */
 export function AppShellLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
-  const mock = process.env.NEXT_PUBLIC_API_MODE === "mock";
+  const openedId = useSearchParams()?.get("id");
+  // Внутри открытой сущности разделов нет: человек работает с презентацией или разбирает
+  // шаблон, а не ходит по библиотеке. У обоих экранов своя шапка с возвратом и действиями,
+  // и вторая строка над ней была бы лишним слоем.
+  const bare = pathname.startsWith("/project") || (pathname.startsWith("/templates") && !!openedId);
+  if (bare) {
+    return (
+      <AppShell padding={0}>
+        <AppShell.Main>{children}</AppShell.Main>
+      </AppShell>
+    );
+  }
   return (
-    <AppShell header={{ height: 56 }} padding={0} withBorder>
-      <AppShell.Header style={{ background: "var(--mantine-color-body)", borderColor: "var(--mantine-color-gray-2)" }}>
-        <Group h="100%" px="lg" justify="space-between" wrap="nowrap">
-          <Group gap={28} wrap="nowrap">
-            <Link href="/" style={{ textDecoration: "none", color: "inherit" }}>
-              <Group gap={8} wrap="nowrap">
-                <span aria-hidden style={{ display: "inline-block", width: 18, height: 12, borderRadius: 3, background: "var(--mantine-color-graphite-8)" }} />
-                <Text fw={600} style={{ whiteSpace: "nowrap", letterSpacing: "-0.01em" }}>Дизайнер презентаций</Text>
-              </Group>
+    <AppShell header={{ height: 60 }} padding={0}>
+      <AppShell.Header
+        style={{ background: "var(--page)", borderBottom: "1px solid var(--line)" }}
+      >
+        {/* Шапка живёт в той же сетке, что и содержимое страниц: знак слева стоит ровно под
+            заголовком экрана, а состояние справа — под правым краем сетки карточек. Раньше
+            у шапки были свои отступы, и она не совпадала с контентом. */}
+        <Container size="xl" h="100%" px="md">
+          <Group h="100%" justify="space-between" wrap="nowrap">
+          <Group gap={24} wrap="nowrap">
+            {/* Знак без подписи: название сервиса не соревнуется с заголовком экрана. */}
+            <Link
+              href="/"
+              aria-label="Дизайнер презентаций — к списку"
+              style={{ display: "inline-flex", textDecoration: "none" }}
+            >
+              <Logo />
             </Link>
-            <Group gap={2}>
+            <Group gap={4}>
               {NAV.map((n) => {
                 const active = n.match(pathname);
                 return (
@@ -33,27 +64,23 @@ export function AppShellLayout({ children }: { children: React.ReactNode }) {
                     key={n.href}
                     component={Link}
                     href={n.href}
-                    px="sm"
-                    py={6}
-                    style={{ borderRadius: "var(--mantine-radius-sm)", background: active ? "var(--mantine-color-gray-1)" : undefined }}
-                    data-testid={`nav-${n.href === "/" ? "home" : "templates"}`}
+                    px={12}
+                    py={7}
+                    className="nav-link"
+                    data-active={active || undefined}
+                    data-testid={`nav-${n.href === "/" ? "home" : n.href.slice(1)}`}
                   >
-                    <Text size="sm" fw={500} c={active ? undefined : "dimmed"}>{n.label}</Text>
+                    <Text size="sm" fw={active ? 600 : 500} inherit>
+                      {n.label}
+                    </Text>
                   </UnstyledButton>
                 );
               })}
             </Group>
           </Group>
-          <Group gap="lg" wrap="nowrap">
-            <Tooltip label={mock ? "Интерфейс работает на данных-заглушках; слои генерации подключаются по этапам" : "Интерфейс обращается к настоящему API"}>
-              <span className="quiet-status" data-tone={mock ? "warn" : "ok"} data-testid="mode-badge">
-                <i />
-                {mock ? "Режим заглушек" : "Рабочий режим"}
-              </span>
-            </Tooltip>
             <HealthIndicator />
           </Group>
-        </Group>
+        </Container>
       </AppShell.Header>
       <AppShell.Main>{children}</AppShell.Main>
     </AppShell>

@@ -57,11 +57,12 @@ export function PatternsSection({ templateId, profile }: Props) {
         {shown.map((p) => (
           <button key={p.pattern_id} type="button" className="sample-card" onClick={() => setSelected(p)} data-testid={`pattern-card-${p.pattern_id}`}>
             <SlideImage src={src(p)} alt={p.name ?? p.role} />
-            <Group gap={4} mt={6} wrap="nowrap">
+            {/* Имя — своей строкой: в ряду с бейджами оно резалось до «Титульный · Title Sl…». */}
+            <Text size="xs" fw={500} mt={8} truncate title={p.name}>{p.name ?? p.pattern_id}</Text>
+            <Group gap={4} mt={4} wrap="wrap">
               <Badge size="xs" variant="light">{PATTERN_ROLE_LABELS[p.role] ?? p.role}</Badge>
               <ToneBadge pattern={p} />
               <GroupBadge pattern={p} count={groupSizes[p.group_id ?? ""] ?? 0} />
-              <Text size="xs" truncate title={p.name}>{p.name ?? p.pattern_id}</Text>
             </Group>
             <Text size="xs" c="dimmed">{p.slots.length} слотов · уверенность {percent(p.confidence)}{p.source.slide_index != null ? ` · слайд ${p.source.slide_index}` : ""}</Text>
           </button>

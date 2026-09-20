@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, Button, Group, SimpleGrid, Stack, Table, Text } from "@mantine/core";
+import { Badge, Button, Group, Stack, Table, Text } from "@mantine/core";
 import { useState } from "react";
 
 import type { TemplateProfile } from "@/lib/api/types";
@@ -32,8 +32,8 @@ export function StructureSection({ profile }: { profile: TemplateProfile }) {
   const shownAssets = allAssets ? assets : assets.slice(0, ASSETS_PREVIEW);
 
   return (
-    <Stack gap="xl">
-      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xl">
+    <Stack gap={28}>
+      <Stack gap={28}>
         <Section title="Файл" testId="structure-stats">
           <KeyValues rows={[...STAT_LABELS.filter(([k]) => profile.stats[k] != null).map(([k, label]) => [label, formatNumber(profile.stats[k] as number)] as [string, React.ReactNode]), ["Размер слайда", `${formatNumber(profile.slide_size.width_emu)} × ${formatNumber(profile.slide_size.height_emu)} EMU · ${profile.slide_size.aspect_ratio.toFixed(2)}:1`]]} />
         </Section>
@@ -44,7 +44,7 @@ export function StructureSection({ profile }: { profile: TemplateProfile }) {
             <Text size="sm" c="dimmed">Сведений о мастерах нет.</Text>
           )}
         </Section>
-      </SimpleGrid>
+      </Stack>
 
       <Section title="Макеты" aside={<Text size="xs" c="dimmed">{profile.layouts.length}</Text>} testId="structure-layouts">
         <div style={{ overflowX: "auto" }}>

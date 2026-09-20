@@ -8,6 +8,7 @@ import "@fontsource/play/700.css";
 import "./globals.css";
 
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { ColorSchemeScript, mantineHtmlProps } from "@mantine/core";
 
 import { AppProviders } from "@/components/app/AppProviders";
@@ -26,7 +27,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       </head>
       <body>
         <AppProviders>
-          <AppShellLayout>{children}</AppShellLayout>
+          <Suspense>
+            <AppShellLayout>{children}</AppShellLayout>
+          </Suspense>
         </AppProviders>
       </body>
     </html>

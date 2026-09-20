@@ -33,12 +33,12 @@ export function VariantCard({ jobId, variant, slideIndex, selected, chosen, onSe
     }
   };
   const thumbs = variant.artifacts?.thumbnails ?? [];
-  const thumb = thumbs[Math.min(slideIndex, thumbs.length - 1)];
+  const thumb = thumbs.find((t) => t.slide_index === slideIndex) ?? thumbs[Math.min(slideIndex, thumbs.length - 1)];
   const filesReady = Boolean(variant.artifacts?.pptx);
   const auditRunning = variant.audit?.status === "running" || variant.audit?.status === "pending";
 
   return (
-    <Card padding="sm" style={{ borderColor: selected ? "var(--mantine-color-graphite-8)" : undefined, cursor: "pointer" }} onClick={onSelect} data-testid={`variant-card-${variant.variant_id}`}>
+    <Card padding="sm" style={{ borderColor: selected ? "var(--ink)" : undefined, cursor: "pointer" }} onClick={onSelect} data-testid={`variant-card-${variant.variant_id}`}>
       <Stack gap="xs">
         <Group justify="space-between" wrap="nowrap">
           <Group gap="xs">

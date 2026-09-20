@@ -23,7 +23,7 @@ async function copy(text: string, what: string): Promise<void> {
 /** Что уходит в модель: дайджест профиля, предупреждения анализа и версии. */
 export function DigestSection({ profile }: { profile: TemplateProfile }) {
   return (
-    <Stack gap="xl">
+    <Stack gap={28}>
       <Section title="Анализ" testId="digest-meta">
         <KeyValues
           rows={[

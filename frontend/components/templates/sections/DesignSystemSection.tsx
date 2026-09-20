@@ -1,79 +1,24 @@
 "use client";
 
-import { Badge, Button, ColorSwatch, Group, SimpleGrid, Stack, Table, Text, Tooltip } from "@mantine/core";
+import { Badge, Button, Group, Stack, Table, Text } from "@mantine/core";
 import { useState } from "react";
 
 import type { FixedElement, TemplateProfile } from "@/lib/api/types";
-import { COLOR_ROLE_LABELS, DYNAMIC_FIELD_LABELS, FIXED_KIND_LABELS, formatRatio, GUIDELINE_KIND_LABELS } from "@/lib/format";
+import { DYNAMIC_FIELD_LABELS, FIXED_KIND_LABELS, formatRatio, GUIDELINE_KIND_LABELS } from "@/lib/format";
 
-import { countBy, KeyValues, percent, Section } from "./common";
+import { countBy, KeyValues, Section } from "./common";
 
-const SCOPE_LABELS: Record<string, string> = { theme: "тема", master: "мастер", layout: "макет", pattern: "композиция", text_role: "роль текста", slide: "слайд" };
-const SOURCE_LABELS: Record<string, string> = { theme: "тема", slides: "слайды", layouts: "макеты", master: "мастер" };
 const FIXED_PREVIEW = 12;
 
 /** Палитра, шрифты, шкала, поля и сетка, постоянные элементы и правила из текста шаблона. */
 export function DesignSystemSection({ profile }: { profile: TemplateProfile }) {
-  const { colors, typography, spacing } = profile.design_tokens;
-  const scale = [...typography.scale].sort((a, b) => b.size_pt - a.size_pt);
+  const { spacing } = profile.design_tokens;
   return (
-    <Stack gap="xl">
-      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xl">
-        <Section title="Палитра" aside={<Text size="xs" c="dimmed">{colors.palette.length} цветов</Text>} testId="design-palette">
-          <Stack gap={6}>
-            {colors.palette.map((c) => (
-              <Group key={`${c.hex}-${c.role}`} gap="sm" wrap="nowrap">
-                <ColorSwatch color={c.hex} size={26} radius="sm" />
-                <Text size="sm" ff="monospace" style={{ flex: "0 0 76px" }}>{c.hex}</Text>
-                <Text size="sm" style={{ flex: "0 0 auto" }}>{COLOR_ROLE_LABELS[c.role] ?? c.role}</Text>
-                <Text size="xs" c="dimmed" truncate>
-                  {[c.usage_count != null ? `${c.usage_count} исп.` : null, c.source ? SOURCE_LABELS[c.source] ?? c.source : null, c.style_source?.theme_ref, c.scope?.applies_to_new_content === false ? "не для нового содержания" : null, c.confidence != null ? percent(c.confidence) : null].filter(Boolean).join(" · ")}
-                </Text>
-              </Group>
-            ))}
-          </Stack>
-          {Object.keys(colors.theme).length > 0 && (
-            <Group gap={6} mt="md" align="center">
-              <Text size="xs" c="dimmed" mr={4}>Тема файла:</Text>
-              {Object.entries(colors.theme).map(([k, v]) => (
-                <Tooltip key={k} label={`${k} · ${v}`}>
-                  <Group gap={4} wrap="nowrap"><ColorSwatch color={v} size={14} radius="xs" /><Text size="xs" c="dimmed">{k}</Text></Group>
-                </Tooltip>
-              ))}
-            </Group>
-          )}
-        </Section>
-
-        <Section title="Шрифты" aside={typography.theme_fonts ? <Text size="xs" c="dimmed">тема: {typography.theme_fonts.major ?? "—"} / {typography.theme_fonts.minor ?? "—"}</Text> : undefined} testId="design-fonts">
-          <Table fz="sm" verticalSpacing={4} withRowBorders={false}>
-            <Table.Thead>
-              <Table.Tr><Table.Th>Семейство</Table.Th><Table.Th>Роли</Table.Th><Table.Th>Исп.</Table.Th><Table.Th>В файле</Table.Th><Table.Th>В рендерере</Table.Th></Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {typography.fonts.map((f) => (
-                <Table.Tr key={f.family}>
-                  <Table.Td fw={500}>{f.family}</Table.Td>
-                  <Table.Td c="dimmed">{[...new Set(f.roles ?? [])].join(", ") || "—"}</Table.Td>
-                  <Table.Td c="dimmed">{f.usage_count}</Table.Td>
-                  <Table.Td c="dimmed">{f.embedded ? "встроен" : "не встроен"}</Table.Td>
-                  <Table.Td c={f.available_in_renderer === false ? "yellow.8" : "dimmed"}>{f.available_in_renderer === false ? `замена: ${f.fallback ?? "—"}` : f.available_in_renderer ? "есть" : "—"}</Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-          <Text size="xs" c="dimmed" mt="md" mb={6}>Шкала кеглей</Text>
-          <Group gap={6}>
-            {scale.map((s, i) => (
-              <Tooltip key={`${s.size_pt}-${s.role}-${i}`} label={[s.scope ? SCOPE_LABELS[s.scope.level] ?? s.scope.level : null, s.scope?.slide_indexes?.length ? `слайды ${s.scope.slide_indexes.slice(0, 8).join(", ")}${s.scope.slide_indexes.length > 8 ? "…" : ""}` : null, s.scope?.applies_to_new_content === false ? "не для нового содержания" : null, s.confidence != null ? `уверенность ${percent(s.confidence)}` : null].filter(Boolean).join(" · ") || "—"}>
-                <Badge variant="outline" color="gray">{s.size_pt} pt · {s.role}{s.usage_count != null ? ` · ×${s.usage_count}` : ""}</Badge>
-              </Tooltip>
-            ))}
-          </Group>
-          {typography.max_font_families != null && <Text size="xs" c="dimmed" mt="sm">Не больше {typography.max_font_families} семейств на колоду.</Text>}
-        </Section>
-      </SimpleGrid>
-
-      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xl">
+    <Stack gap={28}>
+      {/* Палитра, шрифты и шкала кеглей показаны выше, в дизайн-коде: там они даны
+          образцами, а не таблицами с частотой употребления. Здесь — то, чего там нет:
+          геометрия полей, постоянные элементы, правила из текста шаблона и заглушки. */}
+      <Stack gap={28}>
         <Section title="Поля, направляющие и постоянные элементы" testId="design-sketch">
           <FrameSketch profile={profile} />
           <Group gap="md" mt="sm">
@@ -84,9 +29,9 @@ export function DesignSystemSection({ profile }: { profile: TemplateProfile }) {
           {spacing?.column_grid && <Text size="xs" c="dimmed" mt={6}>Колонок: {spacing.column_grid.columns ?? "—"}, межколонник {spacing.column_grid.gutter != null ? formatRatio(spacing.column_grid.gutter) : "—"}.</Text>}
         </Section>
         <FixedElements items={profile.fixed_elements} dynamic={profile.dynamic_fields ?? []} />
-      </SimpleGrid>
+      </Stack>
 
-      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xl">
+      <Stack gap={28}>
         <Section title="Правила из текста шаблона" aside={<Text size="xs" c="dimmed">{profile.guidelines?.length ?? 0}</Text>} testId="design-guidelines">
           {profile.guidelines?.length ? (
             <Stack gap={6}>
@@ -111,7 +56,7 @@ export function DesignSystemSection({ profile }: { profile: TemplateProfile }) {
           )}
           <Text size="xs" c="dimmed" mt="sm">Такие строки убираются из результата, а их появление в готовом слайде ловит аудит.</Text>
         </Section>
-      </SimpleGrid>
+      </Stack>
     </Stack>
   );
 }

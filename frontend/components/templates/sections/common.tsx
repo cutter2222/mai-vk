@@ -7,9 +7,9 @@ import { SlideImage } from "@/components/common/SlideImage";
 /** Блок карточки шаблона: заголовок, необязательная строка справа и содержимое. */
 export function Section({ title, aside, children, testId }: { title: React.ReactNode; aside?: React.ReactNode; children: React.ReactNode; testId?: string }) {
   return (
-    <section data-testid={testId}>
-      <Group justify="space-between" align="baseline" mb="sm" wrap="nowrap">
-        <Title order={5}>{title}</Title>
+    <section className="detail-card" data-testid={testId}>
+      <Group justify="space-between" align="baseline" mb={18} wrap="nowrap">
+        <Title order={4} style={{ letterSpacing: "-0.02em" }}>{title}</Title>
         {aside}
       </Group>
       {children}
@@ -36,11 +36,11 @@ export function FilterChips({ counts, labels, active, onChange, total, testId }:
   const keys = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
   return (
     <Group gap={6} data-testid={testId}>
-      <Badge component="button" variant={active === null ? "filled" : "default"} color="graphite" size="lg" style={{ cursor: "pointer" }} onClick={() => onChange(null)}>
+      <Badge component="button" variant={active === null ? "filled" : "default"} color="brand" size="lg" style={{ cursor: "pointer" }} onClick={() => onChange(null)}>
         Все · {total}
       </Badge>
       {keys.map((k) => (
-        <Badge key={k} component="button" variant={active === k ? "filled" : "default"} color="graphite" size="lg" style={{ cursor: "pointer" }} onClick={() => onChange(active === k ? null : k)}>
+        <Badge key={k} component="button" variant={active === k ? "filled" : "default"} color="brand" size="lg" style={{ cursor: "pointer" }} onClick={() => onChange(active === k ? null : k)}>
           {labels[k] ?? k} · {counts[k]}
         </Badge>
       ))}

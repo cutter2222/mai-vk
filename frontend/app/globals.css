@@ -1,3 +1,57 @@
+/*
+ * Токены дизайн-системы. Зеркалят lib/theme.ts, чтобы собственная разметка и Mantine
+ * пользовались одними значениями. Правила использования — в шапке theme.ts.
+ * Хардкод цвета в разметке запрещён: новый цвет добавляется сюда.
+ */
+:root {
+  /* Бренд: главное действие, выбор, ссылки. */
+  --accent: #1f6feb;
+  --accent-dark: #1a5cc4;
+  --accent-soft: #d6e4ff;
+
+  /* Поверхности. Крупные блоки — только эти. */
+  --page: #ffffff;
+  --card: #f7f8fa;
+  --sky: #eef4ff;
+  --mist: #f1f2f5;
+  --line: #eceef2;
+
+  /* Текст. */
+  --ink: #1a1a1a;
+  --ink2: #6b7280;
+
+  /* Состояния: текст и иконки, не заливка. */
+  --success: #2e7d4f;
+  --danger: #c0392b;
+
+  /* Холодные тени. */
+  --shadow-flat: 0 1px 2px rgba(20, 45, 80, 0.06);
+  --shadow-soft: 0 1px 2px rgba(20, 45, 80, 0.05), 0 4px 10px rgba(20, 45, 80, 0.06);
+  --shadow-lift: 0 1px 3px rgba(20, 45, 80, 0.06), 0 8px 20px rgba(20, 45, 80, 0.08);
+  --shadow-ring: 0 0 0 1px rgba(20, 45, 80, 0.1);
+
+  /* Ширина контента. */
+  --page-width: 1280px;
+
+  /* Пропорция слайда: по ней считается размер области просмотра. */
+  --stage-ratio: 1.7778;
+
+  /* Выезд правой колонки: длительность повторена в SlideViewer (SIDE_MS). */
+  --side-ms: 240ms;
+  --side-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* Движение — только украшение: при системной настройке «меньше движения» панели встают сразу. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --side-ms: 0ms;
+  }
+
+  .viewer-side-inner {
+    transition: none;
+  }
+}
+
 html,
 body {
   margin: 0;
@@ -10,9 +64,9 @@ body {
 .slide-frame {
   position: relative;
   width: 100%;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: var(--slide-ratio, 16 / 9);
   background: #fff;
-  border: 1px solid var(--mantine-color-gray-2);
+  border: 1px solid var(--line);
   border-radius: var(--mantine-radius-xs);
   overflow: hidden;
 }
@@ -30,35 +84,35 @@ body {
   display: grid;
   place-items: center;
   border-style: dashed;
-  border-color: var(--mantine-color-gray-3);
+  border-color: var(--line);
 }
 
 .issue-box {
   position: absolute;
-  border: 1.5px solid var(--mantine-color-red-6);
-  background: rgba(250, 82, 82, 0.07);
+  border: 1.5px solid var(--danger);
+  background: rgba(192, 57, 43, 0.08);
   border-radius: 2px;
   cursor: pointer;
   transition: box-shadow 120ms ease;
 }
 
 .issue-box[data-severity="warning"] {
-  border-color: var(--mantine-color-yellow-7);
-  background: rgba(250, 176, 5, 0.09);
+  border-color: var(--accent-dark);
+  background: rgba(31, 111, 235, 0.08);
 }
 
 .issue-box[data-severity="info"] {
-  border-color: var(--mantine-color-blue-6);
-  background: rgba(77, 119, 187, 0.08);
+  border-color: var(--accent);
+  background: rgba(31, 111, 235, 0.08);
 }
 
 .issue-box[data-active="true"] {
-  box-shadow: 0 0 0 3px rgba(77, 119, 187, 0.35);
+  box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.3);
 }
 
 /* Слоты композиции поверх образца шаблона: рамка и подпись с именем слота. */
 .issue-box[data-severity="slot"] {
-  border: 1px dashed var(--mantine-color-blue-6);
+  border: 1px dashed var(--accent);
   background: rgba(77, 119, 187, 0.06);
   cursor: default;
 }
@@ -76,7 +130,7 @@ body {
   font-size: 10px;
   line-height: 14px;
   color: #fff;
-  background: var(--mantine-color-blue-6);
+  background: var(--accent);
   border-bottom-right-radius: 3px;
 }
 
@@ -85,7 +139,7 @@ body {
   position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
-  border: 1px solid var(--mantine-color-gray-3);
+  border: 1px solid var(--line);
   border-radius: var(--mantine-radius-xs);
   background: #fff;
   overflow: hidden;
@@ -93,12 +147,12 @@ body {
 
 .frame-sketch .sketch-margins {
   position: absolute;
-  border: 1px dashed var(--mantine-color-gray-4);
+  border: 1px dashed var(--ink2);
 }
 
 .frame-sketch .sketch-guide {
   position: absolute;
-  background: var(--mantine-color-blue-4);
+  background: var(--accent);
 }
 
 .frame-sketch .sketch-guide[data-orientation="vertical"] {
@@ -122,10 +176,10 @@ body {
   border-radius: 1px;
 }
 
-.frame-sketch .sketch-fixed[data-kind="logo"] { background: rgba(250, 82, 82, 0.35); border-color: var(--mantine-color-red-6); }
+.frame-sketch .sketch-fixed[data-kind="logo"] { background: rgba(250, 82, 82, 0.35); border-color: var(--danger); }
 .frame-sketch .sketch-fixed[data-kind="footer"],
-.frame-sketch .sketch-fixed[data-kind="page_number"] { background: rgba(250, 176, 5, 0.35); border-color: var(--mantine-color-yellow-7); }
-.frame-sketch .sketch-fixed[data-kind="background"] { background: rgba(77, 119, 187, 0.08); border-color: var(--mantine-color-blue-3); }
+.frame-sketch .sketch-fixed[data-kind="page_number"] { background: rgba(250, 176, 5, 0.35); border-color: var(--accent-dark); }
+.frame-sketch .sketch-fixed[data-kind="background"] { background: rgba(31, 111, 235, 0.08); border-color: var(--accent-soft); }
 
 /* Сетка образцов и слайдов шаблона: кнопка-карточка с миниатюрой. */
 .sample-card {
@@ -146,8 +200,8 @@ body {
 
 .sample-card:hover .slide-frame,
 .sample-card:focus-visible .slide-frame {
-  border-color: var(--mantine-color-gray-4);
-  box-shadow: 0 0 0 3px var(--mantine-color-gray-1);
+  border-color: var(--ink2);
+  box-shadow: 0 0 0 3px var(--mist);
 }
 
 .sample-card:focus-visible {
@@ -158,9 +212,9 @@ body {
 .profile-pre {
   margin: 0;
   padding: 12px 14px;
-  border: 1px solid var(--mantine-color-gray-2);
+  border: 1px solid var(--line);
   border-radius: var(--mantine-radius-md);
-  background: var(--mantine-color-gray-0);
+  background: var(--card);
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 12px;
   line-height: 1.5;
@@ -171,9 +225,13 @@ body {
 
 /* ---------- Просмотрщик: вертикальная лента миниатюр и слайд ---------- */
 
+/* Колонки просмотрщика: лента, слайд с подписью, необязательная панель аудита.
+   Имена начинаются с .viewer- и принадлежат только этому блоку: страница шаблона
+   пользуется своими .tpl-, иначе её правила перекрывали здешние и слайд уезжал вниз. */
 .viewer {
   display: flex;
   flex: 1;
+  min-width: 0;
   min-height: 0;
 }
 
@@ -181,12 +239,15 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  width: 200px;
-  flex: 0 0 200px;
+  width: 184px;
+  flex: 0 0 184px;
   overflow-y: auto;
-  padding: 16px 14px 16px 10px;
-  border-right: 1px solid var(--mantine-color-gray-2);
-  background: var(--mantine-color-body);
+  overflow-x: hidden;
+  padding: 16px 12px 16px 10px;
+  border-right: 1px solid var(--line);
+  background: var(--page);
+  transition: width var(--side-ms) var(--side-ease), flex-basis var(--side-ms) var(--side-ease),
+    padding var(--side-ms) var(--side-ease), opacity 160ms ease, border-color var(--side-ms) ease;
 }
 
 .filmstrip button {
@@ -206,7 +267,7 @@ body {
   padding-top: 3px;
   font-size: 11px;
   line-height: 1;
-  color: var(--mantine-color-gray-5);
+  color: var(--ink2);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
@@ -223,20 +284,20 @@ body {
 }
 
 .filmstrip button:hover .thumb-image {
-  outline-color: var(--mantine-color-gray-3);
+  outline-color: var(--line);
 }
 
 .filmstrip button[data-active="true"] .thumb-image {
-  outline-color: var(--mantine-color-blue-6);
+  outline-color: var(--accent);
 }
 
 .filmstrip button[data-active="true"] .thumb-number {
-  color: var(--mantine-color-graphite-8);
+  color: var(--ink);
   font-weight: 600;
 }
 
 .filmstrip button:focus-visible .thumb-image {
-  outline-color: var(--mantine-color-blue-4);
+  outline-color: var(--accent);
 }
 
 .filmstrip .thumb-issues {
@@ -246,7 +307,7 @@ body {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--mantine-color-red-6);
+  background: var(--danger);
   box-shadow: 0 0 0 2px #fff;
 }
 
@@ -254,15 +315,87 @@ body {
   flex: 1;
   min-width: 0;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 20px 12px;
+}
+
+/* Область слайда: занимает всю свободную высоту колонки, слайд вписывается в неё целиком.
+   Размер считается от самой области (cqw/cqh), а не вычитанием высот шапок и подписей:
+   прежняя формула с пятью слагаемыми расходилась с разметкой, и слайд обрезался снизу. */
+.viewer-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  container-type: size;
+}
+
+/* Ширина блока: столько, сколько слайд может занять по ширине области и по её высоте
+   за вычетом строки подписи. Так слайд и подпись стоят вместе по центру. */
+.stage-column {
+  display: flex;
+  flex-direction: column;
+  width: min(100cqw, calc((100cqh - 56px) * var(--stage-ratio)));
+}
+
+/* Подпись под слайдом: вариант и ревизия слева, счётчик по центру, действия справа.
+   При открытом аудите слайд узкий, поэтому строка переносится, а не сжимает подписи в столбик. */
+.viewer-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding-top: 12px;
+}
+
+.viewer-bar-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+/* Подписи не переносятся внутри себя: когда места мало, на новую строку уходит
+   целая группа, а не слово из названия варианта. */
+.viewer-bar-meta > * {
+  white-space: nowrap;
+}
+
+.viewer-bar-pager {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.viewer-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
+/* Подвал колонки: обоснование варианта, «как собран», панель свойств редактора.
+   Занимает столько, сколько нужно содержимому, но не больше половины колонки:
+   слайд остаётся главным, а длинная панель прокручивается внутри себя. */
+.viewer-extra {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 55%;
   overflow-y: auto;
-  padding: 24px 28px 28px;
+  margin-top: 10px;
 }
 
 /* ---------- Сетки карточек: проекты и шаблоны ---------- */
 
 .page-surface {
-  min-height: calc(100dvh - 56px);
-  background: var(--mantine-color-body);
+  min-height: calc(100dvh - 60px);
+  background: var(--page);
 }
 
 .grid-card {
@@ -273,23 +406,24 @@ body {
   text-align: left;
   width: 100%;
   padding: 0;
-  border: 1px solid var(--mantine-color-gray-2);
+  border: 1px solid var(--line);
   border-radius: var(--mantine-radius-lg);
-  background: var(--mantine-color-body);
-  transition: border-color 140ms ease;
+  background: var(--page);
+  transition: border-color 140ms ease, box-shadow 140ms ease;
 }
 
 .grid-card:hover,
 .grid-card:focus-visible {
-  border-color: var(--mantine-color-gray-4);
+  border-color: var(--line);
+  box-shadow: var(--shadow-soft);
   outline: none;
 }
 
 .grid-card .grid-card-thumb {
   position: relative;
   aspect-ratio: 16 / 9;
-  background: var(--mantine-color-gray-0);
-  border-bottom: 1px solid var(--mantine-color-gray-2);
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
   overflow: hidden;
 }
 
@@ -306,8 +440,8 @@ body {
   inset: 0;
   display: grid;
   place-items: center;
-  color: var(--mantine-color-gray-4);
-  background: var(--mantine-color-gray-0);
+  color: var(--ink2);
+  background: var(--card);
 }
 
 .grid-card .grid-card-menu {
@@ -335,18 +469,19 @@ body {
   gap: 8px;
   min-height: 100%;
   cursor: pointer;
-  border: 1px dashed var(--mantine-color-gray-3);
+  border: 1px dashed var(--line);
   border-radius: var(--mantine-radius-lg);
-  background: var(--mantine-color-gray-0);
-  color: var(--mantine-color-gray-6);
+  background: var(--card);
+  color: var(--ink2);
   font: inherit;
-  transition: border-color 140ms ease, color 140ms ease;
+  transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
 }
 
 .grid-card-new:hover,
 .grid-card-new:focus-visible {
-  border-color: var(--mantine-color-gray-5);
-  color: var(--mantine-color-graphite-8);
+  border-color: var(--accent);
+  background: var(--sky);
+  color: var(--accent);
   outline: none;
 }
 
@@ -355,7 +490,7 @@ body {
 .editor {
   display: flex;
   flex-direction: column;
-  height: calc(100dvh - 56px);
+  height: 100dvh;
   overflow: hidden;
 }
 
@@ -363,24 +498,50 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 52px;
-  padding: 0 16px 0 10px;
-  border-bottom: 1px solid var(--mantine-color-gray-2);
-  background: var(--mantine-color-body);
+  height: 60px;
+  padding: 0 20px 0 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--page);
   flex: 0 0 auto;
 }
 
+/* Правая часть шапки: действия проекта одной группой, без разнобоя в высотах. */
+.editor-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.editor-header-sep {
+  width: 1px;
+  height: 22px;
+  background: var(--line);
+  flex: 0 0 auto;
+}
+
+/* Название проекта — заголовок, который правится по клику, а не форма: ширина по тексту,
+   подложка только под курсором, рамка только в фокусе. Раньше поле занимало 420 px, из-за
+   чего выглядело пустым бланком и отодвигало соседний элемент в середину шапки. */
 .editor-title-input input {
   font-weight: 600;
   font-size: 15px;
-  padding-left: 8px;
-  padding-right: 8px;
-  border-radius: var(--mantine-radius-sm);
+  padding: 4px 8px;
+  border-radius: 8px;
+  min-width: 12ch;
+  max-width: 420px;
+  /* Поддерживается не везде; там, где нет, поле просто остаётся прежней ширины. */
+  field-sizing: content;
+  transition: background 120ms ease, box-shadow 120ms ease;
 }
 
-.editor-title-input input:hover,
+.editor-title-input input:hover {
+  background: var(--card);
+}
+
 .editor-title-input input:focus {
-  background: var(--mantine-color-gray-0);
+  background: var(--page);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 .editor-body {
@@ -389,25 +550,63 @@ body {
   min-height: 0;
 }
 
-.editor-rail {
+/* Разделы панели: две вкладки в её шапке вместо отдельного вертикального рельса. */
+.editor-panel-tabs {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  width: 56px;
-  padding: 10px 0;
-  border-right: 1px solid var(--mantine-color-gray-2);
-  background: var(--mantine-color-body);
+  gap: 4px;
+  padding: 10px 12px 0;
   flex: 0 0 auto;
+}
+
+.panel-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.panel-tab:hover {
+  color: var(--ink);
+}
+
+.panel-tab[data-active] {
+  background: var(--sky);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.panel-tab b {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--mist);
+  color: var(--ink2);
+}
+
+.panel-tab[data-active] b {
+  background: var(--page);
+  color: var(--accent);
 }
 
 .editor-panel {
   display: flex;
   flex-direction: column;
-  width: 400px;
-  flex: 0 0 400px;
-  border-right: 1px solid var(--mantine-color-gray-2);
-  background: var(--mantine-color-body);
+  /* Колонка 400 px ломала чат на 5–6 слов в строке. 460 — предел, за которым панель
+     начинает отнимать место у слайдов на 1440 px. */
+  width: 460px;
+  flex: 0 0 460px;
+  border-right: 1px solid var(--line);
+  background: var(--page);
   min-height: 0;
 }
 
@@ -425,8 +624,8 @@ body {
 
 .editor-panel-foot {
   padding: 14px 20px 16px;
-  border-top: 1px solid var(--mantine-color-gray-2);
-  background: var(--mantine-color-body);
+  border-top: 1px solid var(--line);
+  background: var(--page);
   flex: 0 0 auto;
 }
 
@@ -436,7 +635,7 @@ body {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--mantine-color-gray-0);
+  background: var(--card);
 }
 
 .preview-toolbar {
@@ -446,8 +645,20 @@ body {
   flex-wrap: wrap;
   gap: 8px 12px;
   padding: 10px 20px;
-  border-bottom: 1px solid var(--mantine-color-gray-2);
-  background: var(--mantine-color-body);
+  border-bottom: 1px solid var(--line);
+  background: var(--page);
+  flex: 0 0 auto;
+}
+
+/* Ход задания над слайдом: одна строка, пока генерация идёт. */
+.preview-progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--page);
   flex: 0 0 auto;
 }
 
@@ -459,12 +670,12 @@ body {
 }
 
 .preview-stage {
+  width: 100%;
   margin: 0 auto;
-  max-width: min(100%, calc((100dvh - 56px - 52px - 48px - 44px - 60px) * 16 / 9));
 }
 
 .preview-stage .slide-frame {
-  border-color: var(--mantine-color-gray-3);
+  border-color: var(--line);
   border-radius: var(--mantine-radius-sm);
 }
 
@@ -478,7 +689,7 @@ body {
 /* Секции в узкой панели: без вложенных рамок, разделены линиями. */
 .panel-section {
   padding: 16px 0;
-  border-top: 1px solid var(--mantine-color-gray-2);
+  border-top: 1px solid var(--line);
 }
 
 .panel-section:first-child {
@@ -492,9 +703,9 @@ body {
   gap: 10px;
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid var(--mantine-color-gray-2);
+  border: 1px solid var(--line);
   border-radius: var(--mantine-radius-md);
-  background: var(--mantine-color-body);
+  background: var(--page);
   cursor: pointer;
   text-align: left;
   font: inherit;
@@ -502,11 +713,11 @@ body {
 }
 
 .template-row:hover {
-  border-color: var(--mantine-color-gray-4);
+  border-color: var(--ink2);
 }
 
 .template-row[data-selected="true"] {
-  border-color: var(--mantine-color-graphite-8);
+  border-color: var(--ink);
 }
 
 /* Тихий индикатор состояния в шапке: точка и текст вместо капс-бейджа. */
@@ -515,7 +726,7 @@ body {
   align-items: center;
   gap: 7px;
   font-size: 13px;
-  color: var(--mantine-color-gray-6);
+  color: var(--ink2);
   white-space: nowrap;
 }
 
@@ -523,12 +734,39 @@ body {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--mantine-color-gray-4);
+  background: var(--ink2);
+  opacity: 0.45;
 }
 
-.quiet-status[data-tone="ok"] i { background: var(--mantine-color-green-6); }
-.quiet-status[data-tone="warn"] i { background: var(--mantine-color-yellow-6); }
-.quiet-status[data-tone="bad"] i { background: var(--mantine-color-red-6); }
+/* Приписка к статусу: сколько слоёв ещё на заглушках — тише основной строки, но на виду. */
+.quiet-status-note {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--ink2);
+}
+
+.quiet-status[data-tone="ok"] i { background: var(--success); opacity: 1; }
+.quiet-status[data-tone="warn"] i { background: var(--accent); opacity: 1; }
+.quiet-status[data-tone="bad"] i { background: var(--danger); opacity: 1; }
+
+/* Раздел в шапке: выбранный — акцентом, остальные приглушены. Подложки нет: в шапке
+   не должно быть ничего, что выглядит как ещё одна поверхность. */
+.nav-link {
+  border-radius: 10px;
+  color: var(--ink2);
+  transition: color 120ms ease;
+}
+
+.nav-link:hover {
+  color: var(--ink);
+}
+
+.nav-link[data-active] {
+  color: var(--accent);
+}
 
 /* ---------- Чат проекта ---------- */
 
@@ -542,15 +780,17 @@ body {
   gap: 14px;
 }
 
-/* Сообщения прижаты к низу, как в мессенджере; при переполнении список прокручивается. */
-.chat-list > :first-child {
-  margin-top: auto;
+/* Лента идёт сверху вниз: у пустого проекта единственное сообщение — инструкция, и прижатая
+   к низу она оставляла над собой пол-экрана пустоты. Когда сообщений много, список
+   прокручивается к последнему, и разница незаметна. */
+.chat-list {
+  justify-content: flex-start;
 }
 
 .chat-intro {
   padding: 14px 16px;
   border-radius: var(--mantine-radius-md);
-  background: var(--mantine-color-gray-0);
+  background: var(--card);
 }
 
 .chat-msg-user {
@@ -566,7 +806,7 @@ body {
   padding: 8px 12px;
   border-radius: var(--mantine-radius-md);
   border-bottom-right-radius: var(--mantine-radius-xs);
-  background: var(--mantine-color-graphite-8);
+  background: var(--ink);
   color: #fff;
   font-size: 14px;
   line-height: 1.45;
@@ -581,9 +821,79 @@ body {
 
 .chat-card {
   padding: 12px 14px;
-  border: 1px solid var(--mantine-color-gray-2);
+  border: 1px solid var(--line);
   border-radius: var(--mantine-radius-md);
-  background: var(--mantine-color-body);
+  background: var(--page);
+}
+
+/* Карточка хода задания: строка состояния, этапы, варианты, служебная подпись. */
+.job-line {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.job-stages {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 12px;
+}
+
+.job-stage {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.job-stage i {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--line);
+}
+
+.job-stage[data-status="done"] i { background: var(--success); }
+.job-stage[data-status="running"] i { background: var(--accent); }
+.job-stage[data-status="failed"] i { background: var(--danger); }
+
+.job-stage span {
+  flex: 1;
+  min-width: 0;
+}
+
+.job-stage b {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ink2);
+  white-space: nowrap;
+}
+
+.job-variants {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.job-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.job-foot > *:first-child {
+  flex: 1;
+  min-width: 0;
 }
 
 .brief-grid {
@@ -600,33 +910,51 @@ body {
 
 .chat-composer {
   flex: 0 0 auto;
-  padding: 10px 16px 12px;
-  border-top: 1px solid var(--mantine-color-gray-2);
-  background: var(--mantine-color-body);
+  padding: 12px 16px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--page);
 }
 
+/* Поле ввода: рамка на обёртке, фокус ловится через :focus-within — сам textarea без рамки
+   и без свечения. Высота строки, вертикальные врезки и размер кнопок согласованы, поэтому
+   в одну строку скрепка, текст и стрелка стоят на одной оси. */
 .chat-input {
+  --composer-control: 34px;
   display: flex;
-  align-items: flex-end;
-  gap: 6px;
-  padding: 4px 6px 4px 4px;
-  border: 1px solid var(--mantine-color-gray-3);
+  align-items: center;
+  gap: 4px;
+  padding: 5px 6px;
+  border: 1px solid var(--line);
   border-radius: var(--mantine-radius-md);
-  background: var(--mantine-color-body);
-  transition: border-color 120ms ease;
+  background: var(--page);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
 .chat-input:focus-within {
-  border-color: var(--mantine-color-graphite-6);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 .chat-input textarea {
-  padding: 8px 4px;
+  padding: 6px 6px;
   font-size: 14px;
+  line-height: 20px;
+  min-height: var(--composer-control);
+}
+
+/* Многострочный ввод: кнопки уходят к нижнему краю, чтобы не висеть по центру абзаца. */
+.chat-input:has(textarea[rows]:not([rows="1"])) {
+  align-items: flex-end;
+}
+
+.chat-input .mantine-ActionIcon-root {
+  width: var(--composer-control);
+  height: var(--composer-control);
+  flex: 0 0 auto;
 }
 
 .mantine-Dropzone-root[data-accept] .chat-list {
-  outline: 2px dashed var(--mantine-color-blue-5);
+  outline: 2px dashed var(--accent);
   outline-offset: -8px;
   border-radius: var(--mantine-radius-md);
 }
@@ -641,7 +969,7 @@ body {
 
 .files-group {
   padding: 10px 0 12px;
-  border-bottom: 1px solid var(--mantine-color-gray-2);
+  border-bottom: 1px solid var(--line);
 }
 
 .file-row {
@@ -654,12 +982,12 @@ body {
 }
 
 .file-row:hover {
-  background: var(--mantine-color-gray-0);
+  background: var(--card);
 }
 
 .file-row .file-icon {
   display: inline-flex;
-  color: var(--mantine-color-gray-6);
+  color: var(--ink2);
   flex: 0 0 auto;
 }
 
@@ -691,10 +1019,10 @@ body {
   min-height: 72px;
   flex: 1;
   padding: 16px;
-  border: 1px dashed var(--mantine-color-gray-3);
+  border: 1px dashed var(--line);
   border-radius: var(--mantine-radius-md);
   background: transparent;
-  color: var(--mantine-color-gray-6);
+  color: var(--ink2);
   font: inherit;
   font-size: 13px;
   text-align: center;
@@ -704,37 +1032,145 @@ body {
 
 .files-drop-hint:hover,
 .files-drop-hint:focus-visible {
-  border-color: var(--mantine-color-gray-5);
-  color: var(--mantine-color-graphite-8);
+  border-color: var(--ink2);
+  color: var(--ink);
   outline: none;
 }
 
 .mantine-Dropzone-root[data-accept] .files-drop-hint {
-  border-color: var(--mantine-color-blue-5);
-  color: var(--mantine-color-blue-7);
+  border-color: var(--accent);
+  color: var(--accent-dark);
 }
 
-/* ---------- Панель аудита рядом со слайдом ---------- */
+/* ---------- Правая колонка рядом со слайдом: аудит и правка ---------- */
+
+/* Колонка выезжает, а не возникает разом: её ширина идёт от нуля, а содержимое внутри
+   держит свою ширину и не пересобирается по ходу движения. Слайд сужается сам собой —
+   он считается от размеров области (cqw/cqh), которая меняется те же кадры. */
+.viewer-side {
+  --side-w: 356px;
+  flex: 0 0 auto;
+  width: 0;
+  overflow: hidden;
+  transition: width var(--side-ms) var(--side-ease);
+}
+
+.viewer-side[data-open="true"] {
+  width: var(--side-w);
+}
+
+.viewer-side-inner {
+  display: flex;
+  width: var(--side-w);
+  height: 100%;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.viewer-side[data-open="true"] .viewer-side-inner {
+  opacity: 1;
+  transition-delay: 70ms;
+}
+
+.audit-drawer,
+.editor-drawer {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  border-left: 1px solid var(--line);
+  background: var(--page);
+}
 
 .audit-drawer {
-  width: 360px;
-  flex: 0 0 360px;
-  overflow-y: auto;
   padding: 16px 18px 24px;
-  border-left: 1px solid var(--mantine-color-gray-2);
-  background: var(--mantine-color-body);
 }
 
-/* При открытом аудите на неширокой странице лента миниатюр уступает место слайду: по слайдам ведёт список находок. */
+/* Mantine кладёт внутрь области прокрутки обёртку display: table — она растёт по
+   содержимому, и длинные строки находок уходили за правый край панели. */
+.audit-drawer .mantine-ScrollArea-viewport > div {
+  display: block !important;
+  min-width: 0;
+}
+
+/* Правка объекта идёт в той же колонке, что и аудит: вход в режим правки не двигает слайд
+   и не подсовывает под него форму во всю ширину — меняется только содержимое колонки.
+   В узкой колонке поля идут в один столбец, а переключатели — по ширине содержимого. */
+.editor-drawer {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px 20px;
+}
+
+.editor-drawer .object-panel {
+  max-width: none;
+  padding-top: 0;
+  border-top: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Действия черновика прижаты к низу колонки и не уезжают за её край. */
+.object-panel-foot {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  position: sticky;
+  bottom: 0;
+  background: var(--page);
+}
+
+.editor-drawer .mantine-Group-root {
+  row-gap: 8px;
+}
+
+/* Лента миниатюр не пропадает при входе в правку: раньше на окне уже 1700 px экран лишался
+   и ленты, и подписей разом — оттого правка и казалась другим экраном. Теперь лента
+   становится узкой (одни миниатюры, номер — меткой на углу) и съезжает тем же движением,
+   что и колонка. Совсем убирается она только там, где слайду иначе не остаётся места. */
 @media (max-width: 1700px) {
   .viewer[data-aside="true"] .filmstrip {
-    display: none;
+    flex-basis: 96px;
+    width: 96px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .viewer[data-aside="true"] .filmstrip button {
+    position: relative;
+  }
+
+  .viewer[data-aside="true"] .filmstrip .thumb-number {
+    position: absolute;
+    left: 3px;
+    top: 3px;
+    z-index: 1;
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.85);
+    font-size: 10px;
+    line-height: 1.3;
+  }
+}
+
+@media (max-width: 1360px) {
+  .viewer[data-aside="true"] .filmstrip {
+    flex-basis: 0;
+    width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    opacity: 0;
+    border-right-color: transparent;
   }
 }
 
 /* ---------- Визуальный редактор: холст, выделение, панель свойств, лента ---------- */
 
-/* Контуры объектов поверх картинки слайда: видны при наведении, клик открывает редактор. */
+/* Контуры объектов поверх картинки слайда: подсвечен ровно тот, который выделится нажатием.
+   Раньше при наведении загорались все рамки разом, и первым — контейнер поверх текста;
+   попадание считает hitTest по координатам, поэтому сами рамки событий не ловят. */
 .object-outline {
   position: absolute;
   border: 1px solid transparent;
@@ -742,18 +1178,23 @@ body {
   background: transparent;
   padding: 0;
   cursor: pointer;
+  pointer-events: none;
   transition: border-color 100ms ease, background-color 100ms ease;
 }
 
-.slide-frame:hover .object-outline {
-  border-color: rgba(77, 119, 187, 0.35);
+/* Подсвечена рамка объекта — то, что и будет выбрано. Пунктир и лёгкая заливка говорят, что
+   это граница места на слайде, а не сам текст: точные буквы обводит уже холст правки. */
+.object-outline[data-hover="true"],
+.object-outline:focus-visible {
+  border-style: dashed;
+  border-color: var(--accent);
+  background: rgba(31, 111, 235, 0.05);
+  outline: none;
 }
 
-.object-outline:hover,
-.object-outline:focus-visible {
-  border-color: var(--mantine-color-blue-6);
-  background: rgba(77, 119, 187, 0.08);
-  outline: none;
+/* Под указателем всегда что-то выделяемое — курсор показывает это до нажатия. */
+.slide-frame[data-pick="true"] {
+  cursor: pointer;
 }
 
 .slide-canvas {
@@ -761,15 +1202,42 @@ body {
   width: 100%;
   container-type: inline-size;
   overflow: hidden;
-  border: 1px solid var(--mantine-color-gray-3);
+  border: 1px solid var(--line);
   border-radius: var(--mantine-radius-sm);
   outline: none;
   user-select: none;
   touch-action: none;
 }
 
+/* Холст встаёт на место картинки слайда мягко, одним движением с выездом колонки. */
+@keyframes stage-in {
+  from {
+    opacity: 0.5;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.slide-canvas {
+  animation: stage-in var(--side-ms) var(--side-ease);
+}
+
+/* И обратно: выход из правки возвращает картинку слайда тем же мягким появлением. */
+.preview-stage .slide-frame {
+  animation: stage-in var(--side-ms) var(--side-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slide-canvas,
+  .preview-stage .slide-frame {
+    animation: none;
+  }
+}
+
 .slide-canvas:focus-visible {
-  box-shadow: 0 0 0 2px rgba(77, 119, 187, 0.35);
+  box-shadow: 0 0 0 2px rgba(31, 111, 235, 0.3);
 }
 
 .slide-canvas .canvas-layer {
@@ -798,12 +1266,33 @@ body {
   cursor: default;
 }
 
-.slide-canvas .canvas-object:hover {
-  outline-color: rgba(77, 119, 187, 0.5);
+/* Подсказка наведения: обводит буквы, а не рамку вокруг них. Сама по себе событий не ловит. */
+.canvas-hover {
+  position: absolute;
+  pointer-events: none;
+  border: 1px solid rgba(31, 111, 235, 0.55);
+  border-radius: 2px;
+  background: rgba(31, 111, 235, 0.06);
+  margin: -3px;
+  padding: 3px;
+  box-sizing: content-box;
+  z-index: 2;
+}
+
+/* Правка текста прямо на слайде: рамка и курсор как в поле ввода, объект поверх остальных. */
+.canvas-object[data-editing] {
+  outline: 1.5px solid var(--accent);
+  cursor: text;
+  z-index: 3;
+  white-space: pre-wrap;
+}
+
+.canvas-object[data-editing]:focus {
+  outline: 1.5px solid var(--accent);
 }
 
 .canvas-object[data-selected="true"] {
-  outline: 1.5px solid var(--mantine-color-blue-6);
+  outline: 1.5px solid var(--accent);
 }
 
 .canvas-object[data-user="true"]::after {
@@ -814,7 +1303,7 @@ body {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--mantine-color-graphite-6);
+  background: var(--accent);
   box-shadow: 0 0 0 1.5px #fff;
 }
 
@@ -849,7 +1338,7 @@ body {
   position: absolute;
   box-sizing: border-box;
   pointer-events: none;
-  outline: 1.5px solid var(--mantine-color-blue-6);
+  outline: 1.5px solid var(--accent);
 }
 
 .canvas-handle {
@@ -857,7 +1346,7 @@ body {
   width: 9px;
   height: 9px;
   background: #fff;
-  border: 1.5px solid var(--mantine-color-blue-6);
+  border: 1.5px solid var(--accent);
   border-radius: 2px;
   pointer-events: auto;
   transform: translate(-50%, -50%);
@@ -872,16 +1361,18 @@ body {
 .canvas-handle[data-handle="sw"] { left: 0; top: 100%; cursor: nesw-resize; }
 .canvas-handle[data-handle="w"] { left: 0; top: 50%; cursor: ew-resize; }
 
-/* Панель свойств под слайдом: граница сверху, без теней, в тон остального интерфейса. */
+/* Панель свойств под слайдом: граница сверху, без теней, в тон остального интерфейса.
+   Ширина ограничена: строка длиной в экран читается хуже, а переключатели, растянутые
+   на всю колонку, выглядели полосами меню. */
 .object-panel {
   padding: 12px 0 4px;
-  border-top: 1px solid var(--mantine-color-gray-2);
+  border-top: 1px solid var(--line);
+  max-width: 920px;
 }
 
-/* При открытой панели свойств слайд ужимается по высоте, чтобы панель не уехала за экран. */
-.viewer-main[data-editing="true"] .preview-stage {
-  max-width: min(100%, calc((100dvh - 56px - 52px - 48px - 44px - 60px - var(--object-panel-h, 240px)) * 16 / 9));
-  min-width: 420px;
+.object-panel .mantine-SegmentedControl-root {
+  width: fit-content;
+  max-width: 100%;
 }
 
 /* Лента: иконка захвата для перестановки, метка черновика, состояние перетаскивания. */
@@ -895,9 +1386,9 @@ body {
   width: 18px;
   height: 18px;
   border-radius: 4px;
-  color: var(--mantine-color-gray-6);
+  color: var(--ink2);
   background: rgba(255, 255, 255, 0.92);
-  border: 1px solid var(--mantine-color-gray-3);
+  border: 1px solid var(--line);
   cursor: grab;
 }
 
@@ -915,11 +1406,11 @@ body {
 }
 
 .filmstrip button[data-drop-target="before"] .thumb-image {
-  box-shadow: 0 -7px 0 -5px var(--mantine-color-blue-6);
+  box-shadow: 0 -7px 0 -5px var(--accent);
 }
 
 .filmstrip button[data-drop-target="after"] .thumb-image {
-  box-shadow: 0 7px 0 -5px var(--mantine-color-blue-6);
+  box-shadow: 0 7px 0 -5px var(--accent);
 }
 
 .filmstrip .thumb-edited {
@@ -929,16 +1420,16 @@ body {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--mantine-color-graphite-6);
+  background: var(--accent);
   box-shadow: 0 0 0 2px #fff;
 }
 
 /* Выбор ресурса: сетка миниатюр шаблона и материалов. */
 .asset-picker {
   padding: 8px 10px 6px;
-  border: 1px solid var(--mantine-color-gray-2);
+  border: 1px solid var(--line);
   border-radius: var(--mantine-radius-sm);
-  background: var(--mantine-color-gray-0);
+  background: var(--card);
 }
 
 .asset-grid {
@@ -955,7 +1446,7 @@ body {
   align-items: center;
   gap: 3px;
   padding: 4px;
-  border: 1px solid var(--mantine-color-gray-2);
+  border: 1px solid var(--line);
   border-radius: var(--mantine-radius-sm);
   background: #fff;
   cursor: pointer;
@@ -963,7 +1454,7 @@ body {
 
 .asset-item:hover,
 .asset-item:focus-visible {
-  border-color: var(--mantine-color-blue-6);
+  border-color: var(--accent);
   outline: none;
 }
 
@@ -981,5 +1472,372 @@ body {
   white-space: nowrap;
   text-overflow: ellipsis;
   font-size: 10px;
-  color: var(--mantine-color-gray-6);
+  color: var(--ink2);
+}
+
+/* ---------- Витрина дизайн-системы (/design) ---------- */
+
+.token-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.token-swatch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--page);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.token-swatch:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-soft);
+}
+
+.token-swatch-chip {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  flex: 0 0 auto;
+  box-shadow: var(--shadow-ring);
+}
+
+.token-swatch-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.token-swatch-body b {
+  font-size: 13px;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--ink);
+}
+
+.token-swatch-body i {
+  font-style: normal;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--ink2);
+}
+
+.token-swatch-body em {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--ink2);
+}
+
+.type-table > div + div {
+  border-top: 1px solid var(--line);
+}
+
+.type-sample {
+  letter-spacing: -0.02em;
+}
+
+.type-h1 { font-size: 34px; line-height: 1.08; font-weight: 700; }
+.type-h2 { font-size: 24px; line-height: 1.15; font-weight: 700; }
+.type-h3 { font-size: 18px; line-height: 1.25; font-weight: 600; }
+.type-md { font-size: 15px; line-height: 1.55; }
+.type-sm { font-size: 13px; line-height: 1.45; color: var(--ink2); }
+.type-xs { font-size: 12px; line-height: 1.4; color: var(--ink2); letter-spacing: 0.04em; }
+
+.radius-row,
+.shadow-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.radius-sample {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.radius-sample span {
+  display: block;
+  width: 64px;
+  height: 64px;
+  background: var(--sky);
+  box-shadow: var(--shadow-ring);
+}
+
+.shadow-sample {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.shadow-sample span {
+  display: block;
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  background: var(--page);
+}
+
+.rule-list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.rule-list li {
+  padding-left: 4px;
+}
+
+/* ---------- Дизайн-код шаблона ---------- */
+
+.code-title {
+  letter-spacing: -0.02em;
+  margin-bottom: 16px;
+}
+
+.swatch-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.swatch {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+
+.swatch span {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  box-shadow: var(--shadow-ring);
+}
+
+.swatch b {
+  font-size: 10px;
+  font-weight: 500;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--ink2);
+}
+
+/* Строка шрифта: слева имя и роли, справа строка-образец той же гарнитурой. */
+.font-row {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 24px;
+  align-items: baseline;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.font-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.font-row-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.font-row-sample {
+  font-size: 20px;
+  line-height: 1.3;
+  color: var(--ink);
+}
+
+.scale-row {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.scale-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.scale-step b {
+  line-height: 1;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.scale-step i {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--ink2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.plastic-sample,
+.margins-sample {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.plastic-sample span {
+  display: block;
+  width: 80px;
+  height: 52px;
+  background: var(--sky);
+}
+
+/* Поля слайда: рамка холста и область содержания внутри неё. */
+.margins-sample > span {
+  display: block;
+  width: 128px;
+  height: 72px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--page);
+  box-sizing: border-box;
+}
+
+.margins-sample i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--sky);
+  border-radius: 2px;
+}
+
+/* ---------- Просмотр шаблона: та же раскладка, что у редактора проекта ---------- */
+
+.tpl-page {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--page);
+}
+
+.tpl-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 60px;
+  padding: 0 16px 0 12px;
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+
+.tpl-meta {
+  min-width: 0;
+}
+
+.tpl-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Разделы слева: их четыре, поэтому список, а не вкладки — так видно все сразу. */
+.tpl-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 232px;
+  flex: 0 0 232px;
+  padding: 14px 12px;
+  border-right: 1px solid var(--line);
+}
+
+.tpl-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink2);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.tpl-nav-item:hover {
+  background: var(--card);
+  color: var(--ink);
+}
+
+.tpl-nav-item[data-active] {
+  background: var(--sky);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.tpl-nav-item span {
+  flex: 1;
+  min-width: 0;
+}
+
+.tpl-nav-item b {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink2);
+}
+
+.tpl-nav-item[data-active] b {
+  color: var(--accent);
+}
+
+.tpl-content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 28px 32px 56px;
+}
+
+.tpl-single {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 40px;
+}
+
+/* Блок раздела «Разбор»: одна колонка, воздух внутри, мягкое скругление. Сетка из двух
+   колонок с плотными таблицами читалась как приборная панель. */
+.detail-card {
+  padding: 28px 32px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--page);
+}
+
+.detail-card table {
+  font-size: 13px;
+}
+
+.detail-card td {
+  padding-top: 7px;
+  padding-bottom: 7px;
 }
