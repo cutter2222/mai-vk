@@ -5,13 +5,14 @@ import pathlib
 import pytest
 
 from presentation_designer.cli.main import main
+from presentation_designer.contracts import CONTRACTS_VERSION
 
 
 def test_cli_version(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as info:
         main(["--version"])
     assert info.value.code == 0
-    assert "contracts 1.9" in capsys.readouterr().out
+    assert f"contracts {CONTRACTS_VERSION}" in capsys.readouterr().out
 
 
 def test_cli_unimplemented_command_exits_2() -> None:

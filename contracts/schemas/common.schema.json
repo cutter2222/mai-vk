@@ -1,768 +1,787 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://presentation-designer.local/contracts/common.schema.json",
-  "title": "Общие определения контрактов",
-  "$defs": {
-    "id": {
-      "type": "string",
-      "pattern": "^[A-Za-z0-9_.:-]{1,80}$",
-      "description": "Стабильный идентификатор. Не содержит пробелов и путей."
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://presentation-designer.local/contracts/common.schema.json",
+ "title": "Общие определения контрактов",
+ "$defs": {
+  "id": {
+   "type": "string",
+   "pattern": "^[A-Za-z0-9_.:-]{1,80}$",
+   "description": "Стабильный идентификатор. Не содержит пробелов и путей."
+  },
+  "revision": {
+   "type": "integer",
+   "minimum": 1,
+   "description": "Номер ревизии результата варианта. Растёт после каждого исправления; находки аудита и запросы исправлений привязаны к ревизии."
+  },
+  "bbox": {
+   "type": "object",
+   "description": "Прямоугольник в долях ширины и высоты слайда; начало координат в левом верхнем углу. Значения вне 0..1 допустимы: так описываются элементы, вышедшие за слайд.",
+   "properties": {
+    "x": {
+     "type": "number",
+     "minimum": -1,
+     "maximum": 2
     },
-    "revision": {
-      "type": "integer",
-      "minimum": 1,
-      "description": "Номер ревизии результата варианта. Растёт после каждого исправления; находки аудита и запросы исправлений привязаны к ревизии."
+    "y": {
+     "type": "number",
+     "minimum": -1,
+     "maximum": 2
     },
-    "bbox": {
-      "type": "object",
-      "description": "Прямоугольник в долях ширины и высоты слайда; начало координат в левом верхнем углу. Значения вне 0..1 допустимы: так описываются элементы, вышедшие за слайд.",
-      "properties": {
-        "x": {
-          "type": "number",
-          "minimum": -1,
-          "maximum": 2
-        },
-        "y": {
-          "type": "number",
-          "minimum": -1,
-          "maximum": 2
-        },
-        "width": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 3
-        },
-        "height": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 3
-        }
-      },
-      "required": [
-        "x",
-        "y",
-        "width",
-        "height"
-      ],
-      "additionalProperties": false
+    "width": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 3
     },
-    "slide_size": {
-      "type": "object",
-      "description": "Размер слайда в EMU. В датасете встречаются 12192000×6858000 и 9144000×5143500, поэтому кегли сравниваются только внутри одного шаблона.",
-      "properties": {
-        "width_emu": {
-          "type": "integer"
-        },
-        "height_emu": {
-          "type": "integer"
-        },
-        "aspect_ratio": {
-          "type": "number"
-        }
-      },
-      "required": [
-        "width_emu",
-        "height_emu",
-        "aspect_ratio"
-      ],
-      "additionalProperties": false
+    "height": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 3
+    }
+   },
+   "required": [
+    "x",
+    "y",
+    "width",
+    "height"
+   ],
+   "additionalProperties": false
+  },
+  "slide_size": {
+   "type": "object",
+   "description": "Размер слайда в EMU. В датасете встречаются 12192000×6858000 и 9144000×5143500, поэтому кегли сравниваются только внутри одного шаблона.",
+   "properties": {
+    "width_emu": {
+     "type": "integer"
+    },
+    "height_emu": {
+     "type": "integer"
+    },
+    "aspect_ratio": {
+     "type": "number"
+    }
+   },
+   "required": [
+    "width_emu",
+    "height_emu",
+    "aspect_ratio"
+   ],
+   "additionalProperties": false
+  },
+  "color": {
+   "type": "string",
+   "pattern": "^#[0-9A-Fa-f]{6}$",
+   "description": "Цвет в формате #RRGGBB"
+  },
+  "style_source": {
+   "type": "object",
+   "description": "Откуда унаследовано вычисленное свойство стиля",
+   "properties": {
+    "level": {
+     "enum": [
+      "theme",
+      "master",
+      "layout",
+      "placeholder",
+      "shape",
+      "paragraph",
+      "run",
+      "table_style",
+      "chart_style",
+      "default"
+     ]
+    },
+    "part": {
+     "type": "string",
+     "description": "часть пакета, например ppt/slideMasters/slideMaster1.xml"
+    },
+    "theme_ref": {
+     "type": "string",
+     "description": "ссылка на цвет или шрифт темы, например accent1 или +mj-lt"
+    },
+    "modifiers": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "модификаторы цвета темы: lumMod, lumOff, alpha и т. п."
+    }
+   },
+   "required": [
+    "level"
+   ],
+   "additionalProperties": false
+  },
+  "font_spec": {
+   "type": "object",
+   "description": "Шрифт текстовой области. size_pt всегда в пунктах и всегда вместе с размером слайда в профиле.",
+   "properties": {
+    "family": {
+     "type": "string"
+    },
+    "size_pt": {
+     "type": "number",
+     "minimum": 1
+    },
+    "bold": {
+     "type": "boolean"
+    },
+    "italic": {
+     "type": "boolean"
     },
     "color": {
-      "type": "string",
-      "pattern": "^#[0-9A-Fa-f]{6}$",
-      "description": "Цвет в формате #RRGGBB"
+     "$ref": "#/$defs/color"
     },
-    "style_source": {
-      "type": "object",
-      "description": "Откуда унаследовано вычисленное свойство стиля",
-      "properties": {
-        "level": {
-          "enum": [
-            "theme",
-            "master",
-            "layout",
-            "placeholder",
-            "shape",
-            "paragraph",
-            "run",
-            "table_style",
-            "chart_style",
-            "default"
-          ]
-        },
-        "part": {
-          "type": "string",
-          "description": "часть пакета, например ppt/slideMasters/slideMaster1.xml"
-        },
-        "theme_ref": {
-          "type": "string",
-          "description": "ссылка на цвет или шрифт темы, например accent1 или +mj-lt"
-        },
-        "modifiers": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "модификаторы цвета темы: lumMod, lumOff, alpha и т. п."
-        }
+    "line_spacing": {
+     "type": "number",
+     "description": "множитель межстрочного интервала"
+    },
+    "all_caps": {
+     "type": "boolean"
+    }
+   },
+   "additionalProperties": false
+  },
+  "computed_text_style": {
+   "type": "object",
+   "description": "Вычисленный стиль текста после разрешения наследования, с источником каждого свойства",
+   "properties": {
+    "font": {
+     "$ref": "#/$defs/font_spec"
+    },
+    "font_source": {
+     "$ref": "#/$defs/style_source"
+    },
+    "color_source": {
+     "$ref": "#/$defs/style_source"
+    },
+    "size_source": {
+     "$ref": "#/$defs/style_source"
+    },
+    "space_before_pt": {
+     "type": "number"
+    },
+    "space_after_pt": {
+     "type": "number"
+    },
+    "indent_emu": {
+     "type": "integer"
+    },
+    "bullet": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "enum": [
+        "none",
+        "char",
+        "number",
+        "picture"
+       ]
       },
-      "required": [
-        "level"
-      ],
-      "additionalProperties": false
+      "char": {
+       "type": "string"
+      }
+     }
+    }
+   },
+   "additionalProperties": false
+  },
+  "paragraph_params": {
+   "type": "object",
+   "description": "Параметры абзаца, нужные для измерения вместимости",
+   "properties": {
+    "line_spacing": {
+     "type": "number"
     },
-    "font_spec": {
-      "type": "object",
-      "description": "Шрифт текстовой области. size_pt всегда в пунктах и всегда вместе с размером слайда в профиле.",
-      "properties": {
-        "family": {
-          "type": "string"
-        },
-        "size_pt": {
-          "type": "number",
-          "minimum": 1
-        },
-        "bold": {
-          "type": "boolean"
-        },
-        "italic": {
-          "type": "boolean"
-        },
-        "color": {
-          "$ref": "#/$defs/color"
-        },
-        "line_spacing": {
-          "type": "number",
-          "description": "множитель межстрочного интервала"
-        },
-        "all_caps": {
-          "type": "boolean"
-        }
+    "space_before_pt": {
+     "type": "number"
+    },
+    "space_after_pt": {
+     "type": "number"
+    },
+    "indent_emu": {
+     "type": "integer"
+    },
+    "bullet_indent_emu": {
+     "type": "integer"
+    },
+    "insets": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "left": {
+       "type": "number"
       },
-      "additionalProperties": false
-    },
-    "computed_text_style": {
-      "type": "object",
-      "description": "Вычисленный стиль текста после разрешения наследования, с источником каждого свойства",
-      "properties": {
-        "font": {
-          "$ref": "#/$defs/font_spec"
-        },
-        "font_source": {
-          "$ref": "#/$defs/style_source"
-        },
-        "color_source": {
-          "$ref": "#/$defs/style_source"
-        },
-        "size_source": {
-          "$ref": "#/$defs/style_source"
-        },
-        "space_before_pt": {
-          "type": "number"
-        },
-        "space_after_pt": {
-          "type": "number"
-        },
-        "indent_emu": {
-          "type": "integer"
-        },
-        "bullet": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "kind": {
-              "enum": [
-                "none",
-                "char",
-                "number",
-                "picture"
-              ]
-            },
-            "char": {
-              "type": "string"
-            }
-          }
-        }
+      "top": {
+       "type": "number"
       },
-      "additionalProperties": false
-    },
-    "paragraph_params": {
-      "type": "object",
-      "description": "Параметры абзаца, нужные для измерения вместимости",
-      "properties": {
-        "line_spacing": {
-          "type": "number"
-        },
-        "space_before_pt": {
-          "type": "number"
-        },
-        "space_after_pt": {
-          "type": "number"
-        },
-        "indent_emu": {
-          "type": "integer"
-        },
-        "bullet_indent_emu": {
-          "type": "integer"
-        },
-        "insets": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "left": {
-              "type": "number"
-            },
-            "top": {
-              "type": "number"
-            },
-            "right": {
-              "type": "number"
-            },
-            "bottom": {
-              "type": "number"
-            }
-          },
-          "description": "внутренние поля рамки в долях ширины и высоты слайда"
-        },
-        "autofit": {
-          "enum": [
-            "none",
-            "shrink",
-            "resize_shape"
-          ]
-        },
-        "word_wrap": {
-          "type": "boolean"
-        }
+      "right": {
+       "type": "number"
       },
-      "additionalProperties": false
+      "bottom": {
+       "type": "number"
+      }
+     },
+     "description": "внутренние поля рамки в долях ширины и высоты слайда"
     },
-    "warning": {
-      "type": "object",
-      "properties": {
-        "code": {
-          "type": "string"
-        },
-        "message": {
-          "type": "string"
-        },
-        "slide_index": {
-          "type": "integer",
-          "minimum": 0
-        }
-      },
-      "required": [
-        "code",
-        "message"
-      ],
-      "additionalProperties": false
+    "autofit": {
+     "enum": [
+      "none",
+      "shrink",
+      "resize_shape"
+     ]
     },
-    "error": {
-      "type": "object",
-      "description": "Ошибка задания или операции API",
-      "properties": {
-        "code": {
-          "type": "string"
-        },
-        "message": {
-          "type": "string"
-        },
-        "stage": {
-          "$ref": "#/$defs/stage"
-        },
-        "retryable": {
-          "type": "boolean"
-        },
-        "details": {
-          "type": "object",
-          "additionalProperties": true
-        }
-      },
-      "required": [
-        "code",
-        "message"
-      ],
-      "additionalProperties": false
+    "word_wrap": {
+     "type": "boolean"
+    }
+   },
+   "additionalProperties": false
+  },
+  "warning": {
+   "type": "object",
+   "properties": {
+    "code": {
+     "type": "string"
     },
-    "version_ref": {
-      "type": "object",
-      "description": "Ссылка на версионируемый компонент: скилл, промпт, анализатор, рендерер",
-      "properties": {
-        "name": {
-          "type": "string"
-        },
-        "version": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "name",
-        "version"
-      ],
-      "additionalProperties": false
+    "message": {
+     "type": "string"
     },
-    "model_ref": {
-      "type": "object",
-      "description": "Модель, использованная на этапе. Заполняется из конфигурации моделей; hf_url обязателен для MODELS.md.",
-      "properties": {
-        "role": {
-          "enum": [
-            "llm",
-            "vlm",
-            "text_to_image",
-            "embedding"
-          ]
-        },
-        "name": {
-          "type": "string"
-        },
-        "provider": {
-          "type": "string"
-        },
-        "hf_url": {
-          "type": "string"
-        },
-        "params_b": {
-          "type": "number"
-        },
-        "active_params_b": {
-          "type": "number",
-          "description": "активные параметры для MoE"
-        },
-        "license": {
-          "type": "string"
-        },
-        "reasoning_mode": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "role",
-        "name"
-      ],
-      "additionalProperties": false
+    "slide_index": {
+     "type": "integer",
+     "minimum": 0
+    }
+   },
+   "required": [
+    "code",
+    "message"
+   ],
+   "additionalProperties": false
+  },
+  "error": {
+   "type": "object",
+   "description": "Ошибка задания или операции API",
+   "properties": {
+    "code": {
+     "type": "string"
     },
-    "generation_meta": {
-      "type": "object",
-      "description": "Как был создан документ моделью: версии скиллов и промптов, модели, параметры, usage",
-      "properties": {
-        "skills": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/version_ref"
-          }
-        },
-        "prompts": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/version_ref"
-          }
-        },
-        "models": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/model_ref"
-          }
-        },
-        "seed": {
-          "type": "integer"
-        },
-        "temperature": {
-          "type": "number"
-        },
-        "prompt_tokens": {
-          "type": "integer"
-        },
-        "completion_tokens": {
-          "type": "integer"
-        },
-        "cache_hit": {
-          "type": "boolean"
-        },
-        "created_at": {
-          "$ref": "#/$defs/timestamp"
-        }
-      },
-      "required": [
-        "skills",
-        "models"
-      ],
-      "additionalProperties": false
-    },
-    "job_state": {
-      "enum": [
-        "queued",
-        "running",
-        "succeeded",
-        "needs_review",
-        "failed",
-        "canceled"
-      ],
-      "description": "succeeded: обязательные проверки завершены и блокирующих проблем нет; needs_review: результат пригоден к просмотру, но есть находки или неполный аудит"
+    "message": {
+     "type": "string"
     },
     "stage": {
-      "enum": [
-        "queued",
-        "analyze",
-        "import",
-        "story",
-        "plan",
-        "compose",
-        "export",
-        "audit",
-        "repair",
-        "finalize",
-        "done"
-      ]
+     "$ref": "#/$defs/stage"
     },
-    "stage_timing": {
-      "type": "object",
-      "properties": {
-        "stage": {
-          "$ref": "#/$defs/stage"
-        },
-        "variant_id": {
-          "$ref": "#/$defs/id"
-        },
-        "status": {
-          "enum": [
-            "pending",
-            "running",
-            "done",
-            "failed",
-            "skipped"
-          ]
-        },
-        "started_at": {
-          "$ref": "#/$defs/timestamp"
-        },
-        "duration_ms": {
-          "type": "integer"
-        },
-        "quota_wait_ms": {
-          "type": "integer",
-          "description": "ожидание лимитера провайдера внутри этапа"
-        },
-        "cache_hit": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "stage",
-        "status"
-      ],
-      "additionalProperties": false
+    "retryable": {
+     "type": "boolean"
     },
-    "progress": {
-      "type": "object",
-      "properties": {
-        "percent": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 100
-        },
-        "message": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": false
-    },
-    "execution_mode": {
-      "type": "object",
-      "description": "Какие слои работали по-настоящему, а какие заглушками. Заглушечный результат не выдаётся за генерацию.",
-      "properties": {
-        "mode": {
-          "enum": [
-            "real",
-            "mixed",
-            "stub"
-          ]
-        },
-        "layers": {
-          "type": "object",
-          "additionalProperties": {
-            "enum": [
-              "real",
-              "stub",
-              "replay",
-              "skipped"
-            ]
-          },
-          "description": "ключи: parsing.template, parsing.content, brief, generation.story, generation.plan, generation.edit, layout, export, audit.deterministic, audit.contextual"
-        }
-      },
-      "required": [
-        "mode",
-        "layers"
-      ],
-      "additionalProperties": false
-    },
-    "timestamp": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "asset_source": {
-      "type": "object",
-      "description": "Источник картинки для ручной правки: ресурс шаблона (asset_id из TemplateProfile.assets), ресурс контент-пакета (asset_id из ContentPackage.assets) или загруженный файл проекта (file_id; sha256 дописывает конвейер, name — для подписи в интерфейсе)",
-      "properties": {
-        "kind": {
-          "enum": [
-            "template",
-            "package",
-            "file"
-          ]
-        },
-        "asset_id": {
-          "$ref": "#/$defs/id"
-        },
-        "file_id": {
-          "$ref": "#/$defs/id"
-        },
-        "sha256": {
-          "type": "string"
-        },
-        "name": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "kind"
-      ],
-      "additionalProperties": false
-    },
-    "override": {
-      "type": "object",
-      "description": "Ручная правка одного объекта слайда или фона слайда из визуального редактора. Применяется композером после заполнения слота и чистки слайда, поэтому ревизия воспроизводится из плана. target.object_id — p:cNvPr@id объекта в ComposedDeck базовой ревизии (у объектов клона образца совпадает с образцом, у новых объектов детерминирован); source_object_id и slot_id — охрана адреса: при несовпадении правка отбрасывается с предупреждением, а не применяется к чужому объекту. Фон (op background) относится к слайду целиком, target не нужен.",
-      "properties": {
-        "op": {
-          "enum": [
-            "text",
-            "style",
-            "geometry",
-            "picture",
-            "background"
-          ]
-        },
-        "target": {
-          "type": "object",
-          "properties": {
-            "object_id": {
-              "type": "string"
-            },
-            "source_object_id": {
-              "type": "string"
-            },
-            "slot_id": {
-              "$ref": "#/$defs/id"
-            }
-          },
-          "required": [
-            "object_id"
-          ],
-          "additionalProperties": false
-        },
-        "text": {
-          "type": "string",
-          "description": "новый текст объекта: строки через \\n; ссылки {fact:<id>} подставляются как в плане"
-        },
-        "style": {
-          "type": "object",
-          "description": "оформление всех фрагментов объекта; передаются только изменяемые свойства",
-          "properties": {
-            "font": {
-              "type": "object",
-              "properties": {
-                "family": {
-                  "type": "string"
-                },
-                "size_pt": {
-                  "type": "number",
-                  "minimum": 6,
-                  "maximum": 120
-                },
-                "bold": {
-                  "type": "boolean"
-                },
-                "italic": {
-                  "type": "boolean"
-                },
-                "color": {
-                  "$ref": "#/$defs/color"
-                }
-              },
-              "additionalProperties": false
-            },
-            "align": {
-              "enum": [
-                "left",
-                "center",
-                "right",
-                "justify"
-              ]
-            }
-          },
-          "additionalProperties": false
-        },
-        "geometry": {
-          "type": "object",
-          "description": "новое положение и размер в долях слайда (как bbox ComposedDeck, с учётом групп)",
-          "properties": {
-            "bbox": {
-              "$ref": "#/$defs/bbox"
-            }
-          },
-          "required": [
-            "bbox"
-          ],
-          "additionalProperties": false
-        },
-        "picture": {
-          "type": "object",
-          "description": "замена картинки или иконки объекта p:pic; color — перекраска монохромной иконки шаблона",
-          "properties": {
-            "source": {
-              "$ref": "#/$defs/asset_source"
-            },
-            "fit": {
-              "enum": [
-                "cover",
-                "contain"
-              ]
-            },
-            "color": {
-              "$ref": "#/$defs/color"
-            }
-          },
-          "required": [
-            "source"
-          ],
-          "additionalProperties": false
-        },
-        "background": {
-          "type": "object",
-          "description": "фон слайда: сплошной цвет, картинка или наследование от макета",
-          "properties": {
-            "kind": {
-              "enum": [
-                "solid",
-                "image",
-                "inherited"
-              ]
-            },
-            "color": {
-              "$ref": "#/$defs/color"
-            },
-            "source": {
-              "$ref": "#/$defs/asset_source"
-            },
-            "fit": {
-              "enum": [
-                "cover",
-                "contain"
-              ]
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "additionalProperties": false
-        }
-      },
-      "required": [
-        "op"
-      ],
-      "additionalProperties": false,
-      "allOf": [
-        {
-          "if": {
-            "properties": {
-              "op": {
-                "enum": [
-                  "text",
-                  "style",
-                  "geometry",
-                  "picture"
-                ]
-              }
-            }
-          },
-          "then": {
-            "required": [
-              "target"
-            ]
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "op": {
-                "const": "text"
-              }
-            }
-          },
-          "then": {
-            "required": [
-              "text"
-            ]
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "op": {
-                "const": "style"
-              }
-            }
-          },
-          "then": {
-            "required": [
-              "style"
-            ]
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "op": {
-                "const": "geometry"
-              }
-            }
-          },
-          "then": {
-            "required": [
-              "geometry"
-            ]
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "op": {
-                "const": "picture"
-              }
-            }
-          },
-          "then": {
-            "required": [
-              "picture"
-            ]
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "op": {
-                "const": "background"
-              }
-            }
-          },
-          "then": {
-            "required": [
-              "background"
-            ]
-          }
-        }
-      ]
+    "details": {
+     "type": "object",
+     "additionalProperties": true
     }
+   },
+   "required": [
+    "code",
+    "message"
+   ],
+   "additionalProperties": false
+  },
+  "version_ref": {
+   "type": "object",
+   "description": "Ссылка на версионируемый компонент: скилл, промпт, анализатор, рендерер",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "version": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "name",
+    "version"
+   ],
+   "additionalProperties": false
+  },
+  "model_ref": {
+   "type": "object",
+   "description": "Модель, использованная на этапе. Заполняется из конфигурации моделей; hf_url обязателен для MODELS.md.",
+   "properties": {
+    "role": {
+     "enum": [
+      "llm",
+      "vlm",
+      "text_to_image",
+      "embedding"
+     ]
+    },
+    "name": {
+     "type": "string"
+    },
+    "provider": {
+     "type": "string"
+    },
+    "hf_url": {
+     "type": "string"
+    },
+    "params_b": {
+     "type": "number"
+    },
+    "active_params_b": {
+     "type": "number",
+     "description": "активные параметры для MoE"
+    },
+    "license": {
+     "type": "string"
+    },
+    "reasoning_mode": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "role",
+    "name"
+   ],
+   "additionalProperties": false
+  },
+  "generation_meta": {
+   "type": "object",
+   "description": "Как был создан документ моделью: версии скиллов и промптов, модели, параметры, usage",
+   "properties": {
+    "skills": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/version_ref"
+     }
+    },
+    "prompts": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/version_ref"
+     }
+    },
+    "models": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/model_ref"
+     }
+    },
+    "seed": {
+     "type": "integer"
+    },
+    "temperature": {
+     "type": "number"
+    },
+    "prompt_tokens": {
+     "type": "integer"
+    },
+    "completion_tokens": {
+     "type": "integer"
+    },
+    "cache_hit": {
+     "type": "boolean"
+    },
+    "created_at": {
+     "$ref": "#/$defs/timestamp"
+    }
+   },
+   "required": [
+    "skills",
+    "models"
+   ],
+   "additionalProperties": false
+  },
+  "job_state": {
+   "enum": [
+    "queued",
+    "running",
+    "succeeded",
+    "needs_review",
+    "failed",
+    "canceled"
+   ],
+   "description": "succeeded: обязательные проверки завершены и блокирующих проблем нет; needs_review: результат пригоден к просмотру, но есть находки или неполный аудит"
+  },
+  "stage": {
+   "enum": [
+    "queued",
+    "analyze",
+    "import",
+    "story",
+    "plan",
+    "compose",
+    "export",
+    "audit",
+    "repair",
+    "finalize",
+    "done"
+   ]
+  },
+  "stage_timing": {
+   "type": "object",
+   "properties": {
+    "stage": {
+     "$ref": "#/$defs/stage"
+    },
+    "variant_id": {
+     "$ref": "#/$defs/id"
+    },
+    "status": {
+     "enum": [
+      "pending",
+      "running",
+      "done",
+      "failed",
+      "skipped"
+     ]
+    },
+    "started_at": {
+     "$ref": "#/$defs/timestamp"
+    },
+    "duration_ms": {
+     "type": "integer"
+    },
+    "quota_wait_ms": {
+     "type": "integer",
+     "description": "ожидание лимитера провайдера внутри этапа"
+    },
+    "cache_hit": {
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "stage",
+    "status"
+   ],
+   "additionalProperties": false
+  },
+  "progress": {
+   "type": "object",
+   "properties": {
+    "percent": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 100
+    },
+    "message": {
+     "type": "string"
+    }
+   },
+   "additionalProperties": false
+  },
+  "execution_mode": {
+   "type": "object",
+   "description": "Какие слои работали по-настоящему, а какие заглушками. Заглушечный результат не выдаётся за генерацию.",
+   "properties": {
+    "mode": {
+     "enum": [
+      "real",
+      "mixed",
+      "stub"
+     ]
+    },
+    "layers": {
+     "type": "object",
+     "additionalProperties": {
+      "enum": [
+       "real",
+       "stub",
+       "replay",
+       "skipped"
+      ]
+     },
+     "description": "ключи: parsing.template, parsing.content, brief, generation.story, generation.plan, generation.edit, layout, export, audit.deterministic, audit.contextual"
+    }
+   },
+   "required": [
+    "mode",
+    "layers"
+   ],
+   "additionalProperties": false
+  },
+  "timestamp": {
+   "type": "string",
+   "format": "date-time"
+  },
+  "asset_source": {
+   "type": "object",
+   "description": "Источник картинки для ручной правки: ресурс шаблона (asset_id из TemplateProfile.assets), ресурс контент-пакета (asset_id из ContentPackage.assets) или загруженный файл проекта (file_id; sha256 дописывает конвейер, name — для подписи в интерфейсе)",
+   "properties": {
+    "kind": {
+     "enum": [
+      "template",
+      "package",
+      "file"
+     ]
+    },
+    "asset_id": {
+     "$ref": "#/$defs/id"
+    },
+    "file_id": {
+     "$ref": "#/$defs/id"
+    },
+    "sha256": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "kind"
+   ],
+   "additionalProperties": false
+  },
+  "override": {
+   "type": "object",
+   "description": "Ручная правка одного объекта слайда или фона слайда из визуального редактора. Применяется композером после заполнения слота и чистки слайда, поэтому ревизия воспроизводится из плана. target.object_id — p:cNvPr@id объекта в ComposedDeck базовой ревизии (у объектов клона образца совпадает с образцом, у новых объектов детерминирован); source_object_id и slot_id — охрана адреса: при несовпадении правка отбрасывается с предупреждением, а не применяется к чужому объекту. Фон (op background) относится к слайду целиком, target не нужен. Операция delete убирает объект со слайда; add_text создаёт свою надпись, её target.object_id придуман редактором (объекта с таким идентификатором в базовой ревизии нет), а идентификатор готовой фигуры выводится из него детерминированно, поэтому пересборка ревизии повторяема.",
+   "properties": {
+    "op": {
+     "enum": [
+      "text",
+      "style",
+      "geometry",
+      "picture",
+      "background",
+      "delete",
+      "add_text"
+     ]
+    },
+    "target": {
+     "type": "object",
+     "properties": {
+      "object_id": {
+       "type": "string"
+      },
+      "source_object_id": {
+       "type": "string"
+      },
+      "slot_id": {
+       "$ref": "#/$defs/id"
+      }
+     },
+     "required": [
+      "object_id"
+     ],
+     "additionalProperties": false
+    },
+    "text": {
+     "type": "string",
+     "description": "новый текст объекта (op text) или текст создаваемой надписи (op add_text): строки через \\n; ссылки {fact:<id>} подставляются как в плане"
+    },
+    "style": {
+     "type": "object",
+     "description": "оформление всех фрагментов объекта; передаются только изменяемые свойства; у add_text — оформление создаваемой надписи",
+     "properties": {
+      "font": {
+       "type": "object",
+       "properties": {
+        "family": {
+         "type": "string"
+        },
+        "size_pt": {
+         "type": "number",
+         "minimum": 6,
+         "maximum": 120
+        },
+        "bold": {
+         "type": "boolean"
+        },
+        "italic": {
+         "type": "boolean"
+        },
+        "color": {
+         "$ref": "#/$defs/color"
+        }
+       },
+       "additionalProperties": false
+      },
+      "align": {
+       "enum": [
+        "left",
+        "center",
+        "right",
+        "justify"
+       ]
+      }
+     },
+     "additionalProperties": false
+    },
+    "geometry": {
+     "type": "object",
+     "description": "новое положение и размер в долях слайда (как bbox ComposedDeck, с учётом групп); у add_text — рамка создаваемой надписи",
+     "properties": {
+      "bbox": {
+       "$ref": "#/$defs/bbox"
+      }
+     },
+     "required": [
+      "bbox"
+     ],
+     "additionalProperties": false
+    },
+    "picture": {
+     "type": "object",
+     "description": "замена картинки или иконки объекта p:pic; color — перекраска монохромной иконки шаблона",
+     "properties": {
+      "source": {
+       "$ref": "#/$defs/asset_source"
+      },
+      "fit": {
+       "enum": [
+        "cover",
+        "contain"
+       ]
+      },
+      "color": {
+       "$ref": "#/$defs/color"
+      }
+     },
+     "required": [
+      "source"
+     ],
+     "additionalProperties": false
+    },
+    "background": {
+     "type": "object",
+     "description": "фон слайда: сплошной цвет, картинка или наследование от макета",
+     "properties": {
+      "kind": {
+       "enum": [
+        "solid",
+        "image",
+        "inherited"
+       ]
+      },
+      "color": {
+       "$ref": "#/$defs/color"
+      },
+      "source": {
+       "$ref": "#/$defs/asset_source"
+      },
+      "fit": {
+       "enum": [
+        "cover",
+        "contain"
+       ]
+      }
+     },
+     "required": [
+      "kind"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "required": [
+    "op"
+   ],
+   "additionalProperties": false,
+   "allOf": [
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "enum": [
+         "text",
+         "style",
+         "geometry",
+         "picture",
+         "delete",
+         "add_text"
+        ]
+       }
+      }
+     },
+     "then": {
+      "required": [
+       "target"
+      ]
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "text"
+       }
+      }
+     },
+     "then": {
+      "required": [
+       "text"
+      ]
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "style"
+       }
+      }
+     },
+     "then": {
+      "required": [
+       "style"
+      ]
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "geometry"
+       }
+      }
+     },
+     "then": {
+      "required": [
+       "geometry"
+      ]
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "picture"
+       }
+      }
+     },
+     "then": {
+      "required": [
+       "picture"
+      ]
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "background"
+       }
+      }
+     },
+     "then": {
+      "required": [
+       "background"
+      ]
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "add_text"
+       }
+      }
+     },
+     "then": {
+      "required": [
+       "text",
+       "geometry"
+      ]
+     }
+    }
+   ]
   }
+ }
 }

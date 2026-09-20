@@ -351,12 +351,15 @@ def check_slide_plan(
     return out
 
 
-OVERRIDE_CONTENT = {
+# Какое поле несёт содержимое правки; у delete его нет — весь смысл в адресе.
+OVERRIDE_CONTENT: dict[str, str | None] = {
     "text": "text",
     "style": "style",
     "geometry": "geometry",
     "picture": "picture",
     "background": "background",
+    "add_text": "text",
+    "delete": None,
 }
 OVERRIDE_POS = (-0.5, 1.5)
 OVERRIDE_DIM = (0.005, 1.5)
@@ -390,16 +393,19 @@ def _check_overrides(
                     )
                 )
         field = OVERRIDE_CONTENT[ov.op]
-        if getattr(ov, field, None) is None:
+        if field is not None and getattr(ov, field, None) is None:
             msg = f"правка {ov.op} должна содержать поле {field}"
             out.append(Violation("override_content", msg, opath))
+            continue
+        if ov.op == "add_text" and ov.geometry is None:
+            out.append(Violation("override_content", "новая надпись без рамки", opath))
             continue
         key = (ov.op, target.object_id if target is not None else "")
         if key in seen:
             msg = f"правка {ov.op} объекта {key[1]} повторяется"
             out.append(Violation("override_duplicate", msg, opath))
         seen.add(key)
-        if ov.op == "geometry" and ov.geometry is not None:
+        if ov.op in ("geometry", "add_text") and ov.geometry is not None:
             box = ov.geometry.bbox
             lo, hi = OVERRIDE_POS
             dlo, dhi = OVERRIDE_DIM

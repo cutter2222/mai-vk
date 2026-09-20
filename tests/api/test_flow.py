@@ -11,6 +11,7 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
+from presentation_designer.contracts import CONTRACTS_VERSION
 from presentation_designer.contracts import models as m
 from presentation_designer.pipeline.gc import live_sets
 from presentation_designer.pipeline.jobs import Orchestrator
@@ -43,7 +44,7 @@ def test_health_and_capabilities(client: TestClient) -> None:
     assert health["status"] == "ok"
     assert health["workers"]["generation"] >= 1
     caps = client.get("/api/capabilities").json()
-    assert caps["contracts_version"] == "1.9"
+    assert caps["contracts_version"] == CONTRACTS_VERSION
     assert caps["execution_mode"]["mode"] == "stub"
     assert caps["execution_mode"]["layers"]["brief"] == "stub"
     assert caps["limits"]["max_project_files"] > 0
