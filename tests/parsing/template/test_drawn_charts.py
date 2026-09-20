@@ -113,3 +113,16 @@ def test_text_shapes_are_not_parts() -> None:
         s.text = "Текст"
         s.has_text_frame = True
     assert find_drawn_chart(shapes) is None
+
+
+def test_relaxed_mode_needs_the_hint_from_vision() -> None:
+    """Три столбика с небольшим разбросом: строгие пороги их не берут (мало ли карточек),
+    мягкие — берут, но включаются только после подсказки зрения, что на образце график."""
+    row = [
+        _shape("40", 0.10, 0.55, 0.07, 0.25),
+        _shape("41", 0.25, 0.60, 0.07, 0.20),
+        _shape("42", 0.40, 0.58, 0.07, 0.22),
+    ]
+    assert find_drawn_chart(row) is None
+    relaxed = find_drawn_chart(row, relaxed=True)
+    assert relaxed is not None and len(relaxed.parts) == 3

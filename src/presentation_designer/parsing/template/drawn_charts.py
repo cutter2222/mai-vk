@@ -12,6 +12,11 @@ VK Education «график» — это ряд одинаковых прямо�
 разной: у диаграммы высоты (у линейчатой — длины) обязаны различаться, иначе показывать нечего.
 Плюс общая база: у столбцов совпадает нижний край, у полос — левый. Требуется не меньше четырёх
 частей — три равных прямоугольника чаще оказываются карточками, а не графиком.
+
+Мягкий режим (`relaxed`) включается только после того, как зрение модели уже сказало, что на
+образце график: тогда пороги ослабляются, потому что вопрос «график ли это» решён, а код
+отвечает лишь на «из каких объектов он состоит и где его область». Сам по себе мягкий режим
+не применяется: на глаз и ряд карточек сойдёт за диаграмму.
 """
 
 from __future__ import annotations
@@ -41,6 +46,21 @@ LABEL_GAP = 0.09
 # Мелкий декор внутри области: кружки легенды (в образцах Google Slides это пустые надписи),
 # засечки осей. У нативной диаграммы своя легенда, поэтому образцовая уходит.
 MAX_DECOR_AREA = 0.01
+
+
+@dataclass(frozen=True)
+class Thresholds:
+    """Пороги поиска ряда: строгие по умолчанию, мягкие — по подсказке зрения."""
+
+    parts: int = MIN_PARTS
+    span_ratio: float = MIN_SPAN_RATIO
+    longest: float = MIN_LONGEST
+    cluster_span: float = MIN_CLUSTER_SPAN
+    elongation: float = MIN_ELONGATION
+
+
+STRICT = Thresholds()
+RELAXED = Thresholds(parts=3, span_ratio=1.12, longest=0.1, cluster_span=0.18, elongation=1.0)
 
 
 @dataclass
@@ -73,9 +93,9 @@ def _is_part(shape: ShapeInfo) -> bool:
     return True
 
 
-def _cluster(parts: list[ShapeInfo], *, kind: str) -> list[ShapeInfo] | None:
+def _cluster(parts: list[ShapeInfo], *, kind: str, th: Thresholds) -> list[ShapeInfo] | None:
     """Части с общей базой: у столбцов — нижний край, у полос — левый."""
-    if len(parts) < MIN_PARTS:
+    if len(parts) < th.parts:
         return None
     base = statistics.median([(p.y + p.height) if kind == "column" else p.x for p in parts])
     row = [
@@ -83,7 +103,7 @@ def _cluster(parts: list[ShapeInfo], *, kind: str) -> list[ShapeInfo] | None:
         for p in parts
         if abs(((p.y + p.height) if kind == "column" else p.x) - base) <= BASE_TOL
     ]
-    if len(row) < MIN_PARTS:
+    if len(row) < th.parts:
         return None
     # Толщина столбиков одного ряда близка: median ± WIDTH_TOL.
     thickness = [p.width if kind == "column" else p.height for p in row]
@@ -95,33 +115,37 @@ def _cluster(parts: list[ShapeInfo], *, kind: str) -> list[ShapeInfo] | None:
         for p, t in zip(row, thickness, strict=True)
         if abs(t - typical) / typical <= WIDTH_TOL
     ]
-    if len(row) < MIN_PARTS:
+    if len(row) < th.parts:
         return None
     # Длины различаются: одинаковые прямоугольники — это карточки, а не график.
     lengths = [p.height if kind == "column" else p.width for p in row]
-    if min(lengths) <= 0 or max(lengths) / min(lengths) < MIN_SPAN_RATIO:
+    if min(lengths) <= 0 or max(lengths) / min(lengths) < th.span_ratio:
         return None
-    if max(lengths) < MIN_LONGEST:
+    if max(lengths) < th.longest:
         return None
     longest = max(row, key=lambda p: p.height if kind == "column" else p.width)
     thin = longest.width if kind == "column" else longest.height
-    if thin <= 0 or (max(lengths) / thin) < MIN_ELONGATION:
+    if thin <= 0 or (max(lengths) / thin) < th.elongation:
         return None
     span = (
         max(p.x + p.width for p in row) - min(p.x for p in row)
         if kind == "column"
         else max(p.y + p.height for p in row) - min(p.y for p in row)
     )
-    if span < MIN_CLUSTER_SPAN:
+    if span < th.cluster_span:
         return None
     return row
 
 
-def find_drawn_chart(shapes: list[ShapeInfo]) -> DrawnChart | None:
-    """Ряд столбиков на слайде, если он есть: сначала столбцы, потом полосы."""
+def find_drawn_chart(shapes: list[ShapeInfo], *, relaxed: bool = False) -> DrawnChart | None:
+    """Ряд столбиков на слайде, если он есть: сначала столбцы, потом полосы.
+
+    `relaxed` — только после подсказки зрения модели, что на образце график.
+    """
+    th = RELAXED if relaxed else STRICT
     parts = [s for s in shapes if _is_part(s)]
     for kind in ("column", "bar"):
-        row = _cluster(parts, kind=kind)
+        row = _cluster(parts, kind=kind, th=th)
         if row is None:
             continue
         x0 = min(p.x for p in row)

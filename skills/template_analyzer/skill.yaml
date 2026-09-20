@@ -12,8 +12,8 @@ reasoning:
   max_output_tokens: 6000
 prompts:
 - id: analyze.classify_samples
-  path: prompts/analyze.classify_samples.v0.2.0.md
-  version: 0.2.0
+  path: prompts/analyze.classify_samples.v0.3.0.md
+  version: 0.3.0
 - id: analyze.tag_assets
   path: prompts/analyze.tag_assets.v0.1.0.md
   version: 0.1.0

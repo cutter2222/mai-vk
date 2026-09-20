@@ -578,21 +578,8 @@ def build_pattern(
     # Нарисованная диаграмма: ряд столбиков вместо нативного графика. Его части перестают
     # быть слотами (иначе план запишет числа в картинки), а на их месте появляется один слот
     # chart на всю область ряда — вёрстка построит там настоящую диаграмму.
-    chart_parts: list[str] = []
-    drawn = find_drawn_chart([s for s in shapes if (slide.part, s.element_id) not in fixed_refs])
-    if drawn is not None and not any(sl.kind == "chart" for sl in slots):
-        anchor = max(
-            (s for s in shapes if s.element_id in drawn.parts),
-            key=lambda s: s.area,
-            default=None,
-        )
-        if anchor is not None:
-            slots = [sl for sl in slots if sl.shape.element_id not in drawn.element_ids]
-            static_ids = [i for i in static_ids if i not in drawn.element_ids]
-            removable = [i for i in removable if i not in drawn.element_ids]
-            candidates = [c for c in candidates if c.element_id not in drawn.element_ids]
-            slots.append(Slot("", "chart", anchor, bbox_override=drawn.bbox, required=True))
-            chart_parts = [i for i in sorted(drawn.element_ids) if i != anchor.element_id]
+    own = [s for s in shapes if (slide.part, s.element_id) not in fixed_refs]
+    chart_parts = _attach_chart_slot(own, slots, static_ids, removable, candidates)
 
     _single_title(slots)
     slots.sort(key=lambda sl: (round(sl.shape.y, 2), sl.shape.x))
@@ -634,6 +621,64 @@ def build_pattern(
         tone=slide_tone(slide, layout, pkg.master(slide.master_id), assets_by_sha, pkg=pkg),
         layout_name=layout.name if layout else "",
     )
+
+
+
+
+def _attach_chart_slot(
+    shapes: list[ShapeInfo],
+    slots: list[Slot],
+    static_ids: list[str],
+    removable: list[str],
+    candidates: list[ShapeInfo],
+    *,
+    relaxed: bool = False,
+) -> list[str]:
+    """Заменяет ряд нарисованной диаграммы одним слотом `chart` на всю его область.
+
+    Списки правятся на месте (они собираются по ходу разбора образца). Возвращает части ряда,
+    которые вёрстка уберёт, построив настоящую диаграмму; пустой список — ряда нет.
+    """
+    if any(sl.kind == "chart" for sl in slots):
+        return []
+    drawn = find_drawn_chart(shapes, relaxed=relaxed)
+    if drawn is None:
+        return []
+    anchor = max(
+        (s for s in shapes if s.element_id in drawn.parts), key=lambda s: s.area, default=None
+    )
+    if anchor is None:
+        return []
+    slots[:] = [sl for sl in slots if sl.shape.element_id not in drawn.element_ids]
+    static_ids[:] = [i for i in static_ids if i not in drawn.element_ids]
+    removable[:] = [i for i in removable if i not in drawn.element_ids]
+    candidates[:] = [c for c in candidates if c.element_id not in drawn.element_ids]
+    slots.append(Slot("chart_1", "chart", anchor, bbox_override=drawn.bbox, required=True))
+    return [i for i in sorted(drawn.element_ids) if i != anchor.element_id]
+
+
+def attach_drawn_chart(pattern: Pattern) -> bool:
+    """Подсказка зрения: на образце график. Код ищет, из чего он собран, мягкими порогами.
+
+    Вопрос «график ли это» к этому моменту уже решён моделью, поэтому пороги ослаблены; если
+    ряда всё равно нет, роль chart не подтверждается и остаётся эвристика.
+    """
+    if pattern.chart_parts:
+        return True
+    shapes = [s for s in pattern.slide.shapes if s.kind != "group"]
+    parts = _attach_chart_slot(
+        shapes,
+        pattern.slots,
+        pattern.static_ids,
+        pattern.removable_ids,
+        [],
+        relaxed=True,
+    )
+    if not parts:
+        return False
+    pattern.chart_parts = parts
+    return True
+
 
 
 # ---------- роль ----------
@@ -866,6 +911,8 @@ def refine_roles_with_vlm(
         "asked": 0,
         "changed": 0,
         "rejected": 0,
+        # Образцы, где график нарисован фигурами: зрение сказало «chart», код нашёл ряд.
+        "drawn_charts": 0,
         "errors": [],
     }
     if client is None or skill is None:
@@ -926,8 +973,13 @@ def refine_roles_with_vlm(
             if role not in ROLES or conf < min_confidence:
                 continue
             if not role_matches_structure(role, rep):
-                summary["rejected"] += 1
-                continue
+                # Зрение видит график там, где код нашёл только ряд картинок: пороги поиска
+                # ослабляются и роль принимается, только если ряд действительно нашёлся.
+                attached = [m for m in groups[rep.group_id] if attach_drawn_chart(m)]
+                if role != "chart" or rep not in attached:
+                    summary["rejected"] += 1
+                    continue
+                summary["drawn_charts"] = summary.get("drawn_charts", 0) + len(attached)
             for member in groups[rep.group_id]:
                 if member.role != role:
                     summary["changed"] += 1
