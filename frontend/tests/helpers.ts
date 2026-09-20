@@ -52,13 +52,28 @@ export function rememberProjectFromUrl(page: Page): string | null {
   return id;
 }
 
-/** Создаёт проект с главной и возвращает его идентификатор. */
-export async function createProject(page: Page): Promise<string> {
+/**
+ * Открывает экран новой презентации. Проекта на сервере ещё нет: он появляется с первым
+ * действием, поэтому идентификатор берут позже через `projectIdAfterAction`.
+ */
+export async function createProject(page: Page): Promise<void> {
   await page.goto("/");
   await page.getByTestId("new-project").click();
-  await page.waitForURL(/\/project\?id=/);
+  await page.waitForURL(/\/project\?new=1/);
   await expect(page.getByTestId("project-editor")).toBeVisible();
+}
+
+/** Идентификатор проекта после первого действия: адрес меняется с `?new=1` на `?id=…`. */
+export async function projectIdAfterAction(page: Page): Promise<string> {
+  await page.waitForURL(/\/project\?id=prj_/, { timeout: 15000 });
   return rememberProjectFromUrl(page) as string;
+}
+
+/** Первое действие для тестов, которым нужен проект, а не его содержимое: название. */
+export async function nameProject(page: Page, title: string): Promise<string> {
+  await page.getByTestId("project-title").fill(title);
+  await page.getByTestId("project-title").blur();
+  return projectIdAfterAction(page);
 }
 
 /**

@@ -6,28 +6,19 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { ProjectCard } from "@/components/home/ProjectCard";
-import { api, ApiError } from "@/lib/api/client";
-import { notifications } from "@mantine/notifications";
-import { createProject, deleteProject, refreshProjects, useProjects } from "@/lib/state/projects";
+import { api } from "@/lib/api/client";
+import { deleteProject, refreshProjects, useProjects } from "@/lib/state/projects";
 
 export default function ProjectsPage() {
   const router = useRouter();
   const { items: projects, loaded } = useProjects();
   const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
 
-  const create = async () => {
-    setCreating(true);
-    try {
-      const p = await createProject();
-      router.push(`/project?id=${encodeURIComponent(p.project_id)}`);
-    } catch (e) {
-      notifications.show({ color: "red", title: "Проект не создан", message: e instanceof ApiError ? e.message : "Сервер недоступен" });
-    } finally {
-      setCreating(false);
-    }
-  };
+  // Нажатие открывает пустой экран, а не заводит проект: на сервере он появится с первым
+  // действием — сообщением, файлом, шаблоном или названием. Иначе в списке копились пустые
+  // «Новые презентации» от тех, кто просто заглянул.
+  const create = () => router.push("/project?new=1");
 
   const rename = async () => {
     if (!renaming) return;
@@ -59,8 +50,7 @@ export default function ProjectsPage() {
             <button
               type="button"
               className="grid-card-new"
-              onClick={() => void create()}
-              disabled={creating}
+              onClick={create}
               data-testid="new-project"
             >
               <IconPlus size={26} stroke={1.6} />

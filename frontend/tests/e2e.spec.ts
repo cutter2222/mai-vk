@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 
-import { attach, cleanupProjects, clickText, collectConsoleErrors, createProject, DOCX, DOCX_MIME, expectServiceStatus, openBriefEditor, PPTX, PPTX_MIME, REAL_STACK, rememberProjectFromUrl, sendMaterialsAndBrief, sendMessage, speedUp, startGeneration, uploadTemplate, WAIT, waitForAllVariantsDone } from "./helpers";
+import { attach, cleanupProjects, clickText, collectConsoleErrors, createProject, DOCX, DOCX_MIME, expectServiceStatus, nameProject, openBriefEditor, PPTX, PPTX_MIME, projectIdAfterAction, REAL_STACK, rememberProjectFromUrl, sendMaterialsAndBrief, sendMessage, speedUp, startGeneration, uploadTemplate, WAIT, waitForAllVariantsDone } from "./helpers";
 
 const SHOTS = process.env.SHOT_DIR;
 const shot = async (page: Page, name: string) => {
@@ -21,11 +21,14 @@ test.describe("сквозной сценарий в чате на заглушк
     // Состояние сервиса — в шапке списка; у открытой презентации своя шапка без разделов.
     await page.goto("/");
     await expectServiceStatus(page);
-    const projectId = await createProject(page);
+    await createProject(page);
     await expect(page.getByTestId("chat-intro")).toBeVisible();
     await expect(page.getByTestId("preview-empty")).toBeVisible();
+    // Пустой экран проекта на сервере ещё не существует: он заводится первым действием.
+    await expect(page).toHaveURL(/\/project\?new=1/);
 
     await uploadTemplate(page);
+    const projectId = await projectIdAfterAction(page);
     // На сервере уже разобранный шаблон отдаётся из кэша сразу: состояние «разбираю» может не появиться.
     await expect(page.getByTestId("template-analyzing").or(page.getByTestId("template-profile").last())).toBeVisible();
     // Текущий шаблон виден в шапке, в списке он отмечен галочкой
@@ -187,8 +190,9 @@ test.describe("сквозной сценарий в чате на заглушк
 
   test("чат переживает перезагрузку, проект открывается из сетки", async ({ page }) => {
     await speedUp(page, 8);
-    const projectId = await createProject(page);
+    await createProject(page);
     await uploadTemplate(page);
+    const projectId = await projectIdAfterAction(page);
     await sendMaterialsAndBrief(page);
     const jobId = await startGeneration(page);
     await page.reload();
@@ -232,8 +236,25 @@ test.describe("сквозной сценарий в чате на заглушк
     await expect(page.getByTestId("msg-assistant").last()).toContainText("удалён");
   });
 
+  test("пустой экран новой презентации проекта не создаёт", async ({ page }) => {
+    // Нажали «Новая презентация», передумали и ушли: в списке ничего не прибавилось.
+    await page.goto("/");
+    const before = await page.locator('[data-testid^="project-card-"]').count();
+    await createProject(page);
+    await page.getByTestId("back-home").click();
+    await expect(page.getByTestId("projects-grid")).toBeVisible();
+    await expect(page.locator('[data-testid^="project-card-"]')).toHaveCount(before);
+
+    // А теперь действие: проект появляется и в адресе, и в списке.
+    await createProject(page);
+    const projectId = await nameProject(page, "Появился после действия");
+    await page.getByTestId("back-home").click();
+    await expect(page.getByTestId(`project-card-${projectId}`)).toContainText("Появился после действия");
+  });
+
   test("сетка проектов: переименование и удаление", async ({ page }) => {
-    const projectId = await createProject(page);
+    await createProject(page);
+    const projectId = await nameProject(page, "Черновик отчёта");
     await page.getByTestId("back-home").click();
     await expect(page.getByTestId("projects-grid")).toBeVisible();
     await page.getByTestId(`project-menu-${projectId}`).click();
@@ -253,8 +274,9 @@ test.describe("сквозной сценарий в чате на заглушк
     await speedUp(page, 8);
     const errors = collectConsoleErrors(page);
     // Свой шаблон в библиотеке: в заглушках он же демонстрационный, на сервере — из кэша по байтам.
-    const projectId = await createProject(page);
+    await createProject(page);
     await uploadTemplate(page);
+    const projectId = await projectIdAfterAction(page);
     await expect(page.getByTestId("template-profile").last()).toBeVisible({ timeout: 90000 });
     const templateId = (await page.getByTestId("template-open-library").last().getAttribute("href"))?.match(/id=([^&]+)/)?.[1] as string;
     expect(templateId).toBeTruthy();

@@ -2,15 +2,29 @@
 
 import { Button, Container, Loader, Stack, Text, Title } from "@mantine/core";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import { ProjectEditor } from "@/components/project/ProjectEditor";
-import { useProject } from "@/lib/state/projects";
+import { isDraft, startDraft, useProject } from "@/lib/state/projects";
 
 export function ProjectClient() {
   const params = useSearchParams();
-  const id = params.get("id");
+  const router = useRouter();
+  const urlId = params.get("id");
+  // `?new=1` — экран новой презентации: проект живёт в памяти вкладки, пока пользователь
+  // ничего не сделал. Черновик один на вкладку, поэтому повторный рендер его не множит.
+  const wanted = !urlId && params.get("new") === "1";
+  const [draftId] = useState(() => (wanted ? startDraft().project_id : null));
+  const id = urlId ?? draftId;
   const { project, status } = useProject(id);
+
+  // Первое действие завело проект на сервере: адрес становится обычной ссылкой на него,
+  // чтобы перезагрузка и «поделиться» работали.
+  const realId = project && id && isDraft(id) && project.project_id !== id ? project.project_id : null;
+  useEffect(() => {
+    if (realId) router.replace(`/project?id=${encodeURIComponent(realId)}`);
+  }, [realId, router]);
 
   if (!id || status === "missing") {
     return (
