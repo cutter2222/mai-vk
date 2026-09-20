@@ -558,6 +558,13 @@ def check_fixed_elements(slide: JsonDict, ctx: Context) -> list[Issue]:
                 evidence={
                     "measured": round(shift, 4),
                     "threshold": limit,
+                    # Место из шаблона: по нему исправление возвращает элемент, не угадывая.
+                    "place": {
+                        "x": round(best.x, 4),
+                        "y": round(best.y, 4),
+                        "width": round(best.width, 4),
+                        "height": round(best.height, 4),
+                    },
                     "details": (
                         f"в шаблоне стоит на {best.x:.2f} × {best.y:.2f} холста, "
                         f"на слайде — на {x:.2f} × {y:.2f}"

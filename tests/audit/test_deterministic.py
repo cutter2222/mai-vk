@@ -77,6 +77,8 @@ def test_moved_page_number_is_reported() -> None:
     issues = check_fixed_elements(slide, Context(deck={"slides": [slide]}, profile=_profile()))
     assert [i.check_id for i in issues] == ["template.fixed_element_moved"]
     assert "Номер страницы" in issues[0].message
+    # Место из шаблона едет в улике: по нему исправление вернёт элемент, не угадывая.
+    assert issues[0].evidence["place"] == {"x": 0.936, "y": 0.927, "width": 0.046, "height": 0.053}
 
 
 def test_page_number_in_place_passes() -> None:

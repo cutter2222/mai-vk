@@ -1630,6 +1630,60 @@ def _plan_distinctness(o: Orchestrator, job_id: str, variants: list[JsonDict]) -
     return [indistinct_warning(entry) for entry in compare_plans(plans)["indistinct"]]
 
 
+
+
+def _repair_overrides(
+    o: Orchestrator,
+    job_id: str,
+    base_dir: pathlib.Path,
+    base_report: JsonDict,
+    issue_ids: list[str],
+    plan: JsonDict,
+) -> Any:
+    """Правки, которыми чинятся выбранные находки.
+
+    `None` — исправлять нечем по входам: нет описания собранной колоды или профиля шаблона
+    (режим заглушек). Тогда задание идёт прежним путём и честно показывает, что это заглушка.
+    """
+    # Настоящие правки к плану имеют смысл только при настоящей вёрстке: в режиме заглушек
+    # колода и профиль ненастоящие, и «исправление» там остаётся заглушкой, как и весь путь.
+    if o.layers.modes.get("layout") != "real":
+        return None
+    deck_path = base_dir / "composed.json"
+    if not deck_path.is_file():
+        return None
+    gen = o.state.get_generation(job_id)
+    try:
+        profile = (o.state.get_template(gen["template_id"]) or {}).get("profile")
+    except NotFound:
+        profile = None
+    if not profile:
+        return None
+    from presentation_designer.audit.repair import build_repair
+
+    deck = json.loads(deck_path.read_text(encoding="utf-8"))
+    return build_repair(base_report, list(issue_ids), deck, profile, plan)
+
+
+def _finish_repair_unchanged(o: Orchestrator, repair_job_id: str, job_id: str, fix: Any) -> None:
+    """Ни одна выбранная находка кодом не чинится: ревизии нет, и в задании написано почему."""
+    reasons = "; ".join(dict.fromkeys(f.note for f in fix.fixes if f.note)) or "исправлять нечего"
+    o.state.update_repair(repair_job_id, result="unchanged", change_note=reasons)
+    o.state.update_job(
+        repair_job_id,
+        status="succeeded",
+        stage="done",
+        finished_at=now_iso(),
+        result={
+            "unchanged": True,
+            "change_note": reasons,
+            "generation_result_url": f"/api/generations/{job_id}",
+        },
+        progress={"percent": 100, "message": "Исправлять нечего"},
+    )
+
+
+
 def task_repair(repair_job_id: str) -> None:
     o = get_orchestrator()
     repair = o.state.get_repair(repair_job_id)
@@ -1655,6 +1709,25 @@ def task_repair(repair_job_id: str) -> None:
 
         _, titles = plan_slides(plan)
         new_rev = base + 1
+        # Исправление — это правки к плану того же вида, что и ручные из редактора, поэтому
+        # ревизия собирается тем же путём (план → вёрстка → экспорт → аудит), а не своим.
+        fix = _repair_overrides(o, job_id, base_dir, base_report, repair["issue_ids"], plan)
+        if fix is not None:
+            if not fix.patch["slides"]:
+                _finish_repair_unchanged(o, repair_job_id, job_id, fix)
+                return
+            # Патч проверяется той же схемой, что и правки редактора: поля задания обязательны.
+            o.state.update_repair(
+                repair_job_id,
+                patch={
+                    "job_id": job_id,
+                    "variant_id": variant_id,
+                    "base_revision": base,
+                    "slides": fix.patch["slides"],
+                },
+            )
+            task_edit(repair_job_id)
+            return
         prefix = o.artifacts.prefix(variant_id, new_rev)
         with o.artifacts.stage_revision(job_id, variant_id, new_rev) as staging:
             out = run_repair(
@@ -1725,6 +1798,24 @@ def task_repair(repair_job_id: str) -> None:
         )
 
 
+def _edit_message(is_patch: bool, is_repair: bool, slide_index: int, stage: str) -> str:
+    """Слова о ходе ревизии: у исправления находок, ручной правки и просьбы в чат они разные,
+    а путь один — поэтому текст выбирается здесь, а не ветвлением по всему заданию."""
+    plan = (
+        "Исправляю выбранные находки"
+        if is_repair
+        else "Применяю правки редактора"
+        if is_patch
+        else f"Переделываю слайд {slide_index + 1}"
+    )
+    return {
+        "plan": plan,
+        "compose": "Собираю новую ревизию",
+        "export": "Экспортирую PDF и миниатюры",
+        "audit": "Проверяю изменённые слайды" if is_patch else "Проверяю изменённый слайд",
+    }.get(stage, "")
+
+
 def task_edit(edit_job_id: str) -> None:
     """Правка слайда: план базовой ревизии → модель → сборка, экспорт и аудит новой ревизии.
     Отказ модели завершает задание успешно без ревизии (`result.unchanged`)."""
@@ -1732,17 +1823,18 @@ def task_edit(edit_job_id: str) -> None:
     edit = o.state.get_repair(edit_job_id)
     job_id, variant_id = edit["job_id"], edit["variant_id"]
     slide_index = int(edit["slide_index"] or 0)
-    patch = edit.get("patch") if edit.get("kind") == "patch" else None
+    # Патч приходит и от редактора, и от исправления находок: путь ревизии у них общий,
+    # различаются только слова в карточке задания.
+    patch = edit.get("patch")
     is_patch = patch is not None
+    is_repair = edit.get("kind") == "repair"
     o.state.job_started(edit_job_id)
     o.state.update_job(
         edit_job_id,
         stage="plan",
         progress={
             "percent": 10,
-            "message": (
-                "Применяю правки редактора" if is_patch else f"Переделываю слайд {slide_index + 1}"
-            ),
+            "message": _edit_message(is_patch, is_repair, slide_index, "plan"),
         },
     )
     try:
@@ -1783,20 +1875,9 @@ def task_edit(edit_job_id: str) -> None:
                         stage=data["stage"],
                         progress={
                             "percent": progress.get(data["stage"], 10),
-                            "message": {
-                                "plan": (
-                                    "Применяю правки редактора"
-                                    if is_patch
-                                    else f"Переделываю слайд {slide_index + 1}"
-                                ),
-                                "compose": "Собираю новую ревизию",
-                                "export": "Экспортирую PDF и миниатюры",
-                                "audit": (
-                                    "Проверяю изменённые слайды"
-                                    if is_patch
-                                    else "Проверяю изменённый слайд"
-                                ),
-                            }.get(data["stage"], ""),
+                            "message": _edit_message(
+                                is_patch, is_repair, slide_index, str(data["stage"])
+                            ),
                         },
                     )
 

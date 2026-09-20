@@ -813,8 +813,12 @@ class RealLayers(StubLayers):
         base = inp.base_dir
         if not self.renderer_available or not (base / "deck.pdf").is_file():
             return out
-        for name in ("deck.pdf", "deck.html"):
-            inp.staging.write_bytes(name, (base / name).read_bytes())
+        # Описание колоды и план тоже переносятся: без них ревизия неполная — на ней не
+        # работают ни холст редактора, ни следующее исправление.
+        for name in ("deck.pdf", "deck.html", "deck.pptx", "composed.json", "plan.json"):
+            source = base / name
+            if source.is_file():
+                inp.staging.write_bytes(name, source.read_bytes())
         thumbnails: list[dict[str, Any]] = []
         for thumb in out.thumbnails:
             rel = str(thumb["name"]).removeprefix(inp.staging.prefix)

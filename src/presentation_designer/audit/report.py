@@ -64,6 +64,12 @@ def inputs_for(check: Check) -> list[str]:
     )
 
 
+def _fixable(check_id: str) -> bool:
+    from presentation_designer.audit.repair import FIXERS
+
+    return check_id in FIXERS
+
+
 def _severity_of(check_id: str) -> str:
     check = BY_ID.get(check_id)
     return check.severity if check else "warning"
@@ -92,7 +98,11 @@ def issues_to_json(issues: list[Issue]) -> list[JsonDict]:
             # Что можно сделать с находкой. Исправление не применяется само: пользователь
             # выбирает, что чинить, — этого требует ТЗ, и поэтому статус здесь «открыта».
             "fix": {
-                "available": bool(check and check.fix_strategy != "none"),
+                # Обещать исправление, которого нет в коде, — обманывать: кнопка нажимается,
+                # а ревизия приходит без изменений. Доступно ровно то, что умеет `repair`.
+                "available": bool(
+                    check and check.fix_strategy != "none" and _fixable(check.check_id)
+                ),
                 "strategy": check.fix_strategy if check else "none",
                 "cost": check.fix_cost if check else "cheap",
                 **({"description": check.fix_note} if check and check.fix_note else {}),

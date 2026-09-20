@@ -1168,7 +1168,7 @@ class State:
             return self._repair_row(row)
 
     def update_repair(self, repair_job_id: str, **fields: Any) -> None:
-        json_fields = {"issue_ids", "changed_slide_ids"}
+        json_fields = {"issue_ids", "changed_slide_ids", "patch"}
         with self.tx() as conn:
             for key, value in fields.items():
                 conn.execute(
