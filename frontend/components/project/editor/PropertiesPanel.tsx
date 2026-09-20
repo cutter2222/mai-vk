@@ -68,7 +68,7 @@ export function PropertiesPanel({ editor, profile, pkg, projectId }: Props) {
             <Text fw={600} size="sm">Слайд {slide ? editor.slideOrder.indexOf(slide.slide_id) + 1 : ""}</Text>
           )}
           <Text size="xs" c="dimmed" mt={2}>
-            {obj ? "Правки видны сразу; точная картинка появится после «Применить». Delete убирает объект." : "Нажмите объект на слайде, чтобы изменить текст, оформление или положение."}
+            {obj ? "Правки видны сразу; точная картинка появится после «Применить»." : "Нажмите объект на слайде, чтобы изменить текст, оформление или положение."}
           </Text>
         </div>
         <Group gap="xs" wrap="nowrap">
@@ -114,6 +114,17 @@ export function PropertiesPanel({ editor, profile, pkg, projectId }: Props) {
       </Group>
     </div>
   );
+}
+
+/**
+ * Пять кеглей шкалы вокруг текущего: крайние значения шаблона (48 и 15 в одной строке) вместе
+ * не нужны, нужен выбор рядом с тем, что стоит сейчас. Текущий кегль в список попадает всегда.
+ */
+function nearestSizes(sizes: number[], current: number | undefined | null, limit = 5): number[] {
+  if (sizes.length <= limit) return sizes;
+  const value = current ?? sizes[Math.floor(sizes.length / 2)];
+  const around = [...sizes].sort((a, b) => Math.abs(a - value) - Math.abs(b - value)).slice(0, limit);
+  return around.sort((a, b) => b - a);
 }
 
 function capitalize(s: string): string {
@@ -178,8 +189,10 @@ function TextProperties({ obj, originalObj, editor, tokens }: TextProps) {
         <div>
           <Text size="xs" fw={500} mb={4}>Кегль</Text>
           <Group gap={4} wrap="nowrap">
+            {/* Шкала шаблона бывает в десяток кеглей, и строка из восьми кнопок читалась как
+                набор цифр. Показываются пять ближайших к текущему: остальные набираются полем. */}
             <Group gap={2} wrap="nowrap" data-testid="prop-size-scale">
-              {tokens.sizes.slice(0, 8).map((s) => (
+              {nearestSizes(tokens.sizes, font.size_pt).map((s) => (
                 <Button key={s} size="compact-xs" variant={font.size_pt === s ? "filled" : "default"} onClick={() => setStyle({ font: { size_pt: s } })} data-testid={`prop-size-${s}`}>
                   {s}
                 </Button>

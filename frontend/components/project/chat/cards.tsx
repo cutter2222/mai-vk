@@ -245,8 +245,8 @@ export function AuditCard({ m, ctx }: { m: Msg<"audit_card">; ctx: CardContext }
         ))}
       </Stack>
       <Text size="xs" c="dimmed" mb={8}>
-        {total ? "Находки отмечены рамками на слайдах и красными точками в ленте. Выберите, что исправить: каждое исправление создаёт новую ревизию." : "Все проверки пройдены."}
-        {incomplete ? " Часть проверок не выполнена, поэтому статус «требует проверки»." : ""}
+        {total ? "Находки отмечены на слайдах; исправление создаёт новую ревизию." : "Все проверки пройдены."}
+        {incomplete ? " Часть проверок не выполнена." : ""}
       </Text>
       <Group gap="xs">
         <Button size="xs" variant="default" onClick={() => ctx.onOpenAudit(worst?.variant_id)} data-testid="open-audit">Показать находки</Button>

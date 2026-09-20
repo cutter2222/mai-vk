@@ -40,8 +40,10 @@ export function ProgressPanel({ result }: { result: GenerationResult }) {
         </Group>
       </div>
 
+      {/* Список пропущенных слайдов бывает в десяток номеров и занимал в карточке три строки:
+          две видно, остальное — в подсказке. */}
       {result.warnings?.filter((w) => w.code === "original_slides_skipped").map((w) => (
-        <Text key={w.code} size="xs" c="dimmed" mt={8} data-testid="job-warning">{w.message}</Text>
+        <Text key={w.code} size="xs" c="dimmed" mt={8} lineClamp={2} title={w.message} data-testid="job-warning">{w.message}</Text>
       ))}
       {result.error && (
         <Text size="sm" c="red" mt={8} data-testid="job-error">

@@ -1,8 +1,14 @@
 "use client";
 
-import { Button, Group, Modal, Stack, Tabs, Text } from "@mantine/core";
+import { ActionIcon, Button, Group, Modal, Stack, Tabs, Text, Tooltip } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconFolder, IconMessage, IconX } from "@tabler/icons-react";
+import {
+  IconFolder,
+  IconLayoutSidebarLeftCollapse,
+  IconLayoutSidebarLeftExpand,
+  IconMessage,
+  IconX,
+} from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { api, ApiError, type CapabilitiesResponse, type ContentDetail, type TemplateDetail } from "@/lib/api/client";
@@ -10,6 +16,7 @@ import type { GenerationRequest } from "@/lib/api/types";
 import { usePolling } from "@/lib/api/usePolling";
 import { useGenerationSession } from "@/lib/hooks/useGenerationSession";
 import { useSlideEditor } from "@/lib/hooks/useSlideEditor";
+import { setPanelOpen, usePanelOpen } from "@/lib/state/panel";
 import { appendMessage, updateProject, type Project } from "@/lib/state/projects";
 
 import { ChatPanel } from "./chat/ChatPanel";
@@ -26,6 +33,9 @@ type Tab = "chat" | "files";
 /** Редактор проекта: слева чат (или файлы проекта), справа предпросмотр слайдов. */
 export function ProjectEditor({ project }: { project: Project }) {
   const [tab, setTab] = useState<Tab>("chat");
+  // Панель с чатом занимает 460 px. На правке слайда это место нужнее слайду, поэтому она
+  // сворачивается в рельс с иконками: экран остаётся тем же, а холст становится больше.
+  const panelOpen = usePanelOpen();
   const [caps, setCaps] = useState<CapabilitiesResponse | null>(null);
   const [starting, setStarting] = useState(false);
   const [briefModal, setBriefModal] = useState(false);
@@ -35,6 +45,11 @@ export function ProjectEditor({ project }: { project: Project }) {
   useEffect(() => {
     api.capabilities().then(setCaps).catch(() => setCaps(null));
   }, []);
+
+  const showPanel = (open: boolean, next?: Tab) => {
+    if (next) setTab(next);
+    setPanelOpen(open);
+  };
 
   const template = usePolling<TemplateDetail>(
     project.template_id ? () => api.templates.get(project.template_id as string) : null,
@@ -157,32 +172,56 @@ export function ProjectEditor({ project }: { project: Project }) {
         onUploadTemplate={(file) => void chat.addTemplate(file)}
       />
       <div className="editor-body">
-        {/* Разделы панели переехали с вертикального рельса в её же шапку: рельс занимал
-            колонку ради двух кнопок и добавлял четвёртый слой хрома на экран. */}
-        <aside className="editor-panel">
-          <div className="editor-panel-tabs" role="tablist" aria-label="Разделы проекта">
+        {/* Свёрнутая панель оставляет рельс: развернуть и сразу открыть нужный раздел. */}
+        {!panelOpen && (
+          <div className="editor-rail" data-testid="panel-rail">
+            <Tooltip label="Развернуть панель" position="right">
+              <ActionIcon variant="subtle" color="gray" size="lg" onClick={() => showPanel(true)} aria-label="Развернуть панель" data-testid="panel-expand">
+                <IconLayoutSidebarLeftExpand size={18} stroke={1.7} />
+              </ActionIcon>
+            </Tooltip>
             {TABS.map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                role="tab"
-                className="panel-tab"
-                data-active={tab === t.key || undefined}
-                aria-selected={tab === t.key}
-                onClick={() => setTab(t.key)}
-                data-testid={`tab-${t.key}`}
-              >
-                {t.icon}
-                <span>{t.label}</span>
-                {t.badge ? <b>{t.badge}</b> : null}
-              </button>
+              <Tooltip key={t.key} label={t.label} position="right">
+                <ActionIcon variant="subtle" color="gray" size="lg" onClick={() => showPanel(true, t.key)} aria-label={t.label} data-testid={`rail-${t.key}`}>
+                  {t.icon}
+                </ActionIcon>
+              </Tooltip>
             ))}
           </div>
-          {tab === "chat" ? (
-            <ChatPanel ctx={ctx} onSend={chat.send} onAttach={chat.attach} staged={chat.staged} onAnswerStaged={chat.answerStaged} />
-          ) : (
-            <FilesPanel project={project} session={session} onAdd={(files) => { const rest = chat.attach(files); if (rest.length) void chat.send("", rest); }} onRemove={(fid) => void chat.removeFile(fid)} onSelectTemplate={chat.selectTemplate} />
-          )}
+        )}
+        {/* Разделы панели переехали с вертикального рельса в её же шапку: рельс занимал
+            колонку ради двух кнопок и добавлял четвёртый слой хрома на экран. */}
+        <aside className="editor-panel" data-open={panelOpen} aria-hidden={!panelOpen} inert={!panelOpen}>
+          <div className="editor-panel-inner">
+            <div className="editor-panel-tabs" role="tablist" aria-label="Разделы проекта">
+              {TABS.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  role="tab"
+                  className="panel-tab"
+                  data-active={tab === t.key || undefined}
+                  aria-selected={tab === t.key}
+                  onClick={() => setTab(t.key)}
+                  data-testid={`tab-${t.key}`}
+                >
+                  {t.icon}
+                  <span>{t.label}</span>
+                  {t.badge ? <b>{t.badge}</b> : null}
+                </button>
+              ))}
+              <Tooltip label="Свернуть панель">
+                <ActionIcon className="panel-collapse" variant="subtle" color="gray" size="md" onClick={() => showPanel(false)} aria-label="Свернуть панель" data-testid="panel-collapse">
+                  <IconLayoutSidebarLeftCollapse size={18} stroke={1.7} />
+                </ActionIcon>
+              </Tooltip>
+            </div>
+            {tab === "chat" ? (
+              <ChatPanel ctx={ctx} onSend={chat.send} onAttach={chat.attach} staged={chat.staged} onAnswerStaged={chat.answerStaged} />
+            ) : (
+              <FilesPanel project={project} session={session} onAdd={(files) => { const rest = chat.attach(files); if (rest.length) void chat.send("", rest); }} onRemove={(fid) => void chat.removeFile(fid)} onSelectTemplate={chat.selectTemplate} />
+            )}
+          </div>
         </aside>
 
         <section className="editor-preview" data-testid="preview-pane">

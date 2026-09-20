@@ -1,7 +1,7 @@
 "use client";
 
 import { ActionIcon, Badge, Button, Group, Loader, SegmentedControl, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
-import { IconArrowBackUp, IconArrowForwardUp, IconEraser, IconListCheck, IconPencil, IconStar, IconStarFilled, IconTextPlus, IconX } from "@tabler/icons-react";
+import { IconArrowBackUp, IconArrowForwardUp, IconColorSwatch, IconEraser, IconListCheck, IconPencil, IconSitemap, IconStar, IconStarFilled, IconTextPlus, IconX } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 
 import type { Outline } from "@/components/common/SlideImage";
@@ -272,13 +272,24 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
           }
           caption={
             <>
-              <Text size="sm" fw={500}>{VARIANT_LABELS[variant.variant_id] ?? variant.variant_id}</Text>
+              {/* Название варианта уже стоит в верхней строке. Здесь оно повторялось и съедало
+                  место, поэтому остаётся только там, где вариантов несколько. */}
+              {multi && <Text size="sm" fw={500}>{VARIANT_LABELS[variant.variant_id] ?? variant.variant_id}</Text>}
               <Text size="xs" c="dimmed">ревизия {session.viewRevision}</Text>
               {session.viewRevision !== session.currentRevision && <Badge size="xs" color="orange" variant="light">устаревшая</Badge>}
               {variant.status === "running" && <Badge size="xs" color="blue" variant="light" data-testid="preview-provisional">предварительный показ · сборка идёт</Badge>}
-              {editor.dirty && <Badge size="xs" color="ink" variant="light" data-testid="draft-badge">черновик: {editor.draftCount}</Badge>}
-              {editor.slideDirty && !editor.editing && (
-                <Badge size="xs" color="orange" variant="light" data-testid="draft-preview">показан черновик · нажмите «Применить»</Badge>
+              {/* Один значок вместо двух: сколько правок в черновике и, если правка уже
+                  закрыта, что показан именно черновик. */}
+              {editor.dirty && (
+                <Badge
+                  size="xs"
+                  color={editor.slideDirty && !editor.editing ? "orange" : "ink"}
+                  variant="light"
+                  data-testid="draft-badge"
+                >
+                  черновик: {editor.draftCount}
+                  {editor.slideDirty && !editor.editing ? " · не применён" : ""}
+                </Badge>
               )}
               {/* При открытой панели аудита сводка находок не дублируется в подписи: там она
                   подробнее, а в узкой строке обрезалась до «80 …». */}
@@ -291,50 +302,52 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
           }
           actions={
             <>
-              {/* В правке под слайдом только то, что относится к черновику: фон слайда и его
-                  применение. Поля объекта живут в ящике справа и появляются по выбору объекта. */}
+              {/* Инструменты правки — иконки с подсказками: в строке под слайдом их три,
+                  и подписями они занимали половину ширины. */}
               {editor.editing && (
-                <Button
-                  variant="subtle"
-                  size="compact-xs"
-                  leftSection={<IconTextPlus size={14} />}
-                  onClick={editor.addText}
-                  data-testid="editor-add-text"
-                >
-                  Текст
-                </Button>
-              )}
-              {/* Знак шаблона: чужой логотип делает шаблон непригодным для другого
-                  подразделения, а снимать его со всех слайдов вручную никто не станет. */}
-              {editor.editing && editor.logoCount > 0 && (
-                <Tooltip label="Знак шаблона стоит на макетах, поэтому снимается со всей колоды разом">
-                  <Button
-                    variant={editor.logoDropped ? "light" : "subtle"}
-                    size="compact-xs"
-                    leftSection={<IconEraser size={14} />}
-                    onClick={editor.toggleLogo}
-                    data-testid="editor-drop-logos"
-                  >
-                    {editor.logoDropped ? "Вернуть логотип" : "Убрать логотип"}
-                  </Button>
-                </Tooltip>
-              )}
-              {editor.editing && (
-                <Button
-                  variant={slideProps ? "light" : "subtle"}
-                  size="compact-xs"
-                  onClick={() => {
-                    if (slideProps) {
-                      setSlideProps(false);
-                      return;
-                    }
-                    editor.selectObject(null);
-                    setSlideProps(true);
-                  }}
-                  data-testid="toggle-slide-props"
-                >
-                  Фон слайда
-                </Button>
+                <>
+                  <Tooltip label="Добавить надпись">
+                    <ActionIcon variant="subtle" color="gray" size="md" onClick={editor.addText} aria-label="Добавить надпись" data-testid="editor-add-text">
+                      <IconTextPlus size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                  <Tooltip label="Фон слайда">
+                    <ActionIcon
+                      variant={slideProps ? "light" : "subtle"}
+                      color={slideProps ? "blue" : "gray"}
+                      size="md"
+                      onClick={() => {
+                        if (slideProps) {
+                          setSlideProps(false);
+                          return;
+                        }
+                        editor.selectObject(null);
+                        setSlideProps(true);
+                      }}
+                      aria-label="Фон слайда"
+                      data-testid="toggle-slide-props"
+                    >
+                      <IconColorSwatch size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                  {/* Знак шаблона: чужой логотип делает шаблон непригодным для другого
+                      подразделения, а снимать его со всех слайдов вручную никто не станет. */}
+                  {editor.logoCount > 0 && (
+                    <Tooltip label={editor.logoDropped ? "Вернуть знак шаблона" : "Убрать знак шаблона со всей колоды"}>
+                      <ActionIcon
+                        variant={editor.logoDropped ? "light" : "subtle"}
+                        color={editor.logoDropped ? "blue" : "gray"}
+                        size="md"
+                        onClick={editor.toggleLogo}
+                        aria-label={editor.logoDropped ? "Вернуть знак шаблона" : "Убрать знак шаблона"}
+                        data-testid="editor-drop-logos"
+                      >
+                        <IconEraser size={16} />
+                      </ActionIcon>
+                    </Tooltip>
+                  )}
+                  <span className="bar-sep" />
+                </>
               )}
               {/* Шаги черновика: те же Ctrl+Z и Ctrl+Shift+Z, но видимые. Кнопки остаются и после
                   выхода из правки — черновик жив, пока его не применили или не отменили. */}
@@ -343,7 +356,7 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
                   <ActionIcon
                     variant="subtle"
                     color="gray"
-                    size="sm"
+                    size="md"
                     disabled={!editor.canUndo}
                     onClick={editor.undo}
                     title="Шаг назад · Ctrl+Z"
@@ -355,7 +368,7 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
                   <ActionIcon
                     variant="subtle"
                     color="gray"
-                    size="sm"
+                    size="md"
                     disabled={!editor.canRedo}
                     onClick={editor.redo}
                     title="Шаг вперёд · Ctrl+Shift+Z"
@@ -364,8 +377,10 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
                   >
                     <IconArrowForwardUp size={16} />
                   </ActionIcon>
+                  <span className="bar-sep" />
                 </>
               )}
+              {/* Применение черновика словами, а не значком: это решение, а не инструмент. */}
               {editor.dirty && !drawerOpen && (
                 <>
                   <Button variant="subtle" color="gray" size="compact-xs" onClick={editor.discard} data-testid="editor-cancel-bar">
@@ -374,12 +389,20 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
                   <Button size="compact-xs" loading={editor.applying} onClick={() => void editor.apply()} data-testid="editor-apply-bar">
                     Применить
                   </Button>
+                  <span className="bar-sep" />
                 </>
               )}
-                <Tooltip label="↑ ↓ и ← → листают слайды, Esc закрывает правку, Ctrl+Z отменяет шаг">
-                <Button variant="subtle" size="compact-xs" onClick={() => session.setShowHowBuilt(!session.showHowBuilt)} data-testid="toggle-how-built">
-                  {session.showHowBuilt ? "Скрыть «как собран»" : "Как собран слайд"}
-                </Button>
+              <Tooltip label="Как собран слайд">
+                <ActionIcon
+                  variant={session.showHowBuilt ? "light" : "subtle"}
+                  color={session.showHowBuilt ? "blue" : "gray"}
+                  size="md"
+                  onClick={() => session.setShowHowBuilt(!session.showHowBuilt)}
+                  aria-label="Как собран слайд"
+                  data-testid="toggle-how-built"
+                >
+                  <IconSitemap size={16} />
+                </ActionIcon>
               </Tooltip>
             </>
           }
@@ -388,24 +411,28 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
               <div className="editor-drawer" data-testid="editor-drawer">
                 <Group justify="space-between" mb="xs">
                   <Text fw={600}>{editor.selectedObjectId ? "Объект" : "Слайд"}</Text>
-                  <Button
-                    size="compact-xs"
+                  <ActionIcon
                     variant="subtle"
                     color="gray"
+                    size="sm"
                     onClick={() => {
                       editor.selectObject(null);
                       setSlideProps(false);
                     }}
+                    aria-label="Закрыть панель правки"
                     data-testid="editor-done"
                   >
-                    Закрыть
-                  </Button>
+                    <IconX size={14} />
+                  </ActionIcon>
                 </Group>
                 {editor.deckError ? (
                   <Text size="xs" c="red">Описание колоды не загружено: {editor.deckError}</Text>
                 ) : (
                   <PropertiesPanel editor={editor} profile={templateDetail?.profile} pkg={pkg} projectId={projectId} />
                 )}
+                {/* Подсказки по клавишам стояли в подсказке кнопки «как собран» — там их никто
+                    не искал. Здесь они видны ровно тогда, когда правят слайд. */}
+                <Text size="xs" c="dimmed" mt="sm">↑ ↓ листают слайды · Esc закрывает правку · Ctrl+Z отменяет шаг · Delete убирает объект</Text>
               </div>
             ) : session.auditOpen && !editor.editing ? (
               <div className="audit-drawer" data-testid="audit-drawer">

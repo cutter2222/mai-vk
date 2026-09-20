@@ -160,6 +160,15 @@ test.describe("сквозной сценарий в чате на заглушк
     await expect(page.getByTestId("slide-target")).toContainText("r4");
     await expect(page.getByTestId("preview-pane")).toContainText("ревизия 4");
 
+    // Панель чата сворачивается иконкой и разворачивается из рельса: на правке слайда
+    // место нужнее холсту, а состояние панели переживает переход по вкладкам.
+    await page.getByTestId("panel-collapse").click();
+    await expect(page.getByTestId("panel-rail")).toBeVisible();
+    await expect(page.locator(".editor-panel")).toHaveAttribute("data-open", "false");
+    await page.getByTestId("panel-expand").click();
+    await expect(page.getByTestId("panel-rail")).toHaveCount(0);
+    await expect(page.locator(".editor-panel")).toHaveAttribute("data-open", "true");
+
     // Файлы проекта: загруженное и собранное
     await page.getByTestId("tab-files").click();
     await expect(page.getByTestId("files-panel")).toContainText("Корпоративный шаблон.pptx");

@@ -375,9 +375,18 @@ body {
 .viewer-bar-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   flex: 0 0 auto;
   justify-content: flex-end;
+}
+
+/* Тонкая черта между группами кнопок: инструменты правки, шаги черновика, применение. */
+.bar-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--line);
+  flex: 0 0 auto;
 }
 
 /* Подвал колонки: обоснование варианта, «как собран», панель свойств редактора.
@@ -553,6 +562,7 @@ body {
 /* Разделы панели: две вкладки в её шапке вместо отдельного вертикального рельса. */
 .editor-panel-tabs {
   display: flex;
+  align-items: center;
   gap: 4px;
   padding: 10px 12px 0;
   flex: 0 0 auto;
@@ -608,6 +618,41 @@ body {
   border-right: 1px solid var(--line);
   background: var(--page);
   min-height: 0;
+  overflow: hidden;
+  transition: width var(--side-ms) var(--side-ease), flex-basis var(--side-ms) var(--side-ease);
+}
+
+/* Свёрнутая панель уезжает шириной, а не исчезает: содержимое внутри сохраняет свои 460 px,
+   поэтому чат не перевёрстывается на каждом кадре. */
+.editor-panel[data-open="false"] {
+  width: 0;
+  flex-basis: 0;
+  border-right-color: transparent;
+}
+
+.editor-panel-inner {
+  display: flex;
+  flex-direction: column;
+  width: 460px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Рельс свёрнутой панели: развернуть и сразу открыть нужный раздел. */
+.editor-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 52px;
+  padding: 10px 0;
+  border-right: 1px solid var(--line);
+  background: var(--page);
+}
+
+.panel-collapse {
+  margin-left: auto;
+  align-self: center;
 }
 
 .editor-panel-head {
@@ -1465,7 +1510,14 @@ body {
 }
 
 /* Выбор ресурса: сетка миниатюр шаблона и материалов. */
+.asset-picker-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}
+
 .asset-picker {
+  position: relative;
   padding: 8px 10px 6px;
   border: 1px solid var(--line);
   border-radius: var(--mantine-radius-sm);

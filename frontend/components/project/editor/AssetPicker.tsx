@@ -1,8 +1,8 @@
 "use client";
 
-import { Badge, Button, FileButton, Group, Loader, SegmentedControl, Stack, Tabs, Text, TextInput } from "@mantine/core";
+import { ActionIcon, Badge, Button, FileButton, Group, Loader, SegmentedControl, Stack, Tabs, Text, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconUpload } from "@tabler/icons-react";
+import { IconUpload, IconX } from "@tabler/icons-react";
 import { useMemo, useState } from "react";
 
 import { api, ApiError } from "@/lib/api/client";
@@ -55,6 +55,11 @@ export function AssetPicker({ templateId, profile, pkg, projectId, preferKind, o
 
   return (
     <div className="asset-picker" data-testid="asset-picker">
+      {/* Закрытие — крестик в углу, как у боковых панелей: кнопка «Закрыть» внизу читалась
+          как действие выбора и стояла рядом с «Выбрать файл». */}
+      <ActionIcon className="asset-picker-close" variant="subtle" color="gray" size="sm" onClick={onClose} aria-label="Закрыть выбор картинки" data-testid="asset-picker-close">
+        <IconX size={14} />
+      </ActionIcon>
       <Tabs defaultValue={assets.length ? "template" : packageAssets.length ? "package" : "upload"}>
         <Tabs.List mb="xs">
           <Tabs.Tab value="template" data-testid="asset-tab-template">Из шаблона ({assets.length})</Tabs.Tab>
@@ -121,10 +126,7 @@ export function AssetPicker({ templateId, profile, pkg, projectId, preferKind, o
           </Tabs.Panel>
         )}
       </Tabs>
-      <Group justify="space-between" mt="xs">
-        <Badge size="xs" variant="light" color="gray">только ресурсы шаблона и материалов: внешние библиотеки не подключены</Badge>
-        <Button size="compact-xs" variant="subtle" color="gray" onClick={onClose} data-testid="asset-picker-close">Закрыть</Button>
-      </Group>
+      <Badge size="xs" variant="light" color="gray" mt="xs">только ресурсы шаблона и материалов: внешние библиотеки не подключены</Badge>
     </div>
   );
 }
