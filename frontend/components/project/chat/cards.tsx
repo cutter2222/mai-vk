@@ -1,22 +1,32 @@
 "use client";
 
-import { Accordion, Anchor, Badge, Button, ColorSwatch, Group, Loader, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
-import { IconFile, IconFileTypePpt, IconRocket } from "@tabler/icons-react";
+import { Anchor, Button, ColorSwatch, Group, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
+import { IconRocket } from "@tabler/icons-react";
 import { useState } from "react";
 
 import { SlideImage } from "@/components/common/SlideImage";
-import { SlideCompareModal } from "@/components/project/chat/SlideCompareModal";
-import { ProgressPanel } from "@/components/workspace/ProgressPanel";
-import { MetricsPanel } from "@/components/workspace/MetricsPanel";
 import { api, ApiError, TERMINAL_STATES, type ContentDetail, type TemplateDetail } from "@/lib/api/client";
-import type { JobStatus } from "@/lib/api/types";
+import type { GenerationResult, JobStatus } from "@/lib/api/types";
 import { usePolling } from "@/lib/api/usePolling";
-import { formatMs, plural, VARIANT_LABELS } from "@/lib/format";
+import { formatMs, plural, STAGE_LABELS, VARIANT_LABELS } from "@/lib/format";
 import { useElapsed } from "@/lib/hooks/useElapsed";
 import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
 import type { BriefDraft, ChatMessage, PptxAnswer, Project } from "@/lib/state/projects";
 
 import { PURPOSE_LABELS, PURPOSE_OPTIONS } from "../panels/BriefFields";
+import { JobDetails } from "./JobDetails";
+import { SlideCompareModal } from "./SlideCompareModal";
+import { editOrigin } from "./tags";
+
+/**
+ * Шаги работы говорят фразами, а не показывают карточки.
+ *
+ * Раньше каждый шаг был рамкой с заголовком, значком состояния и сеткой полей: шесть таких
+ * рамок подряд читались как приборная панель, а не как разговор. Теперь шаблон, материалы,
+ * задача, генерация, аудит и правки — это реплики одного собеседника: короткая фраза, при
+ * необходимости кнопки-ответы, метка шага внизу. Рамка осталась там, где есть что показать:
+ * миниатюры «до/после» и раскрытые подробности задания.
+ */
 
 type Msg<K extends string> = Extract<ChatMessage, { kind: K }>;
 
@@ -28,45 +38,82 @@ export interface CardContext {
   onSetPurpose: (purpose: BriefDraft["purpose"]) => void;
   onGenerate: () => void;
   generating: boolean;
-  onOpenAudit: (variantId?: string) => void;
   onRepairAll: () => void;
   onRetryImport: () => void;
 }
 
-/** Обёртка карточки шага конвейера: заголовок, содержимое, действия. */
-function Card({ title, aside, children, testId }: { title: React.ReactNode; aside?: React.ReactNode; children?: React.ReactNode; testId?: string }) {
+/** Реплика ассистента: обычный текст ленты. */
+function Say({ children, testId }: { children: React.ReactNode; testId?: string }) {
+  return <Text size="sm" className="chat-assistant-text" data-testid={testId}>{children}</Text>;
+}
+
+/** Идёт работа: строка с бегущим многоточием. Точку в конце не ставим — её дорисует анимация. */
+function Doing({ children, testId }: { children: React.ReactNode; testId?: string }) {
+  return <Text size="sm" className="chat-hint" data-testid={testId}>{children}</Text>;
+}
+
+/** Пояснение под репликой: мелким серым, чтобы не спорить с самой фразой. */
+function Aside({ children, testId }: { children: React.ReactNode; testId?: string }) {
+  return <Text size="xs" c="dimmed" data-testid={testId}>{children}</Text>;
+}
+
+export interface Option {
+  label: string;
+  onClick: () => void;
+  testId?: string;
+}
+
+/** Варианты ответа под сообщением: кнопки-реплики, как у ботов в мессенджерах. */
+export function Options({ options }: { options: Option[] }) {
   return (
-    <div className="chat-card" data-testid={testId}>
-      <Group justify="space-between" wrap="nowrap" mb={children ? 8 : 0}>
-        <Text size="sm" fw={600}>{title}</Text>
-        {aside}
-      </Group>
-      {children}
+    <div className="chat-options">
+      {options.map((o) => (
+        <button key={o.label} type="button" className="chat-opt" onClick={o.onClick} data-testid={o.testId}>
+          {o.label}
+        </button>
+      ))}
     </div>
   );
 }
 
-/** Вопрос о PPTX: шаблон оформления или материал. Один и тот же вид для файла в истории и для файла, который ещё грузится. */
+/** Служебное под репликой: пока не спросили, места не занимает. */
+function Details({ label, children, testId }: { label: string; children: React.ReactNode; testId?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button type="button" className="chat-more" onClick={() => setOpen((o) => !o)} data-testid={testId}>
+        {open ? "скрыть подробности" : label}
+      </button>
+      {open && children}
+    </div>
+  );
+}
+
+/** Вопрос о PPTX: шаблон оформления, готовая презентация или материал. */
 export function PptxQuestion({ name, resolved, uploading, onAnswer, testId }: { name: string; resolved?: PptxAnswer; uploading?: boolean; onAnswer: (answer: PptxAnswer) => void; testId: string }) {
   const text = resolved === "template"
-    ? uploading ? "Разберу как шаблон, как только файл загрузится." : "Разбираю как шаблон: палитра, шрифты и композиции слайдов."
+    ? uploading ? `Разберу «${name}» как шаблон, как только файл загрузится.` : `Разбираю «${name}» как шаблон: палитра, шрифты и композиции слайдов.`
     : resolved === "deck"
-      ? uploading ? "Открою как готовую презентацию, как только файл загрузится." : "Открываю как готовую презентацию: слайды остаются как есть, править можно из чата."
+      ? uploading ? `Открою «${name}» как готовую презентацию, как только файл загрузится.` : `Открываю «${name}» как готовую презентацию: слайды остаются как есть, править можно из чата.`
       : resolved === "material"
-        ? uploading ? "Считаю материалом: импортирую, как только файл загрузится." : "Считаю материалом: текст слайдов пойдёт в содержание."
-        : "Похоже на презентацию. Что с ней сделать?";
+        ? uploading ? `Считаю «${name}» материалом: импортирую, как только файл загрузится.` : `Считаю «${name}» материалом: текст слайдов пойдёт в содержание.`
+        : `«${name}» похоже на презентацию. Что с ней сделать?`;
   return (
-    <Card title={<Group gap={6} wrap="nowrap"><IconFileTypePpt size={16} />{name}</Group>} aside={uploading ? <Loader size={12} /> : undefined} testId={testId}>
-      <Text size="sm" c="dimmed" mb={resolved ? 0 : 8}>{text}</Text>
+    <Stack gap={6} data-testid={testId}>
+      <Say>{text}</Say>
       {!resolved && (
-        <Stack gap={6} align="stretch">
-          <Button size="xs" variant="default" justify="flex-start" onClick={() => onAnswer("template")} data-testid="answer-template">Сделать шаблоном</Button>
-          <Button size="xs" variant="default" justify="flex-start" onClick={() => onAnswer("deck")} data-testid="answer-deck">Использовать как готовую презентацию</Button>
-          <Button size="xs" variant="default" justify="flex-start" onClick={() => onAnswer("material")} data-testid="answer-material">Использовать как материал</Button>
-          <Text size="xs" c="dimmed">Шаблон — по нему собираются новые слайды; готовая презентация — слайды переносятся как есть, а править их можно из чата; материал — текст слайдов пойдёт в содержание.</Text>
-        </Stack>
+        <>
+          <Options
+            options={[
+              { label: "Сделать шаблоном", onClick: () => onAnswer("template"), testId: "answer-template" },
+              { label: "Открыть как презентацию", onClick: () => onAnswer("deck"), testId: "answer-deck" },
+              { label: "Взять как материал", onClick: () => onAnswer("material"), testId: "answer-material" },
+            ]}
+          />
+          <Aside>Шаблон — по нему собираются новые слайды; готовая презентация — слайды переносятся как есть, а править их можно из чата; материал — текст слайдов пойдёт в содержание.</Aside>
+        </>
       )}
-    </Card>
+    </Stack>
   );
 }
 
@@ -79,76 +126,72 @@ export function TemplateCard({ m, ctx }: { m: Msg<"template_card">; ctx: CardCon
   const detail = usePolling<TemplateDetail>(() => api.templates.get(m.template_id), (d) => d.status === "succeeded" || d.status === "failed", [m.template_id]);
   const profile = detail.data?.profile;
   const current = ctx.project.template_id === m.template_id;
-  // Шаблон удалили из библиотеки: карточка остаётся в истории, но профиля у неё больше нет.
+  // Шаблон удалили из библиотеки: сообщение остаётся в истории, но профиля у него больше нет.
   const gone = detail.error instanceof ApiError && detail.error.status === 404;
   const timing = detail.data?.timing;
   const elapsed = useElapsed(timing?.started_at ?? timing?.created_at, profile ? (timing?.finished_at ?? null) : null);
+  const name = detail.data?.name ?? m.template_id;
+
+  if (gone) {
+    return <Say testId="template-card">Шаблон «{name}» удалён из библиотеки. Загрузите PPTX снова или выберите другой в шапке проекта.</Say>;
+  }
+  if (!profile) {
+    return (
+      <Stack gap={4} data-testid="template-card">
+        <Doing>{detail.error ? detail.error.message : `Разбираю шаблон «${name}»: образцы, палитра и шрифты${elapsed != null ? ` · ${formatMs(elapsed)}` : ""}`}</Doing>
+        {!detail.error && <Aside>Ждать не нужно — можно добавлять материалы.</Aside>}
+      </Stack>
+    );
+  }
+
+  const fonts = profile.design_tokens.typography.fonts.slice(0, 2).map((f) => f.family).join(", ");
   return (
-    <Card
-      title="Шаблон"
-      aside={gone ? <Badge color="gray" size="xs">удалён из библиотеки</Badge> : current ? <Badge color="green" size="xs">используется</Badge> : <Badge color="gray" size="xs">заменён</Badge>}
-      testId="template-card"
-    >
-      <Group gap="sm" wrap="nowrap" align="flex-start">
-        <IconFileTypePpt size={22} stroke={1.5} style={{ flex: "0 0 auto", marginTop: 2 }} />
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <Text size="sm" fw={500} truncate>{detail.data?.name ?? m.template_id}</Text>
-          {gone ? (
-            <Text size="xs" c="dimmed" mt={4}>Шаблон удалён из библиотеки. Загрузите PPTX снова или выберите другой в шапке проекта.</Text>
-          ) : !profile ? (
-            <Group gap={6} mt={4}><Loader size={12} /><Text size="xs" c="dimmed">{detail.error ? detail.error.message : `Анализирую образцы, палитру и шрифты${elapsed != null ? ` · ${formatMs(elapsed)}` : ""}. Ждать не нужно, можно добавлять материалы.`}</Text></Group>
-          ) : (
-            <Stack gap={6} mt={4}>
-              <Text size="xs" c="dimmed" data-testid="template-profile">{profile.patterns.length} композиций · {profile.stats.slides} слайдов · {profile.design_tokens.typography.fonts.slice(0, 2).map((f) => f.family).join(", ")}{timing?.duration_ms != null ? ` · анализ ${formatMs(timing.duration_ms)}` : ""}</Text>
-              <Group gap={4}>
-                {profile.design_tokens.colors.palette.slice(0, 8).map((c) => (
-                  <Tooltip key={c.hex} label={`${c.hex} · ${c.role}`}><ColorSwatch color={c.hex} size={14} /></Tooltip>
-                ))}
-              </Group>
-              <Text size="xs" c="dimmed">
-                Из этих композиций будут собраны слайды; сменить шаблон можно в шапке проекта.{" "}
-                <Anchor href={`/templates?id=${encodeURIComponent(m.template_id)}`} target="_blank" rel="noreferrer" size="xs" data-testid="template-open-library">Что извлечено из шаблона</Anchor>
-              </Text>
-            </Stack>
-          )}
-        </div>
+    <Stack gap={6} data-testid="template-card">
+      <Say testId="template-profile">
+        Разобрал шаблон «{name}»: {profile.patterns.length} {plural(profile.patterns.length, "композиция", "композиции", "композиций")} на {profile.stats.slides} {plural(profile.stats.slides, "слайде", "слайдах", "слайдах")}{fonts ? `, шрифты ${fonts}` : ""}{timing?.duration_ms != null ? ` · ${formatMs(timing.duration_ms)}` : ""}.
+      </Say>
+      <Group gap={4}>
+        {profile.design_tokens.colors.palette.slice(0, 8).map((c) => (
+          <Tooltip key={c.hex} label={`${c.hex} · ${c.role}`}><ColorSwatch color={c.hex} size={14} /></Tooltip>
+        ))}
       </Group>
-    </Card>
+      <Aside>
+        {current ? "Слайды соберу из этих композиций; сменить шаблон можно в шапке проекта." : "Сейчас собираю по другому шаблону."}{" "}
+        <Anchor href={`/templates?id=${encodeURIComponent(m.template_id)}`} target="_blank" rel="noreferrer" size="xs" data-testid="template-open-library">Что извлечено из шаблона</Anchor>
+      </Aside>
+    </Stack>
   );
 }
 
 export function ContentCard({ m, ctx }: { m: Msg<"content_card">; ctx: CardContext }) {
   const detail = usePolling<ContentDetail>(() => api.content.get(m.package_id), (d) => d.status === "succeeded" || d.status === "failed", [m.package_id]);
   const pkg = detail.data?.package;
-  // Импорт упал: карточка говорит об этом, а не крутит «извлекаю» бесконечно.
+  // Импорт упал: сообщение говорит об этом, а не крутит «читаю» бесконечно.
   const failed = detail.data?.status === "failed" ? (detail.data.error?.message ?? "импорт не удался") : detail.error ? detail.error.message : null;
   const files = ctx.project.files.filter((f) => m.file_ids.includes(f.file_id));
   const current = ctx.project.package_id === m.package_id;
+  const names = files.map((f) => `«${f.name}»`).join(", ");
+
+  if (failed) {
+    return (
+      <Stack gap={6} data-testid="content-card">
+        <Say testId="import-error">Не смог прочитать материалы: {failed.split("\n")[0]}</Say>
+        {current && <Options options={[{ label: "Повторить импорт", onClick: ctx.onRetryImport, testId: "import-retry" }]} />}
+      </Stack>
+    );
+  }
+  if (!pkg) {
+    return <Doing testId="content-card">{names ? `Читаю ${names}` : "Читаю материалы"}</Doing>;
+  }
   return (
-    <Card title="Материалы" aside={!current ? <Badge color="gray" size="xs">переимпортированы</Badge> : undefined} testId="content-card">
-      {files.length > 0 && (
-        <Group gap={6} mb={6}>
-          {files.map((f) => (
-            <Badge key={f.file_id} color="gray" leftSection={<IconFile size={11} />} size="sm">{f.name}</Badge>
-          ))}
-        </Group>
-      )}
-      {!pkg ? (
-        failed ? (
-          <Stack gap={6} align="flex-start">
-            <Text size="xs" c="red" data-testid="import-error">Материалы не импортированы: {failed.split("\n")[0]}</Text>
-            {current && <Button size="xs" variant="default" onClick={ctx.onRetryImport} data-testid="import-retry">Повторить импорт</Button>}
-          </Stack>
-        ) : (
-          <Group gap={6}><Loader size={12} /><Text size="xs" c="dimmed">Извлекаю блоки, факты, таблицы и изображения.</Text></Group>
-        )
-      ) : (
-        <Text size="sm" data-testid="import-summary">
-          Нашёл {pkg.blocks.length} блоков, {pkg.facts.length} фактов, {pkg.datasets.length} таблиц, {pkg.assets.length} изображений{files.length === 0 ? " — по брифу" : ""}.
-          {pkg.missing_data && pkg.missing_data.length > 0 ? ` Не хватает: ${pkg.missing_data.map((x) => x.what).join(", ")} — выдумывать не буду.` : ""}
-        </Text>
-      )}
-    </Card>
+    <Stack gap={4} data-testid="content-card">
+      <Say testId="import-summary">
+        {names ? `Прочитал ${names}: ` : "Собрал содержание по брифу: "}
+        {pkg.blocks.length} {plural(pkg.blocks.length, "блок", "блока", "блоков")}, {pkg.facts.length} {plural(pkg.facts.length, "факт", "факта", "фактов")}, {pkg.datasets.length} {plural(pkg.datasets.length, "таблица", "таблицы", "таблиц")}, {pkg.assets.length} {plural(pkg.assets.length, "изображение", "изображения", "изображений")}.
+        {pkg.missing_data && pkg.missing_data.length > 0 ? ` Не хватает: ${pkg.missing_data.map((x) => x.what).join(", ")} — выдумывать не буду.` : ""}
+      </Say>
+      {!current && <Aside>Потом материалы переимпортировались — в дело идёт последний разбор.</Aside>}
+    </Stack>
   );
 }
 
@@ -157,85 +200,160 @@ export function BriefCard({ m, ctx }: { m: Msg<"brief_card">; ctx: CardContext }
   const missingPurpose = !brief.purpose;
   const missing = [!ctx.project.template_id ? "шаблон" : null, !ctx.project.package_id ? "материалы или бриф" : null, missingPurpose ? "назначение" : null].filter(Boolean) as string[];
   const ready = missing.length === 0;
-  const hl = (field: string) => (m.understood.includes(field) ? { fw: 500 } : {});
-  const slides = settings.mode === "exact" ? `ровно ${settings.exact}` : `${settings.min}–${settings.max}`;
-  const rows: Array<[string, string, string]> = [
-    ["purpose", "Назначение", brief.purpose ? PURPOSE_LABELS[brief.purpose] ?? brief.purpose : "—"],
-    ["title", "Тема", brief.title || "—"],
-    ["audience", "Аудитория", brief.audience || "—"],
-    ["goal", "Цель", brief.goal || "—"],
-  ];
+  const purpose = brief.purpose ? PURPOSE_LABELS[brief.purpose] ?? brief.purpose : "";
+
+  // Понятое пересказывается фразой, а не таблицей полей: так видно, что именно услышано,
+  // и сразу понятно, что поправить, если услышано не то.
+  const facts: string[] = [];
+  if (purpose) facts.push(brief.audience ? `${purpose} для ${brief.audience}` : purpose);
+  else if (brief.audience) facts.push(`Аудитория — ${brief.audience}`);
+  if (brief.title) facts.push(`тема — «${brief.title}»`);
+  if (brief.goal) facts.push(`цель — ${brief.goal}`);
+  const volume = settings.mode === "exact" ? `ровно ${settings.exact}` : `${settings.min}–${settings.max}`;
+  const variants = settings.variants.length === 3 ? "трёх вариантах вёрстки" : `вариантах: ${settings.variants.map((v) => (VARIANT_LABELS[v] ?? v).toLowerCase()).join(", ")}`;
+
   return (
-    <Card title={m.understood.length ? "Понял задачу так" : "Задача"} aside={<Button size="compact-xs" variant="subtle" color="gray" onClick={ctx.onEditBrief} data-testid="edit-brief">Изменить</Button>} testId="brief-card">
-      <div className="brief-grid">
-        {rows.map(([key, label, value]) => (
-          <div key={key} className="brief-row">
-            <Text size="xs" c="dimmed">{label}</Text>
-            <Text size="sm" {...hl(key)}>{value}</Text>
-          </div>
-        ))}
-        <div className="brief-row">
-          <Text size="xs" c="dimmed">Объём</Text>
-          <Text size="sm" {...hl("slide_count")}>{slides} слайдов · {settings.variants.length === 3 ? "три варианта" : settings.variants.map((v) => VARIANT_LABELS[v]?.toLowerCase()).join(", ")}{settings.contextual ? "" : " · без контекстного аудита"}</Text>
-        </div>
-      </div>
+    <Stack gap={6} data-testid="brief-card">
+      <Say>{m.understood.length ? "Понял задачу так." : "Задача."}</Say>
+      {facts.length > 0 && <Say>{facts.join(", ")}.</Say>}
+      <Say>Соберу {volume} {plural(settings.mode === "exact" ? settings.exact : settings.max, "слайд", "слайда", "слайдов")} в {variants}{settings.contextual ? "" : ", без контекстного аудита"}.</Say>
+
       {missingPurpose && (
-        <Stack gap={6} mt={8}>
-          <Text size="sm">Уточните назначение — от него зависит структура колоды:</Text>
-          <Group gap={6}>
-            {PURPOSE_OPTIONS.map((o) => (
-              <Button key={o.value} size="xs" variant="default" onClick={() => ctx.onSetPurpose(o.value as BriefDraft["purpose"])} data-testid={`purpose-${o.value}`}>{o.label}</Button>
-            ))}
-          </Group>
-        </Stack>
+        <>
+          <Say>Уточните назначение — от него зависит структура колоды:</Say>
+          <Options options={PURPOSE_OPTIONS.map((o) => ({ label: o.label, onClick: () => ctx.onSetPurpose(o.value as BriefDraft["purpose"]), testId: `purpose-${o.value}` }))} />
+        </>
       )}
       {m.understood.length > 0 && m.brief_source && (
-        <Text size="xs" c="dimmed" mt={6} data-testid="brief-source">
+        <Aside testId="brief-source">
           {m.brief_source === "model" ? "Поля из сообщения выделила модель; проверьте и поправьте при необходимости." : "Поля из сообщения выделены по правилам: модель была недоступна."}
-        </Text>
+        </Aside>
       )}
-      <Stack gap={6} mt={10}>
-        <Button size="sm" leftSection={<IconRocket size={15} />} disabled={!ready} loading={ctx.generating} onClick={ctx.onGenerate} data-testid="generate" w="fit-content">
+
+      <Group gap="sm" align="center">
+        <Button size="sm" leftSection={<IconRocket size={15} />} disabled={!ready} loading={ctx.generating} onClick={ctx.onGenerate} data-testid="generate">
           {ctx.project.job_id ? "Сгенерировать заново" : "Сгенерировать"}
         </Button>
-        <Text size="xs" c="dimmed">{ready ? "Три варианта строятся параллельно, слайды появятся справа." : `Не хватает: ${missing.join(", ")}.`}</Text>
-      </Stack>
-    </Card>
+        <button type="button" className="chat-more" onClick={ctx.onEditBrief} data-testid="edit-brief">изменить задачу</button>
+      </Group>
+      <Aside>{ready ? "Три варианта строятся параллельно, слайды появятся справа." : `Не хватает: ${missing.join(", ")}.`}</Aside>
+    </Stack>
   );
 }
 
-export function JobCard({ m, ctx }: { m: Msg<"job_card">; ctx: CardContext }) {
-  const { session } = ctx;
-  if (session.jobId !== m.job_id) {
-    return <Card title="Генерация" aside={<Badge color="gray" size="xs">заменена новым заданием</Badge>} />;
+/** Сколько вариантов — словом: «в трёх вариантах» читается как речь, «в 3 вариантах» — как отчёт. */
+const COUNT_WORDS = ["", "одном", "двух", "трёх", "четырёх", "пяти", "шести"];
+
+/**
+ * Что делает задание — фразой от первого лица. Названия этапов из `STAGE_LABELS` написаны для
+ * таблицы метрик («Сборка PPTX», «Планы вариантов»): в ленте они звучат как строка журнала, а
+ * не как ответ собеседника, поэтому у речи свои слова.
+ */
+const JOB_PHRASE: Record<string, string> = {
+  queued: "Ставлю задание в очередь",
+  analyze: "Разбираю шаблон",
+  import: "Читаю материалы",
+  story: "Продумываю структуру",
+  plan: "Раскладываю содержание по слайдам",
+  compose: "Собираю слайды",
+  export: "Сохраняю файлы",
+  audit: "Проверяю слайды",
+  repair: "Исправляю находки",
+  finalize: "Заканчиваю",
+  done: "Заканчиваю",
+};
+
+/** То же для строки варианта: «Сбалансированный — сборка», а не «сборка pptx». */
+const VARIANT_STAGE: Record<string, string> = {
+  queued: "в очереди",
+  analyze: "разбор шаблона",
+  import: "чтение материалов",
+  story: "структура",
+  plan: "план слайдов",
+  compose: "сборка",
+  export: "экспорт",
+  audit: "проверка",
+  repair: "исправления",
+  finalize: "завершение",
+  done: "готов",
+};
+
+function variantLine(v: GenerationResult["variants"][number]): string {
+  const label = VARIANT_LABELS[v.variant_id] ?? v.variant_id;
+  if (v.status === "failed") return `${label} — не собрался${v.error?.message ? `: ${v.error.message.toLowerCase()}` : ""}`;
+  if (v.status === "ready" || v.status === "needs_review") {
+    return `${label} — готов${v.slide_count ? `, ${v.slide_count} ${plural(v.slide_count, "слайд", "слайда", "слайдов")}` : ""}`;
   }
-  if (!session.result) {
-    return <Card title="Генерация"><Group gap={6}><Loader size={12} /><Text size="xs" c="dimmed">{session.job.error ? session.job.error.message : "Ставлю задание в очередь."}</Text></Group></Card>;
-  }
-  return (
-    <Card title="Генерация" testId="job-card">
-      <ProgressPanel result={session.result} />
-      {session.terminal && (
-        <Accordion variant="default" chevronPosition="left" mt={6} styles={{ control: { paddingLeft: 0, paddingRight: 0 }, content: { paddingLeft: 0, paddingRight: 0 }, item: { border: 0 } }}>
-          <Accordion.Item value="metrics">
-            <Accordion.Control><Text size="xs" c="dimmed">Метрики и версии</Text></Accordion.Control>
-            <Accordion.Panel><MetricsPanel result={session.result} /></Accordion.Panel>
-          </Accordion.Item>
-        </Accordion>
-      )}
-    </Card>
-  );
+  const stage = (v.stages ?? []).find((s) => s.status === "running")?.stage;
+  if (v.status === "running") return `${label} — ${(stage && VARIANT_STAGE[stage]) || "собирается"}`;
+  return `${label} — в очереди`;
 }
 
 /**
- * Аудит говорит в ленте, а не показывает приборную панель. Сначала одна фраза о том, что
- * проверено и что нашлось, потом находки по одной строке: слайд, что не так и «исправить».
- * Нажатие на находку ведёт к её месту на слайде.
- *
- * Почему не список с галочками и шкалами: он повторял отдельную панель, от которой мы ушли,
- * и в ленте выглядел чужеродно. Выбор «что чинить» свёлся к двум понятным действиям — эту
- * находку или всё исправимое разом.
+ * Генерация в ленте: пока идёт — строка о том, что происходит сейчас, и по строке на вариант;
+ * когда закончилась — одна фраза с итогом. Этапы, метрики, идентификатор задания и режим
+ * исполнения ушли под «подробности»: при чтении они не нужны, при разборе — открываются.
  */
+export function JobCard({ m, ctx }: { m: Msg<"job_card">; ctx: CardContext }) {
+  const { session } = ctx;
+  const result = session.jobId === m.job_id ? session.result : null;
+  const terminal = result ? TERMINAL_STATES.has(result.status) : false;
+  const elapsed = useElapsed(result?.created_at, terminal ? (result?.finished_at ?? result?.created_at) : null);
+
+  if (session.jobId !== m.job_id) return <Say>Это задание заменено новым — ход новой сборки ниже.</Say>;
+  if (!result) {
+    return <Doing testId="job-card">{session.job.error ? session.job.error.message : "Ставлю задание в очередь"}</Doing>;
+  }
+
+  const total = terminal ? (result.metrics.totals?.duration_ms ?? elapsed) : elapsed;
+  const done = result.variants.filter((v) => v.status === "ready" || v.status === "needs_review");
+  const broken = result.variants.filter((v) => v.status === "failed");
+  const counts = [...new Set(done.map((v) => v.slide_count).filter((n): n is number => typeof n === "number"))];
+  const slides = counts.length === 1
+    ? `${counts[0]} ${plural(counts[0], "слайд", "слайда", "слайдов")}`
+    : counts.length > 1
+      ? `${Math.min(...counts)}–${Math.max(...counts)} слайдов`
+      : "слайды";
+  const failMessage = (result.error?.message ?? "задание завершилось ошибкой").replace(/\.\s*$/, "");
+
+  const summary = !terminal ? (
+    <Doing testId="job-summary">{JOB_PHRASE[result.stage] ?? STAGE_LABELS[result.stage]}</Doing>
+  ) : result.status === "canceled" ? (
+    <Say testId="job-summary">Отменил сборку{total ? ` через ${formatMs(total)}` : ""}.</Say>
+  ) : done.length === 0 ? (
+    <Say testId="job-summary">Не собрал: {failMessage}.{result.error?.retryable ? " Можно повторить." : ""}</Say>
+  ) : (
+    <Say testId="job-summary">
+      Собрал {slides}{done.length > 1 ? ` в ${COUNT_WORDS[done.length] ?? done.length} ${plural(done.length, "варианте", "вариантах", "вариантах")}` : ""} за {formatMs(total)}.
+    </Say>
+  );
+
+  return (
+    <Stack gap={6} data-testid="job-card" data-state={result.status}>
+      {summary}
+      {terminal && broken.length > 0 && done.length > 0 && (
+        <Say testId="job-partial">
+          {broken.length === 1
+            ? `Вариант «${VARIANT_LABELS[broken[0].variant_id] ?? broken[0].variant_id}» не собрался`
+            : `${broken.length} ${plural(broken.length, "вариант", "варианта", "вариантов")} не собрались`}
+          {" "}— остальные готовы, повторить сборку можно в шапке проекта.
+        </Say>
+      )}
+      <Stack gap={2}>
+        {result.variants.map((v) => (
+          <Text key={v.variant_id} size="sm" className="job-variant-line" data-status={v.status} data-testid={`variant-progress-${v.variant_id}`}>
+            {variantLine(v)}
+          </Text>
+        ))}
+      </Stack>
+      {result.warnings?.filter((w) => w.code === "original_slides_skipped").map((w) => (
+        <Aside key={w.code} testId="job-warning">{w.message}</Aside>
+      ))}
+      <Details label="подробности" testId="job-details"><JobDetails result={result} /></Details>
+    </Stack>
+  );
+}
+
 const FIRST_SHOWN = 5;
 
 /**
@@ -256,7 +374,7 @@ export function AuditCard({ m, ctx }: { m: Msg<"audit_card">; ctx: CardContext }
   const stale = session.viewRevision !== session.currentRevision;
 
   if (!audit || audit.status === "pending" || audit.status === "running") {
-    return <Text size="sm" className="chat-hint" data-testid="audit-summary">Проверяю слайды</Text>;
+    return <Doing testId="audit-summary">Проверяю слайды</Doing>;
   }
 
   const report = session.audit.data;
@@ -267,21 +385,21 @@ export function AuditCard({ m, ctx }: { m: Msg<"audit_card">; ctx: CardContext }
   const slides = report?.deck.slide_count;
   const before = session.prevAudit.data?.summary.issues_total;
   const repaired = session.viewRevision > 1 && typeof before === "number";
+  const label = VARIANT_LABELS[variant?.variant_id ?? ""] ?? variant?.variant_id ?? "";
+  const others = session.result.variants.filter(
+    (v) => v.variant_id !== variant?.variant_id && (v.audit?.issues_total ?? 0) > 0,
+  );
 
   return (
     <Stack gap={6} data-testid="audit-card">
-      <Text size="sm" className="chat-assistant-text" data-testid="audit-summary">
+      <Say testId="audit-summary">
         {issues.length === 0
           ? `Проверил ${slides ?? ""} слайдов — всё в порядке.`
           : `Проверил ${slides ?? ""} слайдов и нашёл ${issues.length} ${plural(issues.length, "замечание", "замечания", "замечаний")}${serious ? `, из них ${serious} ${plural(serious, "серьёзное", "серьёзных", "серьёзных")}` : ""}.`}
         {report?.coverage.complete === false ? " Часть проверок выполнить не удалось." : ""}
-      </Text>
+      </Say>
 
-      {repaired && (
-        <Text size="sm" className="chat-assistant-text" data-testid="audit-repaired">
-          После исправления стало {issues.length} вместо {before}.
-        </Text>
-      )}
+      {repaired && <Say testId="audit-repaired">После исправления стало {issues.length} вместо {before}.</Say>}
 
       {shown.length > 0 && (
         <Stack gap={2}>
@@ -308,30 +426,47 @@ export function AuditCard({ m, ctx }: { m: Msg<"audit_card">; ctx: CardContext }
 
       {fixable.length > 0 && (
         <Group gap="xs" align="center">
-          <Text size="sm" className="chat-assistant-text">
-            {fixable.length === issues.length
-              ? "Могу исправить всё это сам."
-              : `Из них ${fixable.length} могу исправить сам.`}
-          </Text>
+          <Say>
+            {fixable.length === issues.length ? "Могу исправить всё это сам." : `Из них ${fixable.length} могу исправить сам.`}
+          </Say>
           <Button size="xs" disabled={busy || stale} loading={busy} onClick={ctx.onRepairAll} data-testid="repair-all">
             Исправить
           </Button>
         </Group>
+      )}
+
+      {/* Проверены все варианты, а в ленте виден отчёт того, что показан справа. Молчать о
+          других — значит показать «всё в порядке» там, где в соседнем варианте семь замечаний.
+          Поэтому ассистент сам говорит, где они есть, и предлагает туда перейти. */}
+      {others.length > 0 && (
+        <>
+          <Say testId="audit-others">
+            {issues.length === 0
+              ? `Это «${label}». Замечания есть в других вариантах:`
+              : "В других вариантах тоже есть замечания:"}
+          </Say>
+          <Options
+            options={others.map((v) => ({
+              label: `${VARIANT_LABELS[v.variant_id] ?? v.variant_id} — ${v.audit?.issues_total} ${plural(v.audit?.issues_total ?? 0, "замечание", "замечания", "замечаний")}`,
+              onClick: () => session.setSelectedVariant(v.variant_id),
+              testId: `audit-other-${v.variant_id}`,
+            }))}
+          />
+        </>
       )}
     </Stack>
   );
 }
 
 /**
- * Правка слайда по запросу: ход задания, затем «до/после» и что изменено; отказ — с причиной.
- * Карточка опрашивает своё задание сама, результат читает из живого GenerationResult по идентификатору.
+ * Правка слайда по запросу: пока идёт — строка о ходе, потом фраза о сделанном и миниатюры
+ * «до/после». Отказ — с причиной. Ход правки и ход исправления находок читаются одинаково:
+ * это одно задание ревизии, просто в результате они лежат в разных списках.
  */
 export function EditCard({ m, ctx }: { m: Msg<"edit_card">; ctx: CardContext }) {
   const { session } = ctx;
-  // Крупный просмотр «до/после»: миниатюры в карточке малы, разницу на них не разглядеть.
+  // Крупный просмотр «до/после»: миниатюры в ленте малы, разницу на них не разглядеть.
   const [compare, setCompare] = useState<"before" | "after" | null>(null);
-  // Ход правки и ход исправления находок читаются одинаково: это одно задание ревизии,
-  // просто в результате они лежат в разных списках.
   const repairEntry = session.result?.repairs?.find((r) => r.repair_job_id === m.edit_job_id);
   const entry =
     session.result?.edits?.find((e) => e.edit_job_id === m.edit_job_id) ??
@@ -351,20 +486,18 @@ export function EditCard({ m, ctx }: { m: Msg<"edit_card">; ctx: CardContext }) 
       : undefined);
   const settled = Boolean(entry && entry.result !== undefined);
   const status = usePolling<JobStatus>(!settled ? () => api.jobs.get(m.edit_job_id) : null, (s) => TERMINAL_STATES.has(s.status), [m.edit_job_id, settled]);
-  const manual = entry?.origin === "editor" || status.data?.kind === "slide_patch" || m.edit_job_id.startsWith("patch");
+  const manual = entry?.origin === "editor" || status.data?.kind === "slide_patch" || editOrigin(m.edit_job_id) === "editor";
   const changedCount = entry?.changed_slide_ids?.length ?? 0;
   const title = manual ? (changedCount > 1 ? `Правки на слайдах` : `Правки на слайде ${m.slide_index + 1}`) : `Правка слайда ${m.slide_index + 1}`;
   const variantLabel = VARIANT_LABELS[m.variant_id] ?? m.variant_id;
-  if (session.jobId !== m.job_id) {
-    return <Card title={title} aside={<Badge color="gray" size="xs">задание заменено</Badge>} />;
-  }
+  if (session.jobId !== m.job_id) return <Say>Задание заменено — эта правка относилась к прошлой сборке.</Say>;
   const failed = status.data?.status === "failed" || entry?.result === "failed";
   if (failed) {
     const message = entry?.message ?? status.data?.error?.message ?? "Правка не выполнена";
     return (
       <Stack gap={2} data-testid="edit-card">
-        <Text size="sm" className="chat-assistant-text">Не получилось: {message.toLowerCase()}</Text>
-        <Text size="xs" c="dimmed">Выберите слайд слева и попросите другими словами.</Text>
+        <Say>Не получилось: {message.toLowerCase()}</Say>
+        <Aside>Выберите слайд слева и попросите другими словами.</Aside>
       </Stack>
     );
   }
@@ -372,10 +505,8 @@ export function EditCard({ m, ctx }: { m: Msg<"edit_card">; ctx: CardContext }) 
     const reason = entry?.change_note ?? status.data?.result?.change_note ?? "";
     return (
       <Stack gap={2} data-testid="edit-card">
-        <Text size="sm" className="chat-assistant-text" data-testid="edit-reason">
-          Оставил слайд {m.slide_index + 1} как есть: {reason || "просьбу выполнить нельзя"}
-        </Text>
-        <Text size="xs" c="dimmed">Данные не выдумываю: добавьте материалы или уточните просьбу.</Text>
+        <Say testId="edit-reason">Оставил слайд {m.slide_index + 1} как есть: {reason || "просьбу выполнить нельзя"}</Say>
+        <Aside>Данные не выдумываю: добавьте материалы или уточните просьбу.</Aside>
       </Stack>
     );
   }
@@ -391,10 +522,10 @@ export function EditCard({ m, ctx }: { m: Msg<"edit_card">; ctx: CardContext }) 
     const after = { label: `после · r${entry.new_revision}`, src: api.generations.artifactUrl(m.job_id, name(entry.new_revision)) };
     return (
       <Stack gap={8} data-testid="edit-card">
-        <Text size="sm" className="chat-assistant-text" data-testid="edit-note">
-          {(manual ? entry.summary : undefined) || entry.change_note || (manual ? "Применил правки" : `Переделал слайд ${m.slide_index + 1}`)}
-        </Text>
-        <SimpleGrid cols={2} spacing="xs" mb={8}>
+        <Say testId="edit-note">
+          {`${((manual ? entry.summary : undefined) || entry.change_note || (manual ? "Применил правки" : `Переделал слайд ${m.slide_index + 1}`)).replace(/[.;\s]+$/, "")} — ревизия ${entry.new_revision}.`}
+        </Say>
+        <SimpleGrid cols={2} spacing="xs">
           {([["before", before], ["after", after]] as const).map(([key, side]) => (
             <button key={key} type="button" className="compare-thumb" onClick={() => setCompare(key)} aria-label={`Открыть крупно: ${side.label}`} data-testid={`edit-compare-${key}`}>
               <SlideImage src={side.src} alt={side.label} />
@@ -411,16 +542,10 @@ export function EditCard({ m, ctx }: { m: Msg<"edit_card">; ctx: CardContext }) 
           initial={compare ?? "after"}
           onShow={show}
         />
-        <Group gap="xs">
-          <Button size="xs" variant="default" onClick={show} data-testid="edit-show">Показать слайд</Button>
-        </Group>
+        <Options options={[{ label: "Показать слайд", onClick: show, testId: "edit-show" }]} />
       </Stack>
     );
   }
   const message = status.data?.progress?.message ?? (manual ? "Применяю правки" : `Переделываю слайд ${m.slide_index + 1}`);
-  return (
-    <Text size="sm" className="chat-hint" data-testid="edit-card">
-      {status.error ? status.error.message : message}
-    </Text>
-  );
+  return <Doing testId="edit-card">{status.error ? status.error.message : message}</Doing>;
 }

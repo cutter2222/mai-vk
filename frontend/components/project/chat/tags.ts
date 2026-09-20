@@ -33,6 +33,18 @@ export const TAG_LABELS: Record<ChatTag, string> = {
 /** Порядок меток — порядок шагов работы, а не частота: так ряд читается как оглавление. */
 export const TAG_ORDER: ChatTag[] = ["template", "materials", "brief", "job", "audit", "edit", "message"];
 
+/**
+ * Откуда пришла правка, видно по идентификатору её задания: `rep_` ставит аудит, `patch_` —
+ * визуальный редактор, `edit_` — просьба словами. Отдельного поля у события нет намеренно:
+ * схема проекта (`project.schema.json`) не принимает лишних полей, а идентификатор приходит с
+ * сервера и переживает перезагрузку.
+ */
+export function editOrigin(editJobId: string): "audit" | "editor" | "chat" {
+  if (editJobId.startsWith("rep_")) return "audit";
+  if (editJobId.startsWith("patch_")) return "editor";
+  return "chat";
+}
+
 export function tagOf(message: ChatMessage): ChatTag {
   if (message.role === "user") return "message";
   switch (message.kind) {
@@ -48,7 +60,9 @@ export function tagOf(message: ChatMessage): ChatTag {
     case "audit_card":
       return "audit";
     case "edit_card":
-      return "edit";
+      // Исправление находок — продолжение разговора об аудите: под меткой «правки» оно
+      // терялось ровно тогда, когда человек смотрит на аудит и нажимает «Исправить».
+      return editOrigin(message.edit_job_id) === "audit" ? "audit" : "edit";
     default:
       return "message";
   }

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 
-import { attach, cleanupProjects, clickText, collectConsoleErrors, createProject, DOCX, DOCX_MIME, expectServiceStatus, nameProject, openBriefEditor, PPTX, PPTX_MIME, projectIdAfterAction, REAL_STACK, rememberProjectFromUrl, sendMaterialsAndBrief, sendMessage, speedUp, startGeneration, uploadTemplate, WAIT, waitForAllVariantsDone } from "./helpers";
+import { attach, cleanupProjects, clickText, collectConsoleErrors, createProject, DOCX, DOCX_MIME, expectServiceStatus, jobIdFromChat, nameProject, openBriefEditor, PPTX, PPTX_MIME, projectIdAfterAction, REAL_STACK, rememberProjectFromUrl, sendMaterialsAndBrief, sendMessage, speedUp, startGeneration, uploadTemplate, WAIT, waitForAllVariantsDone } from "./helpers";
 
 const SHOTS = process.env.SHOT_DIR;
 const shot = async (page: Page, name: string) => {
@@ -102,6 +102,11 @@ test.describe("сквозной сценарий в чате на заглушк
     // исправить. Отдельной кнопки и панели у него нет.
     await page.getByTestId("tab-audit").click();
     await expect(page.getByTestId("audit-summary")).toContainText("Проверил");
+    // Справа показан вариант, собранный первым, и у него замечаний нет. Ассистент не молчит
+    // об остальных: он называет их и по кнопке переводит туда вместе со слайдом.
+    await expect(page.getByTestId("audit-others")).toContainText("в других вариантах");
+    await page.getByTestId("audit-other-balanced").click();
+    await expect(page.getByTestId("audit-summary")).toContainText("замечани");
     await expect(page.getByTestId("audit-summary")).toContainText("выполнить не удалось");
     await expect(page.getByTestId("toggle-audit")).toHaveCount(0);
     await page.getByTestId("issue-iss_1").click();
@@ -199,13 +204,13 @@ test.describe("сквозной сценарий в чате на заглушк
     const jobId = await startGeneration(page);
     await page.reload();
     await expect(page.getByTestId("template-card")).toBeVisible();
-    await expect(page.getByTestId("progress-panel").last()).toContainText(jobId, { timeout: 15000 });
+    expect(await jobIdFromChat(page)).toBe(jobId);
     await page.goto("/");
     const card = page.getByTestId(`project-card-${projectId}`);
     await expect(card).toBeVisible();
     await card.click();
     await page.waitForURL(new RegExp(`/project\\?id=${projectId}`));
-    await expect(page.getByTestId("progress-panel").last()).toContainText(jobId);
+    expect(await jobIdFromChat(page)).toBe(jobId);
   });
 
   test("непонятное сообщение, уточнение назначения, PPTX как материал и удаление файла", async ({ page }) => {
@@ -389,8 +394,8 @@ test.describe("сквозной сценарий в чате на заглушк
     await uploadTemplate(page);
     await attach(page, [{ name: "Ещё данные.pptx", mimeType: PPTX_MIME, buffer: PPTX() }]);
     await page.getByTestId("answer-material").last().click();
-    await expect(page.getByTestId("progress-panel").last()).toBeVisible({ timeout: 15000 });
-    await expect(page.getByTestId("progress-panel").last()).toContainText(/job_/);
+    await expect(page.getByTestId("job-card").last()).toBeVisible({ timeout: 15000 });
+    expect(await jobIdFromChat(page)).toMatch(/^job_/);
   });
 
   test("готовая презентация: третий ответ на PPTX открывает один вариант original", async ({ page }) => {
@@ -399,9 +404,9 @@ test.describe("сквозной сценарий в чате на заглушк
     await attach(page, [{ name: "Отчёт за квартал.pptx", mimeType: PPTX_MIME, buffer: PPTX() }]);
     await page.getByTestId("answer-deck").last().click();
     await expect(page.locator('[data-testid^="template-question-"]').last()).toContainText("готовую презентацию");
-    const panel = page.getByTestId("progress-panel").last();
-    await expect(panel).toBeVisible({ timeout: 15000 });
-    await expect(panel).toContainText("Исходная презентация");
+    const card = page.getByTestId("job-card").last();
+    await expect(card).toBeVisible({ timeout: 15000 });
+    await expect(card).toContainText("Исходная презентация");
     await expect(page.getByTestId("variant-progress-original")).toBeVisible();
     await expect(page.getByTestId("variant-progress-compact")).toHaveCount(0);
     await waitForAllVariantsDone(page);
@@ -600,13 +605,15 @@ test.describe("сквозной сценарий в чате на заглушк
     await uploadTemplate(page, "Шаблон fail.pptx");
     await sendMaterialsAndBrief(page);
     const jobId = await startGeneration(page);
-    await expect(page.getByTestId("variant-progress-detailed").last().locator('[data-testid="status-failed"]')).toBeVisible({ timeout: WAIT.variantFailed });
+    await expect(page.getByTestId("variant-progress-detailed").last()).toContainText("не собрался", { timeout: WAIT.variantFailed });
     await waitForAllVariantsDone(page);
-    await expect(page.getByTestId("progress-panel").last()).toContainText("частичный результат");
+    await expect(page.getByTestId("job-partial").last()).toContainText("не собрался");
     await expect(page.getByTestId("download-menu")).toBeEnabled();
     await page.getByTestId("retry").click();
-    await expect(page.getByTestId("progress-panel").last()).not.toContainText(jobId, { timeout: 15000 });
-    await expect(page.getByTestId("progress-panel").last()).toContainText(/job_/);
+    await expect(page.getByTestId("job-card").last()).toHaveAttribute("data-state", /queued|running/, { timeout: 15000 });
+    const next = await jobIdFromChat(page);
+    expect(next).not.toBe(jobId);
+    expect(next).toMatch(/^job_/);
   });
 
   test("отмена задания", async ({ page }) => {
@@ -616,7 +623,7 @@ test.describe("сквозной сценарий в чате на заглушк
     await sendMaterialsAndBrief(page);
     await startGeneration(page);
     await page.getByTestId("cancel").click();
-    await expect(page.getByTestId("progress-panel").last().locator('[data-testid="status-canceled"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId("job-card").last()).toHaveAttribute("data-state", "canceled", { timeout: 15000 });
     await expect(page.getByTestId("retry")).toBeVisible();
   });
 

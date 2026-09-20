@@ -142,22 +142,34 @@ export async function openBriefEditor(page: Page): Promise<void> {
   throw new Error("редактор брифа не открылся после трёх попыток");
 }
 
-/** Запускает генерацию из карточки брифа и возвращает идентификатор задания. */
+/** Запускает генерацию из сообщения о задаче и возвращает идентификатор задания. */
 export async function startGeneration(page: Page): Promise<string> {
   await page.getByTestId("generate").last().click();
-  const panel = page.getByTestId("progress-panel").last();
-  await expect(panel).toBeVisible({ timeout: 15000 });
-  const text = await panel.textContent();
-  const jobId = text?.match(/job_[a-z0-9]+/)?.[0];
+  await expect(page.getByTestId("job-card").last()).toBeVisible({ timeout: 15000 });
+  return jobIdFromChat(page);
+}
+
+/**
+ * Идентификатор задания живёт в «подробностях» сообщения о генерации: в самой ленте он не
+ * нужен, поэтому тест открывает подробности так же, как это сделал бы человек.
+ */
+export async function jobIdFromChat(page: Page): Promise<string> {
+  const card = page.getByTestId("job-card").last();
+  const meta = card.getByTestId("job-meta");
+  if (!(await meta.isVisible().catch(() => false))) await card.getByTestId("job-details").click();
+  await expect(meta).toBeVisible({ timeout: 15000 });
+  const jobId = (await meta.textContent())?.match(/job_[a-z0-9]+/)?.[0];
   expect(jobId).toBeTruthy();
   return jobId as string;
 }
 
+/** Задание терминально ровно тогда, когда все варианты собраны, проверены или упали. */
 export async function waitForAllVariantsDone(page: Page): Promise<void> {
-  const panel = page.getByTestId("progress-panel").last();
-  await expect(
-    panel.locator('[data-testid="status-needs_review"], [data-testid="status-succeeded"], [data-testid="status-failed"]').first(),
-  ).toBeVisible({ timeout: WAIT.variantsDone });
+  await expect(page.getByTestId("job-card").last()).toHaveAttribute(
+    "data-state",
+    /succeeded|needs_review|failed|canceled/,
+    { timeout: WAIT.variantsDone },
+  );
 }
 
 /**

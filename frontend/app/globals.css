@@ -604,17 +604,16 @@ body {
   font-weight: 600;
 }
 
+/* Счётчик метки — просто число рядом со словом: плашка вокруг каждого счётчика делала из
+   оглавления ряд значков. */
 .panel-tab b {
   font-size: 11px;
-  font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--mist);
+  font-weight: 500;
   color: var(--ink2);
+  opacity: 0.75;
 }
 
 .panel-tab[data-active] b {
-  background: var(--page);
   color: var(--accent);
 }
 
@@ -842,10 +841,10 @@ body {
   justify-content: flex-start;
 }
 
+/* Первое сообщение пустого проекта — такая же реплика, как остальные: рамка вокруг неё
+   делала из приветствия объявление на стене. */
 .chat-intro {
-  padding: 14px 16px;
-  border-radius: var(--mantine-radius-md);
-  background: var(--card);
+  padding: 0;
 }
 
 .chat-msg-user {
@@ -901,26 +900,11 @@ body {
   outline: none;
 }
 
-.chat-card {
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--mantine-radius-md);
-  background: var(--page);
-}
-
-/* Карточка хода задания: строка состояния, этапы, варианты, служебная подпись. */
-.job-line {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-
+/* Ход задания в подробностях: общие этапы со временем. */
 .job-stages {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin-top: 12px;
 }
 
 .job-stage {
@@ -955,39 +939,19 @@ body {
   white-space: nowrap;
 }
 
-.job-variants {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
+/* Вариант сборки — строка разговора: «Компактный — готов, 15 слайдов». Состояние читается
+   словом, а не значком: значки требуют легенды, слова — нет. */
+.job-variant-line {
+  color: var(--ink);
 }
 
-.job-foot {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--line);
+.job-variant-line[data-status="pending"],
+.job-variant-line[data-status="running"] {
+  color: var(--ink2);
 }
 
-.job-foot > *:first-child {
-  flex: 1;
-  min-width: 0;
-}
-
-.brief-grid {
-  display: grid;
-  gap: 4px 12px;
-}
-
-.brief-row {
-  display: grid;
-  grid-template-columns: 92px 1fr;
-  align-items: baseline;
-  gap: 8px;
+.job-variant-line[data-status="failed"] {
+  color: var(--danger);
 }
 
 .chat-composer {
@@ -2038,6 +2002,67 @@ body {
     animation: none;
     clip-path: none;
   }
+}
+
+/* Варианты ответа: кнопки-реплики под сообщением, как у ботов в мессенджерах. Отдельный вид
+   от кнопок формы: это продолжение разговора, а не действие над экраном. */
+.chat-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chat-opt {
+  padding: 5px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--page);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+}
+
+.chat-opt:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--sky);
+}
+
+.chat-opt:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* «подробности», «изменить задачу» — второстепенное действие строкой, без кнопочной рамки. */
+.chat-more {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 3px;
+}
+
+.chat-more:hover {
+  color: var(--accent);
+  text-decoration-color: currentColor;
+}
+
+/* Раскрытые подробности: единственное место в ленте, где рамка уместна — внутри неё
+   действительно таблица служебных чисел, а не реплика. */
+.chat-details {
+  margin-top: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--mantine-radius-md);
+  background: var(--card);
 }
 
 /* Метка сообщения: «#аудит» мелким серым под текстом. Нажатие сужает ленту до этого шага. */

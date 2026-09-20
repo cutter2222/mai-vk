@@ -154,6 +154,13 @@ export function ProjectEditor({ project }: { project: Project }) {
     }
   };
 
+  // Человек написал в чат — лента возвращается к разговору. Под открытой меткой его же
+  // сообщение и ответ на него были бы не видны: «написал и ничего не произошло».
+  const send: typeof chat.send = async (text, files, target) => {
+    setTab("all");
+    await chat.send(text, files, target);
+  };
+
   // Бриф — часть контент-пакета: после правок он переимпортируется, чтобы генерация видела новые поля.
   const closeBrief = () => {
     setBriefModal(false);
@@ -171,7 +178,6 @@ export function ProjectEditor({ project }: { project: Project }) {
     onSetPurpose: (purpose) => void chat.setPurpose(purpose),
     onGenerate: () => void generate(),
     generating: starting,
-    onOpenAudit: openAudit,
     onRepairAll: () => void repairAll(),
     onRetryImport: () => void chat.importMaterials(),
   };
@@ -240,7 +246,7 @@ export function ProjectEditor({ project }: { project: Project }) {
               </Tooltip>
             </div>
             {tab !== "files" ? (
-              <ChatPanel ctx={ctx} onSend={chat.send} onAttach={chat.attach} staged={chat.staged} onAnswerStaged={chat.answerStaged} filter={tab} onTag={(tag) => setTab(tag)} />
+              <ChatPanel ctx={ctx} onSend={send} onAttach={chat.attach} staged={chat.staged} onAnswerStaged={chat.answerStaged} filter={tab} onTag={(tag) => setTab(tag)} />
             ) : (
               <FilesPanel project={project} session={session} onAdd={(files) => { const rest = chat.attach(files); if (rest.length) void chat.send("", rest); }} onRemove={(fid) => void chat.removeFile(fid)} onSelectTemplate={chat.selectTemplate} />
             )}
