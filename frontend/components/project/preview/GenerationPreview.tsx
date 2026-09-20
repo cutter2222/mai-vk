@@ -1,7 +1,7 @@
 "use client";
 
 import { ActionIcon, Badge, Button, Group, Loader, SegmentedControl, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
-import { IconArrowBackUp, IconArrowForwardUp, IconColorSwatch, IconEraser, IconListCheck, IconPencil, IconSitemap, IconStar, IconStarFilled, IconTextPlus, IconX } from "@tabler/icons-react";
+import { IconArrowBackUp, IconArrowForwardUp, IconColorSwatch, IconEraser, IconPencil, IconSitemap, IconStar, IconStarFilled, IconTextPlus, IconX } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 
 import type { Outline } from "@/components/common/SlideImage";
@@ -28,8 +28,6 @@ interface Props {
   projectId: string | null;
   chosenVariant: string | null;
   onChoose: (variantId: string | null) => void;
-  /** Показать аудит: лента слева переключается на метку «Аудит». */
-  onShowAudit: () => void;
 }
 
 const VARIANT_DOT: Record<string, string> = { pending: "gray", running: "blue", ready: "green", needs_review: "yellow", failed: "red" };
@@ -62,7 +60,7 @@ function useDeckFonts(jobId: string | null, deck: ComposedDeck | null): void {
 }
 
 /** Слайды сгенерированной презентации: переключение вариантов, просмотр по одному или рядом, рамки аудита, редактор. */
-export function GenerationPreview({ session, editor, templateDetail, pkg, projectId, chosenVariant, onChoose, onShowAudit }: Props) {
+export function GenerationPreview({ session, editor, templateDetail, pkg, projectId, chosenVariant, onChoose }: Props) {
   const { jobId, result, variant } = session;
   const elapsed = useElapsed(result?.created_at, session.terminal ? (result?.finished_at ?? result?.created_at) : null);
   // Свойства слайда (фон) — тот же ящик, что и свойства объекта, но открывается кнопкой:
@@ -213,21 +211,6 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
               data-testid="toggle-editor"
             >
               {editor.editing ? "Готово" : "Редактировать"}
-            </Button>
-          )}
-          {variant?.audit && variant.audit.status !== "pending" && (
-            <Button
-              size="xs"
-              variant="default"
-              leftSection={<IconListCheck size={14} />}
-              onClick={() => {
-                session.setLayout("single");
-                leaveEditor();
-                onShowAudit();
-              }}
-              data-testid="toggle-audit"
-            >
-              Аудит{variant.audit.issues_total ? ` · ${variant.audit.issues_total}` : ""}
             </Button>
           )}
         </Group>

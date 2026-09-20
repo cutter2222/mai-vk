@@ -10,7 +10,7 @@ import type { SlideTarget } from "@/lib/hooks/useGenerationSession";
 import type { ChatMessage, PptxAnswer } from "@/lib/state/projects";
 
 import { AuditCard, BriefCard, ContentCard, EditCard, JobCard, PptxQuestion, TemplateCard, TemplateQuestionCard, type CardContext } from "./cards";
-import { TAG_LABELS, tagOf, type ChatTag } from "./tags";
+import { TAG_HASH, TAG_LABELS, tagOf, type ChatTag } from "./tags";
 import type { StagedPptx } from "./useChat";
 
 interface Props {
@@ -22,13 +22,15 @@ interface Props {
   onAnswerStaged: (localId: string, answer: PptxAnswer) => void;
   /** Выбранная метка сверху: «all» — вся лента. Ряд меток живёт в шапке панели. */
   filter?: ChatTag | "all";
+  /** Нажали метку на сообщении: лента сужается до этого шага. */
+  onTag?: (tag: ChatTag) => void;
 }
 
 /**
  * Чат проекта: лента сообщений и карточек шагов, внизу поле ввода с вложениями; файлы можно бросать в любое место панели.
  * PPTX не ждёт отправки: вопрос «шаблон, готовая презентация или материал» появляется в ленте в момент броска, пока файл грузится.
  */
-export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged, filter = "all" }: Props) {
+export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged, filter = "all", onTag }: Props) {
   const { project, session } = ctx;
   // Выбранный справа слайд — адресат сообщения: чип над полем ввода, крестик снимает адресацию.
   const target = session.slideTarget;
@@ -96,11 +98,21 @@ export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged, filte
             Под меткой «{TAG_LABELS[filter]}» пока пусто.
           </Text>
         )}
-        {shown.map((m) => (
-          <div key={m.event_id} className={`chat-msg chat-msg-${m.role}`} data-testid={`msg-${m.role}`}>
-            {renderMessage(m, ctx)}
-          </div>
-        ))}
+        {shown.map((m) => {
+          const hash = TAG_HASH[tagOf(m)];
+          return (
+            <div key={m.event_id} className={`chat-msg chat-msg-${m.role}`} data-testid={`msg-${m.role}`}>
+              {renderMessage(m, ctx)}
+              {/* Метка на самом сообщении: видно, к какому шагу оно относится, и по ней же
+                  лента сужается до этого шага. */}
+              {hash && (
+                <button type="button" className="chat-tag" onClick={() => onTag?.(tagOf(m))} data-testid={`hash-${tagOf(m)}`}>
+                  {hash}
+                </button>
+              )}
+            </div>
+          );
+        })}
         {stagedShown.map((s) => (
           <Fragment key={s.local_id}>
             <div className="chat-msg chat-msg-user" data-testid="msg-user">

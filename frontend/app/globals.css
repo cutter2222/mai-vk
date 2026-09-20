@@ -1991,18 +1991,73 @@ body {
   opacity: 1;
 }
 
-/* Строка варианта в карточке аудита: она же переключатель, чей отчёт показан ниже. */
-.audit-variant {
-  padding: 4px 8px;
+/* Замечание аудита — строка разговора: обычный текст, который можно нажать, чтобы дойти до
+   места на слайде. Ни точек серьёзности, ни кнопок в строке: это сообщение, а не панель. */
+.audit-line {
+  padding: 2px 6px;
+  margin-left: -6px;
   border-radius: var(--mantine-radius-xs);
   cursor: pointer;
   transition: background 120ms ease;
 }
 
-.audit-variant:hover {
+.audit-line:hover {
   background: var(--mist);
 }
 
-.audit-variant[data-active] {
+.audit-line[data-active] {
   background: var(--sky);
+}
+
+/* Идёт работа: строка-подсказка с бегущим многоточием вместо карточки с рамкой и значком.
+   Три точки набегают по одной — тот же приём, что у ассистентов в мессенджерах. */
+.chat-hint {
+  color: var(--ink2);
+}
+
+.chat-hint::after {
+  content: "…";
+  display: inline-block;
+  width: 1.1em;
+  text-align: left;
+  animation: chat-dots 1.2s steps(4, end) infinite;
+  clip-path: inset(0 100% 0 0);
+}
+
+@keyframes chat-dots {
+  0% {
+    clip-path: inset(0 100% 0 0);
+  }
+  100% {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-hint::after {
+    animation: none;
+    clip-path: none;
+  }
+}
+
+/* Метка сообщения: «#аудит» мелким серым под текстом. Нажатие сужает ленту до этого шага. */
+.chat-tag {
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink2);
+  font: inherit;
+  font-size: 11px;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.chat-tag:hover {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.chat-msg-user .chat-tag {
+  align-self: flex-end;
 }

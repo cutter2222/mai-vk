@@ -206,16 +206,16 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
     }
   };
 
-  const repair = async (issueIds?: string[]) => {
-    if (!jobId || !variant || !audit.data) return;
+  const repair = async (issueIds?: string[]): Promise<string | null> => {
+    if (!jobId || !variant || !audit.data) return null;
     const ids = issueIds ?? [...selectedIssues];
-    if (ids.length === 0) return;
+    if (ids.length === 0) return null;
     setBusy(true);
     try {
       const res = await api.generations.repair(jobId, variant.variant_id, audit.data.revision, ids);
       setRepairJob(res.repair_job_id);
       setSelectedIssues(new Set());
-      notifications.show({ color: "blue", title: "Исправление запущено", message: "Затронутые слайды пересобираются и перепроверяются." });
+      return res.repair_job_id;
     } catch (e) {
       if (e instanceof ApiError && e.code === "revision_stale") {
         notifications.show({ color: "orange", title: "Ревизия устарела", message: e.message, autoClose: 8000 });
@@ -228,6 +228,7 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
     } finally {
       setBusy(false);
     }
+    return null;
   };
 
   /** Ручные правки редактора: одна ревизия на все перечисленные слайды и новый порядок; ошибки отдаются вызывающему. */

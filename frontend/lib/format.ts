@@ -194,3 +194,12 @@ export function formatDate(iso: string): string {
   if (Number.isNaN(d.getTime())) return "";
   return new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(d);
 }
+
+/** Склонение при числе: «1 находка», «2 находки», «5 находок». */
+export function plural(n: number, one: string, few: string, many: string): string {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+}

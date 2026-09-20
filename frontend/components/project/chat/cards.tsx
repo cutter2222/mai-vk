@@ -6,14 +6,12 @@ import { useState } from "react";
 
 import { SlideImage } from "@/components/common/SlideImage";
 import { SlideCompareModal } from "@/components/project/chat/SlideCompareModal";
-import { AuditPanel } from "@/components/workspace/AuditPanel";
 import { ProgressPanel } from "@/components/workspace/ProgressPanel";
-import { RevisionsPanel } from "@/components/workspace/RevisionsPanel";
 import { MetricsPanel } from "@/components/workspace/MetricsPanel";
 import { api, ApiError, TERMINAL_STATES, type ContentDetail, type TemplateDetail } from "@/lib/api/client";
 import type { JobStatus } from "@/lib/api/types";
 import { usePolling } from "@/lib/api/usePolling";
-import { formatMs, STATUS_LABELS, VARIANT_LABELS } from "@/lib/format";
+import { formatMs, plural, VARIANT_LABELS } from "@/lib/format";
 import { useElapsed } from "@/lib/hooks/useElapsed";
 import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
 import type { BriefDraft, ChatMessage, PptxAnswer, Project } from "@/lib/state/projects";
@@ -230,70 +228,97 @@ export function JobCard({ m, ctx }: { m: Msg<"job_card">; ctx: CardContext }) {
 }
 
 /**
- * Аудит целиком в ленте: находки, выбор и исправление живут здесь, а не в отдельной панели
- * справа. Панель отнимала половину ширины у слайда — того самого, на котором находки и надо
- * смотреть, — и была единственным шагом конвейера со своим окном: остальные отчитываются
- * карточкой. Связь с местом на слайде осталась: нажатие на находку подсвечивает рамку.
+ * Аудит говорит в ленте, а не показывает приборную панель. Сначала одна фраза о том, что
+ * проверено и что нашлось, потом находки по одной строке: слайд, что не так и «исправить».
+ * Нажатие на находку ведёт к её месту на слайде.
+ *
+ * Почему не список с галочками и шкалами: он повторял отдельную панель, от которой мы ушли,
+ * и в ленте выглядел чужеродно. Выбор «что чинить» свёлся к двум понятным действиям — эту
+ * находку или всё исправимое разом.
+ */
+const FIRST_SHOWN = 5;
+
+/**
+ * Аудит разговаривает, а не показывает приборы: одна фраза о проверке, список замечаний
+ * строками и одно предложение исправить. Нажатие на строку ведёт к месту на слайде.
+ *
+ * Здесь сознательно нет шкал, галочек и счётчиков по категориям: это сообщение ассистента,
+ * а не панель управления. Подробности (какая проверка, чем чинится) видны на слайде и в
+ * отчёте `audit.json`; в ленте важно, что не так и что с этим делать.
  */
 export function AuditCard({ m, ctx }: { m: Msg<"audit_card">; ctx: CardContext }) {
   const { session } = ctx;
+  const [expanded, setExpanded] = useState(false);
   if (session.jobId !== m.job_id || !session.result) return null;
-  const variants = session.result.variants;
-  const total = variants.reduce((n, v) => n + (v.audit?.issues_total ?? 0), 0);
-  const incomplete = variants.some((v) => v.audit && !v.audit.coverage_complete);
   const variant = session.variant;
+  const audit = variant?.audit;
   const busy = session.busy || Boolean(session.repairJob) || Boolean(session.editJob);
+  const stale = session.viewRevision !== session.currentRevision;
+
+  if (!audit || audit.status === "pending" || audit.status === "running") {
+    return <Text size="sm" className="chat-hint" data-testid="audit-summary">Проверяю слайды</Text>;
+  }
+
+  const report = session.audit.data;
+  const issues = report?.issues ?? [];
+  const serious = issues.filter((i) => i.severity === "error" || i.severity === "blocking").length;
+  const fixable = issues.filter((i) => i.fix.available);
+  const shown = expanded ? issues : issues.slice(0, FIRST_SHOWN);
+  const slides = report?.deck.slide_count;
+  const before = session.prevAudit.data?.summary.issues_total;
+  const repaired = session.viewRevision > 1 && typeof before === "number";
+
   return (
-    <Card title="Аудит" aside={<Badge color={total ? "yellow" : "green"} size="xs">{total ? `${total} находок` : "находок нет"}</Badge>} testId="audit-card">
-      {/* Несколько вариантов — строка на каждый: она же переключатель, чей отчёт показан ниже. */}
-      {variants.length > 1 && (
-        <Stack gap={2} mb={8}>
-          {variants.map((v) => (
-            <Group
-              key={v.variant_id}
-              justify="space-between"
-              wrap="nowrap"
-              className="audit-variant"
-              data-active={v.variant_id === session.selectedVariant || undefined}
-              onClick={() => session.setSelectedVariant(v.variant_id)}
-              data-testid={`audit-variant-${v.variant_id}`}
+    <Stack gap={6} data-testid="audit-card">
+      <Text size="sm" className="chat-assistant-text" data-testid="audit-summary">
+        {issues.length === 0
+          ? `Проверил ${slides ?? ""} слайдов — всё в порядке.`
+          : `Проверил ${slides ?? ""} слайдов и нашёл ${issues.length} ${plural(issues.length, "замечание", "замечания", "замечаний")}${serious ? `, из них ${serious} ${plural(serious, "серьёзное", "серьёзных", "серьёзных")}` : ""}.`}
+        {report?.coverage.complete === false ? " Часть проверок выполнить не удалось." : ""}
+      </Text>
+
+      {repaired && (
+        <Text size="sm" className="chat-assistant-text" data-testid="audit-repaired">
+          После исправления стало {issues.length} вместо {before}.
+        </Text>
+      )}
+
+      {shown.length > 0 && (
+        <Stack gap={2}>
+          {shown.map((issue) => (
+            <Text
+              key={issue.issue_id}
+              size="sm"
+              className="audit-line"
+              data-active={session.activeIssue === issue.issue_id || undefined}
+              onClick={() => session.focusIssue(issue)}
+              data-testid={`issue-${issue.issue_id}`}
             >
-              <Text size="sm">{VARIANT_LABELS[v.variant_id] ?? v.variant_id}</Text>
-              <Text size="xs" c="dimmed">{v.status === "failed" ? STATUS_LABELS.failed : v.audit ? `${v.audit.issues_total} находок${v.audit.coverage_complete ? "" : " · аудит неполный"}` : "—"}</Text>
-            </Group>
+              Слайд {issue.slide_index + 1} — {issue.message.toLowerCase()}
+            </Text>
           ))}
         </Stack>
       )}
-      {incomplete && <Text size="xs" c="dimmed" mb={8}>Часть проверок не выполнена, поэтому статус «требует проверки».</Text>}
-      <AuditPanel
-        report={session.audit.data}
-        loading={session.audit.loading}
-        stale={session.viewRevision !== session.currentRevision}
-        selected={session.selectedIssues}
-        activeIssue={session.activeIssue}
-        onToggle={session.toggleIssue}
-        onFocus={session.focusIssue}
-        onRepair={() => void session.repair()}
-        repairing={busy}
-      />
-      {total > 0 && (
-        <Button size="xs" variant="default" mt="xs" onClick={ctx.onRepairAll} data-testid="repair-all">
-          Исправить всё исправимое
-        </Button>
+
+      {issues.length > FIRST_SHOWN && !expanded && (
+        <Anchor size="sm" onClick={() => setExpanded(true)} data-testid="audit-more">
+          показать ещё {issues.length - FIRST_SHOWN}
+        </Anchor>
       )}
-      {(variant?.revisions?.length ?? 0) > 1 && session.jobId && variant && (
-        <div className="panel-section">
-          <RevisionsPanel
-            jobId={session.jobId}
-            variant={variant}
-            revision={session.viewRevision}
-            onRevision={session.setRevision}
-            issuesBefore={session.prevAudit.data?.summary.issues_total}
-            issuesAfter={session.audit.data?.summary.issues_total}
-          />
-        </div>
+
+      {fixable.length > 0 && (
+        <Group gap="xs" align="center">
+          <Text size="sm" className="chat-assistant-text">
+            {fixable.length === issues.length
+              ? "Могу исправить всё это сам."
+              : `Из них ${fixable.length} могу исправить сам.`}
+          </Text>
+          <Button size="xs" disabled={busy || stale} loading={busy} onClick={ctx.onRepairAll} data-testid="repair-all">
+            Исправить
+          </Button>
+        </Group>
       )}
-    </Card>
+    </Stack>
   );
 }
 
@@ -305,7 +330,25 @@ export function EditCard({ m, ctx }: { m: Msg<"edit_card">; ctx: CardContext }) 
   const { session } = ctx;
   // Крупный просмотр «до/после»: миниатюры в карточке малы, разницу на них не разглядеть.
   const [compare, setCompare] = useState<"before" | "after" | null>(null);
-  const entry = session.result?.edits?.find((e) => e.edit_job_id === m.edit_job_id);
+  // Ход правки и ход исправления находок читаются одинаково: это одно задание ревизии,
+  // просто в результате они лежат в разных списках.
+  const repairEntry = session.result?.repairs?.find((r) => r.repair_job_id === m.edit_job_id);
+  const entry =
+    session.result?.edits?.find((e) => e.edit_job_id === m.edit_job_id) ??
+    (repairEntry
+      ? {
+          edit_job_id: repairEntry.repair_job_id,
+          variant_id: repairEntry.variant_id,
+          base_revision: repairEntry.base_revision ?? 0,
+          new_revision: repairEntry.new_revision,
+          result: repairEntry.result === "applied" ? ("applied" as const) : ("failed" as const),
+          message: repairEntry.message,
+          changed_slide_ids: repairEntry.changed_slide_ids,
+          origin: "audit" as const,
+          change_note: repairEntry.message,
+          summary: undefined,
+        }
+      : undefined);
   const settled = Boolean(entry && entry.result !== undefined);
   const status = usePolling<JobStatus>(!settled ? () => api.jobs.get(m.edit_job_id) : null, (s) => TERMINAL_STATES.has(s.status), [m.edit_job_id, settled]);
   const manual = entry?.origin === "editor" || status.data?.kind === "slide_patch" || m.edit_job_id.startsWith("patch");
@@ -319,19 +362,21 @@ export function EditCard({ m, ctx }: { m: Msg<"edit_card">; ctx: CardContext }) 
   if (failed) {
     const message = entry?.message ?? status.data?.error?.message ?? "Правка не выполнена";
     return (
-      <Card title={title} aside={<Badge color="red" size="xs">не применена</Badge>} testId="edit-card">
-        <Text size="sm">{message}</Text>
-        <Text size="xs" c="dimmed" mt={4}>Выберите слайд слева и повторите просьбу другими словами.</Text>
-      </Card>
+      <Stack gap={2} data-testid="edit-card">
+        <Text size="sm" className="chat-assistant-text">Не получилось: {message.toLowerCase()}</Text>
+        <Text size="xs" c="dimmed">Выберите слайд слева и попросите другими словами.</Text>
+      </Stack>
     );
   }
   if (entry?.result === "unchanged" || (status.data?.status === "succeeded" && status.data.result?.unchanged)) {
     const reason = entry?.change_note ?? status.data?.result?.change_note ?? "";
     return (
-      <Card title={title} aside={<Badge color="gray" size="xs">без изменений</Badge>} testId="edit-card">
-        <Text size="sm" data-testid="edit-reason">Оставил слайд как есть: {reason || "просьбу выполнить нельзя"}</Text>
-        <Text size="xs" c="dimmed" mt={4}>Данные не выдумываются: добавьте материалы или уточните просьбу.</Text>
-      </Card>
+      <Stack gap={2} data-testid="edit-card">
+        <Text size="sm" className="chat-assistant-text" data-testid="edit-reason">
+          Оставил слайд {m.slide_index + 1} как есть: {reason || "просьбу выполнить нельзя"}
+        </Text>
+        <Text size="xs" c="dimmed">Данные не выдумываю: добавьте материалы или уточните просьбу.</Text>
+      </Stack>
     );
   }
   if (entry?.result === "applied" && entry.new_revision) {
@@ -345,8 +390,10 @@ export function EditCard({ m, ctx }: { m: Msg<"edit_card">; ctx: CardContext }) 
     const before = { label: `до · r${entry.base_revision}`, src: api.generations.artifactUrl(m.job_id, name(entry.base_revision)) };
     const after = { label: `после · r${entry.new_revision}`, src: api.generations.artifactUrl(m.job_id, name(entry.new_revision)) };
     return (
-      <Card title={title} aside={<Badge color="green" size="xs">ревизия {entry.new_revision}</Badge>} testId="edit-card">
-        <Text size="sm" mb={8} data-testid="edit-note">{(manual ? entry.summary : undefined) || entry.change_note || (manual ? "Правки применены" : "Слайд переделан по просьбе")}</Text>
+      <Stack gap={8} data-testid="edit-card">
+        <Text size="sm" className="chat-assistant-text" data-testid="edit-note">
+          {(manual ? entry.summary : undefined) || entry.change_note || (manual ? "Применил правки" : `Переделал слайд ${m.slide_index + 1}`)}
+        </Text>
         <SimpleGrid cols={2} spacing="xs" mb={8}>
           {([["before", before], ["after", after]] as const).map(([key, side]) => (
             <button key={key} type="button" className="compare-thumb" onClick={() => setCompare(key)} aria-label={`Открыть крупно: ${side.label}`} data-testid={`edit-compare-${key}`}>
@@ -366,19 +413,14 @@ export function EditCard({ m, ctx }: { m: Msg<"edit_card">; ctx: CardContext }) 
         />
         <Group gap="xs">
           <Button size="xs" variant="default" onClick={show} data-testid="edit-show">Показать слайд</Button>
-          <Text size="xs" c="dimmed">
-            {manual
-              ? `${variantLabel}: изменено слайдов — ${Math.max(changedCount, 1)}, прежняя ревизия доступна в панели ревизий.`
-              : `${variantLabel}: остальные слайды не менялись, прежняя ревизия доступна в панели ревизий.`}
-          </Text>
         </Group>
-      </Card>
+      </Stack>
     );
   }
-  const message = status.data?.progress?.message ?? (manual ? "Применяю правки редактора" : `Переделываю слайд ${m.slide_index + 1}`);
+  const message = status.data?.progress?.message ?? (manual ? "Применяю правки" : `Переделываю слайд ${m.slide_index + 1}`);
   return (
-    <Card title={title} aside={<Loader size={12} />} testId="edit-card">
-      <Text size="xs" c="dimmed">{status.error ? status.error.message : `${message}: ${manual ? "сборка → экспорт → проверка" : "план → сборка → экспорт → проверка"}.`}</Text>
-    </Card>
+    <Text size="sm" className="chat-hint" data-testid="edit-card">
+      {status.error ? status.error.message : message}
+    </Text>
   );
 }

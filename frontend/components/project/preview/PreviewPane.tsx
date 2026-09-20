@@ -20,11 +20,10 @@ interface Props {
   templateDetail: TemplateDetail | null;
   templateError: Error | null;
   onChoose: (variantId: string | null) => void;
-  onShowAudit: () => void;
 }
 
 /** Правая часть редактора: слайды задания, иначе выбранный шаблон, иначе подсказка. */
-export function PreviewPane({ project, session, editor, pkg, templateDetail, templateError, onChoose, onShowAudit }: Props) {
+export function PreviewPane({ project, session, editor, pkg, templateDetail, templateError, onChoose }: Props) {
   if (project.job_id) {
     if (session.job.error && !session.result) {
       const notFound = session.job.error instanceof ApiError && session.job.error.status === 404;
@@ -45,7 +44,7 @@ export function PreviewPane({ project, session, editor, pkg, templateDetail, tem
         </div>
       );
     }
-    return <GenerationPreview session={session} editor={editor} templateDetail={templateDetail} pkg={pkg} projectId={project.project_id} chosenVariant={project.chosen_variant} onChoose={onChoose} onShowAudit={onShowAudit} />;
+    return <GenerationPreview session={session} editor={editor} templateDetail={templateDetail} pkg={pkg} projectId={project.project_id} chosenVariant={project.chosen_variant} onChoose={onChoose} />;
   }
 
   if (project.template_id) {

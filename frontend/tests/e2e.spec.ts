@@ -98,21 +98,22 @@ test.describe("сквозной сценарий в чате на заглушк
 
     // Аудит живёт в ленте под своей меткой, а не в панели справа: кнопка в шапке просто
     // переключает ленту на «Аудит», находки и выбор — в карточке.
-    await page.getByTestId("toggle-audit").click();
-    await expect(page.getByTestId("audit-panel")).toBeVisible();
-    await expect(page.getByTestId("audit-coverage")).toContainText("неполное");
+    // Аудит говорит в ленте простыми сообщениями: что проверил, что нашёл, что может
+    // исправить. Отдельной кнопки и панели у него нет.
+    await page.getByTestId("tab-audit").click();
+    await expect(page.getByTestId("audit-summary")).toContainText("Проверил");
+    await expect(page.getByTestId("audit-summary")).toContainText("выполнить не удалось");
+    await expect(page.getByTestId("toggle-audit")).toHaveCount(0);
     await page.getByTestId("issue-iss_1").click();
-    // Связь находки с местом на слайде осталась: рамка подсвечивается рядом с лентой.
+    // Связь замечания с местом на слайде осталась: рамка подсвечивается рядом с лентой.
     await expect(page.getByTestId("issue-box-iss_1")).toBeVisible();
     await page.getByTestId("toggle-how-built").click();
     await expect(page.getByTestId("how-built")).toBeVisible();
     await shot(page, "chat-audit");
 
-    await page.getByTestId("issue-check-iss_1").check();
-    await page.getByTestId("repair").click();
+    await page.getByTestId("repair-all").click();
     await expect(page.getByText("Исправления применены")).toBeVisible({ timeout: 30000 });
-    await expect(page.getByTestId("revisions-panel")).toBeVisible({ timeout: 15000 });
-    await expect(page.getByTestId("audit-panel")).toContainText("ревизия 2");
+    await expect(page.getByTestId("audit-repaired")).toBeVisible({ timeout: 15000 });
     await expect(page.getByTestId("issue-iss_1")).toHaveCount(0);
     await shot(page, "chat-revision");
 

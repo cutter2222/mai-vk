@@ -125,7 +125,9 @@ export function ProjectEditor({ project }: { project: Project }) {
     showPanel(true, "audit");
   };
 
-  const repairAll = () => {
+  // Исправление идёт в ленте, как и всё остальное: сообщение о ходе появляется внизу и само
+  // превращается в результат, когда ревизия готова.
+  const repairAll = async () => {
     const report = session.audit.data;
     if (!report) {
       openAudit();
@@ -136,7 +138,20 @@ export function ProjectEditor({ project }: { project: Project }) {
       notifications.show({ color: "gray", title: "Нечего исправлять автоматически", message: "У найденных проблем нет автоматического исправления." });
       return;
     }
-    void session.repair(ids);
+    const repairJobId = await session.repair(ids);
+    const jobId = project.job_id;
+    const variantId = session.variant?.variant_id;
+    if (repairJobId && jobId && variantId) {
+      appendMessage(project.project_id, {
+        role: "assistant",
+        kind: "edit_card",
+        job_id: jobId,
+        variant_id: variantId,
+        edit_job_id: repairJobId,
+        slide_index: report.issues[0]?.slide_index ?? 0,
+      });
+      showPanel(true, "audit");
+    }
   };
 
   // Бриф — часть контент-пакета: после правок он переимпортируется, чтобы генерация видела новые поля.
@@ -157,7 +172,7 @@ export function ProjectEditor({ project }: { project: Project }) {
     onGenerate: () => void generate(),
     generating: starting,
     onOpenAudit: openAudit,
-    onRepairAll: repairAll,
+    onRepairAll: () => void repairAll(),
     onRetryImport: () => void chat.importMaterials(),
   };
 
@@ -225,7 +240,7 @@ export function ProjectEditor({ project }: { project: Project }) {
               </Tooltip>
             </div>
             {tab !== "files" ? (
-              <ChatPanel ctx={ctx} onSend={chat.send} onAttach={chat.attach} staged={chat.staged} onAnswerStaged={chat.answerStaged} filter={tab} />
+              <ChatPanel ctx={ctx} onSend={chat.send} onAttach={chat.attach} staged={chat.staged} onAnswerStaged={chat.answerStaged} filter={tab} onTag={(tag) => setTab(tag)} />
             ) : (
               <FilesPanel project={project} session={session} onAdd={(files) => { const rest = chat.attach(files); if (rest.length) void chat.send("", rest); }} onRemove={(fid) => void chat.removeFile(fid)} onSelectTemplate={chat.selectTemplate} />
             )}
@@ -241,7 +256,6 @@ export function ProjectEditor({ project }: { project: Project }) {
             templateDetail={template.data}
             templateError={template.error}
             onChoose={(variantId) => patch({ chosen_variant: variantId })}
-            onShowAudit={() => openAudit()}
           />
         </section>
       </div>

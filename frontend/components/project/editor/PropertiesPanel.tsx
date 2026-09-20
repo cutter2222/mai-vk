@@ -7,6 +7,7 @@ import { useState } from "react";
 import type { ContentPackage, Override, TemplateProfile } from "@/lib/api/types";
 import { findOverride, objectLabel, type DeckObject } from "@/lib/editor/overrides";
 import { offTemplate, type TemplateTokens } from "@/lib/editor/tokens";
+import { plural } from "@/lib/format";
 import type { SlideEditor } from "@/lib/hooks/useSlideEditor";
 
 import { AssetPicker, type PictureSource } from "./AssetPicker";
@@ -129,14 +130,6 @@ function nearestSizes(sizes: number[], current: number | undefined | null, limit
 
 function capitalize(s: string): string {
   return s ? s[0].toUpperCase() + s.slice(1) : s;
-}
-
-function plural(n: number, one: string, few: string, many: string): string {
-  const m10 = n % 10;
-  const m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
 }
 
 // ---------- текст и оформление ----------

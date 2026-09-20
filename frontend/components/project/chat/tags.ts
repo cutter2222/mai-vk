@@ -9,6 +9,17 @@ import type { ChatMessage } from "@/lib/state/projects";
  */
 export type ChatTag = "message" | "template" | "materials" | "brief" | "job" | "audit" | "edit";
 
+/** Метка на самом сообщении: «#аудит» под текстом — видно, к какому шагу оно относится. */
+export const TAG_HASH: Record<ChatTag, string> = {
+  message: "",
+  template: "#шаблон",
+  materials: "#материалы",
+  brief: "#задача",
+  job: "#генерация",
+  audit: "#аудит",
+  edit: "#правки",
+};
+
 export const TAG_LABELS: Record<ChatTag, string> = {
   message: "Сообщения",
   template: "Шаблон",
