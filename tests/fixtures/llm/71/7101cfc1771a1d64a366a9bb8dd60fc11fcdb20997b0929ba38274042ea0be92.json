@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-19T21:26:44Z",
+ "entry_version": 1,
+ "key": "7101cfc1771a1d64a366a9bb8dd60fc11fcdb20997b0929ba38274042ea0be92",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 4558,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 480,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 637,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «План расширения: октябрь–декабрь» (pat_builtin_process_count3): 0 пункт(ов) на композицию из 6 карточек — раскрой тезис до 4 пунктов по пояснению (без выдуманных цифр",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 3962,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_builtin_process_count3\",\n      \"theses\": [\"t12\"],\n      \"title\": \"План расширения: октябрь–декабрь\",\n      \"visual\": \"timeline\"\n    },\n    {\n      \"pattern\": \"pat_s2\",\n      \"theses\": [\"t14\"],\n      \"title\": \"Основные риски запуска\",\n      \"visual\": \"bullets\"\n    },\n    {\n      \"pattern\": \"pat_builtin_kpi_row_cardFalse_count3\",\n      \"theses\": [\"t15\"],\n      \"title\": \"Цель по открываемости: 60%\",\n      \"visual\": \"number\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 157,
+   "prompt_tokens": 3736,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

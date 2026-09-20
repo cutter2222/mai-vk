@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-19T22:27:58Z",
+ "entry_version": 1,
+ "key": "8bb269d6308a45769b4640faa6cc40404a46e1139983fcbcf6ce79f7d016ed7f",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3985,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 378,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 499,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Пользователи пропускают до {fact:f1} важ» (pat_builtin_statement), слот title: текст не помещается — 57 символов / 2 строк при ёмкости 35 символов / 1 строк — сократи",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 3070,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_builtin_bullets_pane_cols1\",\n      \"theses\": [\"t2\"],\n      \"title\": \"Пользователи пропускают важные уведомления\",\n      \"visual\": \"bullets\"\n    },\n    {\n      \"pattern\": \"pat_s2\",\n      \"theses\": [\"t4\"],\n      \"title\": \"Три ключевых улучшения в пилоте\",\n      \"visual\": \"cards\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 111,
+   "prompt_tokens": 3430,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

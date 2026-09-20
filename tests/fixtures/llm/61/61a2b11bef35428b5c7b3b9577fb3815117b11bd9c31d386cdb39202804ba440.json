@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-19T21:29:49Z",
+ "entry_version": 1,
+ "key": "61a2b11bef35428b5c7b3b9577fb3815117b11bd9c31d386cdb39202804ba440",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 4819,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 645,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 835,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Одобрить расширение пилота на все продук» (pat_builtin_statement), слот title: текст не помещается — 47 символов / 2 строк при ёмкости 35 символов / 1 строк — сократи",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5135,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_builtin_process_count3\",\n      \"theses\": [\"t12\"],\n      \"title\": \"План расширения в Q4: поэтапный запуск\",\n      \"visual\": \"timeline\"\n    },\n    {\n      \"pattern\": \"pat_s2\",\n      \"theses\": [\"t14\"],\n      \"title\": \"Ключевые риски при масштабировании\",\n      \"visual\": \"cards\"\n    },\n    {\n      \"pattern\": \"pat_s3\",\n      \"theses\": [\"t15\"],\n      \"title\": \"Цель по открываемости: 60% к декабрю\",\n      \"visual\": \"number\"\n    },\n    {\n      \"pattern\": \"pat_builtin_statement\",\n      \"theses\": [\"t16\"],\n      \"title\": \"Одобрить расширение пилота в Q4\",\n      \"visual\": \"text\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 209,
+   "prompt_tokens": 3967,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

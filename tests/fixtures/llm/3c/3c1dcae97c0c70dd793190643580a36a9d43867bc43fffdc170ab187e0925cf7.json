@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-19T21:29:08Z",
+ "entry_version": 1,
+ "key": "3c1dcae97c0c70dd793190643580a36a9d43867bc43fffdc170ab187e0925cf7",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 4445,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 470,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 902,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Approve Q4 Expansion for 60% Open Rate» (pat_builtin_statement), слот title: текст не помещается — 38 символов / 2 строк при ёмкости 35 символов / 1 строк — сократи ф",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4631,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_s2\",\n      \"theses\": [\"t11\"],\n      \"title\": \"Q4 Expansion: Product Rollout\",\n      \"visual\": \"cards\"\n    },\n    {\n      \"pattern\": \"pat_builtin_process_count3\",\n      \"theses\": [\"t11\"],\n      \"title\": \"Timeline: Key Q4 Milestones\",\n      \"visual\": \"timeline\"\n    },\n    {\n      \"pattern\": \"pat_s2\",\n      \"theses\": [\"t13\"],\n      \"title\": \"Risks: Push Provider & Support Load\",\n      \"visual\": \"cards\"\n    },\n    {\n      \"pattern\": \"pat_builtin_statement\",\n      \"theses\": [\"t14\"],\n      \"title\": \"Approve Q4 Expansion for 60% Open Rate\",\n      \"visual\": \"text\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 186,
+   "prompt_tokens": 3746,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

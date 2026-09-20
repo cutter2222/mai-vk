@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T21:29:23Z",
+ "entry_version": 1,
+ "key": "8a71e6360f19cf13bc62b2cf52f57c13b39bf54ff91025b30f8f2d91f7f579a2",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3937,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 4807,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"slides\": [{\"slide_id\": \"s3\", \"title\": \"Core solution\", \"key_message\": \"Core solution: context-based prioritization, unified center, and quiet hours with delayed delivery\", \"filled\": [\"Core solution\"",
+  "prompt": [
+   "fill.slots",
+   "0.1.0"
+  ],
+  "response_format": "json_object",
+  "role": "llm",
+  "skill": [
+   "slot_filler",
+   "0.1.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 11823,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"s3\": {\n    \"card_1_title\": \"Приоритизация по контексту\",\n    \"card_1_body\": \"Уведомления сортируются по релевантности, чтобы важные не терялись в потоке.\",\n    \"card_2_title\": \"Единый центр уведомлений\",\n    \"card_2_body\": \"Все уведомления — в одном месте: удобно и прозрачно.\"\n  },\n  \"s4\": {\n    \"card_1_title\": \"Результаты пилота\",\n    \"card_1_body\": \"Открываемость выросла с 27% до 31%, отписки снизились на 1.4 pp, экономия — 1.5 млн за год при затратах 0.8 млн.\",\n    \"card_2_title\": \"Экономия и эффективность\",\n    \"card_2_body\": \"Чистый эффект: 0.7 млн за год. Затраты окупились за 6 месяцев.\"\n  },\n  \"s5\": {\n    \"card_1_title\": \"Динамика метрик за пилот\",\n    \"card_1_body\": \"Открываемость: 31% → 44%, отписки: 4,1% → 2,7%, активные пользователи: 120 500 → 140 800.\",\n    \"card_2_title\": \"Рост ключевых показателей\",\n    \"card_2_body\": \"Повышение вовлечённости и снижение отписок подтверждают эффективность решения.\"\n  },\n  \"s6\": {\n    \"kpi_1_label\": \"Затраты: 0.8 млн\",\n    \"kpi_2_label\": \"Экономия: 1.5 млн\"\n  },\n  \"s10\": {\n    \"label_1\": \"Одобрить расширение пилота\",\n    \"label_2\": \"Цель: 60% открываемости\",\n    \"label_3\": \"Квартал: Q4\"\n  }\n}",
+  "usage": {
+   "completion_tokens": 490,
+   "prompt_tokens": 3386,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

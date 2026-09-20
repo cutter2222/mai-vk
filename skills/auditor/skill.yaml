@@ -9,7 +9,7 @@ model_role: vlm
 response_format: json_schema
 reasoning:
   mode: low
-  max_output_tokens: 4000
+  max_output_tokens: 10000
 prompts:
 - id: audit.content_questions
   path: prompts/audit.content_questions.v0.1.0.md

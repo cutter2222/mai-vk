@@ -35,29 +35,51 @@ UNDERSTOOD_FIELDS = (
 
 # Схема ответа модели: плоский документ, поля необязательны — отсутствие поля означает
 # «в тексте этого нет».
+# Все поля обязательные и допускают null. Необязательное поле модель молча пропускает —
+# инструктивные модели заполняют только то, что бросается в глаза, и теряют аудиторию и
+# число слайдов. Обязательное поле заставляет рассмотреть каждое и сказать null, если в
+# тексте опоры нет; выдуманное значение всё равно снимет проверка по словам сообщения.
 BRIEF_MODEL_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        "purpose": {"type": "string", "enum": list(PURPOSE_VALUES)},
-        "title": {"type": "string"},
-        "audience": {"type": "string"},
-        "goal": {"type": "string"},
-        "tone": {"type": "string"},
-        "language": {"type": "string"},
-        "must_include": {"type": "array", "items": {"type": "string"}},
-        "avoid": {"type": "array", "items": {"type": "string"}},
+        "purpose": {"type": ["string", "null"], "enum": [*PURPOSE_VALUES, None]},
+        "title": {"type": ["string", "null"]},
+        "audience": {"type": ["string", "null"]},
+        "goal": {"type": ["string", "null"]},
+        "tone": {"type": ["string", "null"]},
+        "language": {"type": ["string", "null"]},
+        "must_include": {"type": ["array", "null"], "items": {"type": "string"}},
+        "avoid": {"type": ["array", "null"], "items": {"type": "string"}},
         "slide_count": {
-            "type": "object",
+            "type": ["object", "null"],
             "properties": {
-                "exact": {"type": "integer"},
-                "min": {"type": "integer"},
-                "max": {"type": "integer"},
+                "exact": {"type": ["integer", "null"]},
+                "min": {"type": ["integer", "null"]},
+                "max": {"type": ["integer", "null"]},
             },
+            # Без этого на «10–12 слайдов» приходит только min: верхнюю границу диапазона
+            # модель пропускает ровно так же, как пропускала необязательные поля верхнего уровня.
+            "required": ["exact", "min", "max"],
         },
-        "variants": {"type": "array", "items": {"type": "string", "enum": list(VARIANT_VALUES)}},
+        "variants": {
+            "type": ["array", "null"],
+            "items": {"type": "string", "enum": list(VARIANT_VALUES)},
+        },
         "intent": {"type": "string", "enum": list(INTENT_VALUES)},
     },
-    "required": ["intent"],
+    "required": [
+        "purpose",
+        "title",
+        "audience",
+        "goal",
+        "tone",
+        "language",
+        "must_include",
+        "avoid",
+        "slide_count",
+        "variants",
+        "intent",
+    ],
 }
 
 PURPOSES: list[tuple[re.Pattern[str], str]] = [

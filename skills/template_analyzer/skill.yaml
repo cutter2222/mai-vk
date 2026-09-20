@@ -9,7 +9,7 @@ model_role: vlm
 response_format: json_schema
 reasoning:
   mode: 'off'
-  max_output_tokens: 1500
+  max_output_tokens: 6000
 prompts:
 - id: analyze.classify_samples
   path: prompts/analyze.classify_samples.v0.2.0.md
@@ -23,7 +23,7 @@ params:
   image_max_px: 768      # миниатюры для классификации ролей (FRAMEWORKS §4: до 1024)
   asset_batch: 24        # пиктограмм на одном листе
   asset_tag_limit: 96    # больше пиктограмм за один анализ не размечается (время этапа)
-  time_budget_s: 75      # общий бюджет всех запросов VLM внутри этапа анализа (stage_analyze_s 180)
+  time_budget_s: 150     # общий бюджет всех запросов VLM внутри анализа (stage_analyze_s 240)
   min_confidence: 0.7    # ниже — роль VLM не заменяет эвристику
 input_schema: template_profile
 output_schema: template_profile

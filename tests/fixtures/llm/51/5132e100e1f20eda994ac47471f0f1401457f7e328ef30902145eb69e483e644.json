@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-19T21:42:46Z",
+ "entry_version": 1,
+ "key": "5132e100e1f20eda994ac47471f0f1401457f7e328ef30902145eb69e483e644",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 4289,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 472,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 664,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Q4 Rollout Plan: Key Milestones» (pat_builtin_process_count3): 0 пункт(ов) на композицию из 6 карточек — раскрой тезис до 4 пунктов по пояснению (без выдуманных цифр)",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5354,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_builtin_process_count3\",\n      \"theses\": [\"t11\"],\n      \"title\": \"Q4 Rollout: Phased Expansion\",\n      \"visual\": \"timeline\"\n    },\n    {\n      \"pattern\": \"pat_s2\",\n      \"theses\": [\"t11\"],\n      \"title\": \"Why This Timeline Works\",\n      \"visual\": \"bullets\"\n    },\n    {\n      \"pattern\": \"pat_s2\",\n      \"theses\": [\"t13\"],\n      \"title\": \"Mitigating Key Risks\",\n      \"visual\": \"bullets\"\n    },\n    {\n      \"pattern\": \"pat_builtin_statement\",\n      \"theses\": [\"t14\"],\n      \"title\": \"Approve Q4 Expansion for 60% Open Rate\",\n      \"visual\": \"text\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 184,
+   "prompt_tokens": 3621,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

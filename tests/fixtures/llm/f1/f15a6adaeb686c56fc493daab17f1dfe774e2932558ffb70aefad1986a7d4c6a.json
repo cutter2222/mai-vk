@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T22:39:01Z",
+ "entry_version": 1,
+ "key": "f15a6adaeb686c56fc493daab17f1dfe774e2932558ffb70aefad1986a7d4c6a",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3937,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 794,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"slides\": [{\"slide_id\": \"s8\", \"title\": \"Users now find notifications helpful\", \"key_message\": \"Users now find notifications helpful, not distracting\", \"filled\": [\"Users now find notifications helpful",
+  "prompt": [
+   "fill.slots",
+   "0.1.0"
+  ],
+  "response_format": "json_object",
+  "role": "llm",
+  "skill": [
+   "slot_filler",
+   "0.1.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 2915,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"s8\": {\n    \"quote\": \"«Впервые уведомления стали помогать, а не отвлекать»\",\n    \"author\": \"Руководитель службы поддержки региона «Север»\"\n  }\n}",
+  "usage": {
+   "completion_tokens": 56,
+   "prompt_tokens": 1764,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

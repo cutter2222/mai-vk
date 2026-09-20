@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T21:28:58Z",
+ "entry_version": 1,
+ "key": "b9bde02b85932ac9b1d13c0657bd4380a5f7127255148381dfdfebfa2734111b",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3937,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3859,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"slides\": [{\"slide_id\": \"s3\", \"title\": \"Key solution elements\", \"key_message\": \"Key solution elements: context-based prioritization, unified notification center, and quiet hours with delayed delivery",
+  "prompt": [
+   "fill.slots",
+   "0.1.0"
+  ],
+  "response_format": "json_object",
+  "role": "llm",
+  "skill": [
+   "slot_filler",
+   "0.1.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 8737,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"s3\": {\n    \"card_1_title\": \"Контекстная приоритизация\",\n    \"card_1_body\": \"Приоритизация уведомлений по контексту — ключевой элемент решения\",\n    \"card_2_title\": \"Единый центр уведомлений\",\n    \"card_2_body\": \"Центральное место для всех уведомлений, включая тихие часы\"\n  },\n  \"s4\": {\n    \"card_1_title\": \"Результаты пилота\",\n    \"card_1_body\": \"Открываемость выросла с 27% до 31%, отписки снизились на 1.4 pp\",\n    \"card_2_title\": \"Экономия и затраты\",\n    \"card_2_body\": \"Экономия на поддержке — 40% за год при затратах 27 млн\"\n  },\n  \"s6\": {\n    \"kpi_1_label\": \"Затраты: 27 млн\",\n    \"kpi_2_label\": \"Экономия: 40%\"\n  },\n  \"s10\": {\n    \"label_1\": \"Одобрить расширение пилота\",\n    \"label_2\": \"Все продукты Q4\",\n    \"label_3\": \"Цель: 60% открываемости\"\n  }\n}",
+  "usage": {
+   "completion_tokens": 322,
+   "prompt_tokens": 2978,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

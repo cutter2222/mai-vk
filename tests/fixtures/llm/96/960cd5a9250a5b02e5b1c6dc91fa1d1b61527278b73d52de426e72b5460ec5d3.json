@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T21:29:30Z",
+ "entry_version": 1,
+ "key": "960cd5a9250a5b02e5b1c6dc91fa1d1b61527278b73d52de426e72b5460ec5d3",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 5008,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: compact. Компактная подача: слайдов ближе к нижней границе, один слайд может объединять два-три родственных тезиса одного раздела. Заголовок-вывод и два-три коротких пункта (до 8 слов) или по",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5155,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_builtin_process_count3\",\n      \"theses\": [\"t12\"],\n      \"title\": \"План расширения в Q4: поэтапный запуск\",\n      \"visual\": \"timeline\"\n    },\n    {\n      \"pattern\": \"pat_s3\",\n      \"theses\": [\"t15\"],\n      \"title\": \"Цель по открываемости: 60% к декабрю\",\n      \"visual\": \"number\"\n    },\n    {\n      \"pattern\": \"pat_builtin_statement\",\n      \"theses\": [\"t16\"],\n      \"title\": \"Одобрить расширение пилота на все продукты в Q4\",\n      \"visual\": \"text\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 165,
+   "prompt_tokens": 3495,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

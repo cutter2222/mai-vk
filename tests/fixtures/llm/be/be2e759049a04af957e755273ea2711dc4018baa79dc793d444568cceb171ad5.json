@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-19T21:41:52Z",
+ "entry_version": 1,
+ "key": "be2e759049a04af957e755273ea2711dc4018baa79dc793d444568cceb171ad5",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 5338,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 407,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 800,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Pilot cost: {fact:f21}, projected saving» (pat_builtin_statement), слот title: текст не помещается — 75 символов / 3 строк при ёмкости 35 символов / 1 строк — сократи",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 3496,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_s2\",\n      \"theses\": [\"t6\"],\n      \"title\": \"Pilot results: open rate up, unsubscribes down\",\n      \"visual\": \"cards\"\n    },\n    {\n      \"pattern\": \"pat_builtin_kpi_row_cardFalse_count3\",\n      \"theses\": [\"t8\"],\n      \"title\": \"Pilot economics: cost, savings, net effect\",\n      \"visual\": \"number\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 106,
+   "prompt_tokens": 4102,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

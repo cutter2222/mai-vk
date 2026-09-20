@@ -7,11 +7,11 @@ description: 'Заполнение пустых слотов слайда: то�
   каждого слота, после того как застава качества убрала брак'
 model_role: llm
 response_format: json_object
-reasoning: { mode: "off", max_output_tokens: 2000 }
+reasoning: { mode: "off", max_output_tokens: 6000 }
 prompts:
   - id: fill.slots
     version: 0.1.0
     path: prompts/fill.slots.v0.1.0.md
 params:
-  time_budget_s: 60      # один вызов на всю колоду, слоты передаются пачкой
+  time_budget_s: 150     # один вызов на всю колоду, слоты передаются пачкой
   max_slots: 24          # больше за раз не просим: ответ становится небрежным

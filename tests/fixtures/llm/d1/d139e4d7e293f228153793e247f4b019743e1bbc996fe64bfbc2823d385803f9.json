@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T21:26:35Z",
+ "entry_version": 1,
+ "key": "d139e4d7e293f228153793e247f4b019743e1bbc996fe64bfbc2823d385803f9",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3937,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 2186,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"slides\": [{\"slide_id\": \"s8\", \"title\": \"Уведомления стали помогать\", \"key_message\": \"Уведомления стали помогать, а не отвлекать\", \"filled\": [\"Уведомления стали помогать\", \"«Впервые уведомления стали ",
+  "prompt": [
+   "fill.slots",
+   "0.1.0"
+  ],
+  "response_format": "json_object",
+  "role": "llm",
+  "skill": [
+   "slot_filler",
+   "0.1.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4408,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"s8\": {\"statement\": \"40% уведомлений — важные, открываемость 31%\"},\n  \"s9\": {\"statement\": \"Октябрь: 2 продукта; ноябрь: тихие часы; декабрь: запуск во всех регионах, цель — 60% открываемости\"},\n  \"s10\": {\"statement\": \"Зависимость от push-провайдера и нагрузка на поддержку в первые недели\"}\n}",
+  "usage": {
+   "completion_tokens": 118,
+   "prompt_tokens": 2325,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

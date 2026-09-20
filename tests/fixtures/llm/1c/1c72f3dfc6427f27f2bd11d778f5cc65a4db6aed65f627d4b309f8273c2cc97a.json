@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-19T22:28:01Z",
+ "entry_version": 1,
+ "key": "1c72f3dfc6427f27f2bd11d778f5cc65a4db6aed65f627d4b309f8273c2cc97a",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 5366,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 549,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 753,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Экономия 12,5 млн ₽ за год при затратах » (pat_builtin_kpi_row_cardFalse_count2), слот title: текст не помещается — 49 символов / 2 строк при ёмкости 35 символов / 1 ",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4686,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_builtin_matrix\",\n      \"theses\": [\"t6\"],\n      \"title\": \"Открываемость +13 п.п., отписки -1,4 п.п.\",\n      \"visual\": \"comparison\"\n    },\n    {\n      \"pattern\": \"pat_builtin_kpi_row_cardFalse_count2\",\n      \"theses\": [\"t7\"],\n      \"title\": \"Экономия 12,5 млн ₽ за год при затратах 2,4 млн ₽\",\n      \"visual\": \"number\"\n    },\n    {\n      \"pattern\": \"pat_s2\",\n      \"theses\": [\"t8\", \"t9\"],\n      \"title\": \"Рост метрик и финансовая эффективность\",\n      \"visual\": \"cards\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 181,
+   "prompt_tokens": 4146,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

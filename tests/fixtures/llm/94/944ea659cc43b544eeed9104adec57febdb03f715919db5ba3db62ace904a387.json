@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T22:00:24Z",
+ "entry_version": 1,
+ "key": "944ea659cc43b544eeed9104adec57febdb03f715919db5ba3db62ace904a387",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 2885,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 91,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Нужен отчёт по итогам третьего квартала для совета директоров, ровно 8 слайдов, тон деловой",
+  "prompt": [
+   "brief.extract",
+   "0.2.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "brief_extractor",
+   "0.2.0"
+  ],
+  "stage": "brief"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4059,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"audience\": \"совета директоров\",\n  \"avoid\": [],\n  \"goal\": null,\n  \"intent\": \"generate\",\n  \"language\": null,\n  \"must_include\": [],\n  \"purpose\": \"report\",\n  \"slide_count\": {\n    \"exact\": 8,\n    \"max\": null,\n    \"min\": null\n  },\n  \"title\": \"Итоги третьего квартала\",\n  \"tone\": \"деловой\",\n  \"variants\": []\n}",
+  "usage": {
+   "completion_tokens": 108,
+   "prompt_tokens": 1010,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

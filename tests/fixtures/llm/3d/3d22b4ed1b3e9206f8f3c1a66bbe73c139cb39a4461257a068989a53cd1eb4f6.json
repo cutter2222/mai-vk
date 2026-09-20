@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-19T21:29:10Z",
+ "entry_version": 1,
+ "key": "3d22b4ed1b3e9206f8f3c1a66bbe73c139cb39a4461257a068989a53cd1eb4f6",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 5375,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 752,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 806,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Open rate up 13 pp, unsubscribes down 1.» (pat_builtin_comparison): 0 пункт(ов) на композицию из 16 карточек — раскрой тезис до 4 пунктов по пояснению (без выдуманных",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5260,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_s2\",\n      \"theses\": [\"t6\"],\n      \"title\": \"Open rate up 13 pp, unsubscribes down 1.4 pp\",\n      \"visual\": \"cards\"\n    },\n    {\n      \"pattern\": \"pat_s2\",\n      \"theses\": [\"t7\"],\n      \"title\": \"Pilot metrics trend: open rate, unsubscribes, active users\",\n      \"visual\": \"cards\"\n    },\n    {\n      \"pattern\": \"pat_builtin_kpi_row_cardFalse_count3\",\n      \"theses\": [\"t8\"],\n      \"title\": \"Pilot economics: costs, savings, net effect\",\n      \"visual\": \"number\"\n    },\n    {\n      \"pattern\": \"pat_builtin_statement\",\n      \"theses\": [\"t9\"],\n      \"title\": \"User feedback: notifications now help, not distract\",\n      \"visual\": \"text\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 202,
+   "prompt_tokens": 4191,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

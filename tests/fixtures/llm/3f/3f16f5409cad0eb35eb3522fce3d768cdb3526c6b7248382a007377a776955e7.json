@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T22:01:50Z",
+ "entry_version": 1,
+ "key": "3f16f5409cad0eb35eb3522fce3d768cdb3526c6b7248382a007377a776955e7",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3074,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 97,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Собери питч проекта «Северный мост» для инвесторов, только компактный и сбалансированный варианты",
+  "prompt": [
+   "brief.extract",
+   "0.2.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "brief_extractor",
+   "0.2.0"
+  ],
+  "stage": "brief"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 3348,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"audience\": \"инвесторов\",\n  \"avoid\": [],\n  \"goal\": null,\n  \"intent\": \"generate\",\n  \"language\": null,\n  \"must_include\": [],\n  \"purpose\": \"project\",\n  \"slide_count\": null,\n  \"title\": \"Северный мост\",\n  \"tone\": null,\n  \"variants\": [\"compact\", \"balanced\"]\n}",
+  "usage": {
+   "completion_tokens": 86,
+   "prompt_tokens": 1062,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import pathlib
 from collections.abc import Callable
 from typing import Any
@@ -62,21 +63,39 @@ def import_settings(tmp_path: pathlib.Path) -> s.Settings:
 
 @pytest.fixture
 def replay_client(tmp_path: pathlib.Path, models: s.ModelsConfig) -> Any:  # noqa: F811
-    """Клиент, отвечающий только записями tests/fixtures/llm: сеть не вызывается."""
+    """Клиент, отвечающий только записями tests/fixtures/llm: сеть не вызывается.
+
+    Записи принадлежат конкретной модели (её идентификатор входит в ключ), поэтому смена
+    модели в `config/models.yaml` делает их непригодными. Перезапись — разовая операция с
+    реальными вызовами: `PD_TEST_LLM_MODE=record uv run pytest …` с ключом провайдера в
+    окружении. В обычном запуске режим всегда `replay`, сеть не вызывается.
+    """
     from presentation_designer.llm.cache import ResponseCache
     from presentation_designer.llm.client import LlmClient
     from presentation_designer.llm.limiter import LocalLimiter, Quota
     from presentation_designer.llm.retry import RetryPolicy
     from presentation_designer.llm.stub import StubTransport
+    from presentation_designer.llm.transport import OpenAITransport
 
+    mode = os.environ.get("PD_TEST_LLM_MODE", "replay")
     cfg = s.Settings()
     cfg.llm.cache_dir = tmp_path / "llm-cache"
-    cfg.timeouts.llm_call_s = 5
+    cfg.timeouts.llm_call_s = 120 if mode == "record" else 5
+    transport: Any = StubTransport()
+    if mode == "record":
+        provider = models.providers[models.active_provider]
+        transport = OpenAITransport(
+            provider=models.active_provider,
+            base_url=provider.base_url(),
+            api_key=provider.api_key(),
+            reasoning_style=provider.reasoning_style,
+            timeout_s=cfg.timeouts.llm_call_s,
+        )
     return LlmClient(
         settings=cfg,
         models=models,
-        transport=StubTransport(),
+        transport=transport,
         limiter=LocalLimiter(Quota(4, 600, 1_000_000), max_wait_s=5),
-        cache=ResponseCache("replay", cfg.llm_cache_dir, LLM_FIXTURES),
-        retry_policy=RetryPolicy(max_retries=0, base_s=0.01, max_s=0.05),
+        cache=ResponseCache(mode, cfg.llm_cache_dir, LLM_FIXTURES),
+        retry_policy=RetryPolicy(max_retries=2 if mode == "record" else 0, base_s=0.01, max_s=0.05),
     )

@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T21:28:41Z",
+ "entry_version": 1,
+ "key": "ef0eda43e232acc46efe9abf862a8344884faf5b2c6439efaf5d1adcfe146542",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3729,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: balanced. Сбалансированная подача: один тезис на слайд, заголовок-вывод, короткое пояснение (одно-два предложения) и до четырёх пунктов или показателей. Ряды данных — диаграмма с подписями; т",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4267,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_builtin_statement\",\n      \"theses\": [\"t2\"],\n      \"title\": \"Users miss up to {fact:f1} key notifications daily due to lack of prioritization — avg. {fact:f2} per person\",\n      \"visual\": \"text\"\n    },\n    {\n      \"pattern\": \"pat_s2\",\n      \"theses\": [\"t4\"],\n      \"title\": \"Key solution elements: context-based prioritization, unified notification center, and quiet hours with delayed delivery\",\n      \"visual\": \"cards\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 125,
+   "prompt_tokens": 3020,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

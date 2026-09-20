@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T22:30:32Z",
+ "entry_version": 1,
+ "key": "80dcf86cee4087c8739fcf69f600014fb061c029a07cf47aa5542665f17c618a",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 4564,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: compact. Компактная подача: слайдов ближе к нижней границе, один слайд может объединять два-три родственных тезиса одного раздела. Заголовок-вывод и два-три коротких пункта (до 8 слов) или по",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4315,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_builtin_process_count3\",\n      \"theses\": [\"t12\"],\n      \"title\": \"План расширения: октябрь–декабрь\",\n      \"visual\": \"timeline\"\n    },\n    {\n      \"pattern\": \"pat_s3\",\n      \"theses\": [\"t15\"],\n      \"title\": \"Цель по открываемости: 60 % к декабрю\",\n      \"visual\": \"number\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 111,
+   "prompt_tokens": 3342,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

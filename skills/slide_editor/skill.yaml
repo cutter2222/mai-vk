@@ -11,14 +11,14 @@ model_role: llm
 response_format: json_schema
 reasoning:
   mode: 'off'            # один слайд: короткий ответ, рассуждение только съедает бюджет
-  max_output_tokens: 1500
+  max_output_tokens: 8000
 prompts:
 - id: edit.slide
   path: prompts/edit.slide.v0.1.0.md
   version: 0.1.0
 params:
   temperature: 0.2
-  time_budget_s: 60      # запрос и один повтор по переполнению с ожиданием квоты
+  time_budget_s: 180     # запрос и один повтор по переполнению; ответ с рассуждением дольше
 input_schema: slide_plan
 output_schema: slide_plan
 changelog:

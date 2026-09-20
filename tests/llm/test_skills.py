@@ -42,7 +42,7 @@ def test_request_from_manifest() -> None:
     assert req.role == "llm"
     assert req.response_format == "json_schema"
     assert req.reasoning == "off"
-    assert req.max_output_tokens == 3500
+    assert req.max_output_tokens == skill.manifest.reasoning.max_output_tokens
     assert req.temperature == 0.2
     assert req.prompt == ("story.outline", "0.2.0")
     assert req.skill == ("story_planner", "0.2.0")

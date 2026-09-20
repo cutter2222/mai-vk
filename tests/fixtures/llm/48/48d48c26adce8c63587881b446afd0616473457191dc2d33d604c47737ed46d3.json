@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T22:36:56Z",
+ "entry_version": 1,
+ "key": "48d48c26adce8c63587881b446afd0616473457191dc2d33d604c47737ed46d3",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3937,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 2319,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"slides\": [{\"slide_id\": \"s5\", \"title\": \"Экономия 12,5 млн ₽ за год\", \"key_message\": \"Экономия 12,5 млн ₽ за год\", \"filled\": [\"Экономия 12,5 млн ₽ за год\", \"Затраты на пилот: 2,4 млн ₽\"], \"empty_slots",
+  "prompt": [
+   "fill.slots",
+   "0.1.0"
+  ],
+  "response_format": "json_object",
+  "role": "llm",
+  "skill": [
+   "slot_filler",
+   "0.1.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 3366,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"s5\": {\"kpi_1_label\": \"Экономия на поддержке\"},\n  \"s7\": {\"statement\": \"План на квартал: запуск во всех регионах\"},\n  \"s9\": {\"statement\": \"Расширение пилота на все продукты\"}\n}",
+  "usage": {
+   "completion_tokens": 72,
+   "prompt_tokens": 2433,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

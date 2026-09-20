@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T22:00:52Z",
+ "entry_version": 1,
+ "key": "b7c5717d2b83471794adaa45333c03da833e2536d464c859d6c8dd10bad20c0d",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 2885,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 100,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Сгенерируй презентацию фичи «Тихие часы» для продуктовой команды, цель — согласовать релиз в октябре",
+  "prompt": [
+   "brief.extract",
+   "0.2.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "brief_extractor",
+   "0.2.0"
+  ],
+  "stage": "brief"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4130,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"audience\": \"продуктовой команды\",\n  \"avoid\": [],\n  \"goal\": \"согласовать релиз в октябре\",\n  \"intent\": \"generate\",\n  \"language\": null,\n  \"must_include\": [],\n  \"purpose\": \"feature\",\n  \"slide_count\": {\n    \"exact\": null,\n    \"max\": null,\n    \"min\": null\n  },\n  \"title\": \"Тихие часы\",\n  \"tone\": null,\n  \"variants\": []\n}",
+  "usage": {
+   "completion_tokens": 112,
+   "prompt_tokens": 1010,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

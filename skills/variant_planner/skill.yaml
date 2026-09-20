@@ -10,14 +10,15 @@ model_role: llm
 response_format: json_schema
 reasoning:
   mode: 'off'            # провайдер делит бюджет ответа с рассуждением; пакет из 3–6 слайдов и так длинный
-  max_output_tokens: 3500
+  max_output_tokens: 14000
 prompts:
 - id: plan.slides
   path: prompts/plan.slides.v0.3.0.md
   version: 0.3.0
 params:
   temperature: 0.2
-  time_budget_s: 100     # все пакеты варианта параллельно с ожиданием квоты и повторами (stage_plan_s 120)
+  time_budget_s: 260     # пакеты варианта идут параллельно, но каждый ответ с рассуждением
+                         # занимает около полутора минут (stage_plan_s 300)
 input_schema: story_plan
 output_schema: slide_plan
 changelog:

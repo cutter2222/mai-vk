@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T21:28:37Z",
+ "entry_version": 1,
+ "key": "84b5e731758c6c7da309c5dc5ae286b6eac9d26003f8d023a14c18cfa4d8920e",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3937,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 2173,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"slides\": [{\"slide_id\": \"s2\", \"title\": \"Users miss up to 40 % key notifications daily due to lack of prioritization — avg. 27 per person\", \"key_message\": \"Users miss up to 40 % key notifications dail",
+  "prompt": [
+   "fill.slots",
+   "0.1.0"
+  ],
+  "response_format": "json_object",
+  "role": "llm",
+  "skill": [
+   "slot_filler",
+   "0.1.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 2619,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"s2\": {},\n  \"s9\": {\"statement\": \"Пилот показал рост вовлечённости и экономический эффект — готовность к масштабированию подтверждена\"}\n}",
+  "usage": {
+   "completion_tokens": 50,
+   "prompt_tokens": 2250,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

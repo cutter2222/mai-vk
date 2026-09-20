@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T21:40:32Z",
+ "entry_version": 1,
+ "key": "54d84ca78549d8f939f9411b7bff4fe28e64df9c0e7f33bdff6b581aa2bb34fc",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 4437,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: balanced. Сбалансированная подача: один тезис на слайд, заголовок-вывод, короткое пояснение (одно-два предложения) и до четырёх пунктов или показателей. Ряды данных — диаграмма с подписями; т",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5244,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_builtin_process_count3\",\n      \"theses\": [\"t12\"],\n      \"title\": \"План расширения: октябрь–декабрь\",\n      \"visual\": \"timeline\"\n    },\n    {\n      \"pattern\": \"pat_builtin_bullets_pane_cols1\",\n      \"theses\": [\"t14\"],\n      \"title\": \"Основные риски запуска\",\n      \"visual\": \"bullets\"\n    },\n    {\n      \"pattern\": \"pat_builtin_kpi_row_cardFalse_count3\",\n      \"theses\": [\"t15\"],\n      \"title\": \"Цель по открываемости: 60%\",\n      \"visual\": \"number\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 162,
+   "prompt_tokens": 3294,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T22:38:52Z",
+ "entry_version": 1,
+ "key": "d9b1d009cefec4adf7cb14f93eaba6d51bdd592203f2f042dfd1d8e2ebbca5b1",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 5157,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: balanced. Сбалансированная подача: один тезис на слайд, заголовок-вывод, короткое пояснение (одно-два предложения) и до четырёх пунктов или показателей. Ряды данных — диаграмма с подписями; т",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5846,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_builtin_comparison\",\n      \"theses\": [\"t6\"],\n      \"title\": \"Open rate up 13 pp, unsubscribes down 1.4 pp\",\n      \"visual\": \"comparison\"\n    },\n    {\n      \"pattern\": \"pat_builtin_bullets_pane_cols1\",\n      \"theses\": [\"t7\"],\n      \"title\": \"Metrics trend during pilot: open rate, unsubscribes, active users\",\n      \"visual\": \"bullets\"\n    },\n    {\n      \"pattern\": \"pat_builtin_kpi_row_cardFalse_count3\",\n      \"theses\": [\"t8\"],\n      \"title\": \"Pilot economics: costs, projected savings, net effect\",\n      \"visual\": \"number\"\n    },\n    {\n      \"pattern\": \"pat_builtin_quote_photoFalse\",\n      \"theses\": [\"t9\"],\n      \"title\": \"Users now find notifications helpful, not distracting\",\n      \"visual\": \"quote\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 210,
+   "prompt_tokens": 3626,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

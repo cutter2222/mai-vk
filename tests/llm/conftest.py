@@ -42,8 +42,12 @@ def settings(tmp_path: pathlib.Path) -> s.Settings:
 
 @pytest.fixture
 def models(monkeypatch: pytest.MonkeyPatch) -> s.ModelsConfig:
-    monkeypatch.setenv("PD_QWEN_BASE_URL", "https://example.invalid/v1")
-    monkeypatch.setenv("PD_QWEN_API_KEY", "replace-me")
+    # Адрес и ключ подменяются заглушкой, чтобы обычный запуск тестов не мог уйти в сеть.
+    # Исключение — разовая перезапись записанных ответов (PD_TEST_LLM_MODE=record): там
+    # нужен настоящий провайдер из окружения.
+    if os.environ.get("PD_TEST_LLM_MODE") != "record":
+        monkeypatch.setenv("PD_QWEN_BASE_URL", "https://example.invalid/v1")
+        monkeypatch.setenv("PD_QWEN_API_KEY", "replace-me")
     s.reset_cache()
     cfg = s.get_models_config()
     s.reset_cache()

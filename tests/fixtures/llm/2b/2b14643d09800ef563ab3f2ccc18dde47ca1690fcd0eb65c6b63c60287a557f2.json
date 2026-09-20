@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T22:36:52Z",
+ "entry_version": 1,
+ "key": "2b14643d09800ef563ab3f2ccc18dde47ca1690fcd0eb65c6b63c60287a557f2",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3937,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3097,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"slides\": [{\"slide_id\": \"s4\", \"title\": \"Открываемость +13 п.п.\", \"key_message\": \"Открываемость +13 п.п., отписки -1,4 п.п.\", \"filled\": [\"Открываемость +13 п.п.\", \"Выросла с 31% до 44% за три месяца п",
+  "prompt": [
+   "fill.slots",
+   "0.1.0"
+  ],
+  "response_format": "json_object",
+  "role": "llm",
+  "skill": [
+   "slot_filler",
+   "0.1.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5064,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"s4\": {\"card_1_title\": \"Результаты пилота\"},\n  \"s5\": {\"kpi_1_label\": \"Экономия на поддержке: 12,5 млн ₽ за год\"},\n  \"s7\": {\"statement\": \"План на квартал: два продукта, тихие часы, запуск во всех регионах\"},\n  \"s9\": {\"statement\": \"Одобрить расширение пилота на все продукты в четвёртом квартале\", \"support\": \"Цель — 60% открываемости\"}\n}",
+  "usage": {
+   "completion_tokens": 142,
+   "prompt_tokens": 2785,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

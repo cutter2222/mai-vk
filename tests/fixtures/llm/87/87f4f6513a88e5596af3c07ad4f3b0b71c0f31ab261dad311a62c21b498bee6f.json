@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T22:27:55Z",
+ "entry_version": 1,
+ "key": "87f4f6513a88e5596af3c07ad4f3b0b71c0f31ab261dad311a62c21b498bee6f",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3985,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: compact. Компактная подача: слайдов ближе к нижней границе, один слайд может объединять два-три родственных тезиса одного раздела. Заголовок-вывод и два-три коротких пункта (до 8 слов) или по",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4528,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_builtin_statement\",\n      \"theses\": [\"t2\"],\n      \"title\": \"Пользователи пропускают до {fact:f1} важных уведомлений в день\",\n      \"visual\": \"text\"\n    },\n    {\n      \"pattern\": \"pat_s2\",\n      \"theses\": [\"t4\"],\n      \"title\": \"Три ключевых улучшения: приоритизация, центр уведомлений, тихие часы\",\n      \"visual\": \"cards\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 128,
+   "prompt_tokens": 3113,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

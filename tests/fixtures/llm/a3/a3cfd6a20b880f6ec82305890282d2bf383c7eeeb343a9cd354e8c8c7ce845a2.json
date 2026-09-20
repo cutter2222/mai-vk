@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-19T22:30:01Z",
+ "entry_version": 1,
+ "key": "a3cfd6a20b880f6ec82305890282d2bf383c7eeeb343a9cd354e8c8c7ce845a2",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3960,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 501,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 766,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Users miss up to {fact:f1} key notificat» (pat_builtin_statement), слот title: текст не помещается — 96 символов / 3 строк при ёмкости 35 символов / 1 строк — сократи",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 3091,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_builtin_image_split_bulletsFalse_sideleft\",\n      \"theses\": [\"t2\"],\n      \"title\": \"Users miss key notifications daily — avg. {fact:f2} per person\",\n      \"visual\": \"text\"\n    },\n    {\n      \"pattern\": \"pat_s2\",\n      \"theses\": [\"t4\"],\n      \"title\": \"Solution: context-based prioritization, unified center, quiet hours\",\n      \"visual\": \"cards\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 111,
+   "prompt_tokens": 3499,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T21:57:42Z",
+ "entry_version": 1,
+ "key": "d46eae51bc75a2ae3a82d6bdd567ba529eb0c4eb55548f93f7ad0e44fe6ae3a2",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 1917,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 97,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Собери питч проекта «Северный мост» для инвесторов, только компактный и сбалансированный варианты",
+  "prompt": [
+   "brief.extract",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "brief_extractor",
+   "0.1.0"
+  ],
+  "stage": "brief"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4801,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"audience\": \"инвесторов\",\n  \"avoid\": [\"длинные слайды\", \"слишком детализированные данные\"],\n  \"goal\": \"привлечь инвестиции\",\n  \"intent\": \"generate\",\n  \"language\": \"ru\",\n  \"must_include\": [\"ключевые преимущества проекта\", \"финансовые показатели\", \"план расширения\"],\n  \"purpose\": \"project\",\n  \"slide_count\": {\"min\": 10},\n  \"title\": \"Проект «Северный мост»\",\n  \"tone\": \"убедительный\",\n  \"variants\": [\"compact\", \"balanced\"]\n}",
+  "usage": {
+   "completion_tokens": 145,
+   "prompt_tokens": 677,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

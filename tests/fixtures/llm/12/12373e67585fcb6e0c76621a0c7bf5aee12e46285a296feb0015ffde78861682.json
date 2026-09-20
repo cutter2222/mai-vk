@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T21:57:57Z",
+ "entry_version": 1,
+ "key": "12373e67585fcb6e0c76621a0c7bf5aee12e46285a296feb0015ffde78861682",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 1917,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 100,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Сгенерируй презентацию фичи «Тихие часы» для продуктовой команды, цель — согласовать релиз в октябре",
+  "prompt": [
+   "brief.extract",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "brief_extractor",
+   "0.1.0"
+  ],
+  "stage": "brief"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4539,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"audience\": \"продуктовой команды\",\n  \"avoid\": [\"релиз в октябре\"],\n  \"goal\": \"согласовать релиз в октябре\",\n  \"intent\": \"generate\",\n  \"language\": \"ru\",\n  \"must_include\": [\"фичи «Тихие часы»\"],\n  \"purpose\": \"feature\",\n  \"slide_count\": {\"min\": 5},\n  \"title\": \"Фича «Тихие часы»\"\n  \n  , \"tone\": \"professional\"\n  \n  , \"variants\": [\"balanced\"]\n  \n  }",
+  "usage": {
+   "completion_tokens": 131,
+   "prompt_tokens": 676,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

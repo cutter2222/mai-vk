@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T21:29:58Z",
+ "entry_version": 1,
+ "key": "a8e45b5e81043af4c1f3ba4a6804d6910c067bb91c0fb8d635a690712b71c230",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 4027,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: detailed. Подробная подача: слайдов ближе к верхней границе, разделы получают разделители. Тезис раскрывается пояснением и примерами, до шести пунктов с подписями (sub), карточки и две колонк",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4705,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_builtin_statement\",\n      \"theses\": [\"t2\"],\n      \"title\": \"Пользователи пропускают до {fact:f1} важных уведомлений в день\",\n      \"visual\": \"text\"\n    },\n    {\n      \"pattern\": \"pat_s2\",\n      \"theses\": [\"t4\"],\n      \"title\": \"Три ключевых улучшения: приоритизация, центр уведомлений и тихие часы\",\n      \"visual\": \"cards\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 128,
+   "prompt_tokens": 3124,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

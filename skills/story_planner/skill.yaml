@@ -10,14 +10,15 @@ model_role: llm
 response_format: json_schema
 reasoning:
   mode: 'off'            # провайдер делит бюджет ответа с рассуждением; план и так длинный
-  max_output_tokens: 3500
+  max_output_tokens: 14000
 prompts:
 - id: story.outline
   path: prompts/story.outline.v0.2.0.md
   version: 0.2.0
 params:
   temperature: 0.2
-  time_budget_s: 90      # один вызов с ожиданием квоты и повторами (stage_story_s 120 делится с импортом)
+  time_budget_s: 260     # модель ТЗ рассуждает перед ответом: один вызов плана ~90 с,
+                         # бюджет покрывает ожидание квоты и повтор (stage_story_s 300)
   max_digest_chars: 14000
 input_schema: content_package
 output_schema: story_plan

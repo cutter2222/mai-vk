@@ -10,7 +10,7 @@ model_role: llm
 response_format: json_schema
 reasoning:
   mode: 'off'
-  max_output_tokens: 1200
+  max_output_tokens: 6000
 prompts:
 - id: import.fact_context
   path: prompts/import.fact_context.v0.1.0.md

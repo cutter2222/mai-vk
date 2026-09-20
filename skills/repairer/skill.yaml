@@ -9,7 +9,7 @@ model_role: llm
 response_format: json_schema
 reasoning:
   mode: low
-  max_output_tokens: 4000
+  max_output_tokens: 10000
 prompts:
 - id: repair.rewrite_block
   path: prompts/repair.rewrite_block.v0.1.0.md

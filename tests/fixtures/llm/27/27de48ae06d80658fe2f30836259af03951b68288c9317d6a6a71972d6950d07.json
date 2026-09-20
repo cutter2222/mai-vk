@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T22:39:18Z",
+ "entry_version": 1,
+ "key": "27de48ae06d80658fe2f30836259af03951b68288c9317d6a6a71972d6950d07",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3937,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 1551,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"slides\": [{\"slide_id\": \"s9\", \"title\": \"Users now find notifications helpful\", \"key_message\": \"Users now find notifications helpful\", \"filled\": [\"Users now find notifications helpful\"], \"empty_slots\"",
+  "prompt": [
+   "fill.slots",
+   "0.1.0"
+  ],
+  "response_format": "json_object",
+  "role": "llm",
+  "skill": [
+   "slot_filler",
+   "0.1.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4229,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"s9\": {\n    \"quote\": \"«Впервые уведомления стали помогать, а не отвлекать» — руководитель службы поддержки региона «Север».\",\n    \"author\": \"Руководитель службы поддержки\"\n  },\n  \"s13\": {\n    \"quote\": \"Одобрите расширение пилота на все продукты в четвёртом квартале для достижения цели в 60 % открываемости.\",\n    \"author\": \"Руководство проекта\"\n  }\n}",
+  "usage": {
+   "completion_tokens": 129,
+   "prompt_tokens": 2049,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

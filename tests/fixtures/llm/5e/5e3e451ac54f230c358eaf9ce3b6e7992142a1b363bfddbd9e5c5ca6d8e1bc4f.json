@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T21:42:35Z",
+ "entry_version": 1,
+ "key": "5e3e451ac54f230c358eaf9ce3b6e7992142a1b363bfddbd9e5c5ca6d8e1bc4f",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3937,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 4954,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"slides\": [{\"slide_id\": \"s3\", \"title\": \"Key solution elements\", \"key_message\": \"Key solution elements: context-based prioritization, unified notification center, and quiet hours with delayed delivery",
+  "prompt": [
+   "fill.slots",
+   "0.1.0"
+  ],
+  "response_format": "json_object",
+  "role": "llm",
+  "skill": [
+   "slot_filler",
+   "0.1.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 9198,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"s3\": {\n    \"card_1_title\": \"Контекстная приоритизация\",\n    \"card_1_body\": \"Приоритизация уведомлений по контексту — ключевой элемент решения\",\n    \"card_2_title\": \"Единый центр уведомлений\",\n    \"card_2_body\": \"Центральное место для всех уведомлений, упрощающее управление\"\n  },\n  \"s4\": {\n    \"card_1_title\": \"Результаты пилота\",\n    \"card_1_body\": \"Открываемость выросла с 27% до 31%, отписки снизились на 1.4 pp\",\n    \"card_2_title\": \"Экономия и затраты\",\n    \"card_2_body\": \"Экономия на поддержке — 1.5 млн за год при затратах 0.8 млн\"\n  },\n  \"s6\": {\n    \"kpi_1_label\": \"Затраты: 0.8 млн\",\n    \"kpi_2_label\": \"Экономия: 1.5 млн\"\n  },\n  \"s8\": {\n    \"label_1\": \"План на квартал\",\n    \"label_2\": \"Октябрь: 2 новых продукта\",\n    \"label_3\": \"Ноябрь: тихие часы\"\n  },\n  \"s10\": {\n    \"label_1\": \"Одобрите расширение\",\n    \"label_2\": \"Цель: 60% открываемости\",\n    \"label_3\": \"Q4: все продукты\"\n  }\n}",
+  "usage": {
+   "completion_tokens": 382,
+   "prompt_tokens": 3390,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

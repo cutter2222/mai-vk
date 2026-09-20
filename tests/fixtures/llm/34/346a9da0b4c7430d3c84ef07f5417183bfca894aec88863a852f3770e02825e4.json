@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-19T22:37:52Z",
+ "entry_version": 1,
+ "key": "346a9da0b4c7430d3c84ef07f5417183bfca894aec88863a852f3770e02825e4",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 5345,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 1003,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 1330,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Экономия 12,5 млн ₽ за год при затратах » (pat_builtin_kpi_row_cardFalse_count2), слот title: текст не помещается — 49 символов / 2 строк при ёмкости 35 символов / 1 ",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 6708,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_s2\",\n      \"theses\": [\"t6\"],\n      \"title\": \"Открываемость выросла на 13 п.п., отписки снизились на 1,4 п.п.\",\n      \"visual\": \"cards\"\n    },\n    {\n      \"pattern\": \"pat_builtin_kpi_row_cardFalse_count2\",\n      \"theses\": [\"t7\"],\n      \"title\": \"Экономия 12,5 млн ₽ за год при затратах 2,4 млн ₽\",\n      \"visual\": \"number\"\n    },\n    {\n      \"pattern\": \"pat_s2\",\n      \"theses\": [\"t8\"],\n      \"title\": \"Динамика метрик за пилот: открываемость, отписки, активные пользователи\",\n      \"visual\": \"cards\"\n    },\n    {\n      \"pattern\": \"pat_s2\",\n      \"theses\": [\"t9\"],\n      \"title\": \"Финансовая эффективность: затраты и ожидаемая экономия\",\n      \"visual\": \"cards\"\n    },\n    {\n      \"pattern\": \"pat_builtin_quote_photoFalse\",\n      \"theses\": [\"t10\"],\n      \"title\": \"«Впервые уведомления стали помогать, а не отвлекать»\",\n      \"visual\": \"quote\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 306,
+   "prompt_tokens": 4461,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

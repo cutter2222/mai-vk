@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T21:57:53Z",
+ "entry_version": 1,
+ "key": "c037d6da18eef186268d82690cc14e983b3b30c06af40649331c0e0d40eb83a0",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 1917,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 40,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "А какие форматы файлов вы поддерживаете?",
+  "prompt": [
+   "brief.extract",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "brief_extractor",
+   "0.1.0"
+  ],
+  "stage": "brief"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 3677,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\"audience\": \"вы\", \"avoid\": [\"форматы файлов\"], \"goal\": \"узнать, какие форматы файлов поддерживаете\", \"intent\": \"none\", \"language\": \"ru\", \"must_include\": [\"форматы файлов\"], \"purpose\": \"product\", \"slide_count\": {\"exact\": 0}, \"title\": \"Поддерживаемые форматы файлов\", \"tone\": \"вопросительный\", \"variants\": []}",
+  "usage": {
+   "completion_tokens": 106,
+   "prompt_tokens": 654,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

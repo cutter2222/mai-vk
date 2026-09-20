@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T22:00:41Z",
+ "entry_version": 1,
+ "key": "d2c24cc6119325400b2cbddbd42153bb2788333e05900499b05a7d54a18b8c96",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 2885,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 119,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Презентация инициативы по удалённой работе для HR-директора. Обязательно включи бюджет и сроки, без технических деталей",
+  "prompt": [
+   "brief.extract",
+   "0.2.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "brief_extractor",
+   "0.2.0"
+  ],
+  "stage": "brief"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4170,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"audience\": \"HR-директора\",\n  \"avoid\": [\"технических деталей\"],\n  \"goal\": null,\n  \"intent\": \"generate\",\n  \"language\": null,\n  \"must_include\": [\"бюджет\", \"сроки\"],\n  \"purpose\": \"initiative\",\n  \"slide_count\": null,\n  \"title\": \"Инициатива по удалённой работе\",\n  \"tone\": null,\n  \"variants\": []\n}",
+  "usage": {
+   "completion_tokens": 107,
+   "prompt_tokens": 1018,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

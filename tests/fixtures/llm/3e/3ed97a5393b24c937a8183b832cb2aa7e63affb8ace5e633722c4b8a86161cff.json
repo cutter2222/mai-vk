@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T21:57:33Z",
+ "entry_version": 1,
+ "key": "3ed97a5393b24c937a8183b832cb2aa7e63affb8ace5e633722c4b8a86161cff",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 1917,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 7,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Привет!",
+  "prompt": [
+   "brief.extract",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "brief_extractor",
+   "0.1.0"
+  ],
+  "stage": "brief"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 2685,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\"audience\": \"none\", \"avoid\": [], \"goal\": \"\", \"intent\": \"none\", \"language\": \"\", \"must_include\": [], \"purpose\": null, \"slide_count\": null, \"title\": \"\", \"tone\": \"\", \"variants\": []}",
+  "usage": {
+   "completion_tokens": 56,
+   "prompt_tokens": 645,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

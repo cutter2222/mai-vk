@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T21:57:37Z",
+ "entry_version": 1,
+ "key": "1af4da0b700566b9c66b0d3bcde849564e7b68c24d01a99bf6cc846ce5d93e42",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 1917,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 63,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Поменяй местами второй и третий слайды и удали слайд с командой",
+  "prompt": [
+   "brief.extract",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "brief_extractor",
+   "0.1.0"
+  ],
+  "stage": "brief"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 3959,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\"audience\": \"командой\", \"avoid\": [\"слайд с командой\"], \"goal\": \"поменяй местами второй и третий слайды\", \"intent\": \"edit\", \"language\": \"ru\", \"must_include\": [\"второй и третий слайды\"]  , \"purpose\": \"product\", \"slide_count\": {\"exact\": 3}, \"title\": \"Презентация продукта\", \"tone\": \"формальный\", \"variants\": [\"compact\", \"balanced\", \"detailed\"]  }",
+  "usage": {
+   "completion_tokens": 119,
+   "prompt_tokens": 665,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

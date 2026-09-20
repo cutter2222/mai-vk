@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-19T22:30:26Z",
+ "entry_version": 1,
+ "key": "3bf44d002a543633b44a80ad1f2a77d46f41796df690ca65837db0f506f3f8a1",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3937,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 1552,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"slides\": [{\"slide_id\": \"s9\", \"title\": \"“Notifications now help, not distract”\", \"key_message\": \"“Notifications now help, not distract”\", \"filled\": [\"“Notifications now help, not distract”\"], \"empty_",
+  "prompt": [
+   "fill.slots",
+   "0.1.0"
+  ],
+  "response_format": "json_object",
+  "role": "llm",
+  "skill": [
+   "slot_filler",
+   "0.1.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4287,
+  "model": "qwen3-vl-32b-instruct",
+  "provider": "qwen-api",
+  "text": "{\n  \"s9\": {\n    \"quote\": \"«Впервые уведомления стали помогать, а не отвлекать»\",\n    \"author\": \"Руководитель службы поддержки региона «Север»\"\n  },\n  \"s11\": {\n    \"lead\": \"Октябрь: два новых продукта; Ноябрь: тихие часы; Декабрь: расширение на все регионы, цель — 31% открываемости\"\n  }\n}",
+  "usage": {
+   "completion_tokens": 118,
+   "prompt_tokens": 2067,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

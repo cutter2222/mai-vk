@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-20T05:29:14Z",
+ "entry_version": 1,
+ "key": "31491ad4380aef5f9cb583cd602e41ae475da147fef73d62208a9dd1f493fb4e",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3190,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 4174,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Бриф: назначение — product; тема — «Запуск сервиса умных уведомлений»; аудитория — руководители продуктовых направлений; цель — получить одобрение на расширение пилота; тон — деловой, без технических ",
+  "prompt": [
+   "story.outline",
+   "0.2.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "story_planner",
+   "0.2.0"
+  ],
+  "stage": "story"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 54369,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"key_takeaway\": \"Пилот умных уведомлений повысил открываемость и снизил отписки, что позволяет масштабировать сервис на все продукты в четвёртом квартале.\",\n  \"theses\": [\n    {\n      \"id\": \"t1\",\n      \"kind\": \"context\",\n      \"required\": true,\n      \"statement\": \"Пользователи теряют до {fact:f1} важных сообщений из-за потока в {fact:f2} уведомлений в день.\",\n      \"visual\": \"number\"\n    },\n    {\n      \"id\": \"t2\",\n      \"kind\": \"section\",\n      \"required\": true,\n      \"statement\": \"Внедрение приоритизации и единого центра решает проблему информационного шума.\",\n      \"visual\": \"image\"\n    },\n    {\n      \"id\": \"t3\",\n      \"kind\": \"claim\",\n      \"required\": false,\n      \"statement\": \"Сервис автоматически сортирует сообщения, вводит тихие часы и объединяет каналы.\",\n      \"visual\": \"bullets\"\n    },\n    {\n      \"id\": \"t4\",\n      \"kind\": \"section\",\n      \"required\": true,\n      \"statement\": \"Трёхмесячный пилот подтвердил рост вовлечённости и снижение нагрузки на поддержку.\",\n      \"visual\": \"text\"\n    },\n    {\n      \"id\": \"t5\",\n      \"kind\": \"evidence\",\n      \"required\": true,\n      \"statement\": \"Открываемость выросла с {fact:f3} до {fact:f4}, а отписки снизились с {fact:f5} до {fact:f6}.\",\n      \"visual\": \"chart\"\n    },\n    {\n      \"id\": \"t6\",\n      \"kind\": \"evidence\",\n      \"required\": true,\n      \"statement\": \"Экономия на поддержке достигла {fact:f7} при затратах на пилот {fact:f8}.\",\n      \"visual\": \"number\"\n    },\n    {\n      \"id\": \"t7\",\n      \"kind\": \"evidence\",\n      \"required\": false,\n      \"statement\": \"«Впервые уведомления стали помогать, а не отвлекать» — обратная связь от поддержки.\",\n      \"visual\": \"quote\"\n    },\n    {\n      \"id\": \"t8\",\n      \"kind\": \"section\",\n      \"required\": true,\n      \"statement\": \"Масштабирование сервиса запланировано по трём последовательным этапам в четвёртом квартале.\",\n      \"visual\": \"text\"\n    },\n    {\n      \"id\": \"t9\",\n      \"kind\": \"claim\",\n      \"required\": true,\n      \"statement\": \"Октябрь: два новых продукта, ноябрь: тихие часы, декабрь: все регионы с целью {fact:f11}.\",\n      \"visual\": \"timeline\"\n    },\n    {\n      \"id\": \"t10\",\n      \"kind\": \"conclusion\",\n      \"required\": true,\n      \"statement\": \"Пилот доказал эффективность и готов к расширению на все продуктовые направления.\",\n      \"visual\": \"text\"\n    },\n    {\n      \"id\": \"t11\",\n      \"kind\": \"call_to_action\",\n      \"required\": true,\n      \"statement\": \"Одобряем запуск сервиса умных уведомлений на все продукты в этом квартале.\",\n      \"visual\": \"text\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 5846,
+   "prompt_tokens": 2537,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}
