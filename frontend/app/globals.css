@@ -277,10 +277,17 @@ body {
   display: block;
   flex: 1;
   min-width: 0;
-  border-radius: var(--mantine-radius-sm);
+  /* Слайд — прямоугольник, и обводка вокруг него должна быть такой же. Радиусы системы
+     (12 и 8) для миниатюры 160 × 90 слишком круглые: рамка живёт своей жизнью от картинки. */
+  border-radius: 4px;
   outline: 1.5px solid transparent;
   outline-offset: 2px;
   transition: outline-color 120ms ease;
+}
+
+/* Картинка слайда скруглена так же, как обводка вокруг неё: иначе рамка и снимок спорят. */
+.filmstrip .slide-frame {
+  border-radius: 4px;
 }
 
 .filmstrip button:hover .thumb-image {
@@ -1932,4 +1939,56 @@ body {
 .detail-card td {
   padding-top: 7px;
   padding-bottom: 7px;
+}
+
+/* ---------- Числовые поля: шаг вверх-вниз ---------- */
+
+/* Стандартный спиннер Mantine растягивает две стрелки на всю высоту поля, и они читаются как
+   два далёких угла. Здесь это маленький отдельный орган: пара стрелок 9 px на светлой плашке
+   по центру поля. Значение и шаг перестают спорить за одно место. */
+.mantine-NumberInput-controls {
+  --ni-chevron-size: 9px;
+  width: 20px;
+  max-width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  margin-inline-end: 4px;
+  justify-content: center;
+  gap: 0;
+  border: 0;
+  border-radius: 6px;
+  background: var(--mist);
+  opacity: 0.75;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+
+.mantine-NumberInput-root:hover .mantine-NumberInput-controls,
+.mantine-NumberInput-root:focus-within .mantine-NumberInput-controls {
+  opacity: 1;
+}
+
+.mantine-NumberInput-control {
+  --control-border: 0;
+  --control-radius: 6px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 9px;
+  width: 20px;
+  border: 0;
+  color: var(--ink2);
+  background: transparent;
+  transition: color 100ms ease, background 100ms ease;
+}
+
+.mantine-NumberInput-control:hover:not(:disabled) {
+  background: var(--sky);
+  color: var(--accent);
+}
+
+.mantine-NumberInput-control:disabled {
+  color: var(--line);
+  background: transparent;
+  opacity: 1;
 }
