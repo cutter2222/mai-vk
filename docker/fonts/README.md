@@ -1,6 +1,6 @@
-# Шрифты образа воркера
+# Шрифты воркера и ONLYOFFICE
 
-Устанавливаются в `/usr/local/share/fonts/project` при сборке `docker/app.Dockerfile` (цель `worker`); системные шрифты ставятся пакетами Debian. Runtime шрифты не скачивает.
+Устанавливаются в `/usr/local/share/fonts/project` при сборке `docker/app.Dockerfile` (цель `worker`) и `docker/onlyoffice.Dockerfile`; системные шрифты ставятся пакетами Debian/Ubuntu. ONLYOFFICE дополнительно пересобирает индекс шрифтов. Runtime шрифты не скачивает. Воркеры используют шрифты для измерения текста, ONLYOFFICE — для редактора и PDF. Ниже упоминания старого LibreOffice описывают исторические замеры, а не текущий движок.
 
 | Шрифт | Откуда | Лицензия | Зачем |
 | --- | --- | --- | --- |

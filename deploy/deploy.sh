@@ -147,14 +147,17 @@ case "$TARGET" in
     [ "$BUILD_HERE" = no ] || die "--build-here имеет смысл только для --target server"
     docker info >/dev/null 2>&1 || die "Docker не запущен"
     [ -f "$REPO_DIR/.env" ] || cp "$REPO_DIR/config/.env.example" "$REPO_DIR/.env"
+    if ! grep -qE '^PD_ONLYOFFICE__JWT_SECRET=.{32,}$' "$REPO_DIR/.env"; then
+      set_env_key "$REPO_DIR/.env" PD_ONLYOFFICE__JWT_SECRET "$(openssl rand -hex 32)"
+    fi
     host_port="${LOCAL_URL#http://}"
     local_host="${host_port%%:*}"
     local_port="${host_port#*:}"
     [ "$local_port" != "$host_port" ] || local_port=80
     set_env_key "$REPO_DIR/.env" PD_PUBLIC_URL "$LOCAL_URL"
     set_env_key "$REPO_DIR/.env" PD_SITE_ADDRESS "http://$local_host"
-    set_env_key "$REPO_DIR/.env" PD_HTTP_PORT "$local_port"
-    set_env_key "$REPO_DIR/.env" PD_HTTPS_PORT 8443
+    set_env_key "$REPO_DIR/.env" PD_HTTP_PORT "127.0.0.1:$local_port"
+    set_env_key "$REPO_DIR/.env" PD_HTTPS_PORT "127.0.0.1:8443"
     set_env_key "$REPO_DIR/.env" PD_BUILD_COMMIT "$COMMIT"
     mkdir -p "$REPO_DIR/backups"
     log "сборка и запуск (commit $COMMIT, незакоммиченные изменения: $DIRTY)"

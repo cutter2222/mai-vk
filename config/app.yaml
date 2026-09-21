@@ -34,7 +34,7 @@ timeouts:
   stage_compose_s: 180      # вёрстка ~1 с; остальное — правка по фактам: три сборки и до двух вызовов модели
   stage_export_s: 120
   stage_audit_s: 180
-  render_convert_s: 90      # одна конвертация LibreOffice
+  render_convert_s: 90      # одна конвертация ONLYOFFICE
   llm_call_s: 180
   brief_s: 30               # извлечение брифа из сообщения чата: с рассуждением ~17 с, при ошибке эвристика
 
@@ -86,11 +86,10 @@ layout:                     # вёрстка PPTX (layout/compose)
                             # файл меньше, но набор макетов в PowerPoint у пользователя меняется
 
 render:
-  slots: 2                  # одновременных конвертаций LibreOffice: по замерам 0A LibreOffice берёт
-                            # до 1,1 ГБ на шаблоне ЛЦТ, на сервере с 3,9 ГБ третий слот не выделять
+  slots: 2                  # общий лимит запросов конвертации к ONLYOFFICE
   thumbnail_width_px: 1280
   vlm_image_max_px: 1024
-  mode: process_per_convert # или uno_pool, по замерам этапа 9
+  mode: onlyoffice
 
 retention:                  # сборка мусора: периодическая задача воркера анализа (pipeline/gc.py)
   gc_interval_s: 3600       # как часто API ставит задачу сборки мусора в очередь analysis

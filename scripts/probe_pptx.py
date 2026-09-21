@@ -9,7 +9,7 @@
   04-native.pptx        нативная таблица и диаграмма на клоне
   05-chart-copies.pptx  две независимо отредактированные копии слайда с диаграммой
   06-pruned.pptx        удалены все образцы, остались только новые слайды
-  *.pdf, thumbs/        рендер LibreOffice и миниатюры pypdfium2, если LibreOffice доступен
+  *.pdf, thumbs/        рендер ONLYOFFICE и миниатюры pypdfium2, если ONLYOFFICE доступен
 
 Результаты — results.json на машину; --report собирает все results.json из --out в блок
 docs/pptx-capabilities.md между маркерами `<!-- probe:begin -->` и `<!-- probe:end -->`.
@@ -86,8 +86,7 @@ def machine_info(label: str | None) -> dict[str, Any]:
         "memory_mb": mem_mb,
         "python": platform.python_version(),
         "python_pptx": pptx.__version__,
-        "libreoffice": pdf_export.soffice_version(),
-        "profile_template": str(pdf_export.profile_template_dir() or ""),
+        "renderer": "ONLYOFFICE" if pdf_export.renderer_configured() else None,
         "measured_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
 
@@ -397,16 +396,10 @@ class TemplateProbe:
         if thumbs_dir.exists():
             shutil.rmtree(thumbs_dir)
         try:
-            # Холодный запуск без подготовленного профиля, затем с профилем, затем повтор.
-            render["conversions"]["original_cold_no_profile"] = self._convert(
-                self.path, "00-original", use_profile_template=False
-            )
-            render["conversions"]["original_with_profile"] = self._convert(
-                self.path, "00-original", use_profile_template=True
-            )
-            render["conversions"]["original_repeat"] = self._convert(
-                self.path, "00-original", use_profile_template=True
-            )
+            # Independent conversion keys avoid Document Server's result cache.
+            render["conversions"]["original_first"] = self._convert(self.path, "00-original")
+            render["conversions"]["original_second"] = self._convert(self.path, "00-original")
+            render["conversions"]["original_repeat"] = self._convert(self.path, "00-original")
             for name in (
                 "01-roundtrip",
                 "02-clone",
@@ -447,21 +440,17 @@ class TemplateProbe:
         }
         self.result["render"] = render
 
-    def _convert(self, source: pathlib.Path, name: str, **kwargs: Any) -> dict[str, Any]:
+    def _convert(self, source: pathlib.Path, name: str) -> dict[str, Any]:
         target = self.out_dir / f"{name}.pdf"
         result = pdf_export.convert_to_pdf(
             source,
             self.out_dir / "pdf-tmp",
             timeout_s=self.timeout_s,
-            measure_memory=True,
-            **kwargs,
         )
         shutil.move(str(result.pdf_path), target)
         shutil.rmtree(self.out_dir / "pdf-tmp", ignore_errors=True)
         return {
             "seconds": round(result.seconds, 2),
-            "max_rss_mb": result.max_rss_mb,
-            "profile_from_template": result.profile_from_template,
             "pages": thumbnails.pdf_page_count(target),
             "pdf_bytes": target.stat().st_size,
         }
@@ -648,14 +637,13 @@ def _render_row(t: dict[str, Any]) -> str:
     c = r["conversions"]
     v = r["visual"]
     clone_max = max((item["ratio"] for item in v["clones_vs_sources"]), default=None)
-    rss = max((item["max_rss_mb"] or 0) for item in c.values())
     cells = [
         t["name"],
-        str(c["original_cold_no_profile"]["pages"]),
-        f"{c['original_cold_no_profile']['seconds']:.1f}",
-        f"{c['original_with_profile']['seconds']:.1f}",
+        str(c["original_first"]["pages"]),
+        f"{c['original_first']['seconds']:.1f}",
+        f"{c['original_second']['seconds']:.1f}",
         f"{c['original_repeat']['seconds']:.1f}",
-        f"{rss:.0f}",
+        "—",
         f"{c['06-pruned']['seconds']:.1f}",
         f"{r['thumbnails']['00-original']['per_page_ms']:.0f}",
         f"{_fmt_ratio(v['roundtrip_vs_original']['max_ratio'])} / "
@@ -674,8 +662,9 @@ ENGINE_HEADER = (
     "| --- | ---: | ---: | ---: | ---: | --- | --- | --- | --- | --- | --- | --- |"
 )
 RENDER_HEADER = (
-    "| Шаблон | Страниц | PDF холодный без профиля, с | PDF с профилем, с | PDF повтор, с "
-    "| Память LibreOffice, МБ | PDF после удаления образцов, с | Миниатюры 1280 px, мс/стр. "
+    "| Шаблон | Страниц | PDF первый, с | PDF второй, с | PDF повтор, с "
+    "| Память сервиса (внешний замер) | PDF после удаления образцов, с "
+    "| Миниатюры 1280 px, мс/стр. "
     "| Roundtrip: разница max/сред. | Клоны: разница max | Копии диаграмм различаются "
     "| Шрифты в PDF |\n"
     "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- | --- |"
@@ -700,7 +689,7 @@ def render_report_block(out_root: pathlib.Path) -> str:
         lines.append(
             f"#### {m['label']} — {m['platform']}, {m['cpu_count']} CPU, "
             f"{m['memory_mb'] or '?'} МБ, python-pptx {m['python_pptx']}, "
-            f"LibreOffice: {m['libreoffice'] or 'нет'}, {measured} UTC"
+            f"Рендерер: {m.get('renderer') or 'нет'}, {measured} UTC"
         )
         lines += ["", ENGINE_HEADER]
         lines += [_engine_row(t) for t in data["templates"]]
@@ -804,7 +793,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--report", type=pathlib.Path, help="обновить блок замеров в этом файле")
     parser.add_argument("--machine", help="метка машины для results.json и отчёта")
     parser.add_argument("--only", help="подстрока имени шаблона")
-    parser.add_argument("--skip-render", action="store_true", help="без LibreOffice и миниатюр")
+    parser.add_argument("--skip-render", action="store_true", help="без ONLYOFFICE и миниатюр")
     parser.add_argument("--no-fixture", action="store_true", help="не проверять свою фикстуру")
     parser.add_argument("--report-only", action="store_true", help="только пересобрать отчёт")
     parser.add_argument("--timeout", type=int, default=300, help="тайм-аут одной конвертации, с")
@@ -813,8 +802,8 @@ def main(argv: list[str] | None = None) -> int:
     if not args.report_only:
         machine = machine_info(args.machine)
         render = not args.skip_render
-        if render and not machine["libreoffice"]:
-            print("LibreOffice не найден: рендер пропущен (--skip-render)")
+        if render and not machine["renderer"]:
+            print("ONLYOFFICE не настроен: рендер пропущен (--skip-render)")
             render = False
         paths = load_templates(args.templates_dir, args.only)
         if not args.no_fixture and (not args.only or args.only.lower() in FIXTURE.name):
@@ -864,10 +853,10 @@ def _print_result(result: dict[str, Any]) -> None:
         c = render["conversions"]
         v = render["visual"]
         print(
-            f"  PDF: холодный {c['original_cold_no_profile']['seconds']} с, с профилем "
-            f"{c['original_with_profile']['seconds']} с, "
+            f"  PDF: первый {c['original_first']['seconds']} с, второй "
+            f"{c['original_second']['seconds']} с, "
             f"повтор {c['original_repeat']['seconds']} с, "
-            f"страниц {c['original_cold_no_profile']['pages']}; roundtrip разница "
+            f"страниц {c['original_first']['pages']}; roundtrip разница "
             f"max {_fmt_ratio(v['roundtrip_vs_original']['max_ratio'])}; "
             f"шрифты {render['pdf_fonts']}"
         )

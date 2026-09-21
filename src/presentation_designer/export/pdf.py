@@ -1,177 +1,146 @@
-"""Конвертация PPTX в PDF через LibreOffice: отдельный процесс на конвертацию.
+"""PPTX → PDF through ONLYOFFICE; bounded polling, signed inputs, atomic output.
 
-Каждый вызов получает собственный профиль (`UserInstallation`) во временном каталоге,
-тайм-аут и завершение всего дерева процессов (oosplash → soffice.bin). Подготовленный
-профиль из образа воркера (`PD_LO_PROFILE_TEMPLATE`, по умолчанию /opt/lo-profile)
-копируется в этот каталог: так первый запуск не тратит время на инициализацию реестра.
-Ограничение одновременных конвертаций (слоты рендера) — задача вызывающего слоя.
+Concurrency is bounded by the caller's render slots. Editor sessions/revisions are
+not involved. API and workers must share settings.paths.data_dir.
 """
 
 from __future__ import annotations
 
-import os
 import pathlib
-import shutil
-import signal
-import subprocess
-import sys
 import tempfile
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass
+from typing import Any
 
-DEFAULT_PROFILE_TEMPLATE = pathlib.Path("/opt/lo-profile")
-_MEMORY_WRAPPER = (
-    "import resource, subprocess, sys\n"
-    "code = subprocess.call(sys.argv[1:])\n"
-    "print('max_rss_kb=%d' % resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss, "
-    "file=sys.stderr)\n"
-    "sys.exit(code)\n"
-)
+import httpx
+import pypdfium2 as pdfium
+
+from presentation_designer.export.office_source import publish_source, saved_url
+from presentation_designer.export.render_slots import RenderSlotTimeoutError, render_slots_from_env
+from presentation_designer.export.thumbnails import pdf_page_count
+from presentation_designer.pipeline.office import sign
+from presentation_designer.shared.settings import Settings, get_settings
 
 
 class RendererUnavailableError(RuntimeError):
-    """LibreOffice не найден в PATH."""
+    """ONLYOFFICE is unconfigured or cannot be reached."""
 
 
 class ConversionError(RuntimeError):
-    """Конвертация завершилась ошибкой, тайм-аутом или без выходного файла."""
+    """Conversion failed, timed out or returned an invalid PDF."""
 
 
 @dataclass(frozen=True)
 class PdfResult:
     pdf_path: pathlib.Path
     seconds: float
-    profile_from_template: bool
-    max_rss_mb: float | None = None  # пиковая память процессов LibreOffice, если измерялась
 
 
-def find_soffice() -> pathlib.Path | None:
-    """Путь к LibreOffice: PD_SOFFICE, PATH или стандартное место на macOS."""
-    explicit = os.environ.get("PD_SOFFICE")
-    if explicit:
-        return pathlib.Path(explicit)
-    for name in ("soffice", "libreoffice"):
-        found = shutil.which(name)
-        if found:
-            return pathlib.Path(found)
-    mac = pathlib.Path("/Applications/LibreOffice.app/Contents/MacOS/soffice")
-    return mac if mac.exists() else None
-
-
-def soffice_version(soffice: pathlib.Path | None = None) -> str | None:
-    soffice = soffice or find_soffice()
-    if soffice is None:
-        return None
-    try:
-        out = subprocess.run(
-            [str(soffice), "--version"], capture_output=True, text=True, timeout=60, check=False
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    return out.stdout.strip().splitlines()[0] if out.stdout.strip() else None
-
-
-def profile_template_dir() -> pathlib.Path | None:
-    """Подготовленный профиль LibreOffice, если он есть на этой машине."""
-    raw = os.environ.get("PD_LO_PROFILE_TEMPLATE")
-    path = pathlib.Path(raw) if raw else DEFAULT_PROFILE_TEMPLATE
-    return path if (path / "user").is_dir() else None
+def renderer_configured(settings: Settings | None = None) -> bool:
+    cfg = (settings or get_settings()).onlyoffice
+    return cfg.enabled and len(cfg.jwt_secret) >= 32
 
 
 def convert_to_pdf(
     pptx_path: pathlib.Path,
     out_dir: pathlib.Path,
     timeout_s: int = 90,
-    soffice: pathlib.Path | None = None,
-    use_profile_template: bool = True,
-    measure_memory: bool = False,
+    *,
+    settings: Settings | None = None,
+    slot_acquired: bool = False,
 ) -> PdfResult:
-    """Конвертирует один PPTX в `out_dir/<имя>.pdf`.
-
-    Временный каталог с профилем удаляется всегда; при тайм-ауте дерево процессов
-    получает SIGKILL. Выходной PDF сначала пишется во временный каталог и переносится
-    в `out_dir` только целиком.
-    """
-    soffice = soffice or find_soffice()
-    if soffice is None:
+    """Convert without modifying the source; publish the PDF only after validation."""
+    settings = settings or get_settings()
+    cfg = settings.onlyoffice
+    if not renderer_configured(settings):
         raise RendererUnavailableError(
-            "LibreOffice не найден: задайте PD_SOFFICE или добавьте soffice в PATH"
+            "ONLYOFFICE не настроен: включите сервис и задайте JWT secret"
         )
-    pptx_path = pathlib.Path(pptx_path)
+    if not 1 <= timeout_s <= 3600:
+        raise ValueError("conversion timeout must be between 1 and 3600 seconds")
+    pptx_path, out_dir = pathlib.Path(pptx_path), pathlib.Path(out_dir)
     if not pptx_path.is_file():
         raise ConversionError(f"нет входного файла: {pptx_path}")
-    out_dir = pathlib.Path(out_dir)
+    if pptx_path.stat().st_size > settings.limits.max_upload_mb * 1024 * 1024:
+        raise ConversionError("PPTX превышает лимит конвертации")
     out_dir.mkdir(parents=True, exist_ok=True)
+    started = time.monotonic()
+    deadline = started + timeout_s
 
-    template = profile_template_dir() if use_profile_template else None
-    started = time.perf_counter()
-    with tempfile.TemporaryDirectory(prefix="pd-lo-") as tmp:
-        work = pathlib.Path(tmp)
-        profile = work / "profile"
-        if template is not None:
-            shutil.copytree(template, profile, symlinks=True)
-        else:
-            profile.mkdir()
-        # LibreOffice принимает UserInstallation только как file:// URL; путь с пробелами
-        # и кириллицей без экранирования в нём не работает, поэтому профиль — временный.
-        cmd = [
-            str(soffice),
-            f"-env:UserInstallation={profile.as_uri()}",
-            "--headless",
-            "--norestore",
-            "--nologo",
-            "--nolockcheck",
-            "--convert-to",
-            "pdf:impress_pdf_Export",
-            "--outdir",
-            str(work / "out"),
-            str(pptx_path),
-        ]
-        if measure_memory:
-            cmd = [sys.executable, "-c", _MEMORY_WRAPPER, *cmd]
-        env = dict(os.environ, HOME=str(work), TMPDIR=str(work))
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=env,
-            start_new_session=True,
-        )
-        try:
-            stdout, stderr = proc.communicate(timeout=timeout_s)
-        except subprocess.TimeoutExpired:
-            _kill_tree(proc)
-            raise ConversionError(
-                f"LibreOffice не уложился в {timeout_s} с для {pptx_path.name}"
-            ) from None
-        seconds = time.perf_counter() - started
-        produced = work / "out" / f"{pptx_path.stem}.pdf"
-        if proc.returncode != 0 or not produced.is_file():
-            tail = (stderr or stdout).decode("utf-8", "replace").strip()[-800:]
-            raise ConversionError(
-                f"LibreOffice вернул код {proc.returncode} для {pptx_path.name}: {tail}"
-            )
-        max_rss_mb = _parse_max_rss(stderr) if measure_memory else None
-        final = out_dir / produced.name
-        shutil.move(str(produced), final)
-    return PdfResult(final, seconds, template is not None, max_rss_mb)
+    def remaining() -> float:
+        budget = deadline - time.monotonic()
+        if budget <= 0:
+            raise ConversionError(f"ONLYOFFICE не уложился в {timeout_s} с")
+        return min(budget, 30.0)
 
-
-def _kill_tree(proc: subprocess.Popen[bytes]) -> None:
     try:
-        os.killpg(proc.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
-    try:
-        proc.communicate(timeout=10)
-    except subprocess.TimeoutExpired:
-        pass
-
-
-def _parse_max_rss(stderr: bytes) -> float | None:
-    for line in stderr.decode("utf-8", "replace").splitlines():
-        if line.startswith("max_rss_kb="):
-            kb = int(line.split("=", 1)[1])
-            # ru_maxrss в килобайтах на Linux и в байтах на macOS.
-            return round(kb / 1024, 1) if sys.platform != "darwin" else round(kb / 1024 / 1024, 1)
-    return None
+        with (
+            nullcontext()
+            if slot_acquired
+            else render_slots_from_env(settings.render.slots).acquire(
+                timeout_s=timeout_s,
+                ttl_s=timeout_s + 60,
+            ),
+            publish_source(pptx_path, settings, timeout_s + 60) as (key, url),
+            httpx.Client(follow_redirects=False, trust_env=False) as client,
+            tempfile.TemporaryDirectory(prefix=".office-pdf-", dir=out_dir) as tmp,
+        ):
+            payload: dict[str, Any] = {
+                "async": True,
+                "filetype": "pptx",
+                "outputtype": "pdf",
+                "key": key,
+                "url": url,
+                "title": "deck.pptx",
+            }
+            body = {**payload, "token": sign(payload, cfg.jwt_secret)}
+            while True:
+                response = client.post(
+                    cfg.internal_url.rstrip("/") + "/converter",
+                    params={"shardkey": key},
+                    json=body,
+                    headers={"Accept": "application/json"},
+                    timeout=remaining(),
+                )
+                response.raise_for_status()
+                result = response.json()
+                if not isinstance(result, dict):
+                    raise ConversionError("Некорректный ответ конвертера ONLYOFFICE")
+                if result.get("error"):
+                    raise ConversionError(f"ONLYOFFICE: ошибка конвертации {result['error']}")
+                if result.get("endConvert") is True:
+                    break
+                time.sleep(min(0.5, remaining()))
+            download = saved_url(result["fileUrl"], cfg.internal_url, cfg.public_url)
+            produced = pathlib.Path(tmp) / "output.pdf"
+            size = 0
+            with client.stream("GET", download, timeout=remaining()) as response:
+                response.raise_for_status()
+                with produced.open("wb") as output:
+                    for chunk in response.iter_bytes(chunk_size=65536):
+                        remaining()
+                        size += len(chunk)
+                        if size > cfg.max_pdf_mb * 1024 * 1024:
+                            raise ConversionError("PDF превышает лимит конвертации")
+                        output.write(chunk)
+            with produced.open("rb") as content:
+                if content.read(5) != b"%PDF-":
+                    raise ConversionError("ONLYOFFICE вернул не PDF")
+            try:
+                if pdf_page_count(produced) == 0:
+                    raise ConversionError("ONLYOFFICE вернул пустой PDF")
+            except pdfium.PdfiumError as exc:
+                raise ConversionError("ONLYOFFICE вернул повреждённый PDF") from exc
+            remaining()
+            final = out_dir / f"{pptx_path.stem}.pdf"
+            produced.replace(final)
+    except RenderSlotTimeoutError as exc:
+        raise ConversionError("Не удалось дождаться слота конвертации ONLYOFFICE") from exc
+    except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+        raise RendererUnavailableError("ONLYOFFICE недоступен; проверьте Document Server") from exc
+    except httpx.TimeoutException as exc:
+        raise ConversionError(f"Тайм-аут ONLYOFFICE ({timeout_s} с)") from exc
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+        raise ConversionError("Некорректный ответ ONLYOFFICE при конвертации PDF") from exc
+    return PdfResult(final, time.monotonic() - started)

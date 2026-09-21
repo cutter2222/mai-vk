@@ -1,4 +1,4 @@
-"""Экспорт ревизии варианта: PDF через LibreOffice под слотом рендера, миниатюры страниц
+"""Экспорт ревизии варианта: PDF через ONLYOFFICE под слотом рендера, миниатюры страниц
 через PDFium, автономный HTML.
 
 HTML здесь промежуточный: каждая страница — PNG-миниатюра, встроенная data-URI, под ней
@@ -21,7 +21,6 @@ from typing import Any
 from presentation_designer.export.html import build_html as native_html
 from presentation_designer.export.pdf import ConversionError, RendererUnavailableError
 from presentation_designer.export.pdf import convert_to_pdf as _convert_to_pdf
-from presentation_designer.export.pdf import find_soffice as _find_soffice
 from presentation_designer.export.thumbnails import render_thumbnails
 from presentation_designer.shared.settings import Settings
 
@@ -74,21 +73,22 @@ def export_revision(
         report["timings_ms"]["pdf"] = 0
         report["timings_ms"]["thumbnails"] = 0
     else:
-        soffice = _find_soffice()
-        if soffice is None or not soffice.exists():
-            raise RendererUnavailableError("LibreOffice не найден: экспорт PDF невозможен")
-        from presentation_designer.export.render_slots import LocalRenderSlots
+        from presentation_designer.export.render_slots import render_slots_from_env
 
-        slots = render_slots or LocalRenderSlots(settings.render.slots)
+        slots = render_slots or render_slots_from_env(settings.render.slots)
         with slots.acquire(
             timeout_s=settings.timeouts.stage_export_s,
             ttl_s=settings.timeouts.render_convert_s * 2,
         ) as lease:
             report["timings_ms"]["render_slot_wait"] = lease.wait_ms
             pdf = _convert_to_pdf(
-                pptx_path, out_dir, timeout_s=settings.timeouts.render_convert_s, soffice=soffice
+                pptx_path,
+                out_dir,
+                timeout_s=settings.timeouts.render_convert_s,
+                settings=settings,
+                slot_acquired=True,
             )
-        report["renderer"] = f"libreoffice ({lease.backend} slots)"
+        report["renderer"] = f"onlyoffice ({lease.backend} slots)"
         report["timings_ms"]["pdf"] = int(pdf.seconds * 1000)
         if pdf.pdf_path.name != "deck.pdf":
             pdf.pdf_path.replace(out_dir / "deck.pdf")

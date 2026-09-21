@@ -33,6 +33,13 @@
 	# API того же origin: интерфейс обращается по относительному пути /api.
 	# Внутренние сервисы (api, valkey, frontend) наружу не публикуются; Valkey, база и хранилище
 	# доступны только контейнерам стека.
+	handle_path /onlyoffice/* {
+		reverse_proxy onlyoffice:80 {
+			header_up X-Forwarded-Host {hostport}/onlyoffice
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
 	handle /api/* {
 		reverse_proxy api:8000 {
 			transport http {

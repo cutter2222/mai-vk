@@ -1,99 +1,179 @@
-"""Конвертация в PDF: изоляция профиля, тайм-аут и очистка — на подменном soffice.
-
-Настоящий LibreOffice проверяется отдельно, если он есть на машине (или в образе воркера).
-"""
+"""ONLYOFFICE conversion: signed transport, bounded failures and atomic files."""
 
 from __future__ import annotations
 
-import os
+import io
+import json
 import pathlib
-import stat
-import textwrap
+import time
+from urllib.parse import parse_qs, urlsplit
 
+import httpx
 import pytest
+from PIL import Image
 
 from presentation_designer.export import pdf
+from presentation_designer.export.office_source import publish_source, source_path
+from presentation_designer.pipeline.office import sign, verify
+from presentation_designer.shared.settings import Settings
 
-FIXTURE = pathlib.Path(__file__).resolve().parents[1] / "fixtures" / "pptx" / "mini_template.pptx"
-
-
-def _fake_soffice(tmp_path: pathlib.Path, body: str) -> pathlib.Path:
-    script = tmp_path / "soffice"
-    script.write_text("#!/bin/sh\n" + textwrap.dedent(body))
-    script.chmod(script.stat().st_mode | stat.S_IEXEC)
-    return script
+FIXTURE = pathlib.Path(__file__).resolve().parents[1] / "fixtures/pptx/mini_template.pptx"
+SECRET = "test-conversion-secret-not-for-production-123456"
 
 
-def test_convert_moves_pdf_and_cleans_profile(tmp_path: pathlib.Path) -> None:
-    marker = tmp_path / "profile-seen"
-    fake = _fake_soffice(
-        tmp_path,
-        f"""
-        # аргументы: -env:UserInstallation=file://... --headless ... --outdir DIR FILE
-        for a in "$@"; do
-          case "$a" in
-            -env:UserInstallation=*) echo "${{a#-env:UserInstallation=}}" > {marker};;
-          esac
-        done
-        outdir=""; prev=""
-        for a in "$@"; do if [ "$prev" = "--outdir" ]; then outdir="$a"; fi; prev="$a"; done
-        mkdir -p "$outdir"
-        name=$(basename "${{@: -1}}" .pptx)
-        printf '%%PDF-1.4 fake' > "$outdir/$name.pdf"
-        """,
+@pytest.fixture
+def settings(tmp_path):
+    settings = Settings()
+    settings.paths.data_dir = tmp_path / "data"
+    settings.onlyoffice.enabled = True
+    settings.onlyoffice.jwt_secret = SECRET
+    return settings
+
+
+def pdf_bytes():
+    buf = io.BytesIO()
+    Image.new("RGB", (160, 90), "white").save(buf, format="PDF")
+    return buf.getvalue()
+
+
+def mock_http(monkeypatch, handler):
+    real = httpx.Client
+    monkeypatch.setattr(
+        pdf.httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(handler), **kw)
     )
-    out = tmp_path / "out"
-    result = pdf.convert_to_pdf(
-        FIXTURE, out, timeout_s=10, soffice=fake, use_profile_template=False
-    )
-    assert result.pdf_path == out / "mini_template.pdf"
-    assert result.pdf_path.read_bytes().startswith(b"%PDF")
+
+
+def test_convert_poll_sign_download_cleanup(settings, tmp_path, monkeypatch):
+    calls = []
+    before = FIXTURE.read_bytes()
+
+    def handle(request):
+        calls.append(request)
+        if request.method == "POST":
+            body = json.loads(request.content)
+            assert verify(body.pop("token"), SECRET) == body
+            assert body["async"] is True
+            key = body["key"]
+            assert source_path(settings, key).read_bytes() == before
+            claims = verify(parse_qs(urlsplit(body["url"]).query)["token"][0], SECRET)
+            assert claims["scope"] == "office-conversion" and claims["key"] == key
+            if len(calls) == 1:
+                return httpx.Response(200, json={"endConvert": False, "percent": 20})
+            return httpx.Response(
+                200,
+                json={
+                    "endConvert": True,
+                    "fileUrl": "http://onlyoffice/cache/files/test/output.pdf",
+                },
+            )
+        return httpx.Response(200, content=pdf_bytes())
+
+    mock_http(monkeypatch, handle)
+    result = pdf.convert_to_pdf(FIXTURE, tmp_path / "out", settings=settings)
+    assert result.pdf_path.read_bytes().startswith(b"%PDF-")
     assert result.seconds >= 0
-    assert result.profile_from_template is False
-    profile_uri = marker.read_text().strip()
-    assert profile_uri.startswith("file://")
-    assert not pathlib.Path(profile_uri.removeprefix("file://")).exists(), "профиль не удалён"
+    assert len(calls) == 3
+    assert json.loads(calls[0].content) == json.loads(calls[1].content)
+    assert not list((settings.paths.data_dir / "office-conversions").iterdir())
+    assert FIXTURE.read_bytes() == before
+    assert not (settings.paths.data_dir / "onlyoffice.sqlite3").exists()
 
 
-def test_convert_timeout_kills_process_tree(tmp_path: pathlib.Path) -> None:
-    pid_file = tmp_path / "child.pid"
-    fake = _fake_soffice(
-        tmp_path,
-        f"""
-        sleep 30 &
-        echo $! > {pid_file}
-        wait
-        """,
-    )
+@pytest.mark.parametrize(
+    "result",
+    [
+        {"error": -4},
+        [],
+        {"endConvert": True},
+        {"endConvert": True, "fileUrl": "http://evil.invalid/file.pdf"},
+        {"endConvert": True, "fileUrl": "http://onlyoffice/cache/files/../private"},
+    ],
+)
+def test_bad_responses_preserve_existing_pdf(settings, tmp_path, monkeypatch, result):
+    target = tmp_path / "mini_template.pdf"
+    target.write_bytes(b"existing")
+    mock_http(monkeypatch, lambda req: httpx.Response(200, json=result))
+    with pytest.raises(pdf.ConversionError):
+        pdf.convert_to_pdf(FIXTURE, tmp_path, settings=settings)
+    assert target.read_bytes() == b"existing"
+    assert not list((settings.paths.data_dir / "office-conversions").iterdir())
+    assert not list(tmp_path.glob(".office-pdf-*"))
+
+
+@pytest.mark.parametrize("content", [b"not PDF", b"%PDF-corrupt", b"x" * 1048577])
+def test_invalid_or_oversized_pdf(settings, tmp_path, monkeypatch, content):
+    settings.onlyoffice.max_pdf_mb = 1
+
+    def handle(req):
+        if req.method == "POST":
+            return httpx.Response(
+                200,
+                json={
+                    "endConvert": True,
+                    "fileUrl": "http://onlyoffice/cache/files/test/output.pdf",
+                },
+            )
+        return httpx.Response(200, content=content)
+
+    mock_http(monkeypatch, handle)
+    with pytest.raises(pdf.ConversionError):
+        pdf.convert_to_pdf(FIXTURE, tmp_path, settings=settings)
+    assert not (tmp_path / "mini_template.pdf").exists()
+
+
+def test_timeout(settings, tmp_path, monkeypatch):
+    mock_http(monkeypatch, lambda req: httpx.Response(200, json={"endConvert": False}))
     with pytest.raises(pdf.ConversionError, match="не уложился"):
-        pdf.convert_to_pdf(FIXTURE, tmp_path / "out", timeout_s=1, soffice=fake)
-    child = int(pid_file.read_text())
-    with pytest.raises(ProcessLookupError):
-        os.kill(child, 0)
-    assert not (tmp_path / "out" / "mini_template.pdf").exists()
+        pdf.convert_to_pdf(FIXTURE, tmp_path, timeout_s=1, settings=settings)
+    assert not list((settings.paths.data_dir / "office-conversions").iterdir())
 
 
-def test_convert_reports_failure(tmp_path: pathlib.Path) -> None:
-    fake = _fake_soffice(tmp_path, "echo 'Error: source file could not be loaded' >&2; exit 1\n")
-    with pytest.raises(pdf.ConversionError, match="код 1"):
-        pdf.convert_to_pdf(FIXTURE, tmp_path / "out", timeout_s=5, soffice=fake)
+@pytest.mark.parametrize("status", [302, 403, 500])
+def test_http_failure(settings, tmp_path, monkeypatch, status):
+    mock_http(monkeypatch, lambda req: httpx.Response(status, headers={"Location": "http://evil/"}))
+    with pytest.raises(pdf.ConversionError):
+        pdf.convert_to_pdf(FIXTURE, tmp_path, settings=settings)
 
 
-def test_missing_input(tmp_path: pathlib.Path) -> None:
-    fake = _fake_soffice(tmp_path, "exit 0\n")
-    with pytest.raises(pdf.ConversionError, match="нет входного файла"):
-        pdf.convert_to_pdf(tmp_path / "nope.pptx", tmp_path, soffice=fake)
+def test_unreachable(settings, tmp_path, monkeypatch):
+    def handle(req):
+        raise httpx.ConnectError("unreachable", request=req)
 
-
-def test_unavailable_renderer(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("PD_SOFFICE", raising=False)
-    monkeypatch.setattr(pdf, "find_soffice", lambda: None)
+    mock_http(monkeypatch, handle)
     with pytest.raises(pdf.RendererUnavailableError):
-        pdf.convert_to_pdf(FIXTURE, tmp_path)
+        pdf.convert_to_pdf(FIXTURE, tmp_path, settings=settings)
 
 
-@pytest.mark.skipif(pdf.find_soffice() is None, reason="LibreOffice не установлен")
-def test_real_libreoffice_converts_fixture(tmp_path: pathlib.Path) -> None:
-    result = pdf.convert_to_pdf(FIXTURE, tmp_path, timeout_s=120, measure_memory=True)
-    assert result.pdf_path.read_bytes().startswith(b"%PDF")
-    assert result.max_rss_mb is None or result.max_rss_mb > 10
+def test_missing_input_and_configuration(settings, tmp_path):
+    with pytest.raises(pdf.ConversionError, match="нет входного файла"):
+        pdf.convert_to_pdf(tmp_path / "missing.pptx", tmp_path, settings=settings)
+    settings.onlyoffice.enabled = False
+    with pytest.raises(pdf.RendererUnavailableError):
+        pdf.convert_to_pdf(FIXTURE, tmp_path, settings=settings)
+
+
+def test_local_converters_share_slots(monkeypatch):
+    from presentation_designer.export.render_slots import render_slots_from_env
+
+    monkeypatch.setenv("PD_QUEUE_MODE", "inline")
+    assert render_slots_from_env(2) is render_slots_from_env(2)
+
+
+def test_conversion_endpoint_scoped_expiring_and_cleaned(client, orchestrator):
+    settings = orchestrator.settings
+    settings.onlyoffice.enabled = True
+    settings.onlyoffice.jwt_secret = SECRET
+    with publish_source(FIXTURE, settings, 60) as (key, url):
+        parts = urlsplit(url)
+        route = parts.path + "?" + parts.query
+        assert client.get(route).content == FIXTURE.read_bytes()
+        for claims in (
+            {"scope": "office-file", "key": key, "exp": time.time() + 60},
+            {"scope": "office-conversion", "key": "other", "exp": time.time() + 60},
+            {"scope": "office-conversion", "key": key, "exp": 1},
+            {"scope": "office-conversion", "key": key},
+        ):
+            assert client.get(parts.path, params={"token": sign(claims, SECRET)}).status_code == 403
+        assert client.get(parts.path).status_code == 403
+    assert client.get(route).status_code == 404
+    assert not (settings.paths.data_dir / "onlyoffice.sqlite3").exists()

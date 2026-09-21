@@ -232,18 +232,18 @@ def test_single_title_per_pattern(tmp_path: pathlib.Path) -> None:
     assert not any(k[2] for k in kinds if k[1] == "label"), "подписи карточек не обязательны"
 
 
-def test_layout_previews_rendered_with_fake_soffice(
+def test_layout_previews_rendered_with_fake_converter(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Подложка холста редактора (этап 23): при рендере анализатор собирает временный PPTX
     из пустых слайдов макетов паттернов и кладёт `previews/layout-<id>.png`; без
-    LibreOffice — предупреждение, не отказ."""
+    ONLYOFFICE — предупреждение, не отказ."""
     import io
-    import stat
 
     from PIL import Image
     from pptx import Presentation
 
+    from presentation_designer.export import pdf
     from tests.layout.conftest import MINI_TEMPLATE
 
     calls = tmp_path / "calls.log"
@@ -257,19 +257,17 @@ def test_layout_previews_rendered_with_fake_soffice(
     slide_count = len(Presentation(str(MINI_TEMPLATE)).slides)
     (tmp_path / "full.pdf").write_bytes(pdf_bytes(slide_count))
     (tmp_path / "layouts.pdf").write_bytes(pdf_bytes(3))
-    script = tmp_path / "soffice"
-    script.write_text(
-        "#!/bin/sh\n"
-        'outdir=""; prev=""\n'
-        'for a in "$@"; do if [ "$prev" = "--outdir" ]; then outdir="$a"; fi; prev="$a"; done\n'
-        'mkdir -p "$outdir"\n'
-        'name=$(basename "${@: -1}" .pptx)\n'
-        f'echo "$name" >> "{calls}"\n'
-        f'if [ "$name" = "layouts" ]; then cp "{tmp_path / "layouts.pdf"}" "$outdir/$name.pdf";'
-        f' else cp "{tmp_path / "full.pdf"}" "$outdir/$name.pdf"; fi\n'
-    )
-    script.chmod(script.stat().st_mode | stat.S_IEXEC)
-    monkeypatch.setenv("PD_SOFFICE", str(script))
+
+    def convert(source, out, **kwargs):
+        with calls.open("a") as log:
+            log.write(source.stem + "\n")
+        target = out / f"{source.stem}.pdf"
+        target.write_bytes(
+            (tmp_path / ("layouts.pdf" if source.stem == "layouts" else "full.pdf")).read_bytes()
+        )
+        return pdf.PdfResult(target, 0.01)
+
+    monkeypatch.setattr(pdf, "convert_to_pdf", convert)
     result = an.analyze_template(
         MINI_TEMPLATE,
         template_id="tpl_test",

@@ -25,6 +25,7 @@ from presentation_designer.api.routes import (
     generations,
     health,
     jobs,
+    onlyoffice,
     projects,
     templates,
 )
@@ -145,6 +146,7 @@ def create_app(orchestrator: Orchestrator | None = None, *, reconcile: bool = Tr
         brief.router,
         generations.router,
         jobs.router,
+        onlyoffice.router,
     ):
         app.include_router(router, prefix="/api")
     return app

@@ -761,7 +761,9 @@ def test_template_library_and_delete(
     item = next(i for i in client.get("/api/templates").json() if i["template_id"] == template_id)
     detail = client.get(f"/api/templates/{template_id}").json()
     assert item["status"] == "succeeded"
-    assert item["pattern_count"] == len(detail["profile"]["patterns"])
+    assert item["pattern_count"] == sum(
+        p["source"]["kind"] != "builtin" for p in detail["profile"]["patterns"]
+    )
     assert item["preview"] in detail["previews"]
     assert client.get(f"/api/templates/{template_id}/assets/{item['preview']}").status_code == 200
     previews_dir = orchestrator.artifacts.template_dir(template_id)

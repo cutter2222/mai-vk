@@ -1,7 +1,7 @@
-"""Слоты рендера: ограничение одновременных конвертаций LibreOffice на сервер.
+"""Слоты рендера: ограничение одновременных конвертаций ONLYOFFICE на сервер.
 
-Число слотов — `render.slots` (на сервере из `PD_RENDER_SLOTS`, по замерам 0A не больше двух
-на 3,9 ГБ). Общий для всех воркеров вариант — ZSET аренд в Valkey с истечением: упавший воркер
+Число слотов — `render.slots` (на сервере из `PD_RENDER_SLOTS`).
+Общий для всех воркеров вариант — ZSET аренд в Valkey с истечением: упавший воркер
 не держит слот дольше `ttl_s`. Без Valkey (встроенный исполнитель, тесты) — семафор процесса.
 Ожидание слота ограничено `timeout_s`; анализ шаблона и экспорт результатов проходят через
 одну и ту же функцию `acquire`, чтобы конвертации шаблонов и колод считались вместе.
@@ -17,6 +17,7 @@ import time
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any, Protocol
 
 log = logging.getLogger(__name__)
@@ -123,9 +124,14 @@ class ValkeyRenderSlots:
         return int(self.redis.zcount(self.key, now, "+inf"))
 
 
+@lru_cache(maxsize=8)
+def _local_slots(slots: int) -> LocalRenderSlots:
+    return LocalRenderSlots(slots)
+
+
 def render_slots_from_env(slots: int, url: str | None = None) -> Any:
     """Valkey, если он задан и очередь не встроенная; иначе семафор процесса."""
     url = url or os.environ.get("PD_VALKEY_URL")
     if url and os.environ.get("PD_QUEUE_MODE", "rq") != "inline":
         return ValkeyRenderSlots(url, slots)
-    return LocalRenderSlots(slots)
+    return _local_slots(slots)

@@ -175,7 +175,6 @@ def test_api_real_analysis_and_profile_key(
 
     monkeypatch.setenv("PD_QWEN_BASE_URL", "https://example.invalid/v1")
     monkeypatch.setenv("PD_QWEN_API_KEY", "replace-me")
-    monkeypatch.setenv("PD_SOFFICE", str(tmp_path / "no-soffice"))
     settings = Settings()
     settings.paths.data_dir = tmp_path / "data"
     settings.paths.artifacts_dir = tmp_path / "artifacts"
@@ -203,12 +202,12 @@ def test_api_real_analysis_and_profile_key(
         profile = detail["profile"]
         assert profile["analyzer"]["name"] == "template_analyzer" and len(profile["patterns"]) >= 3
         assert any(w["code"] == "previews_unavailable" for w in profile["warnings"]), (
-            "без LibreOffice — предупреждение"
+            "без ONLYOFFICE — предупреждение"
         )
         assert detail["previews"] == []
         health = client.get("/api/health").json()
         assert health["execution_mode"]["layers"]["parsing.template"] == "real"
-        assert health["execution_mode"]["mode"] == "mixed"
+        assert health["execution_mode"]["mode"] == "real"
         # Профиль без превью (не было рендерера) не считается готовым: повтор анализируется заново.
         files = {"file": ("mini.pptx", pptx, "application/octet-stream")}
         r2 = client.post("/api/templates", files=files)

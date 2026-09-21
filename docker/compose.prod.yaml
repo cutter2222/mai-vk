@@ -1,9 +1,7 @@
 # Прод-надстройка над docker/compose.yaml для сервера. Не заменяет базовый файл, а дополняет:
 #   docker compose -f docker/compose.yaml -f docker/compose.prod.yaml --env-file $SERVER_DIR/.env up -d
-# Лимиты памяти по замерам этапа 0A (docs/pptx-capabilities.md): LibreOffice берёт до 1,1 ГБ
-# на шаблоне ЛЦТ и 0,45–0,75 ГБ на шаблонах VK, python-pptx до 0,2 ГБ сверх интерпретатора.
-# На сервере 2 vCPU, 3,9 ГБ и swap 2 ГБ одновременных рендеров не больше двух (PD_RENDER_SLOTS),
-# поэтому пик: 2 × 1,1 ГБ рендера + три воркера в ожидании по ~0,2 ГБ + API + Valkey + Caddy ≈ 3,2 ГБ.
+# ONLYOFFICE обслуживает редактор и конвертации. Старые замеры headless-рендера
+# не применимы: размер сервера и лимиты проверяются нагрузочным тестом нового стека.
 # Пределы контейнеров — потолок, а не резерв: сумма пределов больше памяти сервера сознательно.
 # Логи — json-file с ротацией; Valkey — без вытеснения ключей (очередь не должна терять задания).
 
@@ -61,6 +59,15 @@ services:
 
   worker-generation:
     <<: *worker-prod
+
+  onlyoffice:
+    logging: *logging
+    stop_grace_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: ${PD_ONLYOFFICE_MEMORY:-4G}
+          cpus: "2.0"
 
   valkey:
     logging: *logging

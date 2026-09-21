@@ -47,7 +47,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--name", default=None, help="имя воркера; по умолчанию роль и hostname")
     parser.add_argument(
-        "--skip-render-check", action="store_true", help="не проверять LibreOffice при старте"
+        "--skip-render-check", action="store_true", help="не проверять ONLYOFFICE при старте"
     )
     parser.add_argument(
         "--healthcheck", action="store_true", help="проверить, что воркер контейнера жив"
@@ -76,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
     name = args.name or f"{worker_name('-'.join(args.queues))}-{uuid.uuid4().hex[:6]}"
     connection = redis.Redis.from_url(url)
     forget_stale_workers(connection, name)
-    if not args.skip_render_check and "generation" in args.queues:
+    if not args.skip_render_check:
         ok = renderer_check(url, name)
         logging.getLogger(__name__).info("проверка рендерера: %s", "ok" if ok else "не пройдена")
     # Оркестратор строится в дочернем процессе задачи: родитель не открывает SQLite,

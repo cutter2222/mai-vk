@@ -1,7 +1,7 @@
 """Анализ шаблона: от PPTX к TemplateProfile и миниатюрам образцов.
 
 Порядок: пакет → классификация слайдов → индекс ресурсов → постоянные элементы → стили и токены →
-паттерны с ёмкостью слотов → превью (LibreOffice → PDF → PNG под слотом рендера) → уточнение
+паттерны с ёмкостью слотов → превью (ONLYOFFICE → PDF → PNG под слотом рендера) → уточнение
 ролей и теги пиктограмм через VLM (пакетами, по представителям групп) → правила оформления →
 `llm_digest`. Каждый шаг пишет время в отчёт анализа; отсутствие рендерера или модели не роняет
 анализ, а даёт предупреждение в профиле и понижает уверенность.
@@ -55,7 +55,7 @@ from presentation_designer.shared.settings import Settings, get_settings
 log = logging.getLogger(__name__)
 
 ANALYZER_NAME = "template_analyzer"
-ANALYZER_VERSION = "0.3.0"
+ANALYZER_VERSION = "0.4.0"
 # Версия схемы профиля: пишется в документ и входит в ключ кэша разбора.
 PROFILE_SCHEMA_VERSION = "1.4"
 PREVIEW_DIR = "previews"
@@ -378,16 +378,12 @@ def render_previews(
     """Весь шаблон → PDF под слотом рендера → PNG всех слайдов (образцы и служебные: интерфейс
     показывает образцы, аудит и VLM берут только нужные)."""
     from presentation_designer.export.pdf import (
-        RendererUnavailableError,
         convert_to_pdf,
-        find_soffice,
     )
-    from presentation_designer.export.render_slots import LocalRenderSlots
+    from presentation_designer.export.render_slots import render_slots_from_env
     from presentation_designer.export.thumbnails import render_thumbnails
 
-    if find_soffice() is None:
-        raise RendererUnavailableError("LibreOffice не найден")
-    slots = render_slots or LocalRenderSlots(settings.render.slots)
+    slots = render_slots or render_slots_from_env(settings.render.slots)
     started = time.perf_counter()
     if workdir is not None:
         workdir.mkdir(parents=True, exist_ok=True)
@@ -400,8 +396,14 @@ def render_previews(
             ttl_s=settings.timeouts.render_convert_s * 2,
         ) as lease:
             report.timings_ms["render_slot_wait"] = lease.wait_ms
-            pdf = convert_to_pdf(pkg.path, tmp_path, timeout_s=settings.timeouts.render_convert_s)
-        report.renderer = f"libreoffice ({lease.backend} slots)"
+            pdf = convert_to_pdf(
+                pkg.path,
+                tmp_path,
+                timeout_s=settings.timeouts.render_convert_s,
+                settings=settings,
+                slot_acquired=True,
+            )
+        report.renderer = f"onlyoffice ({lease.backend} slots)"
         report.timings_ms["render_pdf"] = int(pdf.seconds * 1000)
         thumbs = render_thumbnails(
             pdf.pdf_path, tmp_path / "png", width_px=settings.render.thumbnail_width_px
@@ -429,20 +431,16 @@ def render_layout_previews(
     from pptx import Presentation
 
     from presentation_designer.export.pdf import (
-        RendererUnavailableError,
         convert_to_pdf,
-        find_soffice,
     )
-    from presentation_designer.export.render_slots import LocalRenderSlots
+    from presentation_designer.export.render_slots import render_slots_from_env
     from presentation_designer.export.thumbnails import render_thumbnails
     from presentation_designer.layout.ooxml import keep_only_slides
     from presentation_designer.layout.package import layout_by_id
 
     if not layout_ids:
         return {}
-    if find_soffice() is None:
-        raise RendererUnavailableError("LibreOffice не найден")
-    slots = render_slots or LocalRenderSlots(settings.render.slots)
+    slots = render_slots or render_slots_from_env(settings.render.slots)
     started = time.perf_counter()
     if workdir is not None:
         workdir.mkdir(parents=True, exist_ok=True)
@@ -468,7 +466,13 @@ def render_layout_previews(
             ttl_s=settings.timeouts.render_convert_s * 2,
         ) as lease:
             report.timings_ms["render_layouts_slot_wait"] = lease.wait_ms
-            pdf = convert_to_pdf(deck_path, tmp_path, timeout_s=settings.timeouts.render_convert_s)
+            pdf = convert_to_pdf(
+                deck_path,
+                tmp_path,
+                timeout_s=settings.timeouts.render_convert_s,
+                settings=settings,
+                slot_acquired=True,
+            )
         thumbs = render_thumbnails(
             pdf.pdf_path, tmp_path / "png", width_px=settings.render.thumbnail_width_px
         )

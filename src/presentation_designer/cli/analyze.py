@@ -2,7 +2,7 @@
 
     uv run -m presentation_designer.cli analyze "data/organizers/VK Tech шаблон.pptx" \
         --out runs/analyze/
-    … --no-render          без миниатюр (нет LibreOffice)
+    … --no-render          без миниатюр (нет ONLYOFFICE)
     … --no-vlm             только эвристики
     … --report             печатать сводку анализа в stderr
 

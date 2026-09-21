@@ -46,7 +46,7 @@ main() {
   $sudo systemctl enable --now docker >/dev/null
   command -v curl >/dev/null 2>&1 || $sudo apt-get install -y -qq curl
 
-  # На серверах с малой памятью swap страхует от OOM при рендере LibreOffice и сборке образов.
+  # Swap страхует от OOM при рендере и сборке образов; не заменяет RAM для ONLYOFFICE.
   if [ "$(free -m | awk '/^Swap:/ {print $2}')" -eq 0 ] && [ "$(free -m | awk '/^Mem:/ {print $2}')" -lt 8192 ]; then
     echo "== Swap 2 ГБ"
     $sudo fallocate -l 2G /swapfile
@@ -85,9 +85,13 @@ main() {
       echo "PD_UID=$(id -u "$service_user")"
       echo "PD_GID=$(id -g "$service_user")"
       echo "PD_GENERATION_WORKERS=3"
-      echo "# Одновременных конвертаций LibreOffice: по замерам на 3,9 ГБ памяти не больше двух."
+      echo "# Общий лимит конвертаций ONLYOFFICE; редактор делит с ними ресурсы."
       echo "PD_RENDER_SLOTS=2"
     } | $sudo tee "$env_file" >/dev/null
+  fi
+
+  if ! grep -qE '^PD_ONLYOFFICE__JWT_SECRET=.{32,}$' "$env_file"; then
+    printf '\nPD_ONLYOFFICE__JWT_SECRET=%s\n' "$(openssl rand -hex 32)" >> "$env_file"
   fi
 
   echo "== Итог"

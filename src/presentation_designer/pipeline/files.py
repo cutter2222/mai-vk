@@ -148,6 +148,10 @@ class FileStore:
                 os.utime(final, None)
             else:
                 os.replace(tmp_path, final)
+            if fmt == "pptx":
+                from presentation_designer.parsing.template.embedded_fonts import prepare_fonts
+
+                prepare_fonts(final, self.root.parent)
             return StoredFile(sha256=sha, size_bytes=size, path=final, format=fmt, check=check)
         finally:
             tmp_path.unlink(missing_ok=True)

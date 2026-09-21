@@ -120,7 +120,7 @@ class Render(BaseModel):
     slots: int = 2
     thumbnail_width_px: int = 1280
     vlm_image_max_px: int = 1024
-    mode: str = "process_per_convert"
+    mode: Literal["onlyoffice"] = "onlyoffice"
 
 
 class AuditThresholds(BaseModel):
@@ -202,7 +202,17 @@ class App(BaseModel):
     language_default: str = "ru"
 
 
+class OnlyOffice(BaseModel):
+    max_pdf_mb: int = Field(default=200, ge=1, le=1024)
+    enabled: bool = False
+    jwt_secret: str = ""
+    public_url: str = "http://localhost:8080/onlyoffice"
+    internal_url: str = "http://onlyoffice"
+    storage_url: str = "http://api:8000"
+
+
 class Settings(BaseModel):
+    onlyoffice: OnlyOffice = Field(default_factory=OnlyOffice)
     app: App = Field(default_factory=App)
     paths: Paths = Field(default_factory=Paths)
     limits: Limits = Field(default_factory=Limits)

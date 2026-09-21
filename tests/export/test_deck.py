@@ -1,4 +1,4 @@
-"""Экспорт ревизии: PDF подменным soffice, миниатюры страниц, автономный HTML с текстом
+"""Экспорт ревизии: подменная конвертация ONLYOFFICE, миниатюры, автономный HTML с текстом
 ComposedDeck, подключение к RealLayers (манифест ревизии, ошибки рендерера), исправление
 на настоящих файлах базовой ревизии."""
 
@@ -7,7 +7,6 @@ from __future__ import annotations
 import io
 import json
 import pathlib
-import stat
 import zipfile
 from typing import Any
 
@@ -32,22 +31,18 @@ def _pdf_bytes(pages: int = 3) -> bytes:
 
 
 @pytest.fixture
-def fake_soffice(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> pathlib.Path:
-    """Подменный LibreOffice: кладёт заранее собранный PDF под именем входного файла."""
-    pdf = tmp_path / "pages.pdf"
-    pdf.write_bytes(_pdf_bytes())
-    script = tmp_path / "soffice"
-    script.write_text(
-        "#!/bin/sh\n"
-        'outdir=""; prev=""\n'
-        'for a in "$@"; do if [ "$prev" = "--outdir" ]; then outdir="$a"; fi; prev="$a"; done\n'
-        'mkdir -p "$outdir"\n'
-        'name=$(basename "${@: -1}" .pptx)\n'
-        f'cp "{pdf}" "$outdir/$name.pdf"\n'
-    )
-    script.chmod(script.stat().st_mode | stat.S_IEXEC)
-    monkeypatch.setenv("PD_SOFFICE", str(script))
-    return script
+def fake_converter(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> pathlib.Path:
+    """Export orchestration uses a PDF fixture; HTTP is covered in test_pdf."""
+    from presentation_designer.export.pdf import PdfResult
+
+    def convert(source: pathlib.Path, out: pathlib.Path, **kwargs: Any) -> PdfResult:
+        out.mkdir(parents=True, exist_ok=True)
+        target = out / f"{source.stem}.pdf"
+        target.write_bytes(_pdf_bytes())
+        return PdfResult(target, 0.01)
+
+    monkeypatch.setattr(deck_export, "_convert_to_pdf", convert)
+    return tmp_path
 
 
 def _composed_deck() -> dict[str, Any]:
@@ -57,7 +52,7 @@ def _composed_deck() -> dict[str, Any]:
 
 
 def test_export_revision_writes_pdf_thumbnails_and_html(
-    fake_soffice: pathlib.Path, tmp_path: pathlib.Path
+    fake_converter: pathlib.Path, tmp_path: pathlib.Path
 ) -> None:
     settings = Settings()
     settings.render.thumbnail_width_px = 640
@@ -120,7 +115,9 @@ def test_slide_texts_reads_paragraphs_and_tables() -> None:
     assert deck_export.slide_texts(None) == []
 
 
-def test_real_layers_export_and_repair(fake_soffice: pathlib.Path, tmp_path: pathlib.Path) -> None:
+def test_real_layers_export_and_repair(
+    fake_converter: pathlib.Path, tmp_path: pathlib.Path
+) -> None:
     settings = Settings()
     settings.paths.artifacts_dir = tmp_path / "artifacts"
     settings.render.thumbnail_width_px = 320
@@ -158,25 +155,20 @@ def test_real_layers_export_and_repair(fake_soffice: pathlib.Path, tmp_path: pat
     assert all(i["issue_id"] != issue for i in fixed.report["issues"])
 
 
-def test_without_renderer_export_stays_stub_and_says_so(
+def test_without_renderer_export_fails_explicitly(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Без LibreOffice при встроенной очереди слой остаётся заглушкой с отметкой в
-    execution_mode; с очередью RQ экспорт делает воркер, и отсутствие рендерера в процессе —
-    ошибка этапа с повтором, а не тихая заглушка."""
-    monkeypatch.setenv("PD_SOFFICE", str(tmp_path / "no-soffice"))
+    """Real mode never silently falls back to a placeholder PDF."""
     monkeypatch.setenv("PD_QUEUE_MODE", "inline")
     settings = Settings()
     settings.paths.artifacts_dir = tmp_path / "artifacts"
     layers = RealLayers(settings)
-    assert layers.modes["export"] == "stub"
+    assert layers.modes["export"] == "real"
     store = ArtifactStore(settings.artifacts_dir)
-    with store.stage_revision("job_n", "compact", 1) as staging:
+    with pytest.raises(StageError) as error, store.stage_revision("job_n", "compact", 1) as staging:
         staging.write_bytes("deck.pptx", FIXTURE.read_bytes())
-        out = layers.export(ExportInput("job_n", "compact", 1, staging, ["Один"], "Колода"))
-    assert len(out.thumbnails) == 1 and "compact/r1/deck.pdf" in store.read_manifest(
-        "job_n", "compact", 1
-    )
+        layers.export(ExportInput("job_n", "compact", 1, staging, ["Один"], "Колода"))
+    assert error.value.code == "export_renderer_unavailable"
     monkeypatch.setenv("PD_QUEUE_MODE", "rq")
     layers = RealLayers(settings)
     assert layers.modes["export"] == "real"
@@ -330,10 +322,10 @@ def _png_bytes() -> bytes:
 
 
 def test_export_reuses_prerendered_pdf_and_thumbnails(
-    fake_soffice: pathlib.Path, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    fake_converter: pathlib.Path, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Предварительная ревизия исходной презентации уже отрендерена: полная сборка берёт
-    её deck.pdf и миниатюры, LibreOffice не вызывается, HTML строится заново нативно."""
+    её deck.pdf и миниатюры, ONLYOFFICE не вызывается, HTML строится заново нативно."""
     settings = Settings()
     settings.render.thumbnail_width_px = 640
     preview = tmp_path / "preview"
@@ -353,9 +345,11 @@ def test_export_reuses_prerendered_pdf_and_thumbnails(
     out = tmp_path / "r1"
     out.mkdir()
     (out / "deck.pptx").write_bytes(FIXTURE.read_bytes())
-    monkeypatch.setenv(
-        "PD_SOFFICE", str(tmp_path / "missing-soffice")
-    )  # рендер не должен понадобиться
+
+    def unexpected(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("cached render must not call the converter")
+
+    monkeypatch.setattr(deck_export, "_convert_to_pdf", unexpected)
     second = deck_export.export_revision(
         out / "deck.pptx",
         out,
@@ -376,7 +370,7 @@ def test_export_reuses_prerendered_pdf_and_thumbnails(
 
 
 def test_export_rerenders_when_prerender_has_other_slide_count(
-    fake_soffice: pathlib.Path, tmp_path: pathlib.Path
+    fake_converter: pathlib.Path, tmp_path: pathlib.Path
 ) -> None:
     """Слайды без композиции не перенесены: страниц в предварительном рендере больше, чем
     слайдов в собранном файле, и рендер повторяется. Иначе лента и рамки аудита показывали бы

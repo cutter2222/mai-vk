@@ -23,6 +23,11 @@ x-app: &app
     PD_PATHS__ORGANIZERS_DIR: /app/data/organizers
     PD_IMAGE_TAG: ${PD_IMAGE_TAG:-latest}
     PD_BUILD_COMMIT: ${PD_BUILD_COMMIT:-}
+    PD_ONLYOFFICE__ENABLED: "true"
+    PD_ONLYOFFICE__JWT_SECRET: ${PD_ONLYOFFICE__JWT_SECRET:?Set a random ONLYOFFICE JWT secret}
+    PD_ONLYOFFICE__PUBLIC_URL: ${PD_ONLYOFFICE__PUBLIC_URL:-${PD_PUBLIC_URL:-http://localhost:8080}/onlyoffice}
+    PD_ONLYOFFICE__INTERNAL_URL: http://onlyoffice
+    PD_ONLYOFFICE__STORAGE_URL: http://api:8000
   volumes:
     # Каталог данных с SQLite: на сервере — путь на диске (PD_DATA_DIR), локально — том Docker:
     # WAL SQLite требует разделяемой памяти, которой нет у bind-mount Docker Desktop.
@@ -108,7 +113,14 @@ services:
       dockerfile: docker/app.Dockerfile
       target: worker
     image: presentation-designer/worker:${PD_IMAGE_TAG:-latest}
-    command: ["python", "-m", "presentation_designer.cli.worker", "--queues", "analysis", "repair", "--skip-render-check"]
+    command: ["python", "-m", "presentation_designer.cli.worker", "--queues", "analysis", "repair"]
+    depends_on: &render-dependencies
+      valkey:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+      onlyoffice:
+        condition: service_healthy
     healthcheck: *worker-health
 
   worker-generation:
@@ -119,9 +131,35 @@ services:
       target: worker
     image: presentation-designer/worker:${PD_IMAGE_TAG:-latest}
     command: ["python", "-m", "presentation_designer.cli.worker", "--queues", "generation"]
+    depends_on: *render-dependencies
     healthcheck: *worker-health
     deploy:
       replicas: ${PD_GENERATION_WORKERS:-3}
+
+  onlyoffice:
+    image: presentation-designer/onlyoffice:${PD_IMAGE_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: docker/onlyoffice.Dockerfile
+    restart: unless-stopped
+    environment:
+      JWT_ENABLED: "true"
+      JWT_SECRET: ${PD_ONLYOFFICE__JWT_SECRET:?Set a random ONLYOFFICE JWT secret}
+      JWT_IN_BODY: "true"
+      ALLOW_PRIVATE_IP_ADDRESS: "true"
+      ALLOW_META_IP_ADDRESS: "false"
+    shm_size: 256m
+    volumes:
+      - onlyoffice_data:/var/www/onlyoffice/Data
+      - onlyoffice_lib:/var/lib/onlyoffice
+      - onlyoffice_db:/var/lib/postgresql
+      - onlyoffice_logs:/var/log/onlyoffice
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost/healthcheck | grep -q true"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 120s
 
   valkey:
     image: valkey/valkey:8.1-alpine
@@ -144,3 +182,7 @@ volumes:
   caddy_config:
   valkey_data:
   app_data:
+  onlyoffice_data:
+  onlyoffice_lib:
+  onlyoffice_db:
+  onlyoffice_logs:

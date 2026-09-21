@@ -7,7 +7,7 @@
     … --uploads DIR      хранилище файлов проекта (`data/uploads`) для ручных правок с
                          источником `file`: путь ищется по sha256 из плана
     … --prune-layouts    убрать неиспользуемые макеты (файл меньше, набор макетов меняется)
-    … --pdf              дополнительно PDF через LibreOffice для собственной проверки
+    … --pdf              дополнительно PDF через ONLYOFFICE для собственной проверки
     … --report           печатать отчёт в stderr
 
 Выходы: `<out>/deck.pptx`, `<out>/composed.json` (ComposedDeck), `<out>/plan.json` (копия плана),
@@ -53,7 +53,7 @@ def build_parser(parser: argparse.ArgumentParser | None = None) -> argparse.Argu
     parser.add_argument("--job-id", default="job_local")
     parser.add_argument("--revision", type=int, default=1)
     parser.add_argument("--prune-layouts", action="store_true", help="убрать неиспользуемые макеты")
-    parser.add_argument("--pdf", action="store_true", help="PDF через LibreOffice для проверки")
+    parser.add_argument("--pdf", action="store_true", help="PDF через ONLYOFFICE для проверки")
     parser.add_argument("--report", action="store_true", help="печатать отчёт в stderr")
     return parser
 

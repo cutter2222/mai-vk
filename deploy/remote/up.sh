@@ -14,6 +14,9 @@ KEEP_RELEASES=3
 
 managed_env() {
   local env_file="$1" server_dir="$2" server_url="$3" site_address="$4"
+  if ! grep -qE '^PD_ONLYOFFICE__JWT_SECRET=.{32,}$' "$env_file"; then
+    set_env_key "$env_file" PD_ONLYOFFICE__JWT_SECRET "$(openssl rand -hex 32)"
+  fi
   # Адрес не зашит в образы: Caddy читает его отсюда, интерфейс ходит в API того же origin.
   set_env_key "$env_file" PD_PUBLIC_URL "$server_url"
   set_env_key "$env_file" PD_SITE_ADDRESS "$site_address"

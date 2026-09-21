@@ -8,7 +8,7 @@
 вариантов строят каждый свой план из общего StoryPlan, готовые планы переиспользуются из
 кэша по ключу), этап 8 — вёрстку PPTX и ComposedDeck (`layout`: композер по плану, профилю,
 исходному шаблону и ресурсам пакета; артефакты ревизии пишутся через staging), экспорт
-(`export`: PDF собранного PPTX через LibreOffice под слотом рендера, миниатюры страниц через
+(`export`: PDF собранного PPTX через ONLYOFFICE под слотом рендера, миниатюры страниц через
 PDFium, промежуточный автономный HTML — картинки страниц с текстом ComposedDeck; полный
 рендер HTML и кэш — этап 9). Клиент моделей и слоты рендера создаются лениво в процессе.
 """
@@ -133,10 +133,9 @@ class RealLayers(StubLayers):
         # Контекстные требуют VLM и картинок слайдов. Слой настоящий; когда провайдер не
         # настроен или проверки выключены, это видно в coverage отчёта, а не в режиме.
         self.modes["audit.contextual"] = "real"
-        # Экспорт настоящий там, где его выполняет воркер с LibreOffice; на машине разработчика
-        # со встроенной очередью без рендерера остаётся заглушка, и execution_mode это показывает.
-        self.renderer_available = _renderer_available()
-        self.modes["export"] = "real" if self.renderer_available else "stub"
+        # Real execution must never silently return placeholder PDF/previews.
+        self.renderer_available = True
+        self.modes["export"] = "real"
         self._llm: Any = None
         self._plan_cache: PlanCache | None = None
         self._llm_failed = False
@@ -607,11 +606,6 @@ class RealLayers(StubLayers):
             export_revision,
         )
 
-        if not self.renderer_available:
-            log.warning(
-                "LibreOffice недоступен: экспорт %s/%s заглушкой", inp.job_id, inp.variant_id
-            )
-            return super().export(inp)
         pptx = inp.staging.path("deck.pptx")
         if not pptx.is_file():
             raise StageError(
@@ -839,21 +833,6 @@ class RealLayers(StubLayers):
         return RepairOutput(
             report=out.report, changed_slide_ids=out.changed_slide_ids, thumbnails=thumbnails
         )
-
-
-def _renderer_available() -> bool:
-    """Экспорт выполняет воркер генерации, а он проверяет LibreOffice при старте
-    (`renderer_check`), поэтому при очереди RQ слой настоящий даже в процессе API без
-    рендерера. При встроенной очереди (`PD_QUEUE_MODE=inline`: локальный API, тесты) экспорт
-    идёт в этом же процессе — только если рендерер есть здесь."""
-    import os
-
-    from presentation_designer.export.pdf import find_soffice
-
-    if os.environ.get("PD_QUEUE_MODE", "rq") != "inline":
-        return True
-    soffice = find_soffice()
-    return soffice is not None and soffice.exists()
 
 
 FAILURE_FIXTURE_MARK = b"fixture: template whose detailed variant fails"

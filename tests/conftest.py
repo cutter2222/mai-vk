@@ -10,8 +10,7 @@ from collections.abc import Callable, Iterator
 
 import pytest
 
-# Тесты выполняют задачи в своём процессе: без этого настоящие слои считали бы, что экспорт
-# делает воркер с LibreOffice, и пытались бы рендерить там, где рендерера нет.
+# Тесты выполняют задачи в своём процессе, без внешней очереди RQ.
 os.environ.setdefault("PD_QUEUE_MODE", "inline")
 from fastapi.testclient import TestClient
 

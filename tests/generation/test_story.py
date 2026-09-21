@@ -258,7 +258,10 @@ def test_pipeline_reuses_story_by_content_hash(
     from presentation_designer.pipeline.real import RealLayers
     from presentation_designer.pipeline.state import State
 
-    monkeypatch.setenv("PD_SOFFICE", str(tmp_path / "no-soffice"))
+    # This test isolates story caching, not the external rendering service.
+    from presentation_designer.pipeline.stubs import StubLayers
+
+    monkeypatch.setattr(RealLayers, "export", StubLayers.export)
     settings = Settings()
     settings.paths.data_dir = tmp_path / "data"
     settings.paths.artifacts_dir = tmp_path / "artifacts"

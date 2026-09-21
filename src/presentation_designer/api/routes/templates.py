@@ -21,6 +21,16 @@ from presentation_designer.pipeline.state import NotFound
 router = APIRouter(tags=["templates"])
 
 
+@router.get("/templates/{template_id}/fonts")
+def template_fonts(template_id: str, orch: Orch) -> dict[str, Any]:
+    """Extraction diagnostics only; fonts are not exposed as public downloadable assets."""
+    from presentation_designer.api.routes.onlyoffice import template_source
+    from presentation_designer.parsing.template.embedded_fonts import prepare_fonts
+
+    _, path = template_source(template_id, orch)
+    return prepare_fonts(path, orch.settings.paths.data_dir)
+
+
 async def _body(request: Request) -> tuple[UploadFile | None, dict[str, Any]]:
     """multipart с полем file или JSON с file_id."""
     content_type = request.headers.get("content-type", "")
@@ -96,7 +106,9 @@ def list_templates(orch: Orch) -> list[dict[str, Any]]:
         if stats.get("slides"):
             item["slide_count"] = stats["slides"]
         if profile.get("patterns") is not None:
-            item["pattern_count"] = len(profile["patterns"])
+            item["pattern_count"] = sum(
+                p.get("source", {}).get("kind") != "builtin" for p in profile["patterns"]
+            )
         # Первые цвета палитры — по ним в списке видно стиль шаблона без открытия карточки.
         palette = ((profile.get("design_tokens") or {}).get("colors") or {}).get("palette") or []
         colors = [str(c["hex"]) for c in palette if str(c.get("hex", "")).startswith("#")]
@@ -132,6 +144,19 @@ def delete_template(template_id: str, orch: Orch) -> Response:
     except NotFound as e:
         raise ApiError(404, "template_not_found", "Шаблон не найден") from e
     return Response(status_code=204)
+
+
+@router.get("/templates/{template_id}/source")
+def download_template(template_id: str, orch: Orch) -> FileResponse:
+    from presentation_designer.api.routes.onlyoffice import template_source
+
+    template, path = template_source(template_id, orch)
+    return FileResponse(
+        path,
+        filename=template["name"],
+        media_type=MIME_BY_FORMAT["pptx"],
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.get("/templates/{template_id}/media/{asset_id}")

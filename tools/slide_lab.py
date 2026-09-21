@@ -198,14 +198,11 @@ def main() -> int:
             print("   ", json.dumps(w, ensure_ascii=False)[:110])
 
     if args.png:
-        import subprocess
+        from presentation_designer.export.pdf import convert_to_pdf
+        from presentation_designer.export.thumbnails import render_thumbnails
 
-        subprocess.run(
-            ["soffice", "--headless", "--convert-to", "png", "--outdir", str(OUT), str(out_pptx)],
-            check=False,
-            capture_output=True,
-            timeout=120,
-        )
+        pdf = convert_to_pdf(out_pptx, OUT, timeout_s=120)
+        render_thumbnails(pdf.pdf_path, OUT / "thumbs")
         print(f"снимки: {OUT}")
     return 0
 
