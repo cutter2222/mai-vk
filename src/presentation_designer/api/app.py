@@ -21,6 +21,7 @@ from presentation_designer import __version__
 from presentation_designer.api.errors import ApiError
 from presentation_designer.api.routes import (
     brief,
+    chat,
     content,
     generations,
     health,
@@ -144,6 +145,7 @@ def create_app(orchestrator: Orchestrator | None = None, *, reconcile: bool = Tr
         templates.router,
         content.router,
         brief.router,
+        chat.router,
         generations.router,
         jobs.router,
         onlyoffice.router,

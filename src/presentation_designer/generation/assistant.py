@@ -45,6 +45,7 @@ class ProjectState:
     job_status: str | None = None
     variants: list[str] = field(default_factory=list)
     issues: int | None = None
+    audit_status: str | None = None
     slides: int | None = None
 
     def lines(self) -> list[str]:
@@ -63,6 +64,7 @@ class ProjectState:
                 out.append(f"Слайдов в готовом варианте: {self.slides}")
             if self.issues is not None:
                 out.append(f"Замечаний аудита: {self.issues}")
+            out.append(f"Статус аудита: {self.audit_status or 'неизвестен'}")
         else:
             out.append("Генерация: не запускалась")
         if self.slide_count:
@@ -72,11 +74,19 @@ class ProjectState:
 
 def answer_without_model(state: ProjectState, text: str) -> JsonDict:
     """Ответ правилами: ведёт к недостающему шагу. Вопрос по существу правила не понимают."""
+    if state.job_status and state.job_status not in {"succeeded", "needs_review"}:
+        return {
+            "reply": (
+                f"Статус генерации: {state.job_status}. Готовность презентации не подтверждена."
+                " Подробности — в карточке задания; этот ответ не запускает новых действий."
+            ),
+            "options": [], "source": "rules",
+        }
     if not state.template:
         return {
             "reply": (
                 "Шаблон оформления пока не выбран — перетащите PPTX компании"
-                " или выберите его в шапке проекта."
+                " или выберите его в первом сообщении чата."
             ),
             "options": ["Выбрать шаблон", "Что дальше?"],
             "source": "rules",
@@ -92,7 +102,10 @@ def answer_without_model(state: ProjectState, text: str) -> JsonDict:
         }
     if not state.job_status:
         return {
-            "reply": "Всё для сборки есть: могу собрать презентацию в трёх вариантах вёрстки.",
+            "reply": (
+                "Тема или материалы есть. Проверьте назначение в брифе и готовность шаблона;"
+                " затем можно запустить сборку. Генерация ещё не запускалась."
+            ),
             "options": ["Собрать презентацию", "Изменить задачу"],
             "source": "rules",
         }
@@ -100,14 +113,14 @@ def answer_without_model(state: ProjectState, text: str) -> JsonDict:
         return {
             "reply": (
                 f"Презентация собрана, аудит нашёл {state.issues} замечаний —"
-                " часть могу исправить сам."
+                " отчёт относится к генерации, не к последующим офисным правкам."
             ),
-            "options": ["Исправить замечания", "Показать находки"],
+            "options": ["Что проверяет аудит?"],
             "source": "rules",
         }
     return {
         "reply": (
-            "Презентация собрана и проверена. Можно скачать её в шапке проекта"
+            "Генерация завершена. Можно проверить результат и скачать его в шапке проекта"
             " или попросить изменить конкретный слайд."
         ),
         "options": ["Скачать", "Изменить слайд"],
