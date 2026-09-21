@@ -1037,6 +1037,7 @@ def check_duplicate_slides(deck: JsonDict, ctx: Context) -> list[Issue]:
 _RELS_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 _PRES_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 _R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+_CT_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
 
 
 def _rels_of(part: str) -> str:
@@ -1113,7 +1114,97 @@ def check_package(pptx: pathlib.Path) -> list[Issue]:
                 f"Список слайдов ссылается на неизвестные связи: {', '.join(unknown[:5])}",
                 measured=len(unknown),
             )
+        uncovered = _parts_without_content_type(archive, names)
+        if uncovered:
+            return issue(
+                f"У частей пакета нет типа содержимого: {', '.join(uncovered[:5])}",
+                measured=len(uncovered),
+                parts=uncovered[:20],
+            )
+        duplicates = _duplicate_shape_ids(archive, names)
+        if duplicates:
+            first = duplicates[0]
+            return issue(
+                f"На слайде {first[0]} два объекта с одним идентификатором {first[1]}",
+                measured=len(duplicates),
+                parts=[f"{part}: id {shape_id}" for part, shape_id in duplicates[:20]],
+            )
     return []
+
+
+# Частям презентации мало общего типа «application/xml» из Default: PowerPoint ждёт у каждой
+# свой тип и без него предлагает «восстановить файл». LibreOffice такой пакет открывает молча.
+_PART_TYPES = {
+    "ppt/slides/": "presentationml.slide+xml",
+    "ppt/slideLayouts/": "presentationml.slideLayout+xml",
+    "ppt/slideMasters/": "presentationml.slideMaster+xml",
+    "ppt/notesSlides/": "presentationml.notesSlide+xml",
+    "ppt/notesMasters/": "presentationml.notesMaster+xml",
+    "ppt/handoutMasters/": "presentationml.handoutMaster+xml",
+}
+
+
+def _parts_without_content_type(archive: zipfile.ZipFile, names: set[str]) -> list[str]:
+    """Части пакета, которым `[Content_Types].xml` не назначил свой тип.
+
+    Проверяются и общее покрытие (Default по расширению или Override), и точный тип у частей
+    презентации: слайд, объявленный просто «application/xml», для PowerPoint — повреждение.
+    """
+    try:
+        root = ET.fromstring(archive.read("[Content_Types].xml"))
+    except (KeyError, ET.ParseError):
+        return ["[Content_Types].xml"]
+    defaults = {
+        (e.get("Extension") or "").lower()
+        for e in root.findall(f"{{{_CT_NS}}}Default")
+        if e.get("ContentType")
+    }
+    overrides = {
+        (e.get("PartName") or "").lstrip("/"): str(e.get("ContentType") or "")
+        for e in root.findall(f"{{{_CT_NS}}}Override")
+    }
+    out = []
+    for name in sorted(names):
+        if name.endswith("/") or name == "[Content_Types].xml" or "_rels/" in name:
+            continue
+        expected = next(
+            (suffix for prefix, suffix in _PART_TYPES.items() if name.startswith(prefix)), None
+        )
+        if expected is not None:
+            if not overrides.get(name, "").endswith(expected):
+                out.append(name)
+            continue
+        extension = posixpath.splitext(name)[1].lstrip(".").lower()
+        if name in overrides or (extension and extension in defaults):
+            continue
+        out.append(name)
+    return out
+
+
+def _duplicate_shape_ids(archive: zipfile.ZipFile, names: set[str]) -> list[tuple[str, str]]:
+    """Повторяющиеся `p:cNvPr@id` внутри одного слайда.
+
+    Идентификатор объекта должен быть уникален в пределах слайда. Клонирование образцов на
+    уровне XML легко даёт дубли, python-pptx их не ловит, рендерер прощает, а PowerPoint
+    показывает «обнаружена проблема с содержимым».
+    """
+    out: list[tuple[str, str]] = []
+    for name in sorted(n for n in names if n.startswith("ppt/slides/slide") and n.endswith(".xml")):
+        try:
+            root = ET.fromstring(archive.read(name))
+        except ET.ParseError:
+            continue
+        seen: set[str] = set()
+        for element in root.iter():
+            if not element.tag.endswith("}cNvPr"):
+                continue
+            shape_id = element.get("id") or ""
+            if not shape_id:
+                continue
+            if shape_id in seen:
+                out.append((posixpath.basename(name), shape_id))
+            seen.add(shape_id)
+    return out
 
 
 # Проверки уровня слайда в порядке реестра.
