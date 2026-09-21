@@ -131,6 +131,21 @@ class UsageRecorder:
             out["totals"]["usage_estimated"] = True
         return out
 
+    def drain(self) -> JsonDict | None:
+        """Метрики накопленных вызовов; список очищается.
+
+        Регистратор живёт вместе с клиентом, а клиент — на весь процесс воркера, поэтому
+        вызовы разных заданий иначе смешались бы в одну кучу. Этап забирает своё и уходит.
+        """
+        with self._lock:
+            if not self.calls:
+                return None
+        metrics = self.metrics()
+        with self._lock:
+            self.calls.clear()
+            self.retries = 0
+        return metrics
+
     def by_stage(self) -> dict[str, JsonDict]:
         """Сводка по этапам: вызовы, токены, ожидание, задержка — для отчётов и зонда."""
         with self._lock:

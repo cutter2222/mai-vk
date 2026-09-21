@@ -850,6 +850,35 @@ class State:
                 (ts, wait_ms, job_id),
             )
 
+    def add_llm_usage(self, job_id: str, usage: JsonDict) -> None:
+        """Складывает вызовы модели этапа к метрикам задания.
+
+        Этапы идут в разных процессах и в разное время, поэтому счётчик накапливается в
+        строке задания: иначе в отчёте остаётся ноль вызовов при работающей модели.
+        """
+        calls = list(usage.get("llm_calls") or [])
+        totals = usage.get("totals") or {}
+        cache = usage.get("cache") or {}
+        if not calls:
+            return
+        with self.tx() as conn:
+            row = conn.execute("SELECT metrics FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            if row is None:
+                raise NotFound(job_id)
+            metrics: JsonDict = _loads(row["metrics"], {})
+            metrics["llm_calls"] = list(metrics.get("llm_calls") or []) + calls
+            stored = metrics.setdefault("totals", {})
+            for key in ("llm_calls", "prompt_tokens", "completion_tokens"):
+                stored[key] = int(stored.get(key) or 0) + int(totals.get(key) or 0)
+            if totals.get("usage_estimated"):
+                stored["usage_estimated"] = True
+            for key in ("quota_wait_ms", "retries"):
+                metrics[key] = int(metrics.get(key) or 0) + int(usage.get(key) or 0)
+            stored_cache = metrics.setdefault("cache", {})
+            for key in ("llm_hits", "llm_misses"):
+                stored_cache[key] = int(stored_cache.get(key) or 0) + int(cache.get(key) or 0)
+            conn.execute("UPDATE jobs SET metrics = ? WHERE id = ?", (_dumps(metrics), job_id))
+
     def add_stage(self, job_id: str, stage: JsonDict) -> None:
         """Добавляет или обновляет запись этапа (по stage и variant_id)."""
         with self.tx() as conn:

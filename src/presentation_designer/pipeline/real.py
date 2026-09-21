@@ -170,6 +170,15 @@ class RealLayers(StubLayers):
                 self._llm_failed = True
         return self._llm
 
+    def take_llm_usage(self) -> dict[str, Any] | None:
+        """Вызовы модели, сделанные с прошлого раза: их записывают в метрики задания."""
+        client = self._llm
+        recorder = getattr(client, "recorder", None) if client is not None else None
+        if recorder is None:
+            return None
+        drained = recorder.drain()
+        return dict(drained) if drained else None
+
     def skill(self, name: str) -> Any:
         try:
             from presentation_designer.llm.skills import get_skill

@@ -1054,6 +1054,21 @@ def build_orchestrator(
     return Orchestrator(settings, state, files, artifacts, layers, executor)
 
 
+def _record_llm(o: Orchestrator, job_id: str) -> None:
+    """Вызовы модели закончившегося этапа — в метрики задания.
+
+    Регистратор живёт вместе с клиентом, то есть на весь процесс воркера. Если его не
+    опустошать после каждого этапа, вызовы разных заданий смешаются, а в отчёте останется
+    ноль вызовов при работающей модели — ровно это и было.
+    """
+    try:
+        usage = o.take_llm_usage()
+        if usage:
+            o.state.add_llm_usage(job_id, usage)
+    except Exception:  # учёт не должен ронять задание
+        log.exception("метрики вызовов модели не записаны: %s", job_id)
+
+
 def get_orchestrator() -> Orchestrator:
     global _current
     with _lock:
@@ -1097,6 +1112,7 @@ def task_analyze(template_id: str) -> None:
         o.state.update_template(
             template_id, status="succeeded", profile=out.profile, previews=previews
         )
+        _record_llm(o, job_id)
         o.state.add_stage(
             job_id,
             {
@@ -1175,6 +1191,7 @@ def task_import(package_id: str) -> None:
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(data)
         o.state.update_package(package_id, status="succeeded", package=out.package)
+        _record_llm(o, job_id)
         pk = out.package
         o.state.add_stage(
             job_id,
@@ -1318,6 +1335,7 @@ def task_story(job_id: str) -> None:
             },
         )
         return
+    _record_llm(o, job_id)
     o.state.update_generation(job_id, story=story, story_hit=1 if hit else 0)
     o.state.add_stage(
         job_id,
