@@ -18,6 +18,7 @@ import {
   type DeckSlide,
 } from "@/lib/editor/overrides";
 import { countTemplateLogos } from "@/lib/editor/logos";
+import { draftRevisions, readEditorDraft, writeEditorDraft, type EditorDraft } from "@/lib/editor/draftStorage";
 import { templateTokens } from "@/lib/editor/tokens";
 
 import { useComposedDeck } from "./useComposedDeck";
@@ -28,6 +29,7 @@ interface DraftSnapshot {
   drafts: Record<string, Override[]>;
   order: string[] | null;
   slideIndex: number;
+  logo: boolean | null;
 }
 
 /** Подряд идущие правки одного поля (набор текста) складываются в один шаг истории. */
@@ -44,14 +46,14 @@ export interface SlideEditorOptions {
 /**
  * Состояние визуального редактора: описание колоды просматриваемой ревизии, черновик правок
  * по слайдам (списки overrides, как в контракте slide_patch), порядок слайдов, выбранный
- * объект, применение одной ревизией. Черновик живёт только в этой вкладке и сбрасывается,
- * когда меняется задание, вариант или появляется новая ревизия: тогда правки уже в эхе.
+ * объект, применение одной ревизией. Локальная копия привязана к заданию, варианту и
+ * просматриваемой ревизии; старый черновик никогда не переносится на новую автоматически.
  */
 export function useSlideEditor(session: GenerationSession, options: SlideEditorOptions) {
   const { jobId, variant, currentRevision, viewRevision, slideIndex } = session;
   const deckState = useComposedDeck(jobId, variant?.composed_deck_artifact, currentRevision, viewRevision);
   const deck = deckState.deck;
-  const key = jobId && variant ? `${jobId}:${variant.variant_id}:${currentRevision}` : null;
+  const key = jobId && variant ? `${jobId}:${variant.variant_id}:${viewRevision}` : null;
 
   const [editing, setEditingRaw] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, Override[]>>({});
@@ -68,25 +70,92 @@ export function useSlideEditor(session: GenerationSession, options: SlideEditorO
   const [logoDraft, setLogoDraft] = useState<boolean | null>(null);
   // Номер слайда, который надо выбрать, когда придёт ревизия с применёнными правками: после
   // перестановки слайд, который правили, получает в новой ревизии номер своего места.
-  const pendingSelect = useRef<number | null>(null);
+  const [pending, setPending] = useState<EditorDraft["pending"]>(null);
+  const [storageOk, setStorageOk] = useState(true);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [savedRevisions, setSavedRevisions] = useState<number[]>([]);
+  const submitting = useRef(false);
+  const activeKey = useRef(key);
+  useEffect(() => { activeKey.current = key; }, [key]);
+  const submitted = useRef<{ key: string; jobId: string; variantId: string; revision: number; pending: NonNullable<EditorDraft["pending"]> } | null>(null);
 
-  // Новый ключ (задание, вариант, ревизия) — черновик отброшен: применённые правки уже в эхе.
-  const [prevKey, setPrevKey] = useState(key);
+  useEffect(() => {
+    const sent = submitted.current;
+    if (!sent || session.editStatus?.job_id !== sent.pending.jobId || session.editStatus.status !== "succeeded") return;
+    writeEditorDraft(sent.key, null);
+    if (jobId === sent.jobId && variant?.variant_id === sent.variantId && currentRevision > sent.revision) {
+      session.selectSlide(sent.pending.position);
+      submitted.current = null;
+    }
+  }, [session, jobId, variant?.variant_id, currentRevision]);
+
+  // Восстанавливаем только точный адрес. История отмены остаётся в текущем сеансе.
+  const [prevKey, setPrevKey] = useState<string | null>(null);
   if (prevKey !== key) {
+    const saved = key ? readEditorDraft(key) : null;
     setPrevKey(key);
-    setDrafts({});
-    setOrder(null);
+    setDrafts(saved?.drafts ?? {});
+    setOrder(saved?.order ?? null);
     setSelectedObjectId(null);
     setPast([]);
     setFuture([]);
-    setLogoDraft(null);
+    setLogoDraft(saved?.logo ?? null);
+    setPending(saved?.pending ?? null);
+    setSaveError(null);
+    setSavedRevisions(jobId && variant ? draftRevisions(jobId, variant.variant_id) : []);
   }
   useEffect(() => {
-    const position = pendingSelect.current;
-    if (position === null) return;
-    pendingSelect.current = null;
-    if (position >= 0 && position !== session.slideIndex) session.selectSlide(position);
-  }, [key, session]);
+    if (!jobId || !variant) return;
+    let alive = true;
+    for (const revision of savedRevisions.filter((r) => r < currentRevision)) {
+      const oldKey = `${jobId}:${variant.variant_id}:${revision}`;
+      const old = readEditorDraft(oldKey);
+      if (!old?.pending) continue;
+      void api.jobs.get(old.pending.jobId).then((status) => {
+        if (!alive || status.status !== "succeeded") return;
+        writeEditorDraft(oldKey, null);
+        setSavedRevisions((revisions) => revisions.filter((r) => r !== revision));
+      }).catch(() => { /* Неизвестный результат не повод удалять черновик. */ });
+    }
+    return () => { alive = false; };
+  }, [jobId, variant, currentRevision, savedRevisions]);
+  useEffect(() => {
+    if (!pending || !key) return;
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const status = await api.jobs.get(pending.jobId);
+        if (!alive) return;
+        if (status.status === "succeeded") {
+          writeEditorDraft(key, null);
+          setDrafts({});
+          setOrder(null);
+          setLogoDraft(null);
+          setPast([]);
+          setFuture([]);
+          setPending(null);
+          setSaveError(null);
+          session.selectSlide(pending.position);
+          session.job.refresh();
+          return;
+        }
+        if (status.status === "failed" || status.status === "canceled") {
+          setPending(null);
+          setSaveError(status.error?.message ?? "Правки не применены. Черновик сохранён; можно повторить.");
+          return;
+        }
+      } catch {
+        if (!alive) return;
+        setSaveError("Не удалось проверить применение. Черновик сохранён; проверка повторяется.");
+      }
+      timer = setTimeout(poll, 2000);
+    };
+    void poll();
+    return () => { alive = false; clearTimeout(timer); };
+    // refresh is intentionally excluded: it changes on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, pending]);
   // Смена слайда снимает выделение объекта.
   const [prevSlide, setPrevSlide] = useState(slideIndex);
   if (prevSlide !== slideIndex) {
@@ -95,7 +164,7 @@ export function useSlideEditor(session: GenerationSession, options: SlideEditorO
   }
 
   const available = Boolean(
-    deck && variant && session.terminal && viewRevision === currentRevision && (variant.status === "ready" || variant.status === "needs_review"),
+    deck && variant && !pending && !applying && !session.busy && !session.editJob && !session.repairJob && session.terminal && viewRevision === currentRevision && (variant.status === "ready" || variant.status === "needs_review"),
   );
 
   const deckOrder = useMemo(() => (deck ? deck.slides.map((s) => s.slide_id) : []), [deck]);
@@ -134,9 +203,24 @@ export function useSlideEditor(session: GenerationSession, options: SlideEditorO
     (logoChanged ? 1 : 0);
 
   useEffect(() => {
-    session.setEditorDirty(dirty);
+    if (!key || !deck) return;
+    const ok = writeEditorDraft(key, dirty || pending ? { drafts, order, logo: logoDraft, pending } : null);
+    // Результат синхронизации с внешним хранилищем нужен для честного статуса в UI.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStorageOk(ok);
+  }, [key, deck, dirty, drafts, order, logoDraft, pending]);
+
+  useEffect(() => {
+    if (!dirty && !pending) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty, pending]);
+
+  useEffect(() => {
+    session.setEditorDirty(dirty || Boolean(pending));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dirty]);
+  }, [dirty, pending]);
 
   const setEditing = useCallback(
     (value: boolean) => {
@@ -155,20 +239,23 @@ export function useSlideEditor(session: GenerationSession, options: SlideEditorO
    * набор текста иначе разбирался бы обратно по букве на каждый Ctrl+Z.
    */
   const commit = useCallback(
-    (next: (cur: DraftSnapshot) => { drafts: Record<string, Override[]>; order: string[] | null }, mark?: string) => {
+    (next: (cur: DraftSnapshot) => Pick<DraftSnapshot, "drafts" | "order" | "logo">, mark?: string) => {
+      if (!available || submitting.current) return;
       const now = Date.now();
       // Метка привязана к ключу черновика: правка в другом задании или ревизии не склеится с
       // прежней, и сбрасывать метку при смене ключа не нужно.
       const marked = mark ? `${key}|${mark}` : null;
       const glued = Boolean(marked) && lastMark.current?.key === marked && now - (lastMark.current?.at ?? 0) < COALESCE_MS;
-      if (!glued) setPast((p) => [...p, { drafts, order, slideIndex }].slice(-HISTORY_MAX));
+      if (!glued) setPast((p) => [...p, { drafts, order, slideIndex, logo: logoDraft }].slice(-HISTORY_MAX));
       lastMark.current = marked ? { key: marked, at: now } : null;
       setFuture([]);
-      const result = next({ drafts, order, slideIndex });
+      const result = next({ drafts, order, slideIndex, logo: logoDraft });
       setDrafts(result.drafts);
       setOrder(result.order);
+      setLogoDraft(result.logo);
+      setSaveError(null);
     },
-    [drafts, order, slideIndex, key],
+    [drafts, order, slideIndex, key, logoDraft, available],
   );
 
   const setOp = useCallback(
@@ -191,31 +278,40 @@ export function useSlideEditor(session: GenerationSession, options: SlideEditorO
   );
 
   const discard = useCallback(() => {
-    commit(() => ({ drafts: {}, order: null }));
-  }, [commit]);
+    if (viewRevision !== currentRevision && !pending && !applying) {
+      setDrafts({});
+      setOrder(null);
+      setLogoDraft(null);
+      if (key) writeEditorDraft(key, null);
+      return;
+    }
+    commit(() => ({ drafts: {}, order: null, logo: null }));
+  }, [commit, viewRevision, currentRevision, pending, applying, key]);
 
   /** Шаг назад: возвращается и слайд, на котором правка была сделана, — иначе непонятно, что изменилось. */
   const undo = useCallback(() => {
-    if (past.length === 0) return;
+    if (!available || past.length === 0) return;
     const prev = past[past.length - 1];
     setPast(past.slice(0, -1));
-    setFuture([{ drafts, order, slideIndex }, ...future].slice(0, HISTORY_MAX));
+    setFuture([{ drafts, order, slideIndex, logo: logoDraft }, ...future].slice(0, HISTORY_MAX));
     setDrafts(prev.drafts);
     setOrder(prev.order);
+    setLogoDraft(prev.logo);
     lastMark.current = null;
     if (prev.slideIndex !== slideIndex) session.selectSlide(prev.slideIndex);
-  }, [past, future, drafts, order, slideIndex, session]);
+  }, [past, future, drafts, order, slideIndex, session, available, logoDraft]);
 
   const redo = useCallback(() => {
-    if (future.length === 0) return;
+    if (!available || future.length === 0) return;
     const next = future[0];
     setFuture(future.slice(1));
-    setPast([...past, { drafts, order, slideIndex }].slice(-HISTORY_MAX));
+    setPast([...past, { drafts, order, slideIndex, logo: logoDraft }].slice(-HISTORY_MAX));
     setDrafts(next.drafts);
     setOrder(next.order);
+    setLogoDraft(next.logo);
     lastMark.current = null;
     if (next.slideIndex !== slideIndex) session.selectSlide(next.slideIndex);
-  }, [past, future, drafts, order, slideIndex, session]);
+  }, [past, future, drafts, order, slideIndex, session, available, logoDraft]);
 
   // Ctrl+Z и Ctrl+Shift+Z (Ctrl+Y) на всей странице редактора. В полях ввода не перехватываем:
   // там работает своя отмена ввода браузера.
@@ -254,8 +350,10 @@ export function useSlideEditor(session: GenerationSession, options: SlideEditorO
   }, []);
 
   const apply = useCallback(async () => {
-    if (!deck || !jobId || !variant || !dirty || applying) return;
+    if (!deck || !jobId || !variant || !dirty || !available || submitting.current) return;
+    submitting.current = true;
     setApplying(true);
+    setSaveError(null);
     try {
       const patchJobId = await session.requestPatch(
         { jobId, variantId: variant.variant_id, revision: currentRevision },
@@ -266,19 +364,25 @@ export function useSlideEditor(session: GenerationSession, options: SlideEditorO
       // Новая ревизия нумерует слайды по применённому порядку: номер изменённого слайда в
       // ней — его место в черновом порядке, а не прежний номер в колоде.
       const firstChanged = changedSlides[0] ? slideOrder.indexOf(changedSlides[0].slide_id) : slideIndex;
+      const nextPending = { jobId: patchJobId, position: currentSlide ? Math.max(0, slideOrder.indexOf(currentSlide.slide_id)) : 0 };
+      // Записываем адрес принятого задания до следующего рендера/перехода.
+      if (key) writeEditorDraft(key, { drafts, order, logo: logoDraft, pending: nextPending });
+      if (key) submitted.current = { key, jobId, variantId: variant.variant_id, revision: currentRevision, pending: nextPending };
+      if (activeKey.current === key) setPending(nextPending);
       options.onPatchStarted?.(patchJobId, Math.max(firstChanged, 0));
-      pendingSelect.current = currentSlide ? slideOrder.indexOf(currentSlide.slide_id) : null;
     } catch (e) {
       const code = e instanceof ApiError ? e.code : "";
       const message = e instanceof ApiError ? e.message : "неизвестная ошибка";
-      if (code === "revision_stale") notifications.show({ color: "orange", title: "Ревизия устарела", message: "Справа уже новая ревизия: черновик сброшен, повторите правки на ней.", autoClose: 8000 });
+      if (activeKey.current === key) setSaveError(message);
+      if (code === "revision_stale") notifications.show({ color: "orange", title: "Ревизия устарела", message: "Черновик сохранён у исходной ревизии. Он не будет автоматически наложен на новую.", autoClose: 8000 });
       else if (code === "repair_in_progress") notifications.show({ color: "orange", title: "Предыдущая правка ещё применяется", message: "Дождитесь её и нажмите «Применить» снова." });
       else notifications.show({ color: "red", title: "Правки не отправлены", message });
     } finally {
+      submitting.current = false;
       setApplying(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deck, jobId, variant, dirty, applying, session, currentRevision, changedSlides, orderChanged, slideOrder, slideIndex, currentSlide, options.onPatchStarted]);
+  }, [deck, jobId, variant, dirty, available, session, currentRevision, changedSlides, orderChanged, slideOrder, slideIndex, currentSlide, options.onPatchStarted, key, drafts, order, logoDraft, logoChanged]);
 
   const tokens = useMemo(() => templateTokens(options.profile), [options.profile]);
 
@@ -290,8 +394,8 @@ export function useSlideEditor(session: GenerationSession, options: SlideEditorO
   /** Снимает знак шаблона со всей колоды или возвращает его: шаг черновика, как и остальные. */
   const toggleLogo = useCallback(() => {
     if (logoCount === 0) return;
-    setLogoDraft(!logoDropped);
-  }, [logoCount, logoDropped]);
+    commit((cur) => ({ ...cur, logo: !logoDropped }));
+  }, [logoCount, logoDropped, commit]);
 
   /**
    * Своя надпись на текущем слайде: рамка по центру со смещением, чтобы несколько надписей
@@ -349,7 +453,7 @@ export function useSlideEditor(session: GenerationSession, options: SlideEditorO
   const slideDirty = currentSlide ? !sameOverrides(draft, currentSlide.overrides ?? []) : false;
 
   return {
-    editing,
+    editing: editing && viewRevision === currentRevision,
     setEditing,
     available,
     deck,
@@ -380,10 +484,17 @@ export function useSlideEditor(session: GenerationSession, options: SlideEditorO
     reorder,
     undo,
     redo,
-    canUndo: past.length > 0,
-    canRedo: future.length > 0,
+    canUndo: available && past.length > 0,
+    canRedo: available && future.length > 0,
     apply,
-    applying: applying || (Boolean(session.editJob) && session.editJobKind === "patch"),
+    applying: applying || Boolean(pending) || (Boolean(session.editJob) && session.editJobKind === "patch"),
+    storageOk,
+    saveError,
+    savedRevisions: savedRevisions.filter((r) => r < currentRevision),
+    missingFilePreview: Object.values(drafts).flat().some((op) => {
+      const source = op.picture?.source ?? op.background?.source;
+      return source?.kind === "file" && source.file_id && !fileUrls[source.file_id];
+    }),
     tokens,
     resolver,
     registerFileUrl,

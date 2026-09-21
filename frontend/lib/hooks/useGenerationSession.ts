@@ -26,7 +26,7 @@ export interface SlideTarget {
  * отчёт аудита нужной ревизии, выбор находок, исправления, отмена и повтор.
  * Используется одновременно панелью предпросмотра и панелью результата, поэтому живёт выше обеих.
  */
-export function useGenerationSession(jobId: string | null, onNewJob: (jobId: string) => void) {
+export function useGenerationSession(jobId: string | null, onNewJob: (jobId: string) => void, { loadAudit = true }: { loadAudit?: boolean } = {}) {
   const [layout, setLayout] = useState<PreviewLayout>("single");
   const [slideIndex, setSlideIndex] = useState(0);
   const [selectedVariantRaw, setSelectedVariant] = useState<string | null>(null);
@@ -45,7 +45,7 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
   const [dismissedTarget, setDismissedTarget] = useState<number | null>(null);
 
   const job = usePolling<GenerationResult>(jobId ? () => api.generations.get(jobId) : null, (r) => TERMINAL_STATES.has(r.status) && !repairJob, [jobId, repairJob]);
-  const result = job.data;
+  const result = job.data?.job_id === jobId ? job.data : null;
 
   // Сброс локального состояния при смене задания: состояние с ключом, без эффекта.
   const [prevJobId, setPrevJobId] = useState(jobId);
@@ -80,14 +80,14 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
 
   const auditReady = Boolean(variant && variant.audit && !["pending", "running"].includes(variant.audit.status ?? ""));
   const audit = usePolling<AuditReport>(
-    jobId && variant && auditReady ? () => api.generations.audit(jobId, variant.variant_id, viewRevision) : null,
+    loadAudit && jobId && variant && auditReady ? () => api.generations.audit(jobId, variant.variant_id, viewRevision) : null,
     () => true,
-    [jobId, variant?.variant_id, viewRevision, auditReady, currentRevision],
+    [loadAudit, jobId, variant?.variant_id, viewRevision, auditReady, currentRevision],
   );
   const prevAudit = usePolling<AuditReport>(
-    jobId && variant && auditReady && viewRevision > 1 ? () => api.generations.audit(jobId, variant.variant_id, viewRevision - 1) : null,
+    loadAudit && jobId && variant && auditReady && viewRevision > 1 ? () => api.generations.audit(jobId, variant.variant_id, viewRevision - 1) : null,
     () => true,
-    [jobId, variant?.variant_id, viewRevision, auditReady],
+    [loadAudit, jobId, variant?.variant_id, viewRevision, auditReady],
   );
 
   // Опрос задания исправления: по завершении обновляем результат и отчёт.
@@ -207,7 +207,7 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
   };
 
   const repair = async (issueIds?: string[]): Promise<string | null> => {
-    if (!jobId || !variant || !audit.data) return null;
+    if (!jobId || !variant || !audit.data || editorDirty || busy || editJob || repairJob) return null;
     const ids = issueIds ?? [...selectedIssues];
     if (ids.length === 0) return null;
     setBusy(true);
@@ -253,6 +253,7 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
 
   /** Правка выбранного слайда по инструкции; ошибки (устаревшая ревизия, идущая правка) отдаются вызывающему. */
   const requestEdit = async (target: SlideTarget, instruction: string): Promise<string> => {
+    if (editorDirty) throw new Error("Сначала примените или сбросьте ручной черновик.");
     setBusy(true);
     try {
       const res = await api.generations.edit(target.jobId, target.variantId, target.revision, target.slideIndex, instruction);
@@ -294,7 +295,7 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
   const terminal = Boolean(result && TERMINAL_STATES.has(result.status));
 
   // Адрес правки: выбранный слайд собранного варианта, пока задание завершено и чип не снят.
-  const editable = terminal && variant !== null && (variant.status === "ready" || variant.status === "needs_review") && Boolean(thumb);
+  const editable = terminal && viewRevision === currentRevision && variant !== null && (variant.status === "ready" || variant.status === "needs_review") && Boolean(thumb);
   const slideTarget: SlideTarget | null =
     jobId && variant && editable && dismissedTarget !== slideIndex ? { jobId, variantId: variant.variant_id, revision: currentRevision, slideIndex } : null;
   const dismissTarget = useCallback(() => setDismissedTarget(slideIndex), [slideIndex]);

@@ -50,7 +50,7 @@ export function PropertiesPanel({ editor, profile, pkg, projectId }: Props) {
 
   return (
     <div className="object-panel" data-testid="object-panel">
-      <Group justify="space-between" align="flex-start" mb="xs" wrap="nowrap">
+      <Group justify="space-between" align="flex-start" mb="xs" wrap="wrap">
         <div>
           {obj ? (
             <Group gap={6} wrap="wrap">
@@ -96,6 +96,7 @@ export function PropertiesPanel({ editor, profile, pkg, projectId }: Props) {
       {obj && canText && <TextProperties obj={obj} originalObj={originalObj} editor={editor} tokens={editor.tokens} />}
       {obj && obj.kind === "picture" && <PictureProperties obj={obj} originalObj={originalObj} editor={editor} tokens={editor.tokens} picker={pickerProps} />}
       {obj && canMove && <GeometryFields obj={obj} editor={editor} />}
+      {obj && (obj.kind === "table" || obj.kind === "chart") && <Text size="xs" c="dimmed">Здесь можно изменить положение и размер. Данные таблицы или диаграммы редактируются в скачанном PPTX.</Text>}
       {obj && !canText && !canMove && <Text size="xs" c="dimmed">Этот объект правится только через чат.</Text>}
       {!obj && <BackgroundProperties editor={editor} tokens={editor.tokens} picker={pickerProps} />}
 
@@ -105,10 +106,10 @@ export function PropertiesPanel({ editor, profile, pkg, projectId }: Props) {
           {editor.dirty ? `Черновик: ${editor.draftCount} ${plural(editor.draftCount, "правка", "правки", "правок")}${editor.orderChanged ? ", порядок изменён" : ""}` : "Черновик пуст"}
         </Text>
         <Group gap="xs">
-          <Button size="xs" variant="default" disabled={!editor.dirty || editor.applying} onClick={editor.discard} data-testid="editor-cancel">
-            Отменить
+          <Button size="xs" variant="default" disabled={!editor.dirty || !editor.available} onClick={editor.discard} data-testid="editor-cancel">
+            Сбросить
           </Button>
-          <Button size="xs" disabled={!editor.dirty} loading={editor.applying} onClick={() => void editor.apply()} data-testid="editor-apply">
+          <Button size="xs" disabled={!editor.dirty || !editor.available} loading={editor.applying} onClick={() => void editor.apply()} data-testid="editor-apply">
             Применить
           </Button>
         </Group>

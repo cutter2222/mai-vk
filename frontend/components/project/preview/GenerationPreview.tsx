@@ -143,8 +143,7 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
     editor.setEditing(false);
     setSlideProps(false);
   };
-  // Выбор на холсте: объект открывает ящик свойств, пустое место закрывает правку целиком —
-  // и ящик, и холст уходят одним движением, слайд возвращается к прежнему размеру.
+  // Пустое место снимает выделение, но не закрывает режим правки.
   // Нажатие по объекту на холсте неприменённого черновика снова включает правку.
   const selectOnCanvas = (objectId: string | null) => {
     if (objectId) {
@@ -153,7 +152,8 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
       setSlideProps(false);
       return;
     }
-    leaveEditor();
+    editor.selectObject(null);
+    setSlideProps(false);
   };
   // Холст показывает слайд и после выхода из правки, пока черновик этого слайда не применён:
   // картинка ревизии ещё старая, и «Готово» выглядело так, будто набранный текст пропал.
@@ -172,6 +172,7 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
             <SegmentedControl
               size="xs"
               value={variant?.variant_id ?? ""}
+              disabled={editor.applying}
               onChange={session.setSelectedVariant}
               data={result.variants.map((v) => ({
                 value: v.variant_id,
@@ -199,6 +200,14 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
           )}
         </Group>
         <Group gap="xs" wrap="nowrap">
+          {editor.savedRevisions.length > 0 && session.viewRevision === session.currentRevision && (
+            <Button size="xs" variant="subtle" color="orange" onClick={() => session.setRevision(editor.savedRevisions[0])} data-testid="older-draft">
+              Черновик ревизии {editor.savedRevisions[0]}
+            </Button>
+          )}
+          {session.viewRevision !== session.currentRevision && (
+            <Button size="xs" variant="default" onClick={() => session.setRevision(null)} data-testid="latest-revision">К текущей ревизии</Button>
+          )}
           {multi && (
             <SegmentedControl size="xs" value={session.layout} onChange={(v) => session.setLayout(v as "single" | "side")} data={[{ value: "single", label: "Один вариант" }, { value: "side", label: "Сравнить" }]} data-testid="layout-switch" />
           )}
@@ -210,11 +219,30 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
               onClick={() => (editor.editing ? leaveEditor() : openEditor(null))}
               data-testid="toggle-editor"
             >
-              {editor.editing ? "Готово" : "Редактировать"}
+              {editor.editing ? "К просмотру" : "Редактировать"}
             </Button>
           )}
         </Group>
       </div>
+
+      {(editor.dirty || editor.applying || editor.saveError) && (
+        <div className="draft-status" role="status" data-testid="draft-status">
+          <Text size="xs" c={editor.saveError || !editor.storageOk ? "red" : "dimmed"}>
+            {editor.applying ? (editor.saveError ?? "Применяем правки. PPTX обновится после создания ревизии.")
+              : editor.saveError ? `Правки не применены: ${editor.saveError}`
+              : !editor.storageOk ? "Не удалось сохранить черновик в браузере. Не закрывайте вкладку до применения правок."
+              : "Черновик сохранён в этом браузере · в скачиваемом PPTX этих правок ещё нет."}
+            {session.viewRevision !== session.currentRevision && " Это черновик старой ревизии; автоматический перенос отключён."}
+            {editor.missingFilePreview && " Предпросмотр загруженной картинки недоступен после открытия; её file_id сохранён для применения."}
+          </Text>
+          {editor.dirty && session.viewRevision !== session.currentRevision && !editor.applying && <Button size="compact-xs" variant="subtle" color="gray" onClick={editor.discard}>Удалить старый черновик</Button>}
+        </div>
+      )}
+      {editor.deckError && (
+        <div className="draft-status" role="alert">
+          <Text size="xs" c="red">Не удалось загрузить описание ревизии: {editor.deckError}. Локальные правки не удалены; редактирование недоступно.</Text>
+        </div>
+      )}
 
       {running && (
         <div className="preview-progress" data-testid="preview-progress">
@@ -271,7 +299,7 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
                 mediaUrl={mediaUrl}
                 selectedObjectId={editor.editing ? editor.selectedObjectId : null}
                 onSelect={selectOnCanvas}
-                editable={editor.editing}
+                editable={editor.editing && editor.available}
                 onDelete={editor.deleteObject}
                 onGeometry={(objectId, bbox) => {
                   const obj = current?.objects.find((o) => o.object_id === objectId);
@@ -394,10 +422,10 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
               {/* Применение черновика словами, а не значком: это решение, а не инструмент. */}
               {editor.dirty && !drawerOpen && (
                 <>
-                  <Button variant="subtle" color="gray" size="compact-xs" onClick={editor.discard} data-testid="editor-cancel-bar">
-                    Отменить
+                  <Button variant="subtle" color="gray" size="compact-xs" disabled={!editor.available} onClick={editor.discard} data-testid="editor-cancel-bar">
+                    Сбросить черновик
                   </Button>
-                  <Button size="compact-xs" loading={editor.applying} onClick={() => void editor.apply()} data-testid="editor-apply-bar">
+                  <Button size="compact-xs" disabled={!editor.available} loading={editor.applying} onClick={() => void editor.apply()} data-testid="editor-apply-bar">
                     Применить
                   </Button>
                   <span className="bar-sep" />
@@ -439,11 +467,13 @@ export function GenerationPreview({ session, editor, templateDetail, pkg, projec
                 {editor.deckError ? (
                   <Text size="xs" c="red">Описание колоды не загружено: {editor.deckError}</Text>
                 ) : (
-                  <PropertiesPanel editor={editor} profile={templateDetail?.profile} pkg={pkg} projectId={projectId} />
+                  <fieldset disabled={!editor.available} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+                    <PropertiesPanel editor={editor} profile={templateDetail?.profile} pkg={pkg} projectId={projectId} />
+                  </fieldset>
                 )}
                 {/* Подсказки по клавишам стояли в подсказке кнопки «как собран» — там их никто
                     не искал. Здесь они видны ровно тогда, когда правят слайд. */}
-                <Text size="xs" c="dimmed" mt="sm">↑ ↓ листают слайды · Esc закрывает правку · Ctrl+Z отменяет шаг · Delete убирает объект</Text>
+                <Text size="xs" c="dimmed" mt="sm">↑ ↓ листают слайды без выделения · Esc снимает выделение · Ctrl+Z отменяет шаг · Delete убирает объект</Text>
               </div>
             ) : null
           }

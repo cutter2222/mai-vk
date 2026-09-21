@@ -1195,15 +1195,26 @@ body {
   }
 }
 
+/* На ноутбуке навигация и перестановка слайдов остаются доступны. */
 @media (max-width: 1360px) {
-  .viewer[data-aside="true"] .filmstrip {
-    flex-basis: 0;
-    width: 0;
-    padding-left: 0;
-    padding-right: 0;
-    opacity: 0;
-    border-right-color: transparent;
-  }
+  .viewer-side { --side-w: 300px; }
+  .editor-panel { max-width: 320px; }
+  .editor-panel-inner { max-width: 320px; }
+}
+
+.draft-status {
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--page);
+}
+
+.preview-toolbar { flex-wrap: wrap; }
+
+@media (max-width: 1000px) {
+  .viewer[data-aside="true"] { flex-wrap: wrap; overflow-y: auto; }
+  .viewer[data-aside="true"] .viewer-main { min-width: 260px; min-height: 320px; }
+  .viewer-side[data-open="true"] { width: 100%; }
+  .viewer-side-inner { width: 100%; height: auto; }
 }
 
 /* ---------- Визуальный редактор: холст, выделение, панель свойств, лента ---------- */

@@ -189,6 +189,9 @@ export async function expectServiceStatus(page: Page): Promise<void> {
  */
 export async function clickText(page: Page, object: Locator): Promise<void> {
   const p = object.locator("p").first();
+  // Колонка свойств меняет размеры холста анимацией: mouse.click не ждёт стабильности,
+  // в отличие от locator.click, и координаты могли устареть между измерением и нажатием.
+  await expect.poll(() => page.evaluate(() => document.getAnimations().filter((a) => a.playState === "running" && a.effect?.getTiming().iterations !== Infinity).length)).toBe(0);
   const box = await p.boundingBox();
   if (!box) throw new Error("у объекта нет абзаца текста");
   await page.mouse.click(box.x + Math.min(10, box.width / 2), box.y + Math.min(box.height / 2, 14));
