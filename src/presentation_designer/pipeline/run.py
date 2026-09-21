@@ -292,6 +292,11 @@ class Layers:
     def edit(self, inp: EditInput) -> EditOutput:
         raise NotImplementedError
 
+    def take_llm_usage(self) -> JsonDict | None:
+        """Вызовы модели с прошлого раза в формате `UsageRecorder.metrics()`; заглушки
+        модель не зовут и отдают None."""
+        return None
+
     def execution_mode(self) -> JsonDict:
         values = set(self.modes.values())
         mode = (

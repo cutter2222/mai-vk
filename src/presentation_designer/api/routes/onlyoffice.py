@@ -189,7 +189,8 @@ def config(document_id: str, orch: Orch) -> dict[str, Any]:
     office = store(orch)
     doc = office.open(document_id)
     font_report = prepare_fonts(
-        office.read(document_id, doc["seed_revision"]), orch.settings.paths.data_dir,
+        office.read(document_id, doc["seed_revision"]),
+        orch.settings.paths.data_dir,
     )
     cfg = orch.settings.onlyoffice
     revision = doc["seed_revision"]

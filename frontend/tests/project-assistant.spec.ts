@@ -98,3 +98,65 @@ test("first published variant opens while other variants generate, without reope
   await expect(page.getByTestId("project-office").locator("iframe")).toBeVisible();
   expect(opens).toBe(1);
 });
+
+// Сообщение сохраняется сразу, а бриф извлекается долго: к моменту вопроса ассистенту временный
+// ID уже заменён серверным, и в /api/chat должен уйти именно сохранённый event_id.
+test("delayed brief extraction still sends the saved event ID to /api/chat", async ({ page }) => {
+  const savedAt = "2026-09-21T09:00:00.000Z";
+  const events: Record<string, unknown>[] = [];
+  const project = { project_id: "assistant-id-test", title: "Новая презентация", template_id: null, brief: {}, settings: {}, files: [], events };
+  await page.route("**/api/projects/assistant-id-test", async (r) => {
+    if (r.request().method() === "PATCH") Object.assign(project, r.request().postDataJSON());
+    await r.fulfill({ json: project });
+  });
+  await page.route("**/api/templates", (r) => r.fulfill({ json: [] }));
+  await page.route("**/api/office/capabilities", (r) => r.fulfill({ json: { enabled: false } }));
+  await page.route("**/api/projects/assistant-id-test/events", (r) => {
+    const event = { ...r.request().postDataJSON(), event_id: `event-${events.length}`, at: savedAt };
+    events.push(event);
+    return r.fulfill({ json: event });
+  });
+  let releaseBrief!: () => void;
+  const briefHeld = new Promise<void>((resolve) => { releaseBrief = resolve; });
+  await page.route("**/api/brief", async (r) => {
+    await briefHeld;
+    await r.fulfill({ json: { understood: [], brief: {}, source: "heuristic" } });
+  });
+  const chatIds: string[] = [];
+  await page.route("**/api/chat", (r) => {
+    chatIds.push(r.request().postDataJSON().event_id);
+    const event = { event_id: "reply", at: savedAt, role: "assistant", kind: "text", text: "Уточните задачу презентации." };
+    events.push(event);
+    return r.fulfill({ json: { reply: event.text, event, options: [], source: "model" } });
+  });
+  await page.goto("/project?id=assistant-id-test");
+  await page.getByTestId("chat-input").fill("Привет");
+  await page.getByTestId("chat-send").click();
+  // Серверная запись уже заменила временную (время сообщения — серверное), а бриф ещё не отвечен.
+  await expect(page.getByTestId("msg-user").last().getByTestId("message-time")).toHaveAttribute("datetime", savedAt);
+  expect(events.map((e) => e.event_id)).toEqual(["event-0"]);
+  expect(chatIds).toEqual([]);
+  releaseBrief();
+  await expect(page.getByText("Уточните задачу презентации.")).toBeVisible();
+  expect(chatIds).toEqual(["event-0"]);
+  await page.reload();
+  await expect(page.getByText("Уточните задачу презентации.")).toBeVisible();
+  expect(chatIds).toEqual(["event-0"]);
+});
+
+test("a message that failed to save never reaches /api/chat", async ({ page }) => {
+  await page.route("**/api/projects/assistant-unsaved-test", (r) => r.fulfill({ json: {
+    project_id: "assistant-unsaved-test", title: "Новая презентация", template_id: null, brief: {}, settings: {}, files: [], events: [],
+  } }));
+  await page.route("**/api/templates", (r) => r.fulfill({ json: [] }));
+  await page.route("**/api/office/capabilities", (r) => r.fulfill({ json: { enabled: false } }));
+  await page.route("**/api/projects/assistant-unsaved-test/events", (r) => r.fulfill({ status: 500 }));
+  await page.route("**/api/brief", (r) => r.fulfill({ json: { understood: [], brief: {}, source: "heuristic" } }));
+  let chats = 0;
+  await page.route("**/api/chat", (r) => { chats++; return r.fulfill({ status: 500 }); });
+  await page.goto("/project?id=assistant-unsaved-test");
+  await page.getByTestId("chat-input").fill("Привет");
+  await page.getByTestId("chat-send").click();
+  await expect(page.getByText("Сообщение не сохранилось", { exact: false })).toBeVisible();
+  expect(chats).toBe(0);
+});

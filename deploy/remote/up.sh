@@ -93,6 +93,9 @@ do_up() {
   else
     compose_in "$repo" "$env_file" up -d --remove-orphans --no-build
   fi
+  # Caddyfile примонтирован в контейнер файлом, то есть по inode: после замены каталога repo
+  # работающий Caddy держит старый файл, а compose его не пересоздаёт (описание сервиса не менялось).
+  compose_in "$repo" "$env_file" up -d --force-recreate --no-deps --no-build caddy
 
   reanalyze_stale_templates "$repo" "$env_file"
 
@@ -140,6 +143,7 @@ do_rollback() {
   set_env_key "$env_file" PD_IMAGE_TAG "$target"
   set_env_key "$env_file" PD_BUILD_COMMIT "$(field "$(grep -F "	tag=$target	" "$server_dir/deploys.log" | head -1)" commit)"
   compose_in "$release_repo" "$env_file" up -d --remove-orphans --no-build
+  compose_in "$release_repo" "$env_file" up -d --force-recreate --no-deps --no-build caddy
   reanalyze_stale_templates "$release_repo" "$env_file"
   log_release "$server_dir" "action=rollback" "tag=$target" "previous=$current" \
     "schema=$after->$before" "url=$server_url"

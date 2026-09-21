@@ -74,7 +74,7 @@
 
 | проверка | что ищет | как | область | серьёзность | порог | входы | код | тесты |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `integrity.package` | Файл открывается и связи целы | по файлу | колода | блокирующая | — | xml | `audit/deterministic.py` | `audit/test_deterministic.py` |
+| `integrity.package` | Файл открывается и связи целы | по файлу | колода | блокирующая | — | xml | `audit/deterministic.py` | `audit/test_deterministic.py`, `audit/test_package.py` |
 | `integrity.placeholder_text` | Остался текст-заглушка | по файлу | слайд | ошибка | `markers` = ['lorem ipsum', 'todo', 'вставьте текст', 'xxx', 'ххх'] | composed_deck | `audit/deterministic.py` | — |
 | `integrity.empty_slide` | Пустой слайд или слайд с одним заголовком | по файлу | слайд | ошибка | — | composed_deck | `audit/deterministic.py` | — |
 | `integrity.raster_slide` | Слайд оказался картинкой, а не редактируемыми объектами | по файлу | слайд | блокирующая | — | composed_deck | `audit/deterministic.py` | — |

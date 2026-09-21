@@ -3,7 +3,7 @@
 import { FileButton, Group, Loader, Menu, Stack, Text, UnstyledButton } from "@mantine/core";
 import { IconCheck, IconChevronDown, IconPlus, IconTemplate } from "@tabler/icons-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from "react";
 import { api, type TemplateListItem } from "@/lib/api/client";
 import type { Project } from "@/lib/state/projects";
 import styles from "./TemplateStart.module.css";
@@ -41,6 +41,33 @@ export function TemplateStart({ project, onSelectTemplate, onUploadTemplate, gre
       if (timer) clearInterval(timer);
     };
   }, [project.template_id, menuOpen, analyzing]);
+  // Стрелки на кнопке открывают список и ведут на первый или последний пункт (паттерн menu button).
+  // Mantine монтирует список через кадр и затем двумя таймерами ставит фокус на заглушку в его
+  // начале, поэтому стрелка сразу после Enter иначе достаётся кнопке и теряется. Пока список
+  // открыт, каждый перенос фокуса на заглушку перенаправляется на нужный пункт: без таймеров.
+  const pendingFocus = useRef<"first" | "last" | null>(null);
+  useEffect(() => {
+    if (!menuOpen) pendingFocus.current = null;
+  }, [menuOpen]);
+  const arrowTarget = (key: string) => (key === "ArrowDown" ? "first" : key === "ArrowUp" ? "last" : null);
+  const onTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    const which = arrowTarget(event.key);
+    if (!which) return;
+    event.preventDefault();
+    pendingFocus.current = which;
+    if (!menuOpen) setMenuOpen(true);
+  };
+  const isPlaceholder = (node: EventTarget) => node instanceof HTMLElement && node.hasAttribute("data-autofocus");
+  const onDropdownKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const which = arrowTarget(event.key);
+    if (which && isPlaceholder(event.target)) pendingFocus.current = which;
+  };
+  const onDropdownFocus = (event: FocusEvent<HTMLDivElement>) => {
+    const which = pendingFocus.current;
+    if (!which || !isPlaceholder(event.target)) return;
+    const items = event.currentTarget.querySelectorAll<HTMLElement>("[data-menu-item]:not(:disabled)");
+    items[which === "first" ? 0 : items.length - 1]?.focus();
+  };
   const thumb = (t?: TemplateListItem) => (t?.preview ? api.templates.assetUrl(t.template_id, t.preview) : undefined);
   // Миниатюры — готовые PNG с нашего API, как в SlideImage; next/image им не нужен.
   /* eslint-disable @next/next/no-img-element */
@@ -68,6 +95,7 @@ export function TemplateStart({ project, onSelectTemplate, onUploadTemplate, gre
               className={styles.trigger}
               disabled={uploading}
               aria-busy={uploading}
+              onKeyDown={onTriggerKeyDown}
               data-testid="template-menu"
             >
               <span className={styles.preview}>
@@ -87,7 +115,7 @@ export function TemplateStart({ project, onSelectTemplate, onUploadTemplate, gre
               <IconChevronDown size={16} className={styles.chevron} aria-hidden />
             </UnstyledButton>
           </Menu.Target>
-          <Menu.Dropdown className={styles.dropdown}>
+          <Menu.Dropdown className={styles.dropdown} onFocus={onDropdownFocus} onKeyDown={onDropdownKeyDown}>
             <Menu.Item {...uploadProps} className={styles.upload} leftSection={<span className={styles.addIcon}><IconPlus size={21} /></span>} disabled={uploading} data-testid="template-upload">
               <Text size="sm" fw={600}>Добавить свой</Text>
               <Text size="xs" c="dimmed">Загрузить презентацию .pptx</Text>

@@ -184,6 +184,11 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE repairs ADD COLUMN patch TEXT;
     """,
+    # 6: вызовы модели копятся в строке задания по этапам (`add_llm_usage`): этапы идут
+    # в разных процессах, а результат генерации читает сумму. Старый код колонку не читает.
+    """
+    ALTER TABLE jobs ADD COLUMN metrics TEXT NOT NULL DEFAULT '{}';
+    """,
 ]
 
 LATEST_SCHEMA = len(MIGRATIONS)
@@ -775,6 +780,7 @@ class State:
             "error": _loads(row["error"]),
             "result": _loads(row["result"], {}),
             "stages": _loads(row["stages"], []),
+            "metrics": _loads(row["metrics"], {}),
             "rq_ids": _loads(row["rq_ids"], []),
         }
 

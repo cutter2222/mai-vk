@@ -25,7 +25,7 @@ def test_exports_are_from_same_revision_and_html_is_self_contained(tmp_path, mon
     monkeypatch.setattr(office_download, "render_thumbnails", render)
     assert office_download.export_revision(source_bytes, "pdf", None) == b"pdf-revision"
     html = office_download.export_revision(source_bytes, "html", None).decode()
-    assert 'data:image/png;base64,cG5nLXJldmlzaW9u' in html
+    assert "data:image/png;base64,cG5nLXJldmlzaW9u" in html
     assert 'alt="Слайд 1"' in html
-    assert '<script' not in html
+    assert "<script" not in html
     assert all(not path.exists() for path in sources)

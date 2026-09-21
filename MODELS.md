@@ -52,6 +52,7 @@
 | `auditor` 0.2.0 | audit | vlm | `audit.content_questions` 0.2.0 | выключено, до 4000 | json_schema |
 | `brief_extractor` 0.2.0 | import | llm | `brief.extract` 0.2.0 | выключено, до 4000 | json_schema |
 | `content_importer` 0.1.0 | import | llm | `import.fact_context` 0.1.0 | выключено, до 6000 | json_schema |
+| `project_assistant` 0.1.0 | import | llm | `chat.reply` 0.1.0 | выключено, до 1000 | json_schema |
 | `repairer` 0.1.0 | repair | llm | `repair.rewrite_block` 0.1.0 | короткое, до 10000 | json_schema |
 | `slide_editor` 0.1.0 | plan | llm | `edit.slide` 0.1.0 | выключено, до 8000 | json_schema |
 | `slot_filler` 0.1.0 | plan | llm | `fill.slots` 0.1.0 | выключено, до 6000 | json_object |

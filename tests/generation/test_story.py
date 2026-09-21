@@ -336,9 +336,13 @@ def test_pipeline_reuses_story_by_content_hash(
             stages = {s["stage"]: s for s in v["stages"]}
             assert stages["plan"]["status"] == "done" and not stages["plan"].get("cache_hit")
         assert len({p["comparison"]["text_chars_total"] for p in plans.values()}) >= 2
-        story_calls = [c for c in replay_client.recorder.calls if c.stage == "story"]
-        plan_calls = [c for c in replay_client.recorder.calls if c.stage == "plan"]
+        # Вызовы модели этапов записаны в метрики задания, а регистратор клиента опустошён.
+        llm_calls = first["metrics"]["llm_calls"]
+        story_calls = [c for c in llm_calls if c["stage"] == "story"]
+        plan_calls = [c for c in llm_calls if c["stage"] == "plan"]
         assert len(story_calls) == 1 and len(plan_calls) >= 3
+        assert first["metrics"]["totals"]["llm_calls"] == len(llm_calls) >= 4
+        assert not replay_client.recorder.calls
         second = generate({"language": "ru"}, "k2")
         assert second["metrics"]["cache"]["story_hit"] is True
         assert second["execution_mode"]["layers"]["generation.story"] == "real"
@@ -346,7 +350,7 @@ def test_pipeline_reuses_story_by_content_hash(
         for v in second["variants"]:
             stages = {s["stage"]: s for s in v["stages"]}
             assert stages["plan"].get("cache_hit") is True
-        assert len([c for c in replay_client.recorder.calls if c.stage == "story"]) == 1
+        assert not [c for c in second["metrics"]["llm_calls"] if c["stage"] == "story"]
         # Другой язык — другой смысловой ключ: записи нет, план не строится, задание честно падает.
         third = generate({"language": "en"}, "k3")
         assert third["status"] == "failed" and third["error"]["stage"] == "story"

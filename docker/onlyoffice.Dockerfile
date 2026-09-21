@@ -6,5 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 COPY docker/fonts /usr/local/share/fonts/project
 RUN fc-cache -f && /usr/bin/documentserver-generate-allfonts.sh
-COPY scripts/patch_onlyoffice_rendering.py /usr/local/bin/patch_onlyoffice_rendering.py
-RUN python3 /usr/local/bin/patch_onlyoffice_rendering.py
+# Патч интервала отрисовки (scripts/patch_onlyoffice_rendering.py) при сборке не применяется:
+# web-apps/apps/api/documents/api.js создаётся entrypoint из api.js.tpl только при старте
+# контейнера, и fail-closed проверка скрипта на этапе сборки заведомо не проходит.
+# Интервал остаётся штатным (40 мс); скрипт годится для живого Document Server.

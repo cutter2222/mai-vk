@@ -283,9 +283,28 @@ def contrast(a: tuple[int, int, int], b: tuple[int, int, int]) -> float:
 # Слова начертания: в PDF они приклеены к имени («Montserrat-Bold»), в профиле шаблона стоят
 # отдельным словом («Poppins Light»). Для сравнения гарнитур они лишние.
 WEIGHT_WORDS = {
-    "bold", "italic", "bolditalic", "oblique", "regular", "book", "roman",
-    "medium", "light", "thin", "black", "heavy", "semibold", "demibold", "extrabold",
-    "extralight", "ultralight", "condensed", "narrow", "mt", "ps", "ttf",
+    "bold",
+    "italic",
+    "bolditalic",
+    "oblique",
+    "regular",
+    "book",
+    "roman",
+    "medium",
+    "light",
+    "thin",
+    "black",
+    "heavy",
+    "semibold",
+    "demibold",
+    "extrabold",
+    "extralight",
+    "ultralight",
+    "condensed",
+    "narrow",
+    "mt",
+    "ps",
+    "ttf",
 }
 
 

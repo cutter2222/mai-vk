@@ -11,7 +11,9 @@ class SignedURLFilter(logging.Filter):
         if record.name == "uvicorn.access" and isinstance(record.args, tuple):
             record.args = tuple(
                 re.sub(r"([?&](?:token|md5)=)[^&\s\"']+", r"\1[redacted]", arg)
-                if isinstance(arg, str) else arg for arg in record.args
+                if isinstance(arg, str)
+                else arg
+                for arg in record.args
             )
             return True
         record.msg = re.sub(r"([?&](?:token|md5)=)[^&\s\"']+", r"\1[redacted]", record.getMessage())

@@ -1062,7 +1062,7 @@ def _record_llm(o: Orchestrator, job_id: str) -> None:
     ноль вызовов при работающей модели — ровно это и было.
     """
     try:
-        usage = o.take_llm_usage()
+        usage = o.layers.take_llm_usage()
         if usage:
             o.state.add_llm_usage(job_id, usage)
     except Exception:  # учёт не должен ронять задание
@@ -1533,6 +1533,7 @@ def task_variant(job_id: str, variant_id: str) -> None:
             prerendered=preview_dir,
         )
         outcome = run_variant(o.layers, ctx, emit)
+        _record_llm(o, job_id)
         if outcome.status == "failed":
             o.state.update_variant(
                 job_id, variant_id, status="failed", error=outcome.error, stages=outcome.stages

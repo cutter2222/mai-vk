@@ -80,7 +80,8 @@ def answer_without_model(state: ProjectState, text: str) -> JsonDict:
                 f"Статус генерации: {state.job_status}. Готовность презентации не подтверждена."
                 " Подробности — в карточке задания; этот ответ не запускает новых действий."
             ),
-            "options": [], "source": "rules",
+            "options": [],
+            "source": "rules",
         }
     if not state.template:
         return {

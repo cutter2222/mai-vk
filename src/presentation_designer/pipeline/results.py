@@ -134,21 +134,28 @@ def build_generation_result(state: State, job_id: str) -> JsonDict:
     if status in TERMINAL and audited:
         timeline["all_variants_audited_ms"] = _ms_between(created, max(audited))
     end = finished or _now_iso()
+    # Вызовы модели копятся в строке задания по мере завершения этапов (State.add_llm_usage).
+    usage = job.get("metrics") or {}
+    usage_totals = usage.get("totals") or {}
+    usage_cache = usage.get("cache") or {}
+    totals: JsonDict = {
+        "duration_ms": _ms_between(created, end) or 0,
+        "llm_calls": int(usage_totals.get("llm_calls") or 0),
+        "prompt_tokens": int(usage_totals.get("prompt_tokens") or 0),
+        "completion_tokens": int(usage_totals.get("completion_tokens") or 0),
+    }
+    if usage_totals.get("usage_estimated"):
+        totals["usage_estimated"] = True
     metrics: JsonDict = {
         "stages": job["stages"],
-        "llm_calls": [],
-        "totals": {
-            "duration_ms": _ms_between(created, end) or 0,
-            "llm_calls": 0,
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-        },
+        "llm_calls": list(usage.get("llm_calls") or []),
+        "totals": totals,
         "queue_wait_ms": job.get("queue_wait_ms") or 0,
-        "quota_wait_ms": 0,
-        "retries": 0,
+        "quota_wait_ms": int(usage.get("quota_wait_ms") or 0),
+        "retries": int(usage.get("retries") or 0),
         "cache": {
-            "llm_hits": 0,
-            "llm_misses": 0,
+            "llm_hits": int(usage_cache.get("llm_hits") or 0),
+            "llm_misses": int(usage_cache.get("llm_misses") or 0),
             "profile_hit": any(
                 s.get("stage") == "analyze" and s.get("cache_hit") for s in job["stages"]
             ),

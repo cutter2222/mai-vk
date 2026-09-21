@@ -24,10 +24,15 @@ def test_uvicorn_access_formatter_keeps_structured_arguments():
     from uvicorn.logging import AccessFormatter
 
     record = logging.LogRecord(
-        "uvicorn.access", logging.INFO, "", 1, '%s - "%s %s HTTP/%s" %d',
-        ("127.0.0.1", "GET", "/source?token=secret&md5=private", "1.1", 200), None,
+        "uvicorn.access",
+        logging.INFO,
+        "",
+        1,
+        '%s - "%s %s HTTP/%s" %d',
+        ("127.0.0.1", "GET", "/source?token=secret&md5=private", "1.1", 200),
+        None,
     )
     assert SignedURLFilter().filter(record)
-    text = AccessFormatter('%(request_line)s %(status_code)s').format(record)
+    text = AccessFormatter("%(request_line)s %(status_code)s").format(record)
     assert "secret" not in text and "private" not in text
     assert "token=[redacted]" in text and "200" in text

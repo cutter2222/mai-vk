@@ -39,7 +39,8 @@ def chat(body: ChatRequest, orch: Orch) -> dict[str, Any]:
     events = project["events"]
     index = next((i for i, e in enumerate(events) if e["event_id"] == body.event_id), None)
     if (
-        index is None or events[index]["role"] != "user"
+        index is None
+        or events[index]["role"] != "user"
         or not events[index].get("text", "").strip()
     ):
         raise ApiError(422, "chat_message_invalid", "Нужно сохранённое сообщение пользователя")
@@ -51,8 +52,10 @@ def chat(body: ChatRequest, orch: Orch) -> dict[str, Any]:
         materials=[f["name"] for f in project["files"] if f["kind"] == "material"],
     )
     settings = project["settings"]
-    state.slide_count = str(settings.get("exact")) if settings.get("mode") == "exact" else (
-        f"{settings.get('min', 10)}–{settings.get('max', 15)}"
+    state.slide_count = (
+        str(settings.get("exact"))
+        if settings.get("mode") == "exact"
+        else (f"{settings.get('min', 10)}–{settings.get('max', 15)}")
     )
     state.variants = settings.get("variants", [])
     if project.get("template_id"):
@@ -68,7 +71,8 @@ def chat(body: ChatRequest, orch: Orch) -> dict[str, Any]:
         if result:
             variants = result["variants"]
             chosen = next(
-                (v for v in variants if v["variant_id"] == project.get("chosen_variant")), None,
+                (v for v in variants if v["variant_id"] == project.get("chosen_variant")),
+                None,
             )
             chosen = chosen or next((v for v in variants if v["artifacts"].get("pptx")), None)
             if chosen:
@@ -82,10 +86,19 @@ def chat(body: ChatRequest, orch: Orch) -> dict[str, Any]:
         client = orch.layers.llm_client()
         skill = orch.layers.skill("project_assistant")
     answer = assistant.answer(
-        state, text, events[:index], client=client, skill=skill,
+        state,
+        text,
+        events[:index],
+        client=client,
+        skill=skill,
         deadline_s=orch.settings.timeouts.brief_s,
     )
-    event = orch.state.append_event(body.project_id, {
-        "role": "assistant", "kind": "text", "text": answer["reply"],
-    })
+    event = orch.state.append_event(
+        body.project_id,
+        {
+            "role": "assistant",
+            "kind": "text",
+            "text": answer["reply"],
+        },
+    )
     return {**answer, "event": event}

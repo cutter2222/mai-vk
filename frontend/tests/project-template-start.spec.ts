@@ -38,16 +38,34 @@ test("first chat message selects an existing template or uploads a new one witho
   const first = page.getByTestId("chat-list").getByTestId("msg-assistant").first();
   await expect(first).toContainText("Добавьте шаблон презентации или выберите уже ранее загруженный.");
   await expect(page.locator(".editor-header").getByTestId("template-menu")).toHaveCount(0);
-  await first.getByTestId("template-menu").click();
+  const trigger = first.getByTestId("template-menu");
+  await trigger.click();
   await expect(page.getByRole("menuitem").first()).toContainText("Добавить свой");
   await page.keyboard.press("Escape");
   await expect(page.getByRole("menu")).not.toBeVisible();
-  await first.getByTestId("template-menu").focus();
+  // После клика мышью Safari не держит фокус на кнопке, поэтому возврат фокуса проверяется
+  // только для открытия с клавиатуры.
+  await trigger.focus();
+  // Enter открывает список; стрелка сразу после него ведёт на первый пункт, даже если Mantine
+  // ещё не перенёс фокус внутрь списка.
   await page.keyboard.press("Enter");
   await expect(page.getByRole("menu")).toBeVisible();
   await page.keyboard.press("ArrowDown");
   await expect(page.getByRole("menuitem").first()).toBeFocused();
-  await page.getByTestId("template-option-tpl-existing").click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).not.toBeVisible();
+  await expect(trigger).toBeFocused();
+  // Стрелки на закрытой кнопке открывают список и встают на первый или последний пункт.
+  await page.keyboard.press("ArrowUp");
+  await expect(page.getByRole("menuitem").last()).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("menuitem").first()).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByTestId("template-option-tpl-existing")).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("menu")).not.toBeVisible();
   await expect(page.getByTestId("template-menu")).toContainText("Фирменный");
   await expect(page.getByText("Шаблон выбран. Опишите задачу презентации или добавьте материалы.")).toBeVisible();
   await expect.poll(() => project.template_id).toBe("tpl-existing");
