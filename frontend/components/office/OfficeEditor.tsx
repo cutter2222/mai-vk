@@ -1,0 +1,243 @@
+"use client";
+
+import { ActionIcon, Alert, Button, Group, Loader, Menu, Select, Stack, Text } from "@mantine/core";
+import { IconDots, IconDownload } from "@tabler/icons-react";
+import Link from "next/link";
+import { useEffect, useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
+import { createPortal } from "react-dom";
+
+import { api, type OfficeDocument } from "@/lib/api/client";
+import { downloadArtifact } from "@/lib/download";
+
+type Editor = { destroyEditor: () => void; requestClose: () => void };
+export type OfficeEditHandle = { edit: (instruction: string) => Promise<string> };
+let sdkPromise: Promise<void> | undefined;
+
+export function loadSDK(url: string): Promise<void> {
+  if (!sdkPromise) {
+    sdkPromise = new Promise<void>((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = url;
+      script.onload = () => resolve();
+      script.onerror = () => {
+        script.remove();
+        sdkPromise = undefined;
+        reject(new Error("Не удалось загрузить ONLYOFFICE. Проверьте запуск сервиса."));
+      };
+      // DocsAPI discovers its base URL from this element on every editor creation.
+      // Keep it after closing the editor, including across client-side navigation.
+      document.head.appendChild(script);
+    });
+  }
+  return sdkPromise;
+}
+declare global {
+  interface Window {
+    DocsAPI?: { DocEditor: new (id: string, config: Record<string, unknown>) => Editor };
+  }
+}
+
+export function OfficeEditor({ id, title, embedded = false, onActiveChange, documentActions, editRef, actionsTarget }: {
+  id: string;
+  title?: string;
+  embedded?: boolean;
+  onActiveChange?: (active: boolean) => void;
+  documentActions?: ReactNode;
+  editRef?: Ref<OfficeEditHandle>;
+  actionsTarget?: HTMLElement | null;
+}) {
+  const [doc, setDoc] = useState<OfficeDocument | null>(null);
+  const [error, setError] = useState("");
+  const [ready, setReady] = useState(false);
+  const [closed, setClosed] = useState(false);
+  const [version, setVersion] = useState<string | null>(null);
+  const [modified, setModified] = useState(false);
+  const [pollError, setPollError] = useState("");
+  const [startFailed, setStartFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const editorId = useId();
+  const [editing, setEditing] = useState(false);
+  const busy = useRef(false);
+  const mounted = useRef(true);
+  const sdk = useRef<Editor | null>(null);
+  const dirty = useRef(false);
+  const closeRequested = useRef<(() => void) | null>(null);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+
+  useImperativeHandle(editRef, () => ({ edit: async (instruction: string) => {
+    if (busy.current) throw new Error("Предыдущая ИИ-правка ещё выполняется.");
+    if (!ready || error || pollError || doc?.error) throw new Error("Сначала дождитесь готовности редактора и устраните ошибку сохранения.");
+    busy.current = true;
+    setEditing(true);
+    let saved = false;
+    try {
+      if (!closed) {
+        // Keep the iframe alive while unsent edits flush to Document Server.
+        const flushUntil = Date.now() + 30000;
+        while (dirty.current && Date.now() < flushUntil) {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          if (!mounted.current) throw new Error("Страница закрыта.");
+        }
+        if (dirty.current) throw new Error("ONLYOFFICE ещё не отправил правки. Сохраните документ и повторите запрос; редактор оставлен открытым.");
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => { closeRequested.current = null; reject(new Error("Редактор не подтвердил закрытие. Сохраните документ и повторите запрос.")); }, 15000);
+          closeRequested.current = () => {
+            clearTimeout(timer);
+            closeRequested.current = null;
+            if (dirty.current) reject(new Error("Есть несохранённые изменения; редактор оставлен открытым."));
+            else { setClosed(true); resolve(); }
+          };
+          if (!sdk.current) { clearTimeout(timer); closeRequested.current = null; reject(new Error("Редактор недоступен.")); }
+          else sdk.current.requestClose();
+        });
+      }
+      // Closing the SDK starts final save. A clean client flag is NOT a storage ack.
+      const until = Date.now() + 90000;
+      while (Date.now() < until) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        if (!mounted.current) throw new Error("Страница закрыта; ИИ-правка не запущена.");
+        const current = await api.office.get(id);
+        if (current.error) throw new Error(current.error);
+        if (current.active_key) continue;
+        saved = true;
+        const result = await api.office.edit(id, current.revision, instruction);
+        if (mounted.current) { setDoc(result.document); setVersion(null); }
+        return result.changed ? `Правка сохранена в этом PPTX · v${result.document.revision}. ${result.message}` : `Документ не изменён. ${result.message}`;
+      }
+      throw new Error("Сохранение не подтверждено. Закройте другие вкладки этого документа и повторите запрос. PPTX не перезаписан.");
+    } finally {
+      busy.current = false;
+      if (mounted.current) {
+        setEditing(false);
+        if (saved) { setReady(false); setModified(false); setError(""); setClosed(false); }
+      }
+    }
+  } }), [id, ready, error, pollError, doc?.error, closed]);
+
+  useEffect(() => {
+    onActiveChange?.(editing || !closed || !doc || Boolean(doc.active_key) || Boolean(pollError));
+  }, [closed, doc, pollError, onActiveChange, editing]);
+
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const value = await api.office.get(id);
+        if (!cancelled) {
+          setDoc(value);
+          setPollError("");
+        }
+      } catch (e) {
+        if (!cancelled) setPollError(e instanceof Error ? e.message : "Сервер недоступен");
+      } finally {
+        if (!cancelled) timer = setTimeout(poll, 2000);
+      }
+    };
+    void poll();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [id]);
+
+  useEffect(() => {
+    if (!id || closed) return;
+    let cancelled = false;
+    let editor: Editor | undefined;
+    const start = async () => {
+      const response = await api.office.config(id);
+      if (cancelled) return;
+      await loadSDK(response.script_url);
+      if (cancelled) return;
+      if (!window.DocsAPI) throw new Error("ONLYOFFICE SDK не загрузился. Попробуйте открыть редактор снова.");
+      editor = new window.DocsAPI.DocEditor(editorId, {
+        ...response.config,
+        events: {
+          onDocumentReady: () => { if (!cancelled) setReady(true); },
+          onDocumentStateChange: (event: { data: boolean }) => { if (!cancelled) { dirty.current = event.data; setModified(event.data); } },
+          onRequestClose: () => { if (!cancelled) closeRequested.current?.(); },
+          onError: () => { if (!cancelled) setError("Ошибка ONLYOFFICE. Не закрывайте вкладку до подтверждения сохранения на сервере."); },
+        },
+      });
+      sdk.current = editor;
+    };
+    void start().catch((e: Error) => { if (!cancelled) { setError(e.message); setStartFailed(true); } });
+    return () => { cancelled = true; if (sdk.current === editor) sdk.current = null; editor?.destroyEditor(); };
+  }, [id, closed, editorId, attempt]);
+
+  const [downloading, setDownloading] = useState(false);
+  const download = async (format: "pptx" | "pdf" | "html") => {
+    if (!id || !doc) return;
+    const revision = version === null ? doc.revision : Number(version);
+    setDownloading(true);
+    try {
+      await downloadArtifact(api.office.downloadUrl(id, revision, format), `${title || `office-${id}`}-v${revision}.${format}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Файл не скачан");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  if (!id) return <Alert color="red">Офисная копия не указана. Откройте её из проекта.</Alert>;
+  const actions = (
+        <Group gap="xs" wrap="nowrap">
+          <Menu withinPortal position="bottom-end" width={180} shadow="md">
+            <Menu.Target>
+              <ActionIcon variant="subtle" color="gray" aria-label="Скачать презентацию" title="Скачать презентацию" loading={downloading} disabled={!doc || Boolean(pollError)} data-testid="download-menu">
+                <IconDownload size={18} />
+              </ActionIcon>
+            </Menu.Target>
+            <Menu.Dropdown>
+              {(["pptx", "pdf", "html"] as const).map((format) => (
+                <Menu.Item key={format} onClick={() => void download(format)} data-testid={`dl-${format}`}>{format.toUpperCase()}</Menu.Item>
+              ))}
+            </Menu.Dropdown>
+          </Menu>
+          <Menu withinPortal position="bottom-end" width={300} closeOnItemClick={false}>
+            <Menu.Target>
+              <ActionIcon variant="subtle" color="gray" aria-label="Действия с презентацией"><IconDots size={18} /></ActionIcon>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Text size="xs" c="dimmed" px="sm" pb="xs" role="status">
+                {pollError ? "Сохранение не подтверждено" : modified ? "Есть несохранённые правки" : doc ? `На сервере · v${doc.revision}` : "Проверяем сохранение…"}
+              </Text>
+              <Menu.Label>Сохранённые версии</Menu.Label>
+              <Select mx="xs" mb="xs" size="xs" aria-label="Сохранённая версия для скачивания" value={version} onChange={setVersion} clearable
+                comboboxProps={{ withinPortal: false }} placeholder={`Последняя: v${doc?.revision ?? 0}`}
+                data={(doc?.revisions ?? []).map((r) => ({ value: String(r.revision), label: `v${r.revision} · ${r.revision === 0 ? "начальная версия" : "сохранено на сервере"}` }))} />
+              <Text size="xs" c="dimmed" px="sm" pb="xs">Ctrl+S / ⌘S — сохранить. Скачивается серверная версия; последние правки могут ещё сохраняться.</Text>
+              {documentActions}
+              <Menu.Divider />
+              <Menu.Item disabled={closed || editing} onClick={() => setClosed(true)}>Завершить редактирование</Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
+        </Group>
+  );
+
+  return (
+    <Stack gap={0} className="office-workspace" data-testid="office-workspace" style={{ height: embedded ? "100%" : "100dvh" }}>
+      {actionsTarget && createPortal(actions, actionsTarget)}
+      {pollError && <Alert color="yellow">Не удаётся проверить сохранение: {pollError}</Alert>}
+      {(error || doc?.error) && <Alert color="red">
+        {error || doc?.error}
+        {startFailed && !closed && <Button ml="sm" size="xs" variant="light" onClick={() => { setError(""); setStartFailed(false); setAttempt((n) => n + 1); }}>Повторить загрузку редактора</Button>}
+      </Alert>}
+      {editing && <Alert color="blue" title="ИИ редактирует этот PPTX">Ожидаем сохранения ONLYOFFICE и применяем точечную правку. Редактор откроется автоматически. Не закрывайте страницу.</Alert>}
+      {closed ? (editing ? null : (
+        <Alert color={!doc || doc.active_key || pollError ? "yellow" : "green"}>
+          {!doc || doc.active_key || pollError ? "Ожидаем завершения сессии и сохранения. Если файл открыт в другой вкладке, завершите редактирование и там." : "Сессия закрыта. Последняя серверная версия доступна для скачивания."}
+          {doc && !doc.active_key && !pollError && <Button ml="md" variant="light" onClick={() => { setReady(false); setModified(false); setError(""); setClosed(false); }}>Открыть снова</Button>}
+          {!embedded && doc && !doc.active_key && <Button component={Link} href="/" ml="md" variant="subtle">К проектам</Button>}
+        </Alert>
+      )) : (
+        <>
+          <div className="office-canvas" inert={editing} aria-label="Редактор презентации ONLYOFFICE">
+            {!ready && !error && <div className="office-loading"><Loader size="sm" /><Text size="sm">Загружается редактор…</Text></div>}
+            <div id={editorId} />
+          </div>
+        </>
+      )}
+      {!embedded && !actionsTarget && <Group justify="flex-end" p="xs">{actions}</Group>}
+    </Stack>
+  );
+}

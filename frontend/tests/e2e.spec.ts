@@ -31,7 +31,7 @@ test.describe("сквозной сценарий в чате на заглушк
     const projectId = await projectIdAfterAction(page);
     // На сервере уже разобранный шаблон отдаётся из кэша сразу: состояние «разбираю» может не появиться.
     await expect(page.getByTestId("template-analyzing").or(page.getByTestId("template-profile").last())).toBeVisible();
-    // Текущий шаблон виден в шапке, в списке он отмечен галочкой
+    // Текущий шаблон виден в первом сообщении чата, в списке он отмечен галочкой
     await expect(page.getByTestId("template-menu")).toContainText("Корпоративный шаблон");
     await page.getByTestId("template-menu").click();
     // В библиотеке сервера может быть несколько шаблонов с таким именем (другие байты файла) — достаточно первого.
@@ -323,20 +323,14 @@ test.describe("сквозной сценарий в чате на заглушк
     await card.click();
     await page.waitForURL(new RegExp(`/templates\\?id=${templateId}`));
 
-    // Карточка шаблона: четыре раздела — стиль, слайды файла, композиции со слотами и разбор
-    // (дизайн-система, макеты, дайджест и JSON одной страницей).
+    // Правила оформления объединены со стилем; технические данные — в «О файле».
     await expect(page.getByTestId("template-detail")).toContainText("Корпоративный шаблон");
     await expect(page.getByTestId("section-style")).toBeVisible();
-    await page.getByTestId("section-patterns").click();
-    await page.locator('[data-testid^="pattern-card-"]').first().click();
-    await expect(page.getByTestId("pattern-modal")).toBeVisible();
-    await expect(page.getByTestId("slots-table")).toBeVisible();
-    await expect(page.locator('[data-testid^="issue-box-"]').first()).toBeVisible();
-    await page.keyboard.press("Escape");
-    await page.getByTestId("section-slides").click();
-    await expect(page.locator('[data-testid^="sample-slide-"]').first()).toBeVisible();
-    await page.getByTestId("section-details").click();
+    await expect(page.getByTestId("section-patterns")).toHaveCount(0);
+    await expect(page.getByTestId("section-slides")).toHaveCount(0);
     await expect(page.getByTestId("frame-sketch")).toBeVisible();
+    await expect(page.getByTestId("design-guidelines")).toBeVisible();
+    await page.getByRole("button", { name: "О файле", exact: true }).click();
     await expect(page.getByTestId("structure-layouts")).toBeVisible();
     await expect(page.getByTestId("digest-text")).toBeVisible();
     await page.getByTestId("back-templates").click();
@@ -355,7 +349,7 @@ test.describe("сквозной сценарий в чате на заглушк
       // Проект остался без шаблона, карточка в чате помечена.
       await page.goto(`/project?id=${projectId}`);
       await expect(page.getByTestId("template-card").last()).toContainText("удалён из библиотеки");
-      await expect(page.getByTestId("template-menu")).toContainText("Шаблон не выбран");
+      await expect(page.getByTestId("template-menu")).toContainText("Выбрать шаблон");
       expect(errors.filter((e) => !/404/.test(e)), errors.join("\n")).toEqual([]);
     }
   });
@@ -572,13 +566,11 @@ test.describe("сквозной сценарий в чате на заглушк
       await chooser.setFiles([{ name: "photo.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64") }]);
       await expect(page.getByTestId("picture-properties")).toContainText("photo.png", { timeout: 15000 });
     }
-    // Клик по пустому месту холста закрывает правку: ящик уезжает. Холст остаётся, пока
-    // черновик слайда не применён (картинка ревизии ещё старая), но уже без правки.
+    // Пустое место снимает выделение, но оставляет инструменты правки доступными.
     await page.getByTestId("slide-canvas").click({ position: { x: 4, y: 4 } });
     await expect(page.getByTestId("object-panel")).toHaveCount(0);
-    await expect(page.getByTestId("slide-canvas")).toHaveAttribute("data-editable", "false");
+    await expect(page.getByTestId("slide-canvas")).toHaveAttribute("data-editable", "true");
     // Фон слайда: своя кнопка под слайдом, цвет из палитры
-    await page.getByTestId("toggle-editor").click();
     await page.getByTestId("toggle-slide-props").click();
     await expect(page.getByTestId("background-panel")).toBeVisible();
     await page.getByTestId("bg-kind").getByText("Цвет").click();

@@ -1,20 +1,15 @@
 "use client";
 
-import { ActionIcon, Group, Menu, Text, Tooltip } from "@mantine/core";
+import { ActionIcon, Group, Text, Tooltip } from "@mantine/core";
 import { Dropzone } from "@mantine/dropzone";
-import { notifications } from "@mantine/notifications";
-import { IconDownload, IconFile, IconFileTypePpt, IconPhoto, IconTable, IconTrash, IconUpload, IconVideo } from "@tabler/icons-react";
+import { IconFile, IconFileTypePpt, IconPhoto, IconTable, IconTrash, IconUpload, IconVideo } from "@tabler/icons-react";
 import { useRef } from "react";
 
-import { api, ApiError } from "@/lib/api/client";
-import { downloadArtifact } from "@/lib/download";
-import { formatBytes, VARIANT_LABELS } from "@/lib/format";
-import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
+import { formatBytes } from "@/lib/format";
 import type { Project, ProjectFile } from "@/lib/state/projects";
 
 interface Props {
   project: Project;
-  session: GenerationSession;
   onAdd: (files: File[]) => void;
   onRemove: (fileId: string) => void;
   onSelectTemplate: (templateId: string) => void;
@@ -42,11 +37,10 @@ function icon(type: FileType) {
   return <IconFile size={18} stroke={1.5} />;
 }
 
-/** Всё, что лежит в проекте, по типам, и собранные сервисом файлы. Вся панель принимает перетаскивание. */
-export function FilesPanel({ project, session, onAdd, onRemove, onSelectTemplate }: Props) {
+/** Входные файлы проекта по типам. Готовый PPTX скачивается только из редактора. */
+export function FilesPanel({ project, onAdd, onRemove, onSelectTemplate }: Props) {
   const openRef = useRef<() => void>(null);
   const groups = TYPE_ORDER.map((type) => ({ type, files: project.files.filter((f) => typeOf(f) === type) })).filter((g) => g.files.length > 0);
-  const result = session.result;
 
   const role = (f: ProjectFile): { text: string; active: boolean } => {
     if (f.kind === "template") return f.template_id === project.template_id ? { text: "шаблон проекта", active: true } : f.template_id ? { text: "в библиотеке шаблонов", active: false } : { text: "не загружен", active: false };
@@ -54,14 +48,6 @@ export function FilesPanel({ project, session, onAdd, onRemove, onSelectTemplate
     return typeOf(f) === "presentation" ? { text: "ждёт ответа в чате", active: false } : { text: "не используется при генерации", active: false };
   };
 
-  const download = (name: string, label: string) => async () => {
-    if (!session.jobId) return;
-    try {
-      await downloadArtifact(api.generations.artifactUrl(session.jobId, name), label);
-    } catch (e) {
-      notifications.show({ color: "red", title: "Файл не скачан", message: e instanceof ApiError ? e.message : "Неизвестная ошибка" });
-    }
-  };
 
   return (
     <Dropzone
@@ -108,36 +94,6 @@ export function FilesPanel({ project, session, onAdd, onRemove, onSelectTemplate
           </section>
         ))}
 
-        {result && (
-          <section className="files-group">
-            <Text size="xs" c="dimmed" fw={500} mb={4}>Собрано сервисом · {result.variants.length}</Text>
-            {result.variants.map((v) => {
-              const a = v.artifacts;
-              const ready = Boolean(a?.pptx);
-              return (
-                <div key={v.variant_id} className="file-row">
-                  <span className="file-icon"><IconFileTypePpt size={18} stroke={1.5} /></span>
-                  <div className="file-main">
-                    <Text size="sm">{VARIANT_LABELS[v.variant_id] ?? v.variant_id} · ревизия {v.revision}</Text>
-                    <Text size="xs" c="dimmed">{ready ? `${v.slide_count ?? a?.thumbnails?.length ?? 0} слайдов · PPTX, PDF, HTML` : v.status === "failed" ? "не собран" : "собирается"}</Text>
-                  </div>
-                  <div className="file-actions" data-always>
-                    <Menu withinPortal position="bottom-end" disabled={!ready}>
-                      <Menu.Target>
-                        <ActionIcon variant="subtle" color="gray" size="sm" disabled={!ready} aria-label="Скачать"><IconDownload size={14} /></ActionIcon>
-                      </Menu.Target>
-                      <Menu.Dropdown>
-                        {a?.pptx && <Menu.Item onClick={download(a.pptx, `${project.title}-${v.variant_id}.pptx`)}>PPTX</Menu.Item>}
-                        {a?.pdf && <Menu.Item onClick={download(a.pdf, `${project.title}-${v.variant_id}.pdf`)}>PDF</Menu.Item>}
-                        {a?.html && <Menu.Item onClick={download(a.html, `${project.title}-${v.variant_id}.html`)}>HTML</Menu.Item>}
-                      </Menu.Dropdown>
-                    </Menu>
-                  </div>
-                </div>
-              );
-            })}
-          </section>
-        )}
 
         <button type="button" className="files-drop-hint" onClick={() => openRef.current?.()} data-testid="files-add">
           <IconUpload size={18} stroke={1.5} />

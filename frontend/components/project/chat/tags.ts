@@ -82,6 +82,11 @@ export function isStaleStep(message: ChatMessage, jobId: string | null): boolean
   return false;
 }
 
+/** Исторические отчёты остаются в данных проекта, но не в интерфейсе редактора. */
+export function isVisibleProjectMessage(message: ChatMessage, jobId: string | null): boolean {
+  return !isStaleStep(message, jobId) && tagOf(message) !== "audit";
+}
+
 /** Сколько сообщений под каждой меткой: пустые метки в ряд не попадают. */
 export function countTags(messages: ChatMessage[]): Record<ChatTag, number> {
   const counts = { message: 0, template: 0, materials: 0, brief: 0, job: 0, audit: 0, edit: 0 };

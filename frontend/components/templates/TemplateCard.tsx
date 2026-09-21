@@ -19,7 +19,7 @@ export function TemplateCard({ item, onOpen, onDelete }: Props) {
   const src = item.preview ? api.templates.assetUrl(item.template_id, item.preview) : null;
   const analyzing = item.status === "queued" || item.status === "running";
   const tone = item.status === "succeeded" ? "ok" : item.status === "failed" ? "bad" : "warn";
-  const statusLabel = item.status === "succeeded" ? "Разобран" : item.status === "failed" ? "Анализ не удался" : "Анализируется";
+  const statusLabel = item.status === "succeeded" ? "Готов к работе" : item.status === "failed" ? "Анализ не удался" : "Анализируется";
   const meta = [
     item.slide_count ? `${item.slide_count} слайдов` : null,
     item.pattern_count ? `${item.pattern_count} композиций` : null,
@@ -28,7 +28,7 @@ export function TemplateCard({ item, onOpen, onDelete }: Props) {
     .join(" · ");
 
   return (
-    <div className="grid-card" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => e.key === "Enter" && onOpen()} data-testid={`template-card-${item.template_id}`}>
+    <div className="grid-card tpl-library-card" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(); } }} data-testid={`template-card-${item.template_id}`}>
       <div className="grid-card-thumb">
         {src ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -56,7 +56,10 @@ export function TemplateCard({ item, onOpen, onDelete }: Props) {
           <span className="quiet-status" data-tone={tone} style={{ fontSize: 12 }} data-testid={`template-status-${item.status}`}><i />{statusLabel}</span>
           {meta && <Text size="xs" c="dimmed" truncate>· {meta}</Text>}
         </Group>
-        <Text size="xs" c="dimmed" mt={2}>{formatDate(item.created_at)}</Text>
+        <Group justify="space-between" mt="sm">
+          <Text size="xs" c="dimmed">{formatDate(item.created_at)}</Text>
+          <div className="tpl-mini-palette" aria-label="Палитра шаблона">{item.colors?.slice(0, 5).map((color, index) => <span key={`${color}-${index}`} style={{ background: color }} title={color} />)}</div>
+        </Group>
       </div>
     </div>
   );

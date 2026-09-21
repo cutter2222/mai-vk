@@ -1,10 +1,10 @@
 "use client";
 
-import { ActionIcon, Alert, Button, Container, Loader, Menu, Progress, Stack, Text, Title, Tooltip } from "@mantine/core";
-import { IconAlertTriangle, IconArrowLeft, IconDots, IconExternalLink, IconLayoutBoard, IconLayoutGrid, IconListDetails, IconPalette, IconTrash } from "@tabler/icons-react";
+import { ActionIcon, Alert, Button, Container, Loader, Menu, Stack, Text, Title, Tooltip } from "@mantine/core";
+import { IconAlertTriangle, IconArrowLeft, IconDots, IconDownload, IconExternalLink, IconFileTypePpt, IconListDetails, IconPalette, IconTrash } from "@tabler/icons-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { api, ApiError, type TemplateDetail as Detail } from "@/lib/api/client";
@@ -15,21 +15,32 @@ import { DeleteTemplateModal } from "./DeleteTemplateModal";
 import { DesignCodeSection } from "./sections/DesignCodeSection";
 import { DesignSystemSection } from "./sections/DesignSystemSection";
 import { DigestSection } from "./sections/DigestSection";
-import { PatternsSection } from "./sections/PatternsSection";
-import { SlidesSection } from "./sections/SlidesSection";
 import { StructureSection } from "./sections/StructureSection";
 import { templateTitle } from "./TemplateCard";
+import { TemplateSourceViewer } from "./TemplateSourceViewer";
 
 const DONE = new Set(["succeeded", "failed"]);
 
 /** Карточка шаблона: что извлёк анализ, по вкладкам. Пока анализ идёт, страница опрашивает сервер. */
-type Section = "style" | "slides" | "patterns" | "details";
+type Section = "style" | "details" | "source";
+
+const SECTION_COPY: Record<Section, [string, string]> = {
+  style: ["Дизайн-система", "Цвета, типографика, геометрия и правила оформления из вашего файла. На их основе создаются новые слайды."],
+  details: ["О файле", "Ресурсы, макеты и технические сведения о шаблоне. Здесь можно проверить результаты анализа и предупреждения."],
+  source: ["Слайды", "Просмотр в ONLYOFFICE · без изменения шаблона. Обновлённый файл загрузите в библиотеку заново, чтобы пересчитать профиль."],
+};
 
 export function TemplateDetail({ templateId }: { templateId: string }) {
   const router = useRouter();
   const detail = usePolling<Detail>(() => api.templates.get(templateId), (d) => DONE.has(d.status), [templateId]);
   const [deleting, setDeleting] = useState(false);
   const [section, setSection] = useState<Section>("style");
+  const [officeEnabled, setOfficeEnabled] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void api.office.capabilities().then((value) => { if (!cancelled) setOfficeEnabled(value.enabled); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const data = detail.data;
   const profile = data?.profile;
   // Собственные композиции библиотеки приходят в профиле рядом с паттернами файла
@@ -60,20 +71,11 @@ export function TemplateDetail({ templateId }: { templateId: string }) {
     ? [`${profile.stats.slides} слайдов`, formatBytes(profile.source_file.size_bytes), profile.created_at ? formatDate(profile.created_at) : null].filter(Boolean).join(" · ")
     : null;
 
-  /* Разделы по делу, а не по устройству разбора. Раньше их было шесть, и они назывались
-     внутренними понятиями («макеты и ресурсы», «для модели», «подробности разбора») — читалось
-     как приборная панель. Осталось три: как выглядит, из чего состоит, чем можно верстать.
-     Технические подробности собраны в четвёртый, служебный. */
+  // SDK загружается только по запросу пользователя в разделе «Слайды».
   const SECTIONS: Array<{ key: Section; label: string; icon: React.ReactNode; count?: number }> = [
     { key: "style", label: "Стиль", icon: <IconPalette size={16} stroke={1.7} /> },
-    {
-      key: "slides",
-      label: "Слайды",
-      icon: <IconLayoutGrid size={16} stroke={1.7} />,
-      count: profile?.sample_slides?.length ?? data?.previews.length,
-    },
-    { key: "patterns", label: "Композиции", icon: <IconLayoutBoard size={16} stroke={1.7} />, count: templatePatterns.length },
-    { key: "details", label: "Разбор", icon: <IconListDetails size={16} stroke={1.7} /> },
+    ...(officeEnabled ? [{ key: "source" as const, label: "Слайды", icon: <IconFileTypePpt size={16} stroke={1.7} />, count: profile?.stats.slides }] : []),
+    { key: "details", label: "О файле", icon: <IconListDetails size={16} stroke={1.7} /> },
   ];
 
   return (
@@ -88,6 +90,7 @@ export function TemplateDetail({ templateId }: { templateId: string }) {
         <StatusBadge status={data.status === "succeeded" ? "ready" : data.status} />
         <Text size="xs" c="dimmed" lineClamp={1} className="tpl-meta">{meta}</Text>
         <div style={{ flex: 1 }} />
+        {officeEnabled && profile && <Button size="xs" variant="light" leftSection={<IconFileTypePpt size={16} />} onClick={() => setSection(section === "source" ? "style" : "source")} data-testid="template-open-source">{section === "source" ? "К стилю" : "Смотреть слайды"}</Button>}
         {/* JSON и удаление в ТЗ не требуются: это наши функции, поэтому они в меню. */}
         <Menu withinPortal position="bottom-end" shadow="md">
           <Menu.Target>
@@ -96,6 +99,7 @@ export function TemplateDetail({ templateId }: { templateId: string }) {
             </ActionIcon>
           </Menu.Target>
           <Menu.Dropdown>
+            <Menu.Item component="a" href={api.templates.sourceUrl(templateId)} leftSection={<IconDownload size={14} />}>Скачать исходный PPTX</Menu.Item>
             <Menu.Item component="a" href={api.templates.detailUrl(templateId)} target="_blank" rel="noreferrer" leftSection={<IconExternalLink size={14} />}>
               JSON профиля
             </Menu.Item>
@@ -117,19 +121,20 @@ export function TemplateDetail({ templateId }: { templateId: string }) {
           <Stack align="center" gap="xs" data-testid="template-analyzing">
             <Loader size="sm" />
             <Text fw={600}>Шаблон анализируется</Text>
-            <Progress value={65} animated size="sm" w={260} />
             <Text size="sm" c="dimmed" ta="center" maw={420}>Рендерим слайды, собираем палитру, шрифты и композиции. Страница обновится сама.</Text>
           </Stack>
         </div>
       ) : (
         <div className="tpl-body">
           <nav className="tpl-nav" aria-label="Разделы шаблона">
+            <Text size="xs" c="dimmed" fw={600} tt="uppercase" px="sm" mb="sm">Содержимое шаблона</Text>
             {SECTIONS.map((item) => (
               <button
                 key={item.key}
                 type="button"
                 className="tpl-nav-item"
                 data-active={section === item.key || undefined}
+                aria-current={section === item.key ? "page" : undefined}
                 onClick={() => setSection(item.key)}
                 data-testid={`section-${item.key}`}
               >
@@ -138,21 +143,28 @@ export function TemplateDetail({ templateId }: { templateId: string }) {
                 {item.count ? <b>{item.count}</b> : null}
               </button>
             ))}
+            <div className="tpl-nav-note"><Text size="xs" c="dimmed">Анализ исходного PPTX</Text><Text size="sm" fw={600} mt={6}>{profile.stats.slides} слайдов · {templatePatterns.length} композиций</Text><Text size="xs" c="dimmed" mt={8}>Шаблон доступен для выбора в любой презентации.</Text></div>
           </nav>
 
-          <main className="tpl-content">
-            {section === "style" && <DesignCodeSection profile={profile} />}
-            {section === "slides" && <SlidesSection templateId={templateId} profile={profile} previews={data.previews} />}
-            {section === "patterns" && (
-              <PatternsSection templateId={templateId} profile={{ ...profile, patterns: templatePatterns }} />
+          <main className="tpl-content" data-source={section === "source" || undefined}>
+            <div className="tpl-section-heading">
+              <Text size="xs" fw={600} c="dimmed" tt="uppercase" mb={6}>Шаблон / {SECTIONS.find((item) => item.key === section)?.label}</Text>
+              <Title order={2}>{SECTION_COPY[section][0]}</Title>
+              <Text size="sm" c="dimmed" mt="xs" maw={760}>{SECTION_COPY[section][1]}</Text>
+            </div>
+            {section === "style" && (
+              <Stack gap={28}>
+                <DesignCodeSection profile={profile} />
+                <DesignSystemSection profile={profile} />
+              </Stack>
             )}
             {section === "details" && (
-              <Stack gap={44}>
-                <DesignSystemSection profile={profile} />
-                <StructureSection profile={profile} />
+              <Stack gap={24}>
+                <StructureSection profile={profile} templateId={templateId} />
                 <DigestSection profile={profile} />
               </Stack>
             )}
+            {section === "source" && <TemplateSourceViewer templateId={templateId} />}
           </main>
         </div>
       )}

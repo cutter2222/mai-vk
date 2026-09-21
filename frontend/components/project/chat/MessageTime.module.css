@@ -1,0 +1,8 @@
+.time {
+  display: block;
+  margin-top: 5px;
+  color: var(--mantine-color-dimmed);
+  font-size: 11px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}

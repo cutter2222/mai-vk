@@ -17,6 +17,16 @@ import type {
 } from "./types";
 
 /** Ответы операций, не описанных отдельной схемой (см. contracts/README.md, раздел HTTP API). */
+export interface OfficeDocument {
+  id: string;
+  source: string;
+  title: string;
+  revision: number;
+  active_key: string | null;
+  error: string | null;
+  revisions: { revision: number; sha256: string; saved_at: number }[];
+}
+
 export interface HealthResponse {
   status: "ok" | "degraded" | "down";
   workers: { analysis: number; generation: number };
@@ -142,6 +152,15 @@ function json(body: unknown, method = "POST"): RequestInit {
 }
 
 export const api = {
+  office: {
+    capabilities: () => request<{ enabled: boolean }>("/office/capabilities"),
+    templateConfig: (id: string) => request<{ script_url: string; config: Record<string, unknown> }>(`/office/templates/${encodeURIComponent(id)}/config`, json({})),
+    create: (jobId: string, artifact: string) => request<OfficeDocument>("/office/documents", json({ job_id: jobId, artifact })),
+    get: (id: string) => request<OfficeDocument>(`/office/documents/${encodeURIComponent(id)}`),
+    edit: (id: string, revision: number, instruction: string) => request<{ document: OfficeDocument; changed: boolean; message: string }>(`/office/documents/${encodeURIComponent(id)}/edit`, json({ revision, instruction })),
+    config: (id: string) => request<{ script_url: string; config: Record<string, unknown> }>(`/office/documents/${encodeURIComponent(id)}/config`, json({})),
+    downloadUrl: (id: string, revision: number, format: "pptx" | "pdf" | "html" = "pptx") => `${API_BASE}/office/documents/${encodeURIComponent(id)}/download/${revision}${format === "pptx" ? "" : `?format=${format}`}`,
+  },
   health: () => request<HealthResponse>("/health"),
   capabilities: () => request<CapabilitiesResponse>("/capabilities"),
 
@@ -187,12 +206,15 @@ export const api = {
     mediaUrl: (id: string, assetId: string) => `${API_BASE}/templates/${encodeURIComponent(id)}/media/${encodeURIComponent(assetId)}`,
     /** Адрес профиля целиком: открыть JSON в новой вкладке. */
     detailUrl: (id: string) => `${API_BASE}/templates/${encodeURIComponent(id)}`,
+    sourceUrl: (id: string) => `${API_BASE}/templates/${encodeURIComponent(id)}/source`,
   },
 
   /** Бриф из свободного сообщения чата. Поля, которых нет в тексте, сервер не заполняет. */
   brief: {
     extract: (text: string, brief?: Record<string, unknown>) => request<BriefExtractResponse>("/brief", json({ text, brief })),
   },
+
+  chat: (projectId: string, eventId: string) => request<{ reply: string; options: string[]; source: "model" | "rules"; event: Event }>("/chat", json({ project_id: projectId, event_id: eventId })),
 
   content: {
     /** Контент-пакет из файлов проекта по идентификаторам и брифа. */

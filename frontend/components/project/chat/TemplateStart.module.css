@@ -1,0 +1,119 @@
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 380px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--page);
+  box-shadow: var(--shadow-flat);
+  color: var(--ink);
+}
+
+.trigger:hover,
+.trigger[aria-expanded="true"] {
+  border-color: var(--accent-soft);
+  background: var(--sky);
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.trigger:disabled {
+  cursor: wait;
+}
+
+.preview,
+.optionPreview {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 64px;
+  height: 40px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--accent);
+}
+
+.preview img,
+.optionPreview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.caption {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ink2);
+}
+
+.name {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  flex-shrink: 0;
+  color: var(--ink2);
+}
+
+.trigger[aria-expanded="true"] .chevron {
+  transform: rotate(180deg);
+}
+
+.dropdown {
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lift);
+}
+
+.upload,
+.option {
+  padding: 10px;
+  border-radius: 9px;
+}
+
+.upload {
+  color: var(--accent-dark);
+}
+
+.addIcon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--sky);
+  color: var(--accent);
+}
+
+.list {
+  max-height: min(280px, 40vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.option[data-selected] {
+  background: var(--sky);
+  color: var(--accent-dark);
+}

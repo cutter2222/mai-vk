@@ -77,7 +77,7 @@ export function HealthIndicator() {
         : modelUnknown
           ? "Модель не настроена"
           : model
-            ? `ИИ · ${model}`
+            ? model
             : "Сервис работает";
 
   const lines = [

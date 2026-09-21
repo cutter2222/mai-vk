@@ -7,6 +7,7 @@ import { api, ApiError } from "@/lib/api/client";
 import type { GenerationSession, SlideTarget } from "@/lib/hooks/useGenerationSession";
 import {
   addProjectFiles,
+  askAssistant,
   appendMessage,
   getProject,
   patchMessage,
@@ -49,6 +50,16 @@ export function useChat(project: Project, session: GenerationSession, generate: 
   const say = useCallback((text: string) => appendMessage(id, { role: "assistant", kind: "text", text }), [id]);
 
   const [staged, setStaged] = useState<StagedPptx[]>([]);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const respond = useCallback(async (messageId: string) => {
+    try {
+      const response = await askAssistant(id, messageId);
+      setSuggestions(response.options);
+      if (response.source === "rules") notifications.show({ title: "Ответ без модели", message: "ИИ недоступен: показана подсказка по состоянию проекта.", color: "yellow" });
+    } catch (e) {
+      say(`Не удалось получить ответ: ${e instanceof Error ? e.message : "ошибка сервера"}`);
+    }
+  }, [id, say]);
   const stagedAnswers = useRef(new Map<string, PptxAnswer>());
 
   /** Импорт всех материалов проекта в новый пакет по file_ids. Возвращает package_id или null. */
@@ -69,8 +80,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     }
   }, [id, say, current]);
 
-  /** Файл проекта в библиотеку шаблонов; карточка с ходом анализа — только в ответ на вопрос в чате,
-   * загрузка из шапки остаётся без сообщений: состояние анализа показывает сама шапка. */
+  /** Файл проекта в библиотеку шаблонов с карточкой хода анализа в чате. */
   const uploadTemplate = useCallback(async (fileId: string, { quiet = false }: { quiet?: boolean } = {}) => {
     const meta = current().files.find((f) => f.file_id === fileId);
     if (!meta) return;
@@ -101,7 +111,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     const p = current();
     if (!p.package_id) return;
     if (!p.template_id) {
-      say("Материалы в работе. Шаблон оформления не выбран: выберите его в шапке проекта или перетащите PPTX и ответьте «Сделать шаблоном» — и я соберу презентацию.");
+      say("Материалы в работе. Шаблон оформления не выбран: выберите его в первом сообщении чата или перетащите PPTX и ответьте «Сделать шаблоном» — и я соберу презентацию.");
       return;
     }
     offerGeneration();
@@ -127,6 +137,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
   const send = useCallback(async (text: string, files: File[], target: SlideTarget | null = null) => {
     const trimmed = text.trim();
     if (!trimmed && files.length === 0) return;
+    setSuggestions([]);
 
     // 0. Сообщение к выбранному слайду — правка, а не бриф; вложения при этом идут обычным путём.
     const targeted = Boolean(trimmed && target);
@@ -146,7 +157,12 @@ export function useChat(project: Project, session: GenerationSession, generate: 
         if (!rest) return;
       }
     }
-    appendMessage(id, { role: "user", kind: "message", text: rest, file_ids: rows.map((r) => r.file_id) });
+    const message = appendMessage(id, { role: "user", kind: "message", text: rest, file_ids: rows.map((r) => r.file_id) });
+    // A conversation about an existing deck must not become a new brief or an office edit.
+    if (rest && !files.length && current().job_id) {
+      await respond(message.event_id);
+      return;
+    }
 
     // 2. PPTX может быть и шаблоном, и материалом: спрашиваем.
     rows.filter((r) => isPptx(r) && r.kind !== "template").forEach((r) => appendMessage(id, { role: "assistant", kind: "template_question", file_id: r.file_id }));
@@ -201,22 +217,8 @@ export function useChat(project: Project, session: GenerationSession, generate: 
         /* сервер не ответил: бриф можно заполнить вручную через «Изменить» */
       }
       if (!understood.length && !rows.length && !EDIT_RE.test(rest)) {
-        const p = current();
-        const hasContext = Boolean(p.package_id || p.template_id || p.files.length);
-        if (!wantsGeneration && !hasContext) {
-          say("Не нашёл в сообщении ничего про презентацию. Опишите задачу одной фразой: «сделай презентацию про запуск сервиса умных уведомлений для руководителей, чтобы одобрили пилот» — и перетащите шаблон PPTX и материалы.");
-          return;
-        }
-        // Полей брифа в сообщении нет, но в проекте уже есть материалы или шаблон, либо
-        // пользователь просит собрать: ведём к недостающему, а не отписываемся.
-        const missing = [
-          !p.template_id ? "шаблон оформления — выберите в шапке или перетащите PPTX" : null,
-          !p.package_id ? "материалы или описание темы" : null,
-          !p.brief.purpose ? "назначение презентации — кнопки в карточке задачи" : null,
-        ].filter(Boolean);
-        if (missing.length) {
-          say(`${p.package_id ? "Материалы уже в работе. " : ""}Чтобы собрать презентацию, не хватает: ${missing.join("; ")}.`);
-        }
+        await respond(message.event_id);
+        if (!wantsGeneration) return;
       }
     }
 
@@ -234,13 +236,16 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     if (wantsGeneration && ready && !current().job_id) {
       await generate();
     }
-  }, [id, importMaterials, afterMaterials, offerGeneration, say, generate, current, editSlide]);
+  }, [id, importMaterials, afterMaterials, offerGeneration, say, generate, current, editSlide, respond]);
 
-  /** Шаблон из библиотеки, выбранный в шапке: без сообщений в чате — смену оформления показывает миниатюра в шапке. */
+  /** Выбор из библиотеки — первый шаг построения в чате. */
   const selectTemplate = useCallback((templateId: string) => {
     if (current().template_id === templateId) return;
     updateProject(id, { template_id: templateId });
-  }, [id, current]);
+    appendMessage(id, { role: "assistant", kind: "template_card", template_id: templateId });
+    if (current().package_id) offerGeneration();
+    else say("Шаблон выбран. Опишите задачу презентации или добавьте материалы.");
+  }, [id, current, offerGeneration, say]);
 
   /** Действие по ответу на вопрос о PPTX: разбор как шаблона или импорт как материала. */
   /**
@@ -360,7 +365,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     }
   }, [id, importMaterials, say, current]);
 
-  /** PPTX, выбранный в шапке как шаблон: без вопроса «шаблон или материал». */
+  /** Явная загрузка шаблона из первого сообщения — без вопроса о назначении файла. */
   const addTemplate = useCallback(async (file: File) => {
     let rows: ProjectFile[] = [];
     try {
@@ -371,12 +376,13 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     }
     const row = rows[0];
     if (!row) return;
-    await uploadTemplate(row.file_id, { quiet: true });
+    await uploadTemplate(row.file_id);
     await refreshProject(id);
     if (current().template_id && current().package_id) offerGeneration();
-  }, [id, uploadTemplate, offerGeneration, current]);
+    else if (current().template_id) say("Шаблон добавлен. Опишите задачу презентации или добавьте материалы.");
+  }, [id, uploadTemplate, offerGeneration, current, say]);
 
-  // Карточка задания при запуске и карточка аудита по завершении.
+  // Карточка задания при запуске. Служебные отчёты не добавляются в разговор.
   useEffect(() => {
     const jobId = project.job_id;
     if (!jobId) return;
@@ -385,17 +391,10 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     }
   }, [id, project.job_id, project.events]);
 
-  useEffect(() => {
-    const jobId = session.jobId;
-    if (!jobId || !session.terminal || !session.result) return;
-    if (session.result.status === "canceled") return;
-    if (project.events.some((m) => m.role === "assistant" && m.kind === "audit_card" && m.job_id === jobId)) return;
-    appendMessage(id, { role: "assistant", kind: "audit_card", job_id: jobId });
-  }, [id, session.jobId, session.terminal, session.result, project.events]);
 
   const notifyError = (title: string, e: unknown) => notifications.show({ color: "red", title, message: e instanceof ApiError ? e.message : "Неизвестная ошибка" });
 
-  return { send, attach, staged, answerStaged, resolveTemplateQuestion, setPurpose, removeFile, importMaterials, selectTemplate, addTemplate, notifyError };
+  return { send, suggestions, attach, staged, answerStaged, resolveTemplateQuestion, setPurpose, removeFile, importMaterials, selectTemplate, addTemplate, notifyError };
 }
 
 export type Chat = ReturnType<typeof useChat>;

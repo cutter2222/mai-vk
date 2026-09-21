@@ -1,11 +1,12 @@
 "use client";
 
-import { Container, Group, SimpleGrid, Text, Title } from "@mantine/core";
+import { Alert, Button, Container, SimpleGrid, Skeleton, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconPlus } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { CatalogHeader } from "@/components/common/CatalogHeader";
 import { api, ApiError, type TemplateListItem } from "@/lib/api/client";
 
 import { DeleteTemplateModal } from "./DeleteTemplateModal";
@@ -20,6 +21,10 @@ export function TemplateLibrary() {
   const [loaded, setLoaded] = useState(false);
   const [deleting, setDeleting] = useState<TemplateListItem | null>(null);
   const [adding, setAdding] = useState(false);
+  const [error, setError] = useState("");
+  const [reload, setReload] = useState(0);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("all");
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -30,9 +35,13 @@ export function TemplateLibrary() {
         const list = await api.templates.list();
         if (cancelled) return;
         setItems(list);
+        setError("");
         if (list.some((t) => ANALYZING.has(t.status))) timer = setTimeout(load, 3000);
       } catch {
-        if (!cancelled) setItems([]);
+        if (!cancelled) {
+          setError("Не удалось обновить библиотеку. Проверьте соединение и повторите.");
+          timer = setTimeout(load, 5000);
+        }
       } finally {
         if (!cancelled) setLoaded(true);
       }
@@ -42,18 +51,21 @@ export function TemplateLibrary() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, []);
+  }, [reload]);
 
   const open = (id: string) => router.push(`/templates?id=${encodeURIComponent(id)}`);
 
   /** Загрузка PPTX прямо в библиотеку: раньше шаблон попадал сюда только через чат проекта. */
   const add = async (file: File) => {
+    if (!/\.pptx$/i.test(file.name)) {
+      notifications.show({ color: "red", title: "Нужен файл PPTX", message: "Сохраните шаблон в формате .pptx и повторите загрузку." });
+      return;
+    }
     setAdding(true);
     try {
       const created = await api.templates.uploadFile(file);
-      const list = await api.templates.list();
-      setItems(list);
-      if (created.cached) open(created.template_id);
+      setReload((value) => value + 1);
+      open(created.template_id);
     } catch (e) {
       notifications.show({
         color: "red",
@@ -65,16 +77,26 @@ export function TemplateLibrary() {
     }
   };
 
+  const shown = items.filter((item) => item.name.toLocaleLowerCase("ru").includes(query.trim().toLocaleLowerCase("ru"))
+    && (status === "all" || (status === "analyzing" ? ANALYZING.has(item.status) : item.status === status)));
+
   return (
     <div className="page-surface">
       <Container size="xl" py="xl">
-        {/* Добавление — первой карточкой сетки, как на экране презентаций. */}
-        <Group justify="space-between" align="center" mb={28}>
-          <Title order={1} style={{ letterSpacing: "-0.03em" }}>Шаблоны</Title>
-          {items.length > 0 && <Text size="sm" c="dimmed">{items.length} в библиотеке</Text>}
-        </Group>
+        <CatalogHeader
+          title="Шаблоны"
+          searchLabel="Поиск шаблонов"
+          searchPlaceholder="Найти шаблон"
+          query={query}
+          onQueryChange={setQuery}
+          filterLabel="Статус шаблонов"
+          filter={status}
+          onFilterChange={setStatus}
+          options={[{ value: "all", label: "Все шаблоны" }, { value: "succeeded", label: "Готовы к работе" }, { value: "analyzing", label: "Анализируются" }, { value: "failed", label: "С ошибкой" }]}
+        />
+        {error && <Alert color="red" mb="lg" title="Библиотека недоступна">{error}<Button ml="sm" size="xs" variant="light" onClick={() => setReload((value) => value + 1)}>Повторить</Button></Alert>}
 
-        {loaded && items.length === 0 ? (
+        {loaded && !error && items.length === 0 ? (
           <Text c="dimmed" size="sm" mb="lg" data-testid="templates-empty" maw={560}>
             Пока пусто. Добавьте PPTX — сервис разберёт его на композиции, палитру, шрифты и
             правила, и шаблон станет доступен всем презентациям.
@@ -103,11 +125,14 @@ export function TemplateLibrary() {
           >
             <IconPlus size={26} stroke={1.6} />
             <Text size="sm" fw={600}>{adding ? "Загружаю…" : "Добавить шаблон"}</Text>
+            <Text size="xs" c="dimmed">PPTX · автоматический анализ</Text>
           </button>
-          {items.map((t) => (
+          {!loaded && [0, 1, 2].map((key) => <Skeleton key={key} height={230} radius="lg" />)}
+          {shown.map((t) => (
             <TemplateCard key={t.template_id} item={t} onOpen={() => open(t.template_id)} onDelete={() => setDeleting(t)} />
           ))}
         </SimpleGrid>
+        {loaded && items.length > 0 && shown.length === 0 && <Text ta="center" c="dimmed" py={60}>По вашему запросу шаблонов нет. Измените название или фильтр.</Text>}
       </Container>
 
       <DeleteTemplateModal target={deleting} onClose={() => setDeleting(null)} onDeleted={(id) => setItems((list) => list.filter((t) => t.template_id !== id))} />

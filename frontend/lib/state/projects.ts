@@ -346,6 +346,8 @@ export async function deleteProject(id: string): Promise<void> {
 // ---------- лента событий ----------
 
 const tempIds = new Map<string, Promise<string>>();
+// Callers may still hold the optimistic ID after an unrelated LLM request finishes.
+const savedEventIds = new Map<string, string>();
 
 /** Событие появляется в кэше сразу с временным идентификатором и заменяется серверным после ответа. */
 export function appendMessage(projectId: string, message: EventInput): ChatMessage {
@@ -355,6 +357,8 @@ export function appendMessage(projectId: string, message: EventInput): ChatMessa
   const promise = serverId(projectId)
     .then((real) => api.projects.appendEvent(real, message))
     .then((saved) => {
+      savedEventIds.set(tempId, saved.event_id);
+      if (savedEventIds.size > 500) savedEventIds.delete(savedEventIds.keys().next().value!);
       updateProject(projectId, (p) => ({ events: p.events.map((e) => (e.event_id === tempId ? ({ ...saved } as ChatMessage) : e)) }));
       return saved.event_id;
     })
@@ -365,13 +369,28 @@ export function appendMessage(projectId: string, message: EventInput): ChatMessa
 }
 
 export async function patchMessage(projectId: string, messageId: string, patch: Partial<Event>): Promise<void> {
-  const resolved = (await tempIds.get(messageId)) ?? messageId;
+  const resolved = (await tempIds.get(messageId)) ?? savedEventIds.get(messageId) ?? messageId;
   updateProject(projectId, (p) => ({ events: p.events.map((m) => (m.event_id === resolved || m.event_id === messageId ? ({ ...m, ...patch } as ChatMessage) : m)) }));
   if (!resolved.startsWith("tmp_")) {
     await serverId(projectId)
       .then((real) => api.projects.patchEvent(real, resolved, patch))
       .catch(() => undefined);
   }
+}
+
+/** Ask about a saved message; only the backend persists the answer. */
+export async function askAssistant(projectId: string, messageId: string) {
+  const eventId = (await tempIds.get(messageId)) ?? savedEventIds.get(messageId) ?? messageId;
+  if (eventId.startsWith("tmp_")) throw new Error("Сообщение не сохранилось. Повторите отправку.");
+  const real = await serverId(projectId);
+  const project = getProject(real);
+  if (!project) throw new Error("Проект не загружен.");
+  // Brief extraction may have just updated a debounced draft. Send it before reading context.
+  await api.projects.patch(real, { brief: project.brief, settings: project.settings });
+  const result = await api.chat(real, eventId);
+  updateProject(real, (p) => ({ events: p.events.some((e) => e.event_id === result.event.event_id)
+    ? p.events : [...p.events, result.event as ChatMessage] }));
+  return result;
 }
 
 // ---------- файлы проекта ----------

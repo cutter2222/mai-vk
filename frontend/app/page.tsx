@@ -1,10 +1,11 @@
 "use client";
 
-import { Button, Container, Group, Modal, SimpleGrid, Text, TextInput, Title } from "@mantine/core";
+import { Button, Container, Group, Modal, SimpleGrid, Text, TextInput } from "@mantine/core";
 import { IconPlus } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { CatalogHeader } from "@/components/common/CatalogHeader";
 import { ProjectCard } from "@/components/home/ProjectCard";
 import { api } from "@/lib/api/client";
 import { deleteProject, refreshProjects, useProjects } from "@/lib/state/projects";
@@ -14,6 +15,8 @@ export default function ProjectsPage() {
   const { items: projects, loaded } = useProjects();
   const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("all");
 
   // Нажатие открывает пустой экран, а не заводит проект: на сервере он появится с первым
   // действием — сообщением, файлом, шаблоном или названием. Иначе в списке копились пустые
@@ -29,13 +32,36 @@ export default function ProjectsPage() {
   };
 
   const deletingProject = projects.find((p) => p.project_id === deleting);
+  const shown = projects.filter((project) => {
+    const projectStatus = project.job_status ?? (project.job_id ? "queued" : "draft");
+    return project.title.toLocaleLowerCase("ru").includes(query.trim().toLocaleLowerCase("ru"))
+      && (status === "all" || (status === "active" ? ["queued", "running"].includes(projectStatus) : projectStatus === status));
+  });
 
   return (
     <div className="page-surface">
       <Container size="xl" py="xl">
         {/* Создание — первой карточкой в сетке, поэтому отдельной кнопки в шапке нет:
             одно действие, один вход. */}
-        <Title order={1} style={{ letterSpacing: "-0.03em" }} mb={28}>Презентации</Title>
+        <CatalogHeader
+          title="Презентации"
+          searchLabel="Поиск презентаций"
+          searchPlaceholder="Найти презентацию"
+          query={query}
+          onQueryChange={setQuery}
+          filterLabel="Статус презентаций"
+          filter={status}
+          onFilterChange={setStatus}
+          options={[
+            { value: "all", label: "Все презентации" },
+            { value: "draft", label: "Черновики" },
+            { value: "active", label: "В работе" },
+            { value: "succeeded", label: "Готовые" },
+            { value: "needs_review", label: "Требуют проверки" },
+            { value: "failed", label: "С ошибкой" },
+            { value: "canceled", label: "Отменённые" },
+          ]}
+        />
 
         {/* Отдельного пустого экрана нет: карточка создания и так первая в сетке, а вторая
             кнопка «создать первую» была тем же действием в другом месте. */}
@@ -56,7 +82,7 @@ export default function ProjectsPage() {
               <IconPlus size={26} stroke={1.6} />
               <Text size="sm" fw={600}>Новая презентация</Text>
             </button>
-            {projects.map((p) => (
+            {shown.map((p) => (
               <ProjectCard
                 key={p.project_id}
                 item={p}
@@ -67,6 +93,7 @@ export default function ProjectsPage() {
             ))}
           </SimpleGrid>
         ) : null}
+        {loaded && projects.length > 0 && shown.length === 0 && <Text ta="center" c="dimmed" py={60}>По вашему запросу презентаций нет. Измените название или фильтр.</Text>}
       </Container>
 
       <Modal opened={renaming !== null} onClose={() => setRenaming(null)} title="Переименовать презентацию" centered>

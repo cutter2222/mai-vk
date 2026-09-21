@@ -32,7 +32,7 @@ export function SlidesSection({ templateId, profile, previews }: Props) {
 
   const rows: Row[] = profile.sample_slides?.length
     ? profile.sample_slides.map((s) => ({ key: `s${s.slide_index}`, index: s.slide_index, preview: s.preview_path, classification: s.classification, confidence: s.confidence, layout: s.layout_id ? layouts.get(s.layout_id) ?? s.layout_id : undefined, group: s.group_id }))
-    : previews.map((name, i) => ({ key: name, index: i + 1, preview: name }));
+    : previews.filter((name) => !/(^|\/)layout-/.test(name)).map((name, i) => ({ key: name, index: i + 1, preview: name }));
   const counts = countBy(rows.filter((r) => r.classification), (r) => r.classification as string);
   const shown = cls ? rows.filter((r) => r.classification === cls) : rows;
   const src = (r: Row) => (r.preview ? api.templates.assetUrl(templateId, r.preview) : undefined);
@@ -45,7 +45,7 @@ export function SlidesSection({ templateId, profile, previews }: Props) {
         <Text size="sm" c="dimmed">Классификации слайдов в профиле нет — показаны рендеры файла.</Text>
       )}
       {rows.length === 0 && <Text size="sm" c="dimmed">Миниатюры слайдов не сохранены: анализ прошёл без рендерера.</Text>}
-      <SimpleGrid cols={{ base: 2, sm: 3, md: 4, lg: 5 }} spacing="md">
+      <SimpleGrid cols={{ base: 1, sm: 2, md: 3, xl: 4 }} spacing="lg">
         {shown.map((r) => (
           <button key={r.key} type="button" className="sample-card" onClick={() => setOpen(r)} data-testid={`sample-slide-${r.index}`}>
             <SlideImage src={src(r)} alt={`Слайд ${r.index}`} />

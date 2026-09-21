@@ -53,7 +53,7 @@ export function PatternsSection({ templateId, profile }: Props) {
     <Stack gap="md">
       <FilterChips counts={counts} labels={PATTERN_ROLE_LABELS} active={role} onChange={setRole} total={profile.patterns.length} testId="pattern-filter" />
       {shown.length === 0 && <Text size="sm" c="dimmed">Композиций нет: в файле не нашлось образцов содержания.</Text>}
-      <SimpleGrid cols={{ base: 2, sm: 3, md: 4, lg: 5 }} spacing="md">
+      <SimpleGrid cols={{ base: 1, sm: 2, md: 3, xl: 4 }} spacing="lg">
         {shown.map((p) => (
           <button key={p.pattern_id} type="button" className="sample-card" onClick={() => setSelected(p)} data-testid={`pattern-card-${p.pattern_id}`}>
             <SlideImage src={src(p)} alt={p.name ?? p.role} />

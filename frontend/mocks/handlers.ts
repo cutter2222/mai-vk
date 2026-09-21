@@ -74,6 +74,7 @@ const SLIDE_TITLES = [
 ];
 
 export const handlers = [
+  http.get(base("/office/capabilities"), () => HttpResponse.json({ enabled: false })),
   http.get(base("/health"), () =>
     HttpResponse.json({ status: "ok", workers: { analysis: 1, generation: 3 }, valkey_ok: true, renderer_ok: true, version: "0.1.0-mock" }),
   ),
@@ -170,7 +171,7 @@ export const handlers = [
         const status = templateStatus(t);
         const preview = status === "succeeded" ? t.profile.patterns.find((p) => p.preview_path)?.preview_path : undefined;
         const colors = Array.from(new Set(t.profile.design_tokens.colors.palette.map((c) => c.hex))).slice(0, 5);
-        return { template_id: t.template_id, name: t.name, status, slide_count: t.profile.stats.slides, pattern_count: t.profile.patterns.length, ...(preview ? { preview } : {}), ...(colors.length ? { colors } : {}), created_at: t.created_at };
+        return { template_id: t.template_id, name: t.name, status, slide_count: t.profile.stats.slides, pattern_count: t.profile.patterns.filter((p) => p.source.kind !== "builtin").length, ...(preview ? { preview } : {}), ...(colors.length ? { colors } : {}), created_at: t.created_at };
       }),
     );
   }),
@@ -182,6 +183,14 @@ export const handlers = [
   }),
 
   http.post(base("/templates"), async ({ request }) => {
+    if (request.headers.get("content-type")?.startsWith("multipart/form-data")) {
+      const file = (await request.formData()).get("file");
+      if (!(file instanceof File)) return err(400, "file_required", "Выберите PPTX");
+      if (!/\.pptx$/i.test(file.name)) return err(415, "unsupported_format", "Поддерживается только PPTX");
+      await delay(400);
+      const { template, cached } = createTemplate(file.name, file.size);
+      return HttpResponse.json({ template_id: template.template_id, job_id: template.job_id, cached }, { status: 202 });
+    }
     const body = (await request.json()) as { file_id?: string };
     const found = body.file_id ? projects.findFile(body.file_id) : undefined;
     if (!found) return err(404, "file_not_found", "Файл не найден");
@@ -198,6 +207,15 @@ export const handlers = [
     const status = templateStatus(t);
     const previews = status === "succeeded" ? [...t.profile.patterns.map((p) => p.preview_path ?? "").filter(Boolean), ...t.profile.layouts.map((l) => `previews/layout-${l.layout_id}.png`)] : [];
     return HttpResponse.json({ status, job_id: t.job_id, name: t.name, profile: status === "succeeded" ? t.profile : undefined, previews });
+  }),
+
+  http.get(base("/templates/:id/source"), ({ params }) => {
+    const template = store.templates.get(String(params.id));
+    if (!template) return err(404, "template_not_found", "Шаблон не найден");
+    return new HttpResponse(pptxBlob(template.name), { headers: {
+      "Content-Type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "Content-Disposition": `attachment; filename="template.pptx"; filename*=UTF-8''${encodeURIComponent(template.name)}`,
+    } });
   }),
 
   // Байты ресурса шаблона (иконка, логотип, картинка) для панели и холста редактора.

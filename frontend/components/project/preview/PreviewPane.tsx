@@ -2,28 +2,24 @@
 
 import { Stack, Text } from "@mantine/core";
 import { IconLayoutDashboard } from "@tabler/icons-react";
+import { TemplateSourceViewer } from "@/components/templates/TemplateSourceViewer";
 
 import { ApiError, type TemplateDetail } from "@/lib/api/client";
-import type { ContentPackage } from "@/lib/api/types";
 import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
-import type { SlideEditor } from "@/lib/hooks/useSlideEditor";
 import type { Project } from "@/lib/state/projects";
 
-import { GenerationPreview } from "./GenerationPreview";
 import { TemplatePreview } from "./TemplatePreview";
 
 interface Props {
   project: Project;
   session: GenerationSession;
-  editor: SlideEditor;
-  pkg: ContentPackage | null | undefined;
+  officeEnabled: boolean;
   templateDetail: TemplateDetail | null;
   templateError: Error | null;
-  onChoose: (variantId: string | null) => void;
 }
 
 /** Правая часть редактора: слайды задания, иначе выбранный шаблон, иначе подсказка. */
-export function PreviewPane({ project, session, editor, pkg, templateDetail, templateError, onChoose }: Props) {
+export function PreviewPane({ project, session, officeEnabled, templateDetail, templateError }: Props) {
   if (project.job_id) {
     if (session.job.error && !session.result) {
       const notFound = session.job.error instanceof ApiError && session.job.error.status === 404;
@@ -44,10 +40,28 @@ export function PreviewPane({ project, session, editor, pkg, templateDetail, tem
         </div>
       );
     }
-    return <GenerationPreview session={session} editor={editor} templateDetail={templateDetail} pkg={pkg} projectId={project.project_id} chosenVariant={project.chosen_variant} onChoose={onChoose} />;
+    return (
+      <div className="preview-empty">
+        <Stack align="center" gap="xs" maw={440} data-testid="presentation-status">
+          <IconLayoutDashboard size={44} stroke={1.2} color="var(--ink2)" />
+          <Text fw={600}>{!session.terminal ? "Собираем презентацию" : session.variant?.artifacts?.pptx ? "Редактор недоступен" : "Презентация пока не готова"}</Text>
+          <Text size="sm" c="dimmed" ta="center">
+            {!session.terminal ? "Ход генерации — в чате. Готовая презентация откроется здесь автоматически."
+              : session.variant?.artifacts?.pptx && !officeEnabled ? "Не удалось подключить ONLYOFFICE. Проверьте доступность сервиса и обновите страницу."
+              : "Подробности — в чате. Повторить сборку можно в шапке проекта."}
+          </Text>
+        </Stack>
+      </div>
+    );
   }
 
   if (project.template_id) {
+    if (officeEnabled) return (
+      <div className="project-office" data-testid="project-template-office">
+        <Text size="xs" c="dimmed" p="xs">Исходный шаблон · только просмотр. После генерации здесь откроется презентация для редактирования.</Text>
+        <TemplateSourceViewer key={project.template_id} templateId={project.template_id} />
+      </div>
+    );
     return <TemplatePreview templateId={project.template_id} detail={templateDetail} error={templateError} />;
   }
 

@@ -7,10 +7,7 @@ import type { TemplateProfile } from "@/lib/api/types";
 /**
  * Дизайн-код загруженного файла: палитра, шрифты, шкала кеглей, пластика и поля.
  *
- * Подан вертикально — заголовок раздела, под ним само содержимое. Плитки в ряд заставляли
- * читать по горизонтали и оставляли половину карточек пустыми, когда в шаблоне один шрифт.
- * Служебные подробности разбора (сколько раз встретился цвет, с какой уверенностью) сюда не
- * идут: им место в JSON профиля.
+ * Отдельные визуальные блоки; шрифты на всю ширину, геометрия и шкала рядом.
  */
 export function DesignCodeSection({ profile }: { profile: TemplateProfile }) {
   const { colors, typography, spacing } = profile.design_tokens;
@@ -26,9 +23,10 @@ export function DesignCodeSection({ profile }: { profile: TemplateProfile }) {
   const margins = spacing?.margins;
 
   return (
-    <Stack gap={36}>
-      <section>
+    <div className="tpl-design-grid">
+      <section className="tpl-design-card tpl-design-wide">
         <Title order={4} className="code-title">Палитра</Title>
+        {!palette.length && <Text size="sm" c="dimmed">Цвета не определены анализатором.</Text>}
         <div className="swatch-row">
           {palette.map((c) => (
             <div key={`${c.hex}-${c.role}`} className="swatch" title={`${c.hex} · ${c.role}`}>
@@ -39,8 +37,10 @@ export function DesignCodeSection({ profile }: { profile: TemplateProfile }) {
         </div>
       </section>
 
-      <section>
+      <section className="tpl-design-card tpl-design-wide">
         <Title order={4} className="code-title">Шрифты</Title>
+        <Text size="xs" c="dimmed" mb="lg">Образец использует шрифты, доступные в браузере. Для просмотра файла откройте раздел «Слайды» или скачайте исходный PPTX через меню.</Text>
+        {!fonts.length && <Text size="sm" c="dimmed">Шрифты не определены анализатором.</Text>}
         <Stack gap={18}>
           {fonts.map((f) => (
             <div key={f.family} className="font-row">
@@ -60,19 +60,20 @@ export function DesignCodeSection({ profile }: { profile: TemplateProfile }) {
         </Stack>
       </section>
 
-      <section>
+      <section className="tpl-design-card">
         <Title order={4} className="code-title">Шкала кеглей</Title>
+        {!scale.length && <Text size="sm" c="dimmed">Размеры текста не определены.</Text>}
         <div className="scale-row">
           {scale.map((size) => (
             <span key={size} className="scale-step">
               <b style={{ fontSize: Math.max(12, Math.min(size, 40)) }}>Аа</b>
-              <i>{size}</i>
+              <i>{size} pt</i>
             </span>
           ))}
         </div>
       </section>
 
-      <section>
+      <section className="tpl-design-card">
         <Title order={4} className="code-title">Пластика и поля</Title>
         <Group gap={40} align="center" wrap="wrap">
           <div className="plastic-sample">
@@ -112,6 +113,6 @@ export function DesignCodeSection({ profile }: { profile: TemplateProfile }) {
           ) : null}
         </Group>
       </section>
-    </Stack>
+    </div>
   );
 }

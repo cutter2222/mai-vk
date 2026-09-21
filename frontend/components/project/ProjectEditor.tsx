@@ -9,18 +9,18 @@ import {
   IconMessage,
   IconX,
 } from "@tabler/icons-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { OfficeEditHandle } from "@/components/office/OfficeEditor";
 
-import { api, ApiError, type CapabilitiesResponse, type ContentDetail, type TemplateDetail } from "@/lib/api/client";
+import { api, ApiError, type CapabilitiesResponse, type TemplateDetail } from "@/lib/api/client";
 import type { GenerationRequest } from "@/lib/api/types";
 import { usePolling } from "@/lib/api/usePolling";
 import { useGenerationSession } from "@/lib/hooks/useGenerationSession";
-import { useSlideEditor } from "@/lib/hooks/useSlideEditor";
 import { setPanelOpen, usePanelOpen } from "@/lib/state/panel";
 import { appendMessage, updateProject, type Project } from "@/lib/state/projects";
 
 import { ChatPanel } from "./chat/ChatPanel";
-import { countTags, isStaleStep, TAG_LABELS, TAG_ORDER, type ChatTag } from "./chat/tags";
+import { countTags, isVisibleProjectMessage, TAG_LABELS, TAG_ORDER, type ChatTag } from "./chat/tags";
 import type { CardContext } from "./chat/cards";
 import { useChat } from "./chat/useChat";
 import { FilesPanel } from "./files/FilesPanel";
@@ -28,17 +28,22 @@ import { BriefFields } from "./panels/BriefFields";
 import { SettingsPanel, settingsError } from "./panels/SettingsPanel";
 import { PreviewPane } from "./preview/PreviewPane";
 import { ProjectHeader } from "./ProjectHeader";
+import { ProjectOffice } from "./office/ProjectOffice";
 
 /** Что показывает левая панель: всю ленту, ленту под меткой или файлы проекта. */
 type Tab = "all" | ChatTag | "files";
 
-/** Редактор проекта: слева чат (или файлы проекта), справа предпросмотр слайдов. */
+/** Редактор проекта: слева чат/файлы, справа единственный редактор PPTX. */
 export function ProjectEditor({ project }: { project: Project }) {
   const [tab, setTab] = useState<Tab>("all");
   // Панель с чатом занимает 460 px. На правке слайда это место нужнее слайду, поэтому она
   // сворачивается в рельс с иконками: экран остаётся тем же, а холст становится больше.
   const panelOpen = usePanelOpen();
   const [caps, setCaps] = useState<CapabilitiesResponse | null>(null);
+  const [officeEnabled, setOfficeEnabled] = useState(false);
+  const [officeOpened, setOfficeOpened] = useState(false);
+  const officeEdit = useRef<OfficeEditHandle>(null);
+  const [officeActionsTarget, setOfficeActionsTarget] = useState<HTMLDivElement | null>(null);
   const [starting, setStarting] = useState(false);
   const [briefModal, setBriefModal] = useState(false);
   const [briefSnapshot, setBriefSnapshot] = useState("");
@@ -46,6 +51,7 @@ export function ProjectEditor({ project }: { project: Project }) {
 
   useEffect(() => {
     api.capabilities().then(setCaps).catch(() => setCaps(null));
+    api.office.capabilities().then((value) => setOfficeEnabled(value.enabled)).catch(() => setOfficeEnabled(false));
   }, []);
 
   const showPanel = (open: boolean, next?: Tab) => {
@@ -59,25 +65,11 @@ export function ProjectEditor({ project }: { project: Project }) {
     [project.template_id],
   );
 
-  const session = useGenerationSession(project.job_id, (jobId) => patch({ job_id: jobId }));
+  const session = useGenerationSession(project.job_id, (jobId) => patch({ job_id: jobId }), { loadAudit: false });
 
-  const pkg = usePolling<ContentDetail>(
-    project.package_id ? () => api.content.get(project.package_id as string) : null,
-    (d) => d.status === "succeeded" || d.status === "failed",
-    [project.package_id],
-  );
-
-  // Визуальный редактор слайдов: черновик правок и применение одной ревизией; карточка хода — в чат.
-  const onPatchStarted = useCallback(
-    (patchJobId: string, slideIndex: number) => {
-      const jobId = project.job_id;
-      const variantId = session.variant?.variant_id;
-      if (!jobId || !variantId) return;
-      appendMessage(project.project_id, { role: "assistant", kind: "edit_card", job_id: jobId, variant_id: variantId, edit_job_id: patchJobId, slide_index: slideIndex });
-    },
-    [project.job_id, project.project_id, session.variant?.variant_id],
-  );
-  const editor = useSlideEditor(session, { profile: template.data?.profile, pkg: pkg.data?.package, onPatchStarted });
+  const officeAvailable = officeEnabled && Boolean(session.variant?.artifacts?.pptx);
+  if (officeAvailable && !officeOpened) setOfficeOpened(true);
+  const officePresent = officeEnabled && officeOpened;
 
   const generate = useCallback(async (): Promise<boolean> => {
     if (!project.template_id || !project.package_id) return false;
@@ -117,47 +109,22 @@ export function ProjectEditor({ project }: { project: Project }) {
 
   const chat = useChat(project, session, generate);
 
-  // Аудит живёт в ленте под своей меткой: панель справа отнимала место у слайда, на котором
-  // находки и надо смотреть.
-  const openAudit = (variantId?: string) => {
-    if (variantId) session.setSelectedVariant(variantId);
-    session.setLayout("single");
-    showPanel(true, "audit");
-  };
-
-  // Исправление идёт в ленте, как и всё остальное: сообщение о ходе появляется внизу и само
-  // превращается в результат, когда ревизия готова.
-  const repairAll = async () => {
-    const report = session.audit.data;
-    if (!report) {
-      openAudit();
-      return;
-    }
-    const ids = report.issues.filter((i) => i.fix.available).map((i) => i.issue_id);
-    if (ids.length === 0) {
-      notifications.show({ color: "gray", title: "Нечего исправлять автоматически", message: "У найденных проблем нет автоматического исправления." });
-      return;
-    }
-    const repairJobId = await session.repair(ids);
-    const jobId = project.job_id;
-    const variantId = session.variant?.variant_id;
-    if (repairJobId && jobId && variantId) {
-      appendMessage(project.project_id, {
-        role: "assistant",
-        kind: "edit_card",
-        job_id: jobId,
-        variant_id: variantId,
-        edit_job_id: repairJobId,
-        slide_index: report.issues[0]?.slide_index ?? 0,
-      });
-      showPanel(true, "audit");
-    }
-  };
-
   // Человек написал в чат — лента возвращается к разговору. Под открытой меткой его же
   // сообщение и ответ на него были бы не видны: «написал и ничего не произошло».
   const send: typeof chat.send = async (text, files, target) => {
     setTab("all");
+    if (officePresent && /^\/edit\s+/i.test(text.trim())) {
+      appendMessage(project.project_id, { role: "user", kind: "message", text, file_ids: [] });
+      try {
+        if (files.length) throw new Error("Прикрепите материалы отдельно. Пока ИИ умеет точечно изменять текст текущего PPTX; изображения и структура редактируются в ONLYOFFICE.");
+        if (!officeEdit.current) throw new Error("Дождитесь открытия презентации.");
+        const message = await officeEdit.current.edit(text.trim().replace(/^\/edit\s+/i, ""));
+        appendMessage(project.project_id, { role: "assistant", kind: "text", text: message });
+      } catch (e) {
+        appendMessage(project.project_id, { role: "assistant", kind: "text", text: e instanceof Error ? e.message : "Правка не применена." });
+      }
+      return;
+    }
     await chat.send(text, files, target);
   };
 
@@ -169,7 +136,8 @@ export function ProjectEditor({ project }: { project: Project }) {
 
   const ctx: CardContext = {
     project,
-    session,
+    // The ONLYOFFICE slide selection is not the AI model's slide index.
+    session: { ...session, slideTarget: null },
     onResolveTemplate: (messageId, fileId, answer) => void chat.resolveTemplateQuestion(messageId, fileId, answer),
     onEditBrief: () => {
       setBriefSnapshot(JSON.stringify(project.brief));
@@ -178,13 +146,12 @@ export function ProjectEditor({ project }: { project: Project }) {
     onSetPurpose: (purpose) => void chat.setPurpose(purpose),
     onGenerate: () => void generate(),
     generating: starting,
-    onRepairAll: () => void repairAll(),
     onRetryImport: () => void chat.importMaterials(),
   };
 
   // Ряд меток вместо вкладок: лента одна, а метка сужает её до шага работы. Пустые метки в
   // ряд не попадают — иначе он сам становится тем шумом, от которого избавляет.
-  const events = project.events.filter((m) => !isStaleStep(m, session.jobId));
+  const events = project.events.filter((m) => isVisibleProjectMessage(m, session.jobId));
   const counts = countTags(events);
   const TABS: Array<{ key: Tab; label: string; icon?: React.ReactNode; badge?: number }> = [
     { key: "all", label: "Всё", icon: <IconMessage size={16} stroke={1.7} />, badge: events.length || undefined },
@@ -198,8 +165,7 @@ export function ProjectEditor({ project }: { project: Project }) {
         project={project}
         session={session}
         onTitle={(title) => patch({ title })}
-        onSelectTemplate={chat.selectTemplate}
-        onUploadTemplate={(file) => void chat.addTemplate(file)}
+        officeActionsRef={setOfficeActionsTarget}
       />
       <div className="editor-body">
         {/* Свёрнутая панель оставляет рельс: развернуть и сразу открыть нужный раздел. */}
@@ -247,23 +213,24 @@ export function ProjectEditor({ project }: { project: Project }) {
               </Tooltip>
             </div>
             {tab !== "files" ? (
-              <ChatPanel ctx={ctx} onSend={send} onAttach={chat.attach} staged={chat.staged} onAnswerStaged={chat.answerStaged} filter={tab} onTag={(tag) => setTab(tag)} />
+              <ChatPanel ctx={ctx} onSend={send} suggestions={chat.suggestions} onAttach={chat.attach} staged={chat.staged} onAnswerStaged={chat.answerStaged} onSelectTemplate={chat.selectTemplate} onUploadTemplate={chat.addTemplate} filter={tab} onTag={(tag) => setTab(tag)} />
             ) : (
-              <FilesPanel project={project} session={session} onAdd={(files) => { const rest = chat.attach(files); if (rest.length) void chat.send("", rest); }} onRemove={(fid) => void chat.removeFile(fid)} onSelectTemplate={chat.selectTemplate} />
+              <FilesPanel project={project} onAdd={(files) => { const rest = chat.attach(files); if (rest.length) void chat.send("", rest); }} onRemove={(fid) => void chat.removeFile(fid)} onSelectTemplate={chat.selectTemplate} />
             )}
           </div>
         </aside>
 
         <section className="editor-preview" data-testid="preview-pane">
-          <PreviewPane
+          {officePresent && <div className="office-slot">
+            <ProjectOffice session={session} title={project.title} editRef={officeEdit} actionsTarget={officeActionsTarget} />
+          </div>}
+          {!officePresent && <PreviewPane
             project={project}
             session={session}
-            editor={editor}
-            pkg={pkg.data?.package}
+            officeEnabled={officeEnabled}
             templateDetail={template.data}
             templateError={template.error}
-            onChoose={(variantId) => patch({ chosen_variant: variantId })}
-          />
+          />}
         </section>
       </div>
 

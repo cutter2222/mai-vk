@@ -1,9 +1,10 @@
 "use client";
 
-import { Badge, Button, Group, Stack, Table, Text } from "@mantine/core";
+import { Badge, Button, Group, SimpleGrid, Stack, Table, Text } from "@mantine/core";
 import { useState } from "react";
 
 import type { TemplateProfile } from "@/lib/api/types";
+import { api } from "@/lib/api/client";
 import { ASSET_KIND_LABELS, formatNumber } from "@/lib/format";
 
 import { countBy, FilterChips, KeyValues, Section } from "./common";
@@ -23,7 +24,7 @@ const STAT_LABELS: Array<[keyof TemplateProfile["stats"], string]> = [
 const ASSETS_PREVIEW = 24;
 
 /** Что в самом файле: мастера и макеты с заполнителями, ресурсы по видам, статистика пакета. */
-export function StructureSection({ profile }: { profile: TemplateProfile }) {
+export function StructureSection({ profile, templateId }: { profile: TemplateProfile; templateId: string }) {
   const [assetKind, setAssetKind] = useState<string | null>(null);
   const [allAssets, setAllAssets] = useState(false);
   const masters = new Map((profile.masters ?? []).map((m) => [m.master_id, m]));
@@ -72,22 +73,20 @@ export function StructureSection({ profile }: { profile: TemplateProfile }) {
         ) : (
           <Stack gap="sm">
             <FilterChips counts={assetCounts} labels={ASSET_KIND_LABELS} active={assetKind} onChange={(k) => { setAssetKind(k); setAllAssets(false); }} total={profile.assets.length} />
-            <div style={{ overflowX: "auto" }}>
-              <Table fz="xs" verticalSpacing={2} withRowBorders={false}>
-                <Table.Tbody>
-                  {shownAssets.map((a) => (
-                    <Table.Tr key={a.asset_id}>
-                      <Table.Td style={{ whiteSpace: "nowrap" }}>{a.asset_id}</Table.Td>
-                      <Table.Td><Badge size="xs" variant="light" color="gray">{ASSET_KIND_LABELS[a.kind] ?? a.kind}</Badge></Table.Td>
-                      <Table.Td c="dimmed">{a.media_path}</Table.Td>
-                      <Table.Td c="dimmed" style={{ whiteSpace: "nowrap" }}>{a.width_px && a.height_px ? `${a.width_px} × ${a.height_px}` : "—"}</Table.Td>
-                      <Table.Td c="dimmed" style={{ whiteSpace: "nowrap" }}>{a.source_slide_index != null ? `слайд ${a.source_slide_index}` : ""}</Table.Td>
-                      <Table.Td c="dimmed">{[a.reusable ? "переиспользуемый" : null, ...(a.tags ?? [])].filter(Boolean).join(", ")}</Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            </div>
+            <SimpleGrid cols={{ base: 2, sm: 3, lg: 4 }} spacing="sm">
+              {shownAssets.map((asset) => <div key={asset.asset_id} className="tpl-asset-card">
+                <div className="tpl-asset-preview">
+                  {/\.(png|jpe?g|gif|webp|svg)$/i.test(asset.media_path) ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={api.templates.mediaUrl(templateId, asset.asset_id)} alt={ASSET_KIND_LABELS[asset.kind] ?? asset.kind} loading="lazy" onError={(e) => { e.currentTarget.hidden = true; }} />
+                  ) : <Text size="xs" c="dimmed">{asset.media_path.split(".").pop()?.toUpperCase() ?? "Ресурс"}</Text>}
+                </div>
+                <Badge size="xs" variant="light" color="gray" mt="sm">{ASSET_KIND_LABELS[asset.kind] ?? asset.kind}</Badge>
+                <Text size="xs" fw={500} truncate mt={4} title={asset.asset_id}>{asset.asset_id}</Text>
+                <Text size="xs" c="dimmed">{[asset.width_px && asset.height_px ? `${asset.width_px} × ${asset.height_px}` : null, asset.source_slide_index != null ? `слайд ${asset.source_slide_index}` : null].filter(Boolean).join(" · ")}</Text>
+                <Text size="xs" c="dimmed" lineClamp={2}>{[asset.reusable ? "Можно использовать повторно" : null, ...(asset.tags ?? [])].filter(Boolean).join(" · ")}</Text>
+              </div>)}
+            </SimpleGrid>
             {assets.length > ASSETS_PREVIEW && (
               <Group>
                 <Button variant="subtle" color="gray" size="compact-xs" onClick={() => setAllAssets((v) => !v)}>{allAssets ? "Свернуть" : `Показать все ${assets.length}`}</Button>

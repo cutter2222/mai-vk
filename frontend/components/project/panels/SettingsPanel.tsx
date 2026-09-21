@@ -56,7 +56,6 @@ export function SettingsPanel({ settings, onChange, caps }: Props) {
       </div>
 
       <Stack gap="sm">
-        <Switch checked={settings.contextual} onChange={(e) => set("contextual", e.currentTarget.checked)} label="Контекстный аудит моделью" description="11 вопросов по каждому слайду. Без него аудит неполный, результат получит статус «требует проверки»." />
         <Tooltip label="Генерация новых изображений доступна только после этапа топ-10" disabled={caps?.features.generate_images}>
           <div>
             <Switch checked={settings.images} onChange={(e) => set("images", e.currentTarget.checked)} disabled={!caps?.features.generate_images} label="Генерировать новые изображения" description="Картинки из контент-пакета используются всегда" />

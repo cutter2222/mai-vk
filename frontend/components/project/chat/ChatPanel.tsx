@@ -1,6 +1,6 @@
 "use client";
 
-import { ActionIcon, Badge, CloseButton, FileButton, Group, Loader, Stack, Text, Textarea, Tooltip } from "@mantine/core";
+import { ActionIcon, Badge, Button, CloseButton, FileButton, Group, Loader, Stack, Text, Textarea, Tooltip } from "@mantine/core";
 import { Dropzone } from "@mantine/dropzone";
 import { IconArrowUp, IconFile, IconPaperclip, IconSlideshow } from "@tabler/icons-react";
 import { Fragment, useEffect, useRef, useState } from "react";
@@ -9,17 +9,24 @@ import { formatBytes, VARIANT_LABELS } from "@/lib/format";
 import type { SlideTarget } from "@/lib/hooks/useGenerationSession";
 import type { ChatMessage, PptxAnswer } from "@/lib/state/projects";
 
-import { AuditCard, BriefCard, ContentCard, EditCard, JobCard, PptxQuestion, TemplateCard, TemplateQuestionCard, type CardContext } from "./cards";
-import { isStaleStep, TAG_HASH, TAG_LABELS, tagOf, type ChatTag } from "./tags";
+import { BriefCard, ContentCard, EditCard, JobCard, PptxQuestion, TemplateCard, TemplateQuestionCard, type CardContext } from "./cards";
+import { isVisibleProjectMessage, TAG_HASH, TAG_LABELS, tagOf, type ChatTag } from "./tags";
 import type { StagedPptx } from "./useChat";
+import { TEMPLATE_GREETING, TemplateStart } from "./TemplateStart";
+import { MessageTime } from "./MessageTime";
+import { AssistantTyping } from "./AssistantTyping";
+import { useAssistantTyping } from "./useAssistantTyping";
 
 interface Props {
+  suggestions?: string[];
   ctx: CardContext;
   onSend: (text: string, files: File[], target: SlideTarget | null) => Promise<void>;
   /** Разбирает брошенные файлы: презентации забирает сразу, остальные возвращает как вложения к сообщению. */
   onAttach: (files: File[]) => File[];
   staged: StagedPptx[];
   onAnswerStaged: (localId: string, answer: PptxAnswer) => void;
+  onSelectTemplate: (id: string) => void;
+  onUploadTemplate: (file: File) => Promise<void>;
   /** Выбранная метка сверху: «all» — вся лента. Ряд меток живёт в шапке панели. */
   filter?: ChatTag | "all";
   /** Нажали метку на сообщении: лента сужается до этого шага. */
@@ -30,7 +37,7 @@ interface Props {
  * Чат проекта: лента сообщений и карточек шагов, внизу поле ввода с вложениями; файлы можно бросать в любое место панели.
  * PPTX не ждёт отправки: вопрос «шаблон, готовая презентация или материал» появляется в ленте в момент броска, пока файл грузится.
  */
-export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged, filter = "all", onTag }: Props) {
+export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onAnswerStaged, onSelectTemplate, onUploadTemplate, filter = "all", onTag }: Props) {
   const { project, session } = ctx;
   // Выбранный справа слайд — адресат сообщения: чип над полем ввода, крестик снимает адресацию.
   const target = session.slideTarget;
@@ -39,23 +46,37 @@ export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged, filte
   const [sending, setSending] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
   const resetRef = useRef<() => void>(null);
+  const followRef = useRef(true);
+  // Приветствие — виртуальное первое сообщение; серверную историю не меняем.
+  const greeting: ChatMessage = { event_id: "greeting", at: project.created_at, role: "assistant", kind: "text", text: TEMPLATE_GREETING };
+  const messages = [greeting, ...project.events];
+  const typing = useAssistantTyping(project.project_id, messages, project.events.length || project.template_id ? messages.length : 0);
+  const presentedGreeting = typing.present(greeting, 0);
 
   const addFiles = (files: File[]) => {
     const rest = onAttach(files);
     if (rest.length) setPending((p) => [...p, ...rest]);
   };
 
-  const events = project.events.filter((m) => !isStaleStep(m, session.jobId));
+  const events = project.events.filter((m) => isVisibleProjectMessage(m, session.jobId));
   // Лента прокручивается вниз при новом сообщении и когда сообщение о правке получает результат.
   const count = events.length + staged.length;
   // Метка сужает ленту, но не прячет сам разговор: поле ввода и подсказки остаются на месте.
-  const shown = filter === "all" ? events : events.filter((m) => tagOf(m) === filter);
+  const matchesFilter = (m: ChatMessage) => isVisibleProjectMessage(m, session.jobId) && (filter === "all" || tagOf(m) === filter);
+  const shown = project.events.flatMap((m, eventIndex) => {
+    const index = eventIndex + 1;
+    if (!matchesFilter(m)) return [];
+    const presented = typing.present(m, index);
+    return presented ? [{ message: presented, index }] : [];
+  });
+  const activeMessage = messages[typing.activeIndex];
+  const showTyping = typing.activeIndex !== 0 && (activeMessage ? matchesFilter(activeMessage) : sending && filter === "all");
   const stagedShown = filter === "all" || filter === "template" ? staged : [];
   const settledEdits = session.result?.edits?.length ?? 0;
   useEffect(() => {
     const el = listRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [count, session.result?.status, settledEdits]);
+    if (el && followRef.current) el.scrollTop = el.scrollHeight;
+  }, [count, session.result?.status, settledEdits, typing.progress, typing.activeIndex, showTyping]);
 
   const blocked = session.editorDirty;
   const submit = async () => {
@@ -86,23 +107,25 @@ export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged, filte
       styles={{ root: { border: 0, padding: 0, background: "transparent", borderRadius: 0, display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }, inner: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0, pointerEvents: "auto" } }}
       data-testid="chat-dropzone"
     >
-      <div className="chat-list" ref={listRef} data-testid="chat-list">
-        {count === 0 && pending.length === 0 && (
-          <div className="chat-intro" data-testid="chat-intro">
-            <Text fw={600} mb={6}>Соберём презентацию в фирменном стиле</Text>
-            <Text size="sm" c="dimmed">Перетащите сюда PPTX-шаблон компании и материалы: документы, таблицы, картинки. Опишите задачу одной фразой — например, «сделай презентацию про запуск сервиса умных уведомлений для руководителей, чтобы одобрили пилот».</Text>
-            <Text size="sm" c="dimmed" mt={6}>Шаблон задаёт оформление, материалы — содержание. Я соберу 10–15 слайдов в трёх вариантах вёрстки, проверю их и покажу справа.</Text>
+      <div className="chat-list" ref={listRef} data-testid="chat-list" onScroll={(e) => {
+        const el = e.currentTarget;
+        followRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 64;
+      }}>
+        {(filter === "all" || filter === "template") && (
+          <div className="chat-msg chat-msg-assistant" data-testid="msg-assistant">
+            <TemplateStart project={project} onSelectTemplate={onSelectTemplate} onUploadTemplate={onUploadTemplate} greeting={presentedGreeting?.kind === "text" ? presentedGreeting.text : ""} typing={typing.activeIndex === 0} />
+            <MessageTime at={project.created_at} />
           </div>
         )}
-        {filter !== "all" && shown.length === 0 && stagedShown.length === 0 && (
+        {filter !== "all" && filter !== "template" && shown.length === 0 && stagedShown.length === 0 && (
           <Text size="sm" c="dimmed" data-testid="chat-tag-empty">
             Под меткой «{TAG_LABELS[filter]}» пока пусто.
           </Text>
         )}
-        {shown.map((m) => {
+        {shown.map(({ message: m, index }) => {
           const hash = TAG_HASH[tagOf(m)];
           return (
-            <div key={m.event_id} className={`chat-msg chat-msg-${m.role}`} data-testid={`msg-${m.role}`}>
+            <div key={index} className={`chat-msg chat-msg-${m.role}`} data-testid={`msg-${m.role}`} data-typing={index === typing.activeIndex || undefined} aria-busy={index === typing.activeIndex || undefined}>
               {renderMessage(m, ctx)}
               {/* Метка на самом сообщении: видно, к какому шагу оно относится, и по ней же
                   лента сужается до этого шага. */}
@@ -111,6 +134,7 @@ export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged, filte
                   {hash}
                 </button>
               )}
+              <MessageTime at={m.at} />
             </div>
           );
         })}
@@ -124,8 +148,12 @@ export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged, filte
             </div>
           </Fragment>
         ))}
+        {showTyping && <AssistantTyping />}
       </div>
       <div className="chat-composer">
+        {suggestions.length > 0 && <Group gap={6} mb="xs" data-testid="chat-suggestions">
+          {suggestions.map((option) => <Button key={option} size="compact-xs" variant="light" disabled={sending} onClick={() => setText(option)}>{option}</Button>)}
+        </Group>}
         {target && (
           <Group gap={6} mb={8} data-testid="slide-target">
             <Badge
@@ -179,7 +207,7 @@ export function ChatPanel({ ctx, onSend, onAttach, staged, onAnswerStaged, filte
         {blocked ? (
           <Text size="xs" c="orange" mt={6} data-testid="chat-draft-hint">Сначала примените или отмените правки на слайде: черновик редактора ждёт решения.</Text>
         ) : (
-          <Text size="xs" c="dimmed" mt={6}>Enter — отправить, Shift+Enter — перенос строки</Text>
+          <Text size="xs" c="dimmed" mt={6}>Enter — отправить, Shift+Enter — перенос строки{project.job_id ? ". ИИ-правка PPTX: /edit инструкция" : ""}</Text>
         )}
       </div>
     </Dropzone>
@@ -218,8 +246,6 @@ function renderMessage(m: ChatMessage, ctx: CardContext) {
       return <BriefCard m={m} ctx={ctx} />;
     case "job_card":
       return <JobCard m={m} ctx={ctx} />;
-    case "audit_card":
-      return <AuditCard m={m} ctx={ctx} />;
     case "edit_card":
       return <EditCard m={m} ctx={ctx} />;
     default:

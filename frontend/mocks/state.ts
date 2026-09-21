@@ -383,6 +383,14 @@ export function buildResult(g: MockGeneration): GenerationResult {
       manifest[`${v.variant_id}/r${v.revision}/media/asset_logo.png`] = { content_type: "image/png", size_bytes: 2000, sha256: "mock" };
     }
     if (v.audit?.report_artifact) manifest[v.audit.report_artifact] = { content_type: "application/json", size_bytes: 30000, sha256: "mock" };
+    // Артефакты ревизий неизменяемы и доступны после появления новой, как на сервере.
+    const currentPrefix = `${v.variant_id}/r${v.revision}/`;
+    for (const [name, entry] of Object.entries(manifest)) {
+      if (!name.startsWith(currentPrefix)) continue;
+      for (let revision = 1; revision < (v.revision ?? 1); revision++) {
+        manifest[name.replace(currentPrefix, `${v.variant_id}/r${revision}/`)] = entry;
+      }
+    }
   });
   const elapsed = Math.min(t, g.createdAt + Math.max(...g.variants.map((v) => timeline(g, v).auditDone - g.createdAt))) - g.createdAt;
   const doneVariants = variants.filter((v) => v.ready_at);

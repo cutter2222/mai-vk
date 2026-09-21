@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, Group, Modal, Stack, Text, Title } from "@mantine/core";
+import { Button, Group, Modal, Stack, Text, Title } from "@mantine/core";
 
 import { SlideImage } from "@/components/common/SlideImage";
 
@@ -36,13 +36,13 @@ export function FilterChips({ counts, labels, active, onChange, total, testId }:
   const keys = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
   return (
     <Group gap={6} data-testid={testId}>
-      <Badge component="button" variant={active === null ? "filled" : "default"} color="brand" size="lg" style={{ cursor: "pointer" }} onClick={() => onChange(null)}>
+      <Button variant={active === null ? "light" : "subtle"} color={active === null ? "brand" : "gray"} size="xs" aria-pressed={active === null} onClick={() => onChange(null)}>
         Все · {total}
-      </Badge>
+      </Button>
       {keys.map((k) => (
-        <Badge key={k} component="button" variant={active === k ? "filled" : "default"} color="brand" size="lg" style={{ cursor: "pointer" }} onClick={() => onChange(active === k ? null : k)}>
+        <Button key={k} variant={active === k ? "light" : "subtle"} color={active === k ? "brand" : "gray"} size="xs" aria-pressed={active === k} onClick={() => onChange(active === k ? null : k)}>
           {labels[k] ?? k} · {counts[k]}
-        </Badge>
+        </Button>
       ))}
     </Group>
   );
