@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-22T06:33:19Z",
+ "entry_version": 1,
+ "key": "810e30c7221c965524c1f3ff4e62eaecb9e01710752177cf70530ac15c93568d",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3793,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 2073,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 593,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Информационный шум снижает эффективность» (pat_s3), слот subtitle_1: текст не помещается — 115 символов / 4 строк при ёмкости 46 символов / 1 строк — сократи формулир",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 12316,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t2\"\n      ],\n      \"pattern\": \"pat_s3\",\n      \"title\": \"Информационный шум снижает эффективность\",\n      \"message\": \"Высокий объем уведомлений без приоритизации приводит к тому, что пользователи игнорируют важные сообщения.\",\n      \"visual\": \"number\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Пропуск до {fact:f1} важных уведомлений\",\n          \"sub\": \"Пропуск важного\",\n          \"facts\": [\n            \"f1\"\n          ]\n        },\n        {\n          \"text\": \"{fact:f2} уведомлений в день на пользователя\",\n          \"sub\": \"Объем входящих\",\n          \"facts\": [\n            \"f2\"\n          ]\n        }\n      ],\n      \"facts\": [\n        \"f1\",\n        \"f2\"\n      ],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t4\"\n      ],\n      \"pattern\": \"pat_builtin_cards_grid_cols2_numberedFalse_rows2\",\n      \"title\": \"Приоритизация и единый центр\",\n      \"message\": \"Сервис объединяет каналы и вводит тихие часы, чтобы доставлять только важные уведомления в подходящее время.\",\n      \"visual\": \"cards\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Важные уведомления поднимаются наверх списка\",\n          \"sub\": \"Приоритизация по контексту\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Единый центр вместо трёх разрозненных каналов\",\n          \"sub\": \"Единый центр\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Отложенная доставка в тихие часы\",\n          \"sub\": \"Тихие часы\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"column\",\n      \"columns\": [],\n      \"image\": \"img_1\",\n      \"notes\": \"\"\n    }\n  ],\n  \"rationale\": \"Первый слайд использует KPI-композицию для наглядного показа проблемы (пропуск и объем), второй — сетку карточек для детального раскрытия функций решения, что соответствует детальному стилю подачи.\"\n}",
+  "usage": {
+   "completion_tokens": 596,
+   "prompt_tokens": 3684,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

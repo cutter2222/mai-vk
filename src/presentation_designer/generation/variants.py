@@ -55,7 +55,7 @@ log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 
-PLAN_VERSION = "0.3.1"
+PLAN_VERSION = "0.3.3"
 PLAN_SCHEMA_VERSION = "1.3"
 # Версии плана, отличающиеся от текущей только добавленными необязательными полями: план
 # прежней ревизии (правки из чата и редактора читают его с диска) поднимается до текущей.
@@ -1143,9 +1143,25 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
                 put(_text_block(caption, label_text, fact_refs=[fid]))
         if placed_numbers:
             shown = {fid for _, fid in placed_numbers}
-            items = [it for it in items if not set(it.get("fact_refs") or []) <= shown] or (
-                items if not all(f in shown for f in facts) else []
-            )
+            shown_texts = {
+                cap.substitute_facts(str(b.get("text") or ""), ctx.facts).strip()
+                for b in blocks
+                if b["kind"] != "title"
+            }
+            # Показанное число не заменяет пояснение к нему. Убираем только пункт,
+            # текст которого уже выведен числом или подписью; пустой набор fact_refs
+            # не означает, что обычный пункт покрыт показателями. Отдельный sub также
+            # нельзя потерять при переносе основного текста в подпись.
+            items = [
+                it
+                for it in items
+                if not (
+                    it.get("fact_refs")
+                    and set(it["fact_refs"]) <= shown
+                    and not it.get("sub")
+                    and cap.substitute_facts(it["text"], ctx.facts).strip() in shown_texts
+                )
+            ]
     # Пункты: слот списка, иначе карточки, иначе текстом.
     if items:
         bullets = free("bullets")
@@ -1363,8 +1379,10 @@ def _caption_slot_for(
                 return slots[index]
     for kind in ("label", "caption", "body"):
         free_slots = [s for s in p.single(kind) if s.slot_id not in used and not _tiny(s)]
-        if index < len(free_slots):
-            return free_slots[index]
+        # Предыдущие подписи уже исключены через used: индекс показателя здесь
+        # пропускал каждый следующий свободный слот.
+        if free_slots:
+            return free_slots[0]
     return None
 
 
@@ -1944,6 +1962,55 @@ def make_validator(ctx: Context, packet: Packet) -> Any:
     return validate
 
 
+def retry_content_loss(before: list[Draft], after: list[Draft]) -> str | None:
+    """Консервативный барьер, не семантический судья и не замена validate_facts.
+
+    Сравниваем исходные формулировки, а не уже подогнанные блоки. Разрешены переносы
+    между полями/слайдами того же тезиса и удаление дублей. Произвольный пересказ
+    автоматически не доказывает сохранность условий. Заметки не заменяют видимый текст.
+    """
+
+    def normalized(text: str) -> str:
+        return re.sub(r"\s+", " ", text).strip().casefold().rstrip(". ")
+
+    def visible(draft: Draft) -> list[str]:
+        return [draft.title, draft.message, draft.text] + [
+            str(item.get(key) or "") for item in draft.items for key in ("text", "sub")
+        ]
+
+    def facts(draft: Draft) -> set[str]:
+        return (
+            set(draft.facts)
+            | {f for item in draft.items for f in item.get("fact_refs", [])}
+            | set(FACT_REF.findall(" ".join(visible(draft))))
+        )
+
+    for original in before:
+        for tid in original.theses:
+            candidates = [d for d in after if tid in d.theses]
+            if not candidates:
+                return f"потерян тезис {tid}"
+            texts = {normalized(t) for d in candidates for t in visible(d) if normalized(t)}
+            # Только регистр, пробелы и конечная точка несущественны. Поиск подстроки
+            # опасен: «разрешено» входит в «не разрешено», но смысл противоположный.
+            for text in visible(original):
+                value = normalized(text)
+                if value and value not in texts:
+                    return f"{tid}: не подтверждено сохранение текста «{text[:100]}»"
+            if not facts(original) <= set().union(*(facts(d) for d in candidates)):
+                return f"{tid}: потеряны ссылки на факты"
+            note = normalized(original.notes)
+            if note and not any(note == normalized(d.notes) for d in candidates):
+                return f"{tid}: потеряны заметки"
+            if original.dataset and not any(
+                d.dataset == original.dataset and d.columns == original.columns for d in candidates
+            ):
+                return f"{tid}: изменены набор данных или колонки"
+            if original.image and not any(d.image == original.image for d in candidates):
+                return f"{tid}: потеряно изображение"
+    return None
+
+
 def with_capacity_hint(req: Any, answer_text: str, hint: str) -> Any:
     """Повтор пакета после переполнения: модель видит свой ответ и измеренные переполнения.
     Новый запрос — новый ключ кэша, поэтому повтор воспроизводим в replay."""
@@ -1966,12 +2033,14 @@ async def fit_packet(
     ctx: Context, packet: Packet, req: Any, client: Any, *, capacity_retries: int = 1
 ) -> tuple[list[Draft], str, list[Any]]:
     """Запрос пакета, сборка блоков и измерение; при переполнении — повтор с подсказкой
-    (не больше capacity_retries), затем результат принимается как есть: остаток
-    переполнения записывается структурированно и уходит в лестницу сборки и аудит."""
+    (не больше capacity_retries). Повтор с потерей содержания не принимается; остаток
+    переполнения сохранённого ответа уходит в лестницу сборки и аудит."""
     responses: list[Any] = []
     resp = await client.complete(req, validator=make_validator(ctx, packet))
     responses.append(resp)
     raw = list(resp.parsed["drafts"])
+    baseline = copy.deepcopy(raw)
+    accepted_text = resp.text
     # Пустые слайды и недобор считаются по ответу модели до подгонки композиции кодом.
     thin_before = thin_count(raw)
     thin_hint = "; ".join(h for h in (density_hint(raw), count_hint(packet, raw)) if h) or None
@@ -1983,11 +2052,17 @@ async def fit_packet(
         if not hint or (req.deadline is not None and req.deadline.remaining() < 5):
             break
         reason = "переполнения" if over else "пустых слайдов"
-        retry = with_capacity_hint(req, resp.text, hint)
+        retry = with_capacity_hint(req, accepted_text, hint)
         resp = await client.complete(retry, validator=make_validator(ctx, packet))
         responses.append(resp)
         raw2 = list(resp.parsed["drafts"])
+        loss = retry_content_loss(baseline, raw2)
+        ctx.fix("packet_retried", f"пакет {packet.index + 1}: повтор из-за {reason}")
+        if loss:
+            ctx.fix("packet_retry_rejected_content", f"пакет {packet.index + 1}: {loss}")
+            continue
         thin_after = thin_count(raw2)
+        candidate_baseline = copy.deepcopy(raw2)
         retried = [fit_draft(ctx, d) for d in raw2]
         # Повтор принимается, если стал не хуже по переполнениям, пустым слайдам и числу.
         if (
@@ -1996,8 +2071,11 @@ async def fit_packet(
             and abs(len(raw2) - packet.target) <= abs(len(raw) - packet.target)
         ):
             drafts = retried
+            baseline = candidate_baseline
+            accepted_text = resp.text
+            raw = raw2
+            thin_before = thin_after
             rationale = str(resp.parsed.get("rationale") or rationale)
-        ctx.fix("packet_retried", f"пакет {packet.index + 1}: повтор из-за {reason}")
         thin_hint = None
     return drafts, rationale, responses
 
