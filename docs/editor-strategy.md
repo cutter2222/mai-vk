@@ -1,15 +1,19 @@
 # Решение от 21 сентября 2026: выбран ONLYOFFICE
 
+Актуальный приоритет: качество существующей ИИ-генерации и точечных правок,
+без ожидания production-приёмки precision SDK. Основания, результаты проверки
+и ближайший ограниченный сценарий: [ai-priority-review.md](ai-priority-review.md).
+
 Уточнение требования: ИИ и ONLYOFFICE должны редактировать один PPTX с сохранением
 ручных правок. Разрешена короткая пауза редактора с автоматическим повторным открытием.
 Добавлен путь точечной текстовой ИИ-правки сохранённой офисной ревизии (не пересборка
 старого плана). Текущие ограничения и проверки — в
-`/Users/nitemin/Desktop/mai-vk/docs/onlyoffice.md`, раздел «ИИ-правка текущего PPTX».
+`./docs/onlyoffice.md`, раздел «ИИ-правка текущего PPTX».
 Нижеследующая оценка описывает прежний прототип и причины изменения архитектуры.
 
 Пользователь подтвердил переход к установке ONLYOFFICE и работе над ИИ-генерацией.
 Добавлен локальный opt-in прототип. Актуальная реализация и ограничения описаны в
-`/Users/nitemin/Desktop/mai-vk/docs/onlyoffice.md`. Офисные правки ведутся отдельной
+`./docs/onlyoffice.md`. Офисные правки ведутся отдельной
 веткой и не уничтожаются ИИ-пересборкой исходника. Сравнительный визуальный тест
 трёх шаблонов не выполнен: выбор не означает доказанного превосходства в fidelity.
 
@@ -27,22 +31,22 @@
 
 ## Что установлено по коду
 
-- `/Users/nitemin/Desktop/mai-vk/frontend/components/project/editor/AssetPicker.tsx`:
+- `./frontend/components/project/editor/AssetPicker.tsx`:
   замена изображения ресурсом шаблона, материалов или загруженным PNG/JPEG.
-- `/Users/nitemin/Desktop/mai-vk/src/presentation_designer/layout/images.py`:
+- `./src/presentation_designer/layout/images.py`:
   сервер заменяет медиа-ссылку существующего `p:pic`, а не рисует весь слайд заново
   одной картинкой. `cover` обрезает по центру; `contain` уменьшает рамку по пропорциям.
   Ручной выбор области обрезки этим интерфейсом не предоставляется.
-- `/Users/nitemin/Desktop/mai-vk/frontend/components/project/editor/SlideCanvas.tsx`:
+- `./frontend/components/project/editor/SlideCanvas.tsx`:
   браузерный предпросмотр не является тем же рендерером, что экспорт PPTX.
   Его совпадение с итоговым файлом нельзя считать доказанным наличием кнопки замены.
 - Редактор не предоставляет полноценное редактирование данных таблиц/диаграмм
   или создание произвольных новых изображений и фигур.
 - **ИИ-правка пересобирает выбранный слайд и сбрасывает его ручные overrides.**
   Это намеренное поведение с предупреждением `overrides_dropped` в
-  `/Users/nitemin/Desktop/mai-vk/src/presentation_designer/generation/edit.py`,
+  `./src/presentation_designer/generation/edit.py`,
   закреплённое `test_chat_edit_drops_manual_overrides` в
-  `/Users/nitemin/Desktop/mai-vk/tests/generation/test_patch.py`.
+  `./tests/generation/test_patch.py`.
   Правки соседних слайдов сохраняются. Замена UI сама по себе это не исправит.
 
 ## Кандидаты
@@ -99,7 +103,7 @@ callback, скачать изменённый документ и надёжно
 
 - `http://localhost:8080/api/health` вернул 200: real mode, renderer OK,
   analysis worker 1, generation workers 3, storage/DB/Valkey OK.
-- В `/Users/nitemin/Desktop/mai-vk/data/organizers` обнаружены четыре PPTX:
+- В `./data/organizers` обнаружены четыре PPTX:
   VK Education, VK WorkSpace, ЛЦТ2026, VK Tech.
 - Node/pnpm не обнаружены через `command -v` на хосте; Docker доступен.
 - Рабочий сервис не пересобирался. Его UI нельзя автоматически считать содержащим

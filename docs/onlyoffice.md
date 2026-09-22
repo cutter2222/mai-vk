@@ -2,7 +2,7 @@
 
 Обновление 21.09: просмотр шаблона в проекте до генерации, подключение ассистента,
 команда `/edit` и границы асинхронной оркестрации описаны в
-`/Users/nitemin/Desktop/mai-vk/docs/onlyoffice-orchestration.md`.
+`./docs/onlyoffice-orchestration.md`.
 
 В шапке проекта иконка скачивания открывает компактное меню **PPTX / PDF / HTML**.
 Все форматы используют выбранную сохранённую ревизию ONLYOFFICE, а не исходный
@@ -18,7 +18,7 @@ PPTX или выбрать ранее загруженный шаблон с м�
 # ONLYOFFICE: единый офисный движок
 
 Извлечение встроенных шрифтов PPTX до рендера и ограничения регистрации:
-`/Users/nitemin/Desktop/mai-vk/docs/embedded-fonts.md`. Подготовка сохраняет карантин
+`./docs/embedded-fonts.md`. Подготовка сохраняет карантин
 и отчёт; общий индекс живого Document Server автоматически не обновляется.
 
 Выбран ONLYOFFICE Docs Community 9.3.1, официальный multi-arch Docker-образ
@@ -30,17 +30,17 @@ LibreOffice удалён из приложения и образов. Automation
 
 ## Запуск
 
-Рабочий каталог: `/Users/nitemin/Desktop/mai-vk`.
-В игнорируемом `/Users/nitemin/Desktop/mai-vk/.env` должен быть случайный
+Рабочий каталог: `.`.
+В игнорируемом `./.env` должен быть случайный
 `PD_ONLYOFFICE__JWT_SECRET` длиной не меньше 32 символов. Один секрет используется
 API, воркерами и Document Server. Не выключать JWT. Браузерный URL по умолчанию:
 `PD_ONLYOFFICE__PUBLIC_URL=http://localhost:8080/onlyoffice`.
 
 ```sh
 docker compose \
-  -f /Users/nitemin/Desktop/mai-vk/docker/compose.yaml \
-  -f /Users/nitemin/Desktop/mai-vk/docker/compose.dev.yaml \
-  --env-file /Users/nitemin/Desktop/mai-vk/.env up -d --build
+  -f ./docker/compose.yaml \
+  -f ./docker/compose.dev.yaml \
+  --env-file ./.env up -d --build
 ```
 
 ONLYOFFICE входит в базовый Compose. `make up` создаёт секрет при первом запуске
@@ -56,14 +56,14 @@ ONLYOFFICE входит в базовый Compose. `make up` создаёт се
 ## Интервал отрисовки презентаций: 16 мс
 
 21 сентября после повторной проверки пользователь попросил вернуть 40 → 16 мс.
-`/Users/nitemin/Desktop/mai-vk/scripts/patch_onlyoffice_rendering.py` меняет только
+`./scripts/patch_onlyoffice_rendering.py` меняет только
 `this.O_i=new AscCommon.hpf(40,B);` в SDK презентаций 9.3.1 build 10. Остальные
 таймеры, autosave, анимации приложения и опрос документа не меняются. Это настройка
 интервала, а не гарантия 60 FPS на любом устройстве.
 
 Скрипт проверяет SHA-256 обоих исходных JS до записи, отказывается от неизвестной
 сборки, допускает повторный запуск, сохраняет резервные копии и синхронные `.gz`.
-Он включён в `/Users/nitemin/Desktop/mai-vk/docker/onlyoffice.Dockerfile`.
+Он включён в `./docker/onlyoffice.Dockerfile`.
 Локально применён без перезапуска Document Server. Хэш SDK после патча:
 `5ad873396344deedf33b03fb81a1b0421108ac4d7160dd58b6ca6d77c7ee90e7`.
 
@@ -77,7 +77,7 @@ HTTP/Service Worker кэша старого SDK. Уже открытые iframe 
 `/var/www/onlyoffice/rendering-backup-40ms` в соответствующие каталоги Document Server,
 уберите вызов патча из Dockerfile и смените cache version при публикации. Не
 перезапускайте Document Server ради обновления статических файлов. Оригинальные хэши
-заданы в скрипте; тесты — `/Users/nitemin/Desktop/mai-vk/tests/test_onlyoffice_rendering_patch.py`.
+заданы в скрипте; тесты — `./tests/test_onlyoffice_rendering_patch.py`.
 
 ## Шаблоны: анализ отдельно от исходного PPTX
 
@@ -106,8 +106,8 @@ ONLYOFFICE этот режим скрыт; скачивание исходник
 - UI-тесты проверяют поиск, восстановление после ошибки, переключение разделов,
   повторное открытие и уничтожение viewer, отсутствие горизонтального переполнения
   при 1024×768. Источники не изменяются, вызовов LLM нет.
-- Тесты: `/Users/nitemin/Desktop/mai-vk/frontend/tests/templates-design.spec.ts` и
-  `/Users/nitemin/Desktop/mai-vk/frontend/tests/templates-live.spec.ts`.
+- Тесты: `./frontend/tests/templates-design.spec.ts` и
+  `./frontend/tests/templates-live.spec.ts`.
   Для live-проверки задайте `PLAYWRIGHT_BASE_URL=http://localhost:8080 TEMPLATES_LIVE=1`.
   Это не сертификация всех версий Safari/Яндекс Браузера и не полная приёмка ТЗ.
 
@@ -324,7 +324,7 @@ DejaVu и Noto установлены в обоих. После их измен�
 `State.add_llm_usage` также обращается к отсутствующему столбцу `jobs.metrics`.
 Эти ранее внесённые изменения сохранены, а не замаскированы исключением типов.
 
-Backend: `/Users/nitemin/Desktop/mai-vk/tests/api/test_onlyoffice.py` — подпись,
+Backend: `./tests/api/test_onlyoffice.py` — подпись,
 привязка URL к файлу, ключи сессий, save/reopen/download, неизменяемый исходник,
 повторные callback, SSRF, повреждённый файл, параллельное открытие.
 
@@ -343,7 +343,7 @@ Backend: `/Users/nitemin/Desktop/mai-vk/tests/api/test_onlyoffice.py` — под
 - Frontend production build, TypeScript и целевой ESLint прошли.
 - Chromium открыл настоящий сгенерированный PPTX, дождался `onDocumentReady`,
   закрыл сессию через реальный callback; скачанный v0 побайтово совпал с ИИ-исходником.
-  Тест: `/Users/nitemin/Desktop/mai-vk/frontend/tests/onlyoffice-live.spec.ts`.
+  Тест: `./frontend/tests/onlyoffice-live.spec.ts`.
   Лог: `/tmp/mai-vk-oo-live2.log` (1 passed).
 - Полный реальный round-trip после исправления повторной загрузки SDK:
   добавление слайда → callback сохранения → новая ревизия → повторное открытие
@@ -357,12 +357,12 @@ Backend: `/Users/nitemin/Desktop/mai-vk/tests/api/test_onlyoffice.py` — под
 Локальный smoke без вызовов LLM (Chromium Playwright должен быть установлен):
 
 ```sh
-cd /Users/nitemin/Desktop/mai-vk/frontend
+cd ./frontend
 PLAYWRIGHT_BASE_URL=http://localhost:8080 \
 ONLYOFFICE_JOB_ID=job_53de51cfbeb341eab2c104aacb8362c0 \
 ONLYOFFICE_ARTIFACT=original/r2/deck.pptx \
 ONLYOFFICE_EDIT_SMOKE=1 \
-pnpm exec playwright test /Users/nitemin/Desktop/mai-vk/frontend/tests/onlyoffice-live.spec.ts \
+pnpm exec playwright test ./frontend/tests/onlyoffice-live.spec.ts \
   --project=chromium --workers=1 --reporter=list
 ```
 

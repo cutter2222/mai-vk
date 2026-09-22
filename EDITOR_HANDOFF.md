@@ -1,20 +1,24 @@
 # Миграция серверного рендера на ONLYOFFICE (21.09.2026)
 
+> Актуальная передача Саше: [docs/handoff-sasha.md](docs/handoff-sasha.md).
+> Ниже — история этапов; прежние статусы коммитов, проверок и выкладки
+> относятся к соответствующим этапам, а не к текущему состоянию ветки.
+
 ONLYOFFICE теперь входит в базовый Compose и обслуживает PPTX → PDF для генерации,
 анализа шаблонов/макетов, превью и аудита. LibreOffice из worker-образа удалён.
 PDF → PNG по-прежнему PDFium. Конвертация не открывает редактор и не создаёт
 офисных ревизий; временные источники отделены от AI-артефактов и OfficeStore.
-Подробности запуска и ограничения: `/Users/nitemin/Desktop/mai-vk/docs/onlyoffice.md`.
+Подробности запуска и ограничения: `./docs/onlyoffice.md`.
 
 Проверены четыре шаблона организаторов и две AI-колоды (10/15 слайдов): PDF,
 число страниц, PNG, анализ/превью макетов и неизменность исходных хешей.
-Отчёты: `/Users/nitemin/Desktop/mai-vk/runs/onlyoffice-migration/`.
+Отчёты: `./runs/onlyoffice-migration/`.
 Полная визуальная эквивалентность PowerPoint этим не подтверждена.
 
 # Редактор презентаций — контекст для продолжения после compact
 
 Обновлено: 21 сентября 2026.
-Репозиторий: `/Users/nitemin/Desktop/mai-vk`.
+Репозиторий: `.`.
 
 ## Цель и принятые решения
 
@@ -25,7 +29,7 @@ PDF → PNG по-прежнему PDFium. Конвертация не откры
 Добавлен локальный opt-in стенд: Docker 9.3.1, `/office?id=…`, JWT callback,
 отдельная SQLite-база офисных копий с неизменяемыми версиями и точным скачиванием.
 ИИ-исходники не перезаписываются; обратного импорта в ComposedDeck нет.
-Инструкция и ограничения: `/Users/nitemin/Desktop/mai-vk/docs/onlyoffice.md`.
+Инструкция и ограничения: `./docs/onlyoffice.md`.
 Проверка backend: 63 passed (office + API flow + patch + overrides); Ruff, mypy,
 TypeScript, целевой ESLint и production build прошли. Настоящий Chromium round-trip
 добавил слайд, сохранил ревизию, повторно открыл её и проверил SHA-256 скачивания;
@@ -40,7 +44,7 @@ TypeScript, целевой ESLint и production build прошли. Настоя
 Уточнение следующего запроса пользователя: попросил вновь оценить open-source
 редактор для частых ручных правок и переноса фокуса на ИИ. Сравнение разрешено;
 решение о замене не принято. Оценка и источники:
-`/Users/nitemin/Desktop/mai-vk/docs/editor-strategy.md`.
+`./docs/editor-strategy.md`.
 
 ### Продолжение: архитектурная оценка
 
@@ -48,7 +52,7 @@ TypeScript, целевой ESLint и production build прошли. Настоя
   существующие серверные изменения не редактировались.
 - Backend `http://localhost:8080/api/health` доступен (200, real mode, renderer OK,
   analysis worker 1 / generation workers 3). Найдены четыре шаблона в
-  `/Users/nitemin/Desktop/mai-vk/data/organizers`. Node/pnpm на хосте не обнаружены,
+  `./data/organizers`. Node/pnpm на хосте не обнаружены,
   Docker доступен. Полный UI round-trip трёх шаблонов пока не выполнен.
 - Обнаружено значимое продуктовое ограничение: ИИ-правка сбрасывает ручные overrides
   пересобираемого слайда с предупреждением `overrides_dropped`. Это подтверждено
@@ -94,7 +98,7 @@ TypeScript, целевой ESLint и production build прошли. Настоя
 - Добавлены проверки localStorage, включая некорректные данные и ошибку квоты, а также ноутбучной компоновки.
 - Старые тесты приведены к снятию выделения без выхода из редактора; координатные клики стабилизированы относительно анимаций.
 - Mock-манифесты сохраняют артефакты предыдущих ревизий.
-- Описание поведения и ограничений: `/Users/nitemin/Desktop/mai-vk/frontend/tests/EDITOR_RECOVERY.md`.
+- Описание поведения и ограничений: `./frontend/tests/EDITOR_RECOVERY.md`.
 
 ## Итог проверок
 
@@ -109,30 +113,30 @@ TypeScript, целевой ESLint и production build прошли. Настоя
 
 ## Изменённые файлы редактора
 
-- `/Users/nitemin/Desktop/mai-vk/frontend/app/globals.css`
-- `/Users/nitemin/Desktop/mai-vk/frontend/components/project/ProjectEditor.tsx`
-- `/Users/nitemin/Desktop/mai-vk/frontend/components/project/ProjectHeader.tsx`
-- `/Users/nitemin/Desktop/mai-vk/frontend/components/project/editor/PropertiesPanel.tsx`
-- `/Users/nitemin/Desktop/mai-vk/frontend/components/project/preview/GenerationPreview.tsx`
-- `/Users/nitemin/Desktop/mai-vk/frontend/lib/hooks/useGenerationSession.ts`
-- `/Users/nitemin/Desktop/mai-vk/frontend/lib/hooks/useSlideEditor.ts`
-- `/Users/nitemin/Desktop/mai-vk/frontend/lib/editor/draftStorage.ts` — новый файл.
-- `/Users/nitemin/Desktop/mai-vk/frontend/mocks/state.ts`
-- `/Users/nitemin/Desktop/mai-vk/frontend/tests/e2e.spec.ts`
-- `/Users/nitemin/Desktop/mai-vk/frontend/tests/helpers.ts`
-- `/Users/nitemin/Desktop/mai-vk/frontend/tests/editor-recovery.spec.ts` — новый файл.
-- `/Users/nitemin/Desktop/mai-vk/frontend/tests/draft-storage.spec.ts` — новый файл.
-- `/Users/nitemin/Desktop/mai-vk/frontend/tests/EDITOR_RECOVERY.md` — новый файл.
+- `./frontend/app/globals.css`
+- `./frontend/components/project/ProjectEditor.tsx`
+- `./frontend/components/project/ProjectHeader.tsx`
+- `./frontend/components/project/editor/PropertiesPanel.tsx`
+- `./frontend/components/project/preview/GenerationPreview.tsx`
+- `./frontend/lib/hooks/useGenerationSession.ts`
+- `./frontend/lib/hooks/useSlideEditor.ts`
+- `./frontend/lib/editor/draftStorage.ts` — новый файл.
+- `./frontend/mocks/state.ts`
+- `./frontend/tests/e2e.spec.ts`
+- `./frontend/tests/helpers.ts`
+- `./frontend/tests/editor-recovery.spec.ts` — новый файл.
+- `./frontend/tests/draft-storage.spec.ts` — новый файл.
+- `./frontend/tests/EDITOR_RECOVERY.md` — новый файл.
 
 Изменения находятся в рабочем дереве, не закоммичены. В нём также есть существующие серверные изменения — не откатывать, не перезаписывать и не приписывать этой задаче:
 
-- `/Users/nitemin/Desktop/mai-vk/src/presentation_designer/audit/deterministic.py`
-- `/Users/nitemin/Desktop/mai-vk/src/presentation_designer/llm/usage.py`
-- `/Users/nitemin/Desktop/mai-vk/src/presentation_designer/pipeline/jobs.py`
-- `/Users/nitemin/Desktop/mai-vk/src/presentation_designer/pipeline/real.py`
-- `/Users/nitemin/Desktop/mai-vk/src/presentation_designer/pipeline/state.py`
-- `/Users/nitemin/Desktop/mai-vk/scripts/run_matrix.py`
-- `/Users/nitemin/Desktop/mai-vk/tests/audit/test_package.py`
+- `./src/presentation_designer/audit/deterministic.py`
+- `./src/presentation_designer/llm/usage.py`
+- `./src/presentation_designer/pipeline/jobs.py`
+- `./src/presentation_designer/pipeline/real.py`
+- `./src/presentation_designer/pipeline/state.py`
+- `./scripts/run_matrix.py`
+- `./tests/audit/test_package.py`
 
 ## Ограничения
 
@@ -153,14 +157,14 @@ TypeScript, целевой ESLint и production build прошли. Настоя
 ### Команды повторной проверки
 
 ```sh
-cd /Users/nitemin/Desktop/mai-vk/frontend
+cd ./frontend
 pnpm typecheck
 pnpm build:mock
 pnpm exec playwright test --workers=3 --grep 'визуальный редактор|сохранность черновика|draft storage'
 pnpm exec eslint lib/hooks/useSlideEditor.ts lib/editor/draftStorage.ts components/project/ProjectEditor.tsx components/project/preview/GenerationPreview.tsx components/project/editor/PropertiesPanel.tsx components/project/ProjectHeader.tsx lib/hooks/useGenerationSession.ts tests/editor-recovery.spec.ts tests/draft-storage.spec.ts tests/e2e.spec.ts tests/helpers.ts mocks/state.ts
-git -C /Users/nitemin/Desktop/mai-vk diff --check
+git -C . diff --check
 ```
 
 ### Короткий запрос для возобновления
 
-«Прочитай `/Users/nitemin/Desktop/mai-vk/EDITOR_HANDOFF.md` и продолжи с раздела “Что продолжить после compact”. Сохрани существующие изменения. Не начинай заново выбор редактора; приоритет — проверка реального PPTX round-trip на трёх шаблонах».
+«Прочитай `./EDITOR_HANDOFF.md` и продолжи с раздела “Что продолжить после compact”. Сохрани существующие изменения. Не начинай заново выбор редактора; приоритет — проверка реального PPTX round-trip на трёх шаблонах».

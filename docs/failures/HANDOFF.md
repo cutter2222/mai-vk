@@ -1,8 +1,8 @@
 # План для коллеги: ONLYOFFICE, чат и качество презентаций
 
-Обновлено 21 сентября 2026. Корень рабочей копии: `/Users/nitemin/Desktop/mai-vk`.
+Обновлено 21 сентября 2026. Корень рабочей копии: `.`.
 Этот документ хранится в Git рядом с описанием фейлов; `.gitignore` не изменён.
-Порядок подготовки коммитов: `/Users/nitemin/Desktop/mai-vk/docs/failures/COMMITS.md`.
+Порядок подготовки коммитов: `./docs/failures/COMMITS.md`.
 
 ## Состояние на вечер 21.09.2026
 
@@ -43,8 +43,8 @@
 1. Проверить `git status` и обе разницы — рабочую и staged. Изменений много, они
    накоплены несколькими задачами; не сбрасывать их и не добавлять всё одним коммитом.
    *(Устарело: см. «Состояние на вечер 21.09.2026».)*
-2. Прочитать `/Users/nitemin/Desktop/mai-vk/docs/onlyoffice-orchestration.md` и
-   `/Users/nitemin/Desktop/mai-vk/docs/onlyoffice.md`.
+2. Прочитать `./docs/onlyoffice-orchestration.md` и
+   `./docs/onlyoffice.md`.
 3. Проверить доступность `http://localhost:8080/api/health` и
    `http://localhost:8080/api/office/capabilities`.
 4. Открыть `http://localhost:8080/project?id=prj_f223aecdf7094a9997d77befb4574851`.
@@ -63,7 +63,7 @@
   потоковая вставка слайдов. Завершение задания не должно пересоздавать iframe.
 - Открытая офисная сессия закреплена за неизменяемым артефактом. Смена версии —
   только после безопасного сохранения/закрытия; поздняя AI-задача не затирает правки.
-- В `/Users/nitemin/Desktop/mai-vk/frontend/lib/state/projects.ts` есть ограниченный
+- В `./frontend/lib/state/projects.ts` есть ограниченный
   кэш временных ID сообщений → серверных ID. Его отдельная детерминированная
   регрессия на задержку после сохранения ещё нужна.
 
@@ -94,9 +94,9 @@ Playwright и сборка приложения в этой сессии пер�
 
 ### Меню шаблонов
 
-- Воспроизвести `/Users/nitemin/Desktop/mai-vk/frontend/tests/project-template-start.spec.ts`.
+- Воспроизвести `./frontend/tests/project-template-start.spec.ts`.
 - Сопоставить активный элемент до/после Enter и ArrowDown с поведением Mantine 9.6.1.
-  Проверить `/Users/nitemin/Desktop/mai-vk/frontend/components/project/chat/TemplateStart.tsx`.
+  Проверить `./frontend/components/project/chat/TemplateStart.tsx`.
 - Не лечить увеличением таймаута или удалением проверки. Если Enter уже фокусирует
   первый пункт, тест должен проверять правильный следующий шаг; если фокус теряется —
   исправить компонент. Проверить Escape, возврат фокуса, выбор и загрузку файла.
@@ -104,7 +104,7 @@ Playwright и сборка приложения в этой сессии пер�
 
 ### Сохранение сообщения раньше обращения к ассистенту
 
-- Дополнить `/Users/nitemin/Desktop/mai-vk/frontend/tests/project-assistant.spec.ts`
+- Дополнить `./frontend/tests/project-assistant.spec.ts`
   детерминированным сценарием: событие сохранено, извлечение брифа задержано,
   затем задержка снята и `/api/chat` получает именно сохранённый `event_id`.
 - Проверить один запрос/один ответ, отсутствие временного ID и сохранение после reload.
@@ -116,11 +116,11 @@ Playwright и сборка приложения в этой сессии пер�
 
 Исходные доказательства лежат локально и **не попадают в Git** по существующим правилам:
 
-- `/Users/nitemin/Desktop/mai-vk/runs/matrix/20260921-chat-office/report.json`;
-- `/Users/nitemin/Desktop/mai-vk/runs/matrix/20260921-chat-office/summary.md`;
+- `./runs/matrix/20260921-chat-office/report.json`;
+- `./runs/matrix/20260921-chat-office/summary.md`;
 - PPTX, PDF и полные аудиты в подпапках этого каталога;
-- `/Users/nitemin/Desktop/mai-vk/runs/matrix/20260921-chat-office-resume/`;
-- трасса UI-сбоя в `/Users/nitemin/Desktop/mai-vk/frontend/test-results/chat-final/`.
+- `./runs/matrix/20260921-chat-office-resume/`;
+- трасса UI-сбоя в `./frontend/test-results/chat-final/`.
 
 На другой машине запросить эти артефакты отдельно; не коммитить закрытые шаблоны,
 трассы с пользовательскими данными, подписанные URL и ключи.
@@ -142,7 +142,7 @@ Playwright и сборка приложения в этой сессии пер�
 
 ## 3. Повторить матрицу и сквозной маршрут
 
-- Использовать `/Users/nitemin/Desktop/mai-vk/scripts/run_matrix.py`: три шаблона,
+- Использовать `./scripts/run_matrix.py`: три шаблона,
   три варианта, одно содержание, новый каталог результатов, скачивание артефактов.
 - Сначала посмотреть `--help`; не перезаписывать предыдущие доказательства.
 - Зафиксировать commit, настройки/режим, renderer, модель, начало/конец, job IDs,
@@ -176,21 +176,21 @@ Playwright и сборка приложения в этой сессии пер�
 Backend (Python 3.12, установленные зависимости):
 
 ```sh
-cd /Users/nitemin/Desktop/mai-vk
-/Users/nitemin/Desktop/mai-vk/.venv/bin/pytest -q /Users/nitemin/Desktop/mai-vk/tests/api/test_chat.py /Users/nitemin/Desktop/mai-vk/tests/api/test_onlyoffice.py /Users/nitemin/Desktop/mai-vk/tests/api/test_flow.py /Users/nitemin/Desktop/mai-vk/tests/export/test_redaction.py
-/Users/nitemin/Desktop/mai-vk/.venv/bin/ruff check /Users/nitemin/Desktop/mai-vk/src /Users/nitemin/Desktop/mai-vk/tests /Users/nitemin/Desktop/mai-vk/scripts
-/Users/nitemin/Desktop/mai-vk/.venv/bin/mypy /Users/nitemin/Desktop/mai-vk/src/presentation_designer/api/routes/chat.py /Users/nitemin/Desktop/mai-vk/src/presentation_designer/generation/assistant.py /Users/nitemin/Desktop/mai-vk/src/presentation_designer/shared/log_redaction.py
-git -C /Users/nitemin/Desktop/mai-vk diff --check
-git -C /Users/nitemin/Desktop/mai-vk diff --cached --check
+cd .
+./.venv/bin/pytest -q ./tests/api/test_chat.py ./tests/api/test_onlyoffice.py ./tests/api/test_flow.py ./tests/export/test_redaction.py
+./.venv/bin/ruff check ./src ./tests ./scripts
+./.venv/bin/mypy ./src/presentation_designer/api/routes/chat.py ./src/presentation_designer/generation/assistant.py ./src/presentation_designer/shared/log_redaction.py
+git -C . diff --check
+git -C . diff --cached --check
 ```
 
 Frontend (Node 22, pnpm 11.8.0, браузеры Playwright 1.63.0 установлены):
 
 ```sh
-pnpm -C /Users/nitemin/Desktop/mai-vk/frontend typecheck
-pnpm -C /Users/nitemin/Desktop/mai-vk/frontend lint
-pnpm -C /Users/nitemin/Desktop/mai-vk/frontend build
-PLAYWRIGHT_BASE_URL=http://localhost:8080 pnpm -C /Users/nitemin/Desktop/mai-vk/frontend exec playwright test /Users/nitemin/Desktop/mai-vk/frontend/tests/project-assistant.spec.ts /Users/nitemin/Desktop/mai-vk/frontend/tests/onlyoffice-project.spec.ts /Users/nitemin/Desktop/mai-vk/frontend/tests/project-template-start.spec.ts /Users/nitemin/Desktop/mai-vk/frontend/tests/chat-typing.spec.ts --project=chromium --workers=1
+pnpm -C ./frontend typecheck
+pnpm -C ./frontend lint
+pnpm -C ./frontend build
+PLAYWRIGHT_BASE_URL=http://localhost:8080 pnpm -C ./frontend exec playwright test ./frontend/tests/project-assistant.spec.ts ./frontend/tests/onlyoffice-project.spec.ts ./frontend/tests/project-template-start.spec.ts ./frontend/tests/chat-typing.spec.ts --project=chromium --workers=1
 ```
 
 Для внешнего URL тестируется уже запущенная сборка: после изменения приложения

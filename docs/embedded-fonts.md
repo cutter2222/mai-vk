@@ -1,8 +1,8 @@
 # Встроенные шрифты PPTX: извлечение в карантин
 
 Реализация находится в
-`/Users/nitemin/Desktop/mai-vk/src/presentation_designer/parsing/template/embedded_fonts.py`
-и `/Users/nitemin/Desktop/mai-vk/src/presentation_designer/parsing/template/font_worker.py`.
+`./src/presentation_designer/parsing/template/embedded_fonts.py`
+и `./src/presentation_designer/parsing/template/font_worker.py`.
 
 ## Что подключено
 
@@ -22,7 +22,7 @@
   Исходный PPTX остаётся неизменным. Имена извлечённых файлов — только хэши.
 
 Отчёт и кандидаты находятся под настроенным `data_dir/embedded-fonts`, например
-`/Users/nitemin/Desktop/mai-vk/data/embedded-fonts/<pptx-sha>/v1-<decoder-sha>/report.json`.
+`./data/embedded-fonts/<pptx-sha>/v1-<decoder-sha>/report.json`.
 Каталог не является системным каталогом шрифтов и не примонтирован в Document Server.
 GET `/api/templates/{template_id}/fonts` возвращает отчёт, не сами файлы.
 Ответы конфигураций ONLYOFFICE содержат дополнительное поле `font_report` вне JWT-конфига.
@@ -74,7 +74,7 @@ CPU 6 с, файл до 16 МиБ, до 32 начертаний/64 МиБ вхо
 
 ## Декодер и лицензии
 
-`/Users/nitemin/Desktop/mai-vk/docker/app.Dockerfile` собирает `umanwizard/libeot`
+`./docker/app.Dockerfile` собирает `umanwizard/libeot`
 на commit `0407abddc581d32e9871ee41535183ee1d924d85` с `-DDECOMPRESS_ON`.
 Исходный архив, MPL-2.0 LICENSE и PATENTS включены в образ под
 `/usr/local/share/doc/libeot/`. PATENTS содержит оговорку о патентах Microsoft/Monotype:
@@ -85,9 +85,9 @@ CPU 6 с, файл до 16 МиБ, до 32 начертаний/64 МиБ вхо
 Локальные тесты (без установки шрифтов):
 
 ```sh
-cd /Users/nitemin/Desktop/mai-vk
+cd .
 PD_EOT2TTF=/absolute/path/to/eot2ttf .venv/bin/pytest -q \
-  /Users/nitemin/Desktop/mai-vk/tests/parsing/template/test_embedded_fonts.py
+  ./tests/parsing/template/test_embedded_fonts.py
 ```
 
 Без `eot2ttf` тесты реального декодера пропускаются; тесты ошибок и TTF/OTF остаются.

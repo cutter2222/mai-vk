@@ -24,11 +24,11 @@ README и инструкции входят в завершающий комми
 - frontend build/typecheck/e2e не запускались: Node и pnpm не найдены в окружении;
 - реальный ONLYOFFICE и матрица девяти колод повторно не запускались.
 
-Метрики оставлены как заготовка: известные проблемы описаны в `/Users/nitemin/Desktop/mai-vk/docs/onlyoffice.md`. Создание коммитов не означает готовность к релизу. Кроме удаления пустой строки в конце chat-теста, код при разбивке не менялся. Логи и исходные diff сохранены в `/tmp/mai-vk-commit-preparation/`, вне Git.
+Метрики оставлены как заготовка: известные проблемы описаны в `./docs/onlyoffice.md`. Создание коммитов не означает готовность к релизу. Кроме удаления пустой строки в конце chat-теста, код при разбивке не менялся. Логи и исходные diff сохранены в `/tmp/mai-vk-commit-preparation/`, вне Git.
 
 ## Первоначальный план (история)
 
-Состояние на 21.09.2026. Корень: `/Users/nitemin/Desktop/mai-vk`.
+Состояние на 21.09.2026. Корень: `.`.
 Сообщения короткие, в женском роде, без длинных технических перечислений.
 
 ## Уже поправлено
@@ -48,16 +48,16 @@ README и инструкции входят в завершающий комми
 
 Состав — только два новых документа:
 
-- `/Users/nitemin/Desktop/mai-vk/docs/failures/HANDOFF.md`;
-- `/Users/nitemin/Desktop/mai-vk/docs/failures/COMMITS.md`.
+- `./docs/failures/HANDOFF.md`;
+- `./docs/failures/COMMITS.md`.
 
 Они подготовлены в индексе. Коммит пока не создан. `.gitignore` не менялся.
 Перед коммитом проверить, что в индекс не попали чужие добавления:
 
 ```sh
-git -C /Users/nitemin/Desktop/mai-vk diff --cached --stat
-git -C /Users/nitemin/Desktop/mai-vk diff --cached --check
-git -C /Users/nitemin/Desktop/mai-vk commit -m 'Оставила план продолжения'
+git -C . diff --cached --stat
+git -C . diff --cached --check
+git -C . commit -m 'Оставила план продолжения'
 ```
 
 ## Как разделить накопленные изменения приложения
@@ -79,14 +79,14 @@ git -C /Users/nitemin/Desktop/mai-vk commit -m 'Оставила план про
 
 Общие файлы требуют особенно внимательного разделения:
 
-- `/Users/nitemin/Desktop/mai-vk/src/presentation_designer/api/app.py`;
-- `/Users/nitemin/Desktop/mai-vk/src/presentation_designer/pipeline/real.py`;
-- `/Users/nitemin/Desktop/mai-vk/src/presentation_designer/pipeline/jobs.py`;
-- `/Users/nitemin/Desktop/mai-vk/src/presentation_designer/pipeline/state.py`;
-- `/Users/nitemin/Desktop/mai-vk/frontend/components/project/ProjectEditor.tsx`;
-- `/Users/nitemin/Desktop/mai-vk/frontend/lib/api/client.ts`;
-- `/Users/nitemin/Desktop/mai-vk/frontend/lib/state/projects.ts`;
-- `/Users/nitemin/Desktop/mai-vk/frontend/app/globals.css`.
+- `./src/presentation_designer/api/app.py`;
+- `./src/presentation_designer/pipeline/real.py`;
+- `./src/presentation_designer/pipeline/jobs.py`;
+- `./src/presentation_designer/pipeline/state.py`;
+- `./frontend/components/project/ProjectEditor.tsx`;
+- `./frontend/lib/api/client.ts`;
+- `./frontend/lib/state/projects.ts`;
+- `./frontend/app/globals.css`.
 
 Если два среза не собираются независимо из-за тесной связи, объединить их,
 а не создавать сломанный промежуточный коммит. README, MODELS, инструкции и тесты
@@ -102,4 +102,4 @@ git -C /Users/nitemin/Desktop/mai-vk commit -m 'Оставила план про
 
 Целевые успешные проверки не заменяют проверку каждой выделенной версии.
 Секреты, локальные `.env`, закрытый датасет, PPTX/PDF и сырые логи не добавлять.
-План в `/Users/nitemin/Desktop/mai-vk/docs/failures/` должен оставаться видимым в Git.
+План в `./docs/failures/` должен оставаться видимым в Git.
