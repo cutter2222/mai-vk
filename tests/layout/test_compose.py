@@ -94,6 +94,56 @@ def _plan_with(
 # ---------- roundtrip и сверка с файлом ----------
 
 
+@pytest.mark.parametrize("kind", ["subtitle", "body", "bullets"])
+@pytest.mark.parametrize("measured", [True, False])
+def test_measured_text_wraps_even_when_template_disables_wrapping(
+    kind: str,
+    measured: bool,
+    rich_profile: dict[str, Any],
+    rich_template_path: pathlib.Path,
+    example_package: dict[str, Any],
+    tmp_path: pathlib.Path,
+) -> None:
+    text = "Высокая частота уведомлений без приоритизации приводит к пропуску важных сообщений."
+    block: dict[str, Any] = {"slot_id": "subtitle_1", "kind": kind}
+    if kind == "bullets":
+        block["items"] = [{"text": text}]
+    else:
+        block["text"] = text
+    if measured:
+        block["fit"] = {
+            "size_pt": 26.0,
+            "slot_size_pt": 32.0,
+            "lines": 2,
+            "max_lines": 2,
+            "action": "font_step",
+        }
+    source = next(
+        s
+        for s in Presentation(rich_template_path).slides[2].shapes
+        if s.has_text_frame and s.text == "Заголовок"
+    )
+    assert source.text_frame.word_wrap is False
+    box = (source.left, source.top, source.width, source.height)
+    plan = _plan_with(
+        rich_profile,
+        [{"pattern_id": "pat_s3", "title": "Показатели", "blocks": [block]}],
+    )
+    result = _compose(
+        plan, rich_profile, rich_template_path, example_package, tmp_path / "wrapped.pptx"
+    )
+    shape = next(
+        s
+        for s in Presentation(result.pptx_path).slides[0].shapes
+        if s.has_text_frame and s.text == text
+    )
+    # Проверяем настоящий PPTX после записи, а не только расчёт fit в плане.
+    assert shape.text_frame.word_wrap is measured
+    assert (shape.left, shape.top, shape.width, shape.height) == box
+    if measured:
+        assert all(r.font.size.pt == 26.0 for p in shape.text_frame.paragraphs for r in p.runs)
+
+
 def test_compose_mini_template_matches_plan_and_deck(
     mini_profile: dict[str, Any], make_plan: Any, example_package: dict[str, Any], tmp_path: Any
 ) -> None:

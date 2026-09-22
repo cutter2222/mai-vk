@@ -359,6 +359,10 @@ def _apply_block(
     size = _fit_size(block)
     if kind == "bullets" or kind in TEXT_KINDS:
         slot, size = _avoid_side_decor(ctx, slot, element, block, size, fill, slide_index)
+        if size is not None:
+            # Расчёт capacity переносит слова по ширине слота. Запрет переноса
+            # из образца иначе превращает рассчитанные две строки в одну за краем.
+            tx.set_wrap(element, True)
     if kind == "bullets":
         items = [str(it.get("text", "")) for it in block.get("items") or []]
         result = tx.fill_bullets(element, items, size_pt=size, facts=ctx.facts)

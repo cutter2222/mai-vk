@@ -180,8 +180,7 @@ def set_wrap(element: Any, wrap: bool) -> None:
     if body is None:
         return
     if wrap:
-        if "wrap" in body.attrib:
-            del body.attrib["wrap"]
+        body.set("wrap", "square")
     else:
         body.set("wrap", "none")
 
