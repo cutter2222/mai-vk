@@ -1,6 +1,7 @@
 # Передача работы Саше
 
-Ветка: `feat/ai-progressive-previews` в `cutter2222/mai-vk`.
+Основная ветка: `main` в `cutter2222/mai-vk`; изменения
+`feat/ai-progressive-previews` включены в неё до `09f027f`.
 Изменения публикуются от `Vasilisa-IT`. Это передача текущего кода, **не production-приёмка**.
 Все пути ниже и в связанных отчётах указаны относительно корня репозитория.
 
@@ -92,8 +93,14 @@ E2E, live-вызовы модели, рендер PPTX/PDF/HTML и визуал�
   и соседние подписи, затем продолжить разбор наложений и обрезания в mini/rich.
   Сохранность текста и корректный XML сами по себе не доказывают читаемость.
 
+Последующая [узкая визуальная проверка](layout-wrap-visual-check.md) выполнена:
+перенос на слайде 2 rich/compact подтверждён в PDF и браузере. Колода целиком
+не принята: на слайде Q4 обнаружены неверное назначение заголовков карточкам
+и белый текст без подложки. Это следующая точка исправления; mini ещё не перепроверен.
+
 ## Где читать детали
 
+- [Визуальная проверка переноса rich/compact и следующий дефект карточек Q4](layout-wrap-visual-check.md).
 - [Сохранность содержания и дефекты вёрстки](ai-number-content-preservation.md).
 - [Приоритеты качества ИИ](ai-priority-review.md).
 - [Прогрессивное превью и история экспериментов](ai-progressive-preview.md).
@@ -113,8 +120,8 @@ E2E, live-вызовы модели, рендер PPTX/PDF/HTML и визуал�
 
 ```sh
 git fetch origin
-git switch feat/ai-progressive-previews
-git pull --ff-only origin feat/ai-progressive-previews
+git switch main
+git pull --ff-only origin main
 git status --short
 ```
 
