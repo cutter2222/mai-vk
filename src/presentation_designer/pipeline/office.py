@@ -83,6 +83,11 @@ class OfficeStore:
                 CREATE TABLE IF NOT EXISTS edit_locks (
                     document_id TEXT PRIMARY KEY, token TEXT NOT NULL, expires REAL NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS save_normalizations (
+                    document_id TEXT NOT NULL, revision INTEGER NOT NULL,
+                    raw_sha256 TEXT NOT NULL, parts TEXT NOT NULL, raw_pptx BLOB NOT NULL,
+                    PRIMARY KEY(document_id, revision, raw_sha256)
+                );
             """)
 
     @contextmanager
@@ -123,6 +128,14 @@ class OfficeStore:
                 for r in db.execute(
                     "SELECT revision,sha256,saved_at FROM revisions WHERE document_id=? "
                     "ORDER BY revision DESC",
+                    (document_id,),
+                )
+            ]
+            result["normalizations"] = [
+                {**dict(item), "parts": json.loads(item["parts"])}
+                for item in db.execute(
+                    "SELECT revision,raw_sha256,parts FROM save_normalizations "
+                    "WHERE document_id=? ORDER BY revision DESC",
                     (document_id,),
                 )
             ]
@@ -214,13 +227,23 @@ class OfficeStore:
                 raise ApiError(404, "office_revision_not_found", "Версия не найдена")
             return bytes(row[0])
 
-    def callback(self, document_id: str, key: str, status: int, pptx: bytes | None) -> bool:
+    def callback(
+        self,
+        document_id: str,
+        key: str,
+        status: int,
+        pptx: bytes | None,
+        *,
+        raw_pptx: bytes | None = None,
+        normalized_parts: list[str] | None = None,
+    ) -> bool:
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute("SELECT * FROM documents WHERE id=?", (document_id,)).fetchone()
             if row is None or row["active_key"] != key:
                 return False
             if pptx is not None:
+                revision = row["revision"]
                 digest = hashlib.sha256(pptx).hexdigest()
                 previous = db.execute(
                     "SELECT sha256 FROM revisions WHERE document_id=? AND revision=?",
@@ -245,8 +268,24 @@ class OfficeStore:
                             document_id,
                         ),
                     )
+                if raw_pptx is not None and normalized_parts:
+                    db.execute(
+                        "INSERT OR IGNORE INTO save_normalizations VALUES(?,?,?,?,?)",
+                        (
+                            document_id,
+                            revision,
+                            hashlib.sha256(raw_pptx).hexdigest(),
+                            json.dumps(normalized_parts),
+                            raw_pptx,
+                        ),
+                    )
             if status in {2, 4}:
                 db.execute("UPDATE documents SET active_key=NULL WHERE id=?", (document_id,))
-            error = "ONLYOFFICE сообщил об ошибке сохранения" if status in {3, 7} else None
+            # Presence / no-change notifications cannot clear a failed save.
+            error = row["error"]
+            if status in {3, 7}:
+                error = "ONLYOFFICE сообщил об ошибке сохранения"
+            elif pptx is not None:
+                error = None
             db.execute("UPDATE documents SET error=? WHERE id=?", (error, document_id))
             return True

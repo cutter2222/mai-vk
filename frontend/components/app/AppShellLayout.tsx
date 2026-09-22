@@ -27,9 +27,9 @@ export function AppShellLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
   const openedId = useSearchParams()?.get("id");
   // Внутри открытой сущности разделов нет: человек работает с презентацией или разбирает
-  // шаблон, а не ходит по библиотеке. У обоих экранов своя шапка с возвратом и действиями,
+  // шаблон, а не ходит по библиотеке. У этих экранов своя шапка с возвратом и действиями,
   // и вторая строка над ней была бы лишним слоем.
-  const bare = pathname.startsWith("/project") || (pathname.startsWith("/templates") && !!openedId);
+  const bare = pathname.startsWith("/project") || pathname === "/office" || pathname === "/office/" || (pathname.startsWith("/templates") && !!openedId);
   if (bare) {
     return (
       <AppShell padding={0}>

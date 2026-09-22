@@ -1276,11 +1276,19 @@ body {
 /* Подсвечена рамка объекта — то, что и будет выбрано. Пунктир и лёгкая заливка говорят, что
    это граница места на слайде, а не сам текст: точные буквы обводит уже холст правки. */
 .object-outline[data-hover="true"],
+.object-outline[data-selected="true"],
 .object-outline:focus-visible {
   border-style: dashed;
   border-color: var(--accent);
   background: rgba(31, 111, 235, 0.05);
   outline: none;
+}
+
+/* Двойной контраст: выделение видно и на белом, и на фирменном синем фоне PPTX. */
+.object-outline[data-selected="true"] {
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px #174ea6, inset 0 0 0 1px #174ea6;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* Под указателем всегда что-то выделяемое — курсор показывает это до нажатия. */

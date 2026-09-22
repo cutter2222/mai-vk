@@ -2,7 +2,6 @@
 
 import { Stack, Text } from "@mantine/core";
 import { IconLayoutDashboard } from "@tabler/icons-react";
-import { TemplateSourceViewer } from "@/components/templates/TemplateSourceViewer";
 
 import { ApiError, type TemplateDetail } from "@/lib/api/client";
 import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
@@ -56,12 +55,6 @@ export function PreviewPane({ project, session, officeEnabled, templateDetail, t
   }
 
   if (project.template_id) {
-    if (officeEnabled) return (
-      <div className="project-office" data-testid="project-template-office">
-        <Text size="xs" c="dimmed" p="xs">Исходный шаблон · только просмотр. После генерации здесь откроется презентация для редактирования.</Text>
-        <TemplateSourceViewer key={project.template_id} templateId={project.template_id} />
-      </div>
-    );
     return <TemplatePreview templateId={project.template_id} detail={templateDetail} error={templateError} />;
   }
 

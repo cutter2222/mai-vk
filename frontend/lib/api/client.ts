@@ -25,6 +25,28 @@ export interface OfficeDocument {
   active_key: string | null;
   error: string | null;
   revisions: { revision: number; sha256: string; saved_at: number }[];
+  normalizations?: { revision: number; raw_sha256: string; parts: string[] }[];
+}
+
+export interface OfficePreview {
+  revision: number;
+  slides: string[];
+  ratio: number;
+}
+
+export interface OfficeObjectTarget { slide: number; shape_id: string }
+export interface OfficeObject extends OfficeObjectTarget {
+  label: string;
+  kind: string;
+  bbox: { x: number; y: number; width: number; height: number };
+  z: number;
+  hollow: boolean;
+}
+export interface OfficeSelection extends OfficeObjectTarget {
+  documentId: string;
+  revision: number;
+  label: string;
+  objects: (OfficeObjectTarget & { label: string })[];
 }
 
 export interface HealthResponse {
@@ -156,8 +178,12 @@ export const api = {
     capabilities: () => request<{ enabled: boolean }>("/office/capabilities"),
     templateConfig: (id: string) => request<{ script_url: string; config: Record<string, unknown> }>(`/office/templates/${encodeURIComponent(id)}/config`, json({})),
     create: (jobId: string, artifact: string) => request<OfficeDocument>("/office/documents", json({ job_id: jobId, artifact })),
+    templateCopy: (projectId: string, templateId: string) => request<OfficeDocument>(`/office/projects/${encodeURIComponent(projectId)}/template`, json({ template_id: templateId })),
     get: (id: string) => request<OfficeDocument>(`/office/documents/${encodeURIComponent(id)}`),
-    edit: (id: string, revision: number, instruction: string) => request<{ document: OfficeDocument; changed: boolean; message: string }>(`/office/documents/${encodeURIComponent(id)}/edit`, json({ revision, instruction })),
+    preview: (id: string, revision: number) => request<OfficePreview>(`/office/documents/${encodeURIComponent(id)}/preview/${revision}`),
+    objects: (id: string, revision: number) => request<{ revision: number; objects: OfficeObject[] }>(`/office/documents/${encodeURIComponent(id)}/objects/${revision}`),
+    previewUrl: (id: string, revision: number, name: string) => `${API_BASE}/office/documents/${encodeURIComponent(id)}/preview/${revision}/${encodeURIComponent(name)}`,
+    edit: (id: string, revision: number, instruction: string, target?: OfficeObjectTarget | OfficeObjectTarget[]) => request<{ document: OfficeDocument; changed: boolean; message: string }>(`/office/documents/${encodeURIComponent(id)}/edit`, json({ revision, instruction, ...(Array.isArray(target) ? { targets: target } : target ? { target } : {}) })),
     config: (id: string) => request<{ script_url: string; config: Record<string, unknown> }>(`/office/documents/${encodeURIComponent(id)}/config`, json({})),
     downloadUrl: (id: string, revision: number, format: "pptx" | "pdf" | "html" = "pptx") => `${API_BASE}/office/documents/${encodeURIComponent(id)}/download/${revision}${format === "pptx" ? "" : `?format=${format}`}`,
   },

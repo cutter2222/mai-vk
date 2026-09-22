@@ -73,9 +73,10 @@ def _slide_material(story: JsonDict, refs: list[str]) -> JsonDict:
             value = thesis.get(key)
             if isinstance(value, str) and value.strip():
                 statements.append(value.strip())
-        for fact in thesis.get("source_refs") or []:
+        # source_refs addresses content blocks, not entries in package.facts.
+        for fact in thesis.get("fact_refs") or []:
             facts.append(str(fact))
-    return {"material": statements, "fact_refs": facts}
+    return {"material": statements, "fact_refs": list(dict.fromkeys(facts))}
 
 
 def collect_gaps(

@@ -8,9 +8,11 @@ import { createPortal } from "react-dom";
 
 import { api, type OfficeDocument } from "@/lib/api/client";
 import { downloadArtifact } from "@/lib/download";
+import { Logo } from "@/components/app/Logo";
+import { flushOfficeFrame } from "@/lib/editor/officeSave";
 
 type Editor = { destroyEditor: () => void; requestClose: () => void };
-export type OfficeEditHandle = { edit: (instruction: string) => Promise<string> };
+export type OfficeEditHandle = { edit: (instruction: string, target?: import("@/lib/api/client").OfficeSelection) => Promise<string> };
 let sdkPromise: Promise<void> | undefined;
 
 export function loadSDK(url: string): Promise<void> {
@@ -37,7 +39,7 @@ declare global {
   }
 }
 
-export function OfficeEditor({ id, title, embedded = false, onActiveChange, documentActions, editRef, actionsTarget }: {
+export function OfficeEditor({ id, title, embedded = false, onActiveChange, documentActions, editRef, actionsTarget, returnHref = "/", onSaved }: {
   id: string;
   title?: string;
   embedded?: boolean;
@@ -45,6 +47,8 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
   documentActions?: ReactNode;
   editRef?: Ref<OfficeEditHandle>;
   actionsTarget?: HTMLElement | null;
+  returnHref?: string;
+  onSaved?: (document: OfficeDocument) => void;
 }) {
   const [doc, setDoc] = useState<OfficeDocument | null>(null);
   const [error, setError] = useState("");
@@ -57,12 +61,74 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
   const [attempt, setAttempt] = useState(0);
   const editorId = useId();
   const [editing, setEditing] = useState(false);
+  const [closing, setClosing] = useState(false);
   const busy = useRef(false);
   const mounted = useRef(true);
   const sdk = useRef<Editor | null>(null);
+  const canvas = useRef<HTMLDivElement | null>(null);
+  const saveAbort = useRef<AbortController | null>(null);
   const dirty = useRef(false);
   const closeRequested = useRef<(() => void) | null>(null);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const pollEpoch = useRef(0);
+  const returnedAfterSave = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; saveAbort.current?.abort(); }; }, []);
+
+  const flush = async () => {
+    saveAbort.current?.abort();
+    const controller = new AbortController();
+    saveAbort.current = controller;
+    await flushOfficeFrame(canvas.current?.querySelector("iframe") ?? null, controller.signal);
+    dirty.current = false;
+    setModified(false);
+  };
+
+  useEffect(() => {
+    // finish() clears pre-close state; only a fresh server acknowledgement allows return.
+    if (embedded || editing || !closed || !doc || doc.active_key || doc.error || pollError || !onSaved || returnedAfterSave.current) return;
+    returnedAfterSave.current = true;
+    onSaved(doc);
+  }, [embedded, editing, closed, doc, pollError, onSaved]);
+
+  const finish = async () => {
+    if (busy.current || closing || closed || !sdk.current) return;
+    busy.current = true;
+    setClosing(true);
+    setError("");
+    try {
+      await flush();
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          closeRequested.current = null;
+          reject(new Error("Редактор не подтвердил закрытие. Повторите завершение."));
+        }, 15000);
+        closeRequested.current = () => {
+          clearTimeout(timer);
+          closeRequested.current = null;
+          if (dirty.current) reject(new Error("Есть несохранённые изменения; редактор оставлен открытым."));
+          else {
+            // Discard pre-close polling state: only a fresh callback acknowledgement permits return.
+            pollEpoch.current++;
+            setDoc(null);
+            setClosed(true);
+            resolve();
+          }
+        };
+        sdk.current!.requestClose();
+      });
+    } catch (e) { if (mounted.current) setError(e instanceof Error ? e.message : "Не удалось завершить редактирование"); }
+    finally { busy.current = false; if (mounted.current) setClosing(false); }
+  };
+
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (!closed || !doc || doc.active_key || doc.error || pollError) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [closed, doc, pollError]);
 
   useImperativeHandle(editRef, () => ({ edit: async (instruction: string) => {
     if (busy.current) throw new Error("Предыдущая ИИ-правка ещё выполняется.");
@@ -72,13 +138,7 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
     let saved = false;
     try {
       if (!closed) {
-        // Keep the iframe alive while unsent edits flush to Document Server.
-        const flushUntil = Date.now() + 30000;
-        while (dirty.current && Date.now() < flushUntil) {
-          await new Promise((resolve) => setTimeout(resolve, 250));
-          if (!mounted.current) throw new Error("Страница закрыта.");
-        }
-        if (dirty.current) throw new Error("ONLYOFFICE ещё не отправил правки. Сохраните документ и повторите запрос; редактор оставлен открытым.");
+        await flush();
         await new Promise<void>((resolve, reject) => {
           const timer = setTimeout(() => { closeRequested.current = null; reject(new Error("Редактор не подтвердил закрытие. Сохраните документ и повторите запрос.")); }, 15000);
           closeRequested.current = () => {
@@ -123,9 +183,10 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
+      const epoch = pollEpoch.current;
       try {
         const value = await api.office.get(id);
-        if (!cancelled) {
+        if (!cancelled && epoch === pollEpoch.current) {
           setDoc(value);
           setPollError("");
         }
@@ -137,7 +198,7 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
     };
     void poll();
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [id]);
+  }, [id, closed]);
 
   useEffect(() => {
     if (!id || closed) return;
@@ -208,7 +269,7 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
               <Text size="xs" c="dimmed" px="sm" pb="xs">Ctrl+S / ⌘S — сохранить. Скачивается серверная версия; последние правки могут ещё сохраняться.</Text>
               {documentActions}
               <Menu.Divider />
-              <Menu.Item disabled={closed || editing} onClick={() => setClosed(true)}>Завершить редактирование</Menu.Item>
+              <Menu.Item disabled={closed || editing || closing || !ready} onClick={() => void finish()}>Завершить редактирование</Menu.Item>
             </Menu.Dropdown>
           </Menu>
         </Group>
@@ -216,22 +277,27 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
 
   return (
     <Stack gap={0} className="office-workspace" data-testid="office-workspace" style={{ height: embedded ? "100%" : "100dvh" }}>
+      {!embedded && <Group component="header" justify="space-between" wrap="nowrap" px="md" h={60} style={{ flexShrink: 0, background: "var(--page)", borderBottom: "1px solid var(--line)" }}>
+        <span role="img" aria-label="Дизайнер презентаций" style={{ display: "inline-flex" }}><Logo /></span>
+        {!closed && <Button loading={closing} disabled={!ready || editing} onClick={() => void finish()}>Завершить и сохранить</Button>}
+      </Group>}
       {actionsTarget && createPortal(actions, actionsTarget)}
       {pollError && <Alert color="yellow">Не удаётся проверить сохранение: {pollError}</Alert>}
+      {!!doc?.normalizations?.length && <Alert color="yellow">Исправлено экранирование имён макетов в результате ONLYOFFICE. Исходный ответ сервера сохранён для диагностики; проверка оформления требуется отдельно.</Alert>}
       {(error || doc?.error) && <Alert color="red">
         {error || doc?.error}
         {startFailed && !closed && <Button ml="sm" size="xs" variant="light" onClick={() => { setError(""); setStartFailed(false); setAttempt((n) => n + 1); }}>Повторить загрузку редактора</Button>}
       </Alert>}
       {editing && <Alert color="blue" title="ИИ редактирует этот PPTX">Ожидаем сохранения ONLYOFFICE и применяем точечную правку. Редактор откроется автоматически. Не закрывайте страницу.</Alert>}
       {closed ? (editing ? null : (
-        <Alert color={!doc || doc.active_key || pollError ? "yellow" : "green"}>
-          {!doc || doc.active_key || pollError ? "Ожидаем завершения сессии и сохранения. Если файл открыт в другой вкладке, завершите редактирование и там." : "Сессия закрыта. Последняя серверная версия доступна для скачивания."}
-          {doc && !doc.active_key && !pollError && <Button ml="md" variant="light" onClick={() => { setReady(false); setModified(false); setError(""); setClosed(false); }}>Открыть снова</Button>}
-          {!embedded && doc && !doc.active_key && <Button component={Link} href="/" ml="md" variant="subtle">К проектам</Button>}
+        <Alert color={!doc || doc.active_key || doc.error || pollError ? "yellow" : "green"}>
+          {!doc || doc.active_key || doc.error || pollError ? "Ожидаем завершения сессии и сохранения. Если файл открыт в другой вкладке, завершите редактирование и там." : onSaved && !embedded ? "Возвращаемся в ИИ-редактор…" : `Сессия закрыта. Версия v${doc.revision} сохранена на сервере.`}
+          {(!onSaved || embedded) && doc && !doc.active_key && !doc.error && !pollError && <Button ml="md" variant="light" onClick={() => { setReady(false); setModified(false); setError(""); setClosed(false); }}>Открыть снова</Button>}
+          {!embedded && !onSaved && doc && !doc.active_key && !doc.error && !pollError && <Button component={Link} href={returnHref} ml="md">Вернуться к превью</Button>}
         </Alert>
       )) : (
         <>
-          <div className="office-canvas" inert={editing} aria-label="Редактор презентации ONLYOFFICE">
+          <div ref={canvas} className="office-canvas" inert={editing || closing} aria-label="Редактор презентации ONLYOFFICE">
             {!ready && !error && <div className="office-loading"><Loader size="sm" /><Text size="sm">Загружается редактор…</Text></div>}
             <div id={editorId} />
           </div>

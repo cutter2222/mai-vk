@@ -6,6 +6,7 @@ import { IconArrowUp, IconFile, IconPaperclip, IconSlideshow } from "@tabler/ico
 import { Fragment, useEffect, useRef, useState } from "react";
 
 import { formatBytes, VARIANT_LABELS } from "@/lib/format";
+import type { OfficeSelection } from "@/lib/api/client";
 import type { SlideTarget } from "@/lib/hooks/useGenerationSession";
 import type { ChatMessage, PptxAnswer } from "@/lib/state/projects";
 
@@ -18,6 +19,8 @@ import { AssistantTyping } from "./AssistantTyping";
 import { useAssistantTyping } from "./useAssistantTyping";
 
 interface Props {
+  officeSelection?: OfficeSelection | null;
+  onDismissOfficeSelection?: () => void;
   suggestions?: string[];
   ctx: CardContext;
   onSend: (text: string, files: File[], target: SlideTarget | null) => Promise<void>;
@@ -37,7 +40,7 @@ interface Props {
  * Чат проекта: лента сообщений и карточек шагов, внизу поле ввода с вложениями; файлы можно бросать в любое место панели.
  * PPTX не ждёт отправки: вопрос «шаблон, готовая презентация или материал» появляется в ленте в момент броска, пока файл грузится.
  */
-export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onAnswerStaged, onSelectTemplate, onUploadTemplate, filter = "all", onTag }: Props) {
+export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onAnswerStaged, onSelectTemplate, onUploadTemplate, filter = "all", onTag, officeSelection, onDismissOfficeSelection }: Props) {
   const { project, session } = ctx;
   // Выбранный справа слайд — адресат сообщения: чип над полем ввода, крестик снимает адресацию.
   const target = session.slideTarget;
@@ -94,7 +97,7 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
       setSending(false);
     }
   };
-  const placeholder = target
+  const placeholder = officeSelection ? (officeSelection.objects.length > 1 ? "Что изменить в выбранных объектах или куда их переместить?" : "Что изменить в объекте или куда его переместить?") : target
     ? `Что изменить на слайде ${target.slideIndex + 1}?`
     : count === 0
       ? "Опишите задачу или перетащите файлы…"
@@ -151,6 +154,11 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
         {showTyping && <AssistantTyping />}
       </div>
       <div className="chat-composer">
+        {officeSelection && <Group gap={6} mb={8} data-testid="office-object-target">
+          <Text size="xs">Слайд {officeSelection.slide} · {officeSelection.label} · v{officeSelection.revision}</Text>
+          <CloseButton size="sm" aria-label="Снять выбор объекта" onClick={onDismissOfficeSelection} />
+          <Text size="xs" c="dimmed">{officeSelection.objects.length > 1 ? "Правка только выбранных объектов. Например: «перемести все три правее»." : "Правка только этого объекта. Например: «сократи текст» или «перенеси правее»."}</Text>
+        </Group>}
         {suggestions.length > 0 && <Group gap={6} mb="xs" data-testid="chat-suggestions">
           {suggestions.map((option) => <Button key={option} size="compact-xs" variant="light" disabled={sending} onClick={() => setText(option)}>{option}</Button>)}
         </Group>}

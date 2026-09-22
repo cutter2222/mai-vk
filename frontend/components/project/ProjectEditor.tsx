@@ -12,7 +12,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { OfficeEditHandle } from "@/components/office/OfficeEditor";
 
-import { api, ApiError, type CapabilitiesResponse, type TemplateDetail } from "@/lib/api/client";
+import { api, ApiError, type CapabilitiesResponse, type TemplateDetail, type OfficeSelection } from "@/lib/api/client";
 import type { GenerationRequest } from "@/lib/api/types";
 import { usePolling } from "@/lib/api/usePolling";
 import { useGenerationSession } from "@/lib/hooks/useGenerationSession";
@@ -33,7 +33,7 @@ import { ProjectOffice } from "./office/ProjectOffice";
 /** Что показывает левая панель: всю ленту, ленту под меткой или файлы проекта. */
 type Tab = "all" | ChatTag | "files";
 
-/** Редактор проекта: слева чат/файлы, справа единственный редактор PPTX. */
+/** Проект: слева чат/файлы, справа превью сохранённой офисной ревизии. */
 export function ProjectEditor({ project }: { project: Project }) {
   const [tab, setTab] = useState<Tab>("all");
   // Панель с чатом занимает 460 px. На правке слайда это место нужнее слайду, поэтому она
@@ -43,6 +43,11 @@ export function ProjectEditor({ project }: { project: Project }) {
   const [officeEnabled, setOfficeEnabled] = useState(false);
   const [officeOpened, setOfficeOpened] = useState(false);
   const officeEdit = useRef<OfficeEditHandle>(null);
+  const [officeSelection, setOfficeSelection] = useState<OfficeSelection | null>(null);
+  const selectOfficeObject = useCallback((value: OfficeSelection | null) => {
+    setOfficeSelection(value);
+    if (value) { setPanelOpen(true); setTab("all"); }
+  }, []);
   const [officeActionsTarget, setOfficeActionsTarget] = useState<HTMLDivElement | null>(null);
   const [starting, setStarting] = useState(false);
   const [briefModal, setBriefModal] = useState(false);
@@ -67,9 +72,11 @@ export function ProjectEditor({ project }: { project: Project }) {
 
   const session = useGenerationSession(project.job_id, (jobId) => patch({ job_id: jobId }), { loadAudit: false });
 
-  const officeAvailable = officeEnabled && Boolean(session.variant?.artifacts?.pptx);
+  const officeAvailable = officeEnabled && Boolean(session.jobId && session.variant?.artifacts?.pptx);
   if (officeAvailable && !officeOpened) setOfficeOpened(true);
   const officePresent = officeEnabled && officeOpened;
+  const templateOffice = officeEnabled && !project.job_id && project.template_id && template.data?.previews?.some((path) => /(^|\/)slide-\d+\.png$/.test(path))
+    ? { id: project.template_id, detail: template.data } : undefined;
 
   const generate = useCallback(async (): Promise<boolean> => {
     if (!project.template_id || !project.package_id) return false;
@@ -113,12 +120,13 @@ export function ProjectEditor({ project }: { project: Project }) {
   // сообщение и ответ на него были бы не видны: «написал и ничего не произошло».
   const send: typeof chat.send = async (text, files, target) => {
     setTab("all");
-    if (officePresent && /^\/edit\s+/i.test(text.trim())) {
-      appendMessage(project.project_id, { role: "user", kind: "message", text, file_ids: [] });
+    if ((officePresent || templateOffice) && (officeSelection || /^\/edit\s+/i.test(text.trim()))) {
+      const label = officeSelection ? `Слайд ${officeSelection.slide} · ${officeSelection.label} · v${officeSelection.revision}\n` : "";
+      appendMessage(project.project_id, { role: "user", kind: "message", text: label + text, file_ids: [] });
       try {
-        if (files.length) throw new Error("Прикрепите материалы отдельно. Пока ИИ умеет точечно изменять текст текущего PPTX; изображения и структура редактируются в ONLYOFFICE.");
+        if (files.length) throw new Error("Прикрепите материалы отдельно. Здесь доступны текстовые правки и перемещение выбранного объекта; замена изображений и структуры — в ONLYOFFICE.");
         if (!officeEdit.current) throw new Error("Дождитесь открытия презентации.");
-        const message = await officeEdit.current.edit(text.trim().replace(/^\/edit\s+/i, ""));
+        const message = await officeEdit.current.edit(text.trim().replace(/^\/edit\s+/i, ""), officeSelection ?? undefined);
         appendMessage(project.project_id, { role: "assistant", kind: "text", text: message });
       } catch (e) {
         appendMessage(project.project_id, { role: "assistant", kind: "text", text: e instanceof Error ? e.message : "Правка не применена." });
@@ -213,7 +221,7 @@ export function ProjectEditor({ project }: { project: Project }) {
               </Tooltip>
             </div>
             {tab !== "files" ? (
-              <ChatPanel ctx={ctx} onSend={send} suggestions={chat.suggestions} onAttach={chat.attach} staged={chat.staged} onAnswerStaged={chat.answerStaged} onSelectTemplate={chat.selectTemplate} onUploadTemplate={chat.addTemplate} filter={tab} onTag={(tag) => setTab(tag)} />
+              <ChatPanel ctx={ctx} onSend={send} officeSelection={officeSelection} onDismissOfficeSelection={() => setOfficeSelection(null)} suggestions={chat.suggestions} onAttach={chat.attach} staged={chat.staged} onAnswerStaged={chat.answerStaged} onSelectTemplate={chat.selectTemplate} onUploadTemplate={chat.addTemplate} filter={tab} onTag={(tag) => setTab(tag)} />
             ) : (
               <FilesPanel project={project} onAdd={(files) => { const rest = chat.attach(files); if (rest.length) void chat.send("", rest); }} onRemove={(fid) => void chat.removeFile(fid)} onSelectTemplate={chat.selectTemplate} />
             )}
@@ -221,10 +229,10 @@ export function ProjectEditor({ project }: { project: Project }) {
         </aside>
 
         <section className="editor-preview" data-testid="preview-pane">
-          {officePresent && <div className="office-slot">
-            <ProjectOffice session={session} title={project.title} editRef={officeEdit} actionsTarget={officeActionsTarget} />
+          {(officePresent || templateOffice) && <div className="office-slot">
+            <ProjectOffice key={templateOffice?.id ?? "generated"} template={templateOffice} session={session} title={project.title} projectId={project.project_id} editRef={officeEdit} actionsTarget={officeActionsTarget} selection={officeSelection} onSelectionChange={selectOfficeObject} />
           </div>}
-          {!officePresent && <PreviewPane
+          {!officePresent && !templateOffice && <PreviewPane
             project={project}
             session={session}
             officeEnabled={officeEnabled}

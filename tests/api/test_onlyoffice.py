@@ -16,6 +16,222 @@ from presentation_designer.pipeline.office import OfficeStore, sign, verify
 SECRET = "test-onlyoffice-secret-not-for-production-123456"
 
 
+def test_project_template_copy_is_isolated_and_persistent(client, office, pptx_bytes):
+    store, _ = office
+    template_id = client.post("/api/templates", files={"file": ("Шаблон.pptx", pptx_bytes)}).json()[
+        "template_id"
+    ]
+    copies = []
+    for _ in range(2):
+        project = client.post("/api/projects", json={}).json()["project_id"]
+        client.patch(f"/api/projects/{project}", json={"template_id": template_id})
+        url = f"/api/office/projects/{project}/template"
+        before = client.get(f"/api/projects/{project}").json()
+        response = client.post(url, json={"template_id": template_id})
+        assert response.status_code == 200, response.text
+        doc = response.json()
+        assert store.read(doc["id"], 0) == pptx_bytes
+        token = store.begin_edit(doc["id"], 0)
+        store.commit_edit(doc["id"], token, 0, pptx_bytes + b"copy-only")
+        store.end_edit(doc["id"], token)
+        reopened = client.post(url, json={"template_id": template_id}).json()
+        assert reopened["id"] == doc["id"]
+        assert reopened["revision"] == 1
+        assert client.get(f"/api/projects/{project}").json() == before
+        assert client.post(url, json={"template_id": "other"}).status_code == 409
+        copies.append(doc["id"])
+    assert copies[0] != copies[1]
+    assert client.get(f"/api/templates/{template_id}/source").content == pptx_bytes
+    assert (
+        client.post(
+            "/api/office/projects/missing/template", json={"template_id": template_id}
+        ).status_code
+        == 404
+    )
+
+
+def test_multiple_object_edit_is_atomic_and_revision_scoped(client, office, monkeypatch):
+    from pptx.util import Inches
+
+    from presentation_designer.generation.office_object_edit import ObjectsEditPlan
+
+    store, doc_id = office
+    deck = Presentation()
+    slide = deck.slides.add_slide(deck.slide_layouts[6])
+    for i in range(4):
+        slide.shapes.add_textbox(
+            Inches(1), Inches(i + 1), Inches(2), Inches(0.5)
+        ).text = f"Объект {i}"
+    output = io.BytesIO()
+    deck.save(output)
+    opened = store.open(doc_id)
+    store.callback(doc_id, opened["active_key"], 2, output.getvalue())
+    base = f"/api/office/documents/{doc_id}"
+    objects = client.get(base + "/objects/1").json()["objects"]
+    targets = [{"slide": obj["slide"], "shape_id": obj["shape_id"]} for obj in objects[:3]]
+    invalid = True
+
+    async def propose(data, instruction, settings, selected):
+        assert [target.model_dump() for target in selected] == targets
+        assert instruction == "Все три правее"
+        return ObjectsEditPlan.model_validate(
+            {
+                "explanation": "Все три правее",
+                "edits": [
+                    {
+                        "target": target,
+                        "plan": {
+                            "explanation": "",
+                            "patches": [],
+                            "position": {
+                                "x": 0.9 if invalid and i == 2 else 0.2,
+                                "y": objects[i]["bbox"]["y"],
+                            },
+                        },
+                    }
+                    for i, target in enumerate(targets)
+                ],
+            }
+        )
+
+    monkeypatch.setattr(onlyoffice.office_object_edit, "propose_many", propose)
+    body = {"revision": 1, "instruction": "Все три правее", "targets": targets}
+    assert client.post(base + "/edit", json=body).status_code == 422
+    assert store.get(doc_id)["revision"] == 1
+    assert store.read(doc_id, 1) == output.getvalue()
+    invalid = False
+    response = client.post(base + "/edit", json=body)
+    assert response.status_code == 200, response.text
+    assert response.json()["document"]["revision"] == 2
+    changed = client.get(base + "/objects/2").json()["objects"]
+    assert [obj["bbox"]["x"] for obj in changed] == [0.2, 0.2, 0.2, 0.1]
+    assert client.post(base + "/edit", json=body).status_code == 409
+    for extra in [{"targets": []}, {"targets": targets + targets[:1]}, {"target": targets[0]}]:
+        assert client.post(base + "/edit", json=body | extra).status_code == 422
+
+
+def test_object_edit_endpoint_is_revision_scoped(client, office, monkeypatch):
+    from pptx.util import Inches
+
+    from presentation_designer.generation.office_object_edit import ObjectEditPlan, Position
+
+    store, doc_id = office
+    deck = Presentation()
+    deck.slides.add_slide(deck.slide_layouts[6]).shapes.add_textbox(
+        Inches(1), Inches(1), Inches(2), Inches(1)
+    ).text = "Цель"
+    output = io.BytesIO()
+    deck.save(output)
+    opened = store.open(doc_id)
+    store.callback(doc_id, opened["active_key"], 2, output.getvalue())
+    base = f"/api/office/documents/{doc_id}"
+    response = client.get(base + "/objects/1")
+    assert response.status_code == 200
+    obj = response.json()["objects"][0]
+    assert obj["label"] == "Цель"
+    target = {"slide": obj["slide"], "shape_id": obj["shape_id"]}
+
+    async def propose(data, instruction, settings, selected):
+        assert selected.model_dump() == target
+        assert data == output.getvalue()
+        return ObjectEditPlan(
+            explanation="Правее", patches=[], position=Position(x=0.3, y=obj["bbox"]["y"])
+        )
+
+    monkeypatch.setattr(onlyoffice.office_object_edit, "propose", propose)
+    response = client.post(
+        base + "/edit", json={"revision": 1, "instruction": "Правее", "target": target}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["document"]["revision"] == 2
+    assert client.get(base + "/objects/2").json()["objects"][0]["bbox"]["x"] == 0.3
+    assert client.get(base + "/objects/1").json()["objects"][0]["bbox"]["x"] == 0.1
+    assert (
+        client.post(
+            base + "/edit", json={"revision": 1, "instruction": "Правее", "target": target}
+        ).status_code
+        == 409
+    )
+    assert store.get(doc_id)["active_key"] is None
+
+
+def test_saved_revision_preview_without_editor_session(client, office, monkeypatch, pptx_bytes):
+    import json
+
+    store, doc_id = office
+    sources = []
+
+    def preview(content, settings):
+        sources.append(content)
+        root = onlyoffice.cache_path(content, settings)
+        root.mkdir(parents=True, exist_ok=True)
+        manifest = {"slides": ["slide-01.png"], "ratio": 16 / 9}
+        (root / "manifest.json").write_text(json.dumps(manifest))
+        (root / "slide-01.png").write_bytes(b"png")
+        return root, manifest
+
+    monkeypatch.setattr(onlyoffice, "preview_revision", preview)
+    base = f"/api/office/documents/{doc_id}/preview"
+    assert client.get(base + "/0/slide-01.png").status_code == 404
+    assert client.get(base + "/0").json()["revision"] == 0
+    image = client.get(base + "/0/slide-01.png")
+    assert image.content == b"png"
+    assert "immutable" in image.headers["cache-control"]
+    assert client.get(base + "/0/manifest.json").status_code == 404
+    assert client.get(base + "/999").status_code == 404
+    assert sources == [pptx_bytes]
+    assert store.get(doc_id)["active_key"] is None
+
+    opened = store.open(doc_id)
+    changed = pptx_bytes + b"new-revision"
+    store.callback(doc_id, opened["active_key"], 6, changed)
+    assert client.get(base + "/1").json()["revision"] == 1
+    assert sources[-1] == changed
+    assert store.get(doc_id)["active_key"] == opened["active_key"]
+
+
+def test_preview_conversion_failure_is_retryable(client, office, monkeypatch):
+    def fail(*args):
+        raise onlyoffice.ConversionError("not ready")
+
+    monkeypatch.setattr(onlyoffice, "preview_revision", fail)
+    _, doc_id = office
+    response = client.get(f"/api/office/documents/{doc_id}/preview/0")
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "office_preview_failed"
+
+
+def test_deferred_preview_page_failure_is_retryable(client, office, orchestrator, monkeypatch):
+    import json
+
+    store, doc_id = office
+    root = onlyoffice.cache_path(store.read(doc_id, 0), orchestrator.settings)
+    root.mkdir(parents=True)
+    (root / "manifest.json").write_text(json.dumps({"slides": ["slide-02.png"]}))
+
+    def fail(*args):
+        raise onlyoffice.ConversionError("failed page")
+
+    monkeypatch.setattr(onlyoffice, "preview_page", fail)
+    url = f"/api/office/documents/{doc_id}/preview/0/slide-02.png"
+    response = client.get(url)
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "office_preview_failed"
+    assert "immutable" not in response.headers.get("cache-control", "")
+    assert store.get(doc_id)["active_key"] is None
+
+    def ready(path, name):
+        image = path / name
+        image.write_bytes(b"ready-png")
+        return image
+
+    monkeypatch.setattr(onlyoffice, "preview_page", ready)
+    response = client.get(url)
+    assert response.status_code == 200
+    assert response.content == b"ready-png"
+    assert "immutable" in response.headers["cache-control"]
+
+
 def test_edit_exclusive_lease_and_revision(office, pptx_bytes):
     store, doc_id = office
     opened = store.open(doc_id)
@@ -340,6 +556,129 @@ def test_save_round_trip(client, office, monkeypatch, pptx_bytes):
         "error": 1
     }
     assert store.create("job_test/balanced/r1/deck.pptx", "test.pptx", pptx_bytes)["id"] == doc_id
+
+
+@pytest.mark.parametrize("status", [2, 6])
+def test_invalid_layout_callback_is_not_accepted(client, office, monkeypatch, pptx_bytes, status):
+    from zipfile import ZipFile
+
+    store, doc_id = office
+    key = store.open(doc_id)["active_key"]
+    output = io.BytesIO()
+    with ZipFile(io.BytesIO(pptx_bytes)) as source, ZipFile(output, "w") as target:
+        for info in source.infolist():
+            target.writestr(
+                info,
+                b"<broken" if info.filename.endswith("slideLayout3.xml") else source.read(info),
+            )
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        onlyoffice.httpx,
+        "AsyncClient",
+        lambda **kw: real_client(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(200, content=output.getvalue())
+            ),
+            **kw,
+        ),
+    )
+    url = f"/api/office/documents/{doc_id}/callback"
+    body = {"key": key, "status": status, "url": "http://onlyoffice/cache/files/test"}
+    assert client.post(url, json={"token": sign(body, SECRET)}).json() == {"error": 1}
+    assert store.get(doc_id)["active_key"] == key
+    assert store.get(doc_id)["revision"] == 0
+    assert store.read(doc_id, 0) == pptx_bytes
+    for notification in (1, 4):
+        store.callback(doc_id, key, notification, None)
+        assert store.get(doc_id)["error"]
+
+
+def test_normalization_audit_is_atomic_and_idempotent(office, pptx_bytes):
+    store, doc_id = office
+    key = store.open(doc_id)["active_key"]
+    for _ in range(2):
+        assert store.callback(
+            doc_id,
+            key,
+            6,
+            pptx_bytes + b"normalized",
+            raw_pptx=b"raw",
+            normalized_parts=["layout.xml"],
+        )
+    doc = store.get(doc_id)
+    assert doc["revision"] == 1
+    assert len(doc["normalizations"]) == 1
+    assert doc["normalizations"][0]["parts"] == ["layout.xml"]
+    with store.connect() as db:
+        assert bytes(db.execute("SELECT raw_pptx FROM save_normalizations").fetchone()[0]) == b"raw"
+    assert store.read(doc_id, 0) == pptx_bytes
+
+
+def test_callback_normalizes_known_layout_name_and_retains_raw(
+    client, office, monkeypatch, pptx_bytes
+):
+    from zipfile import ZipFile
+
+    from lxml import etree
+
+    store, _ = office
+    part = "ppt/slideLayouts/slideLayout3.xml"
+    output = io.BytesIO()
+    with ZipFile(io.BytesIO(pptx_bytes)) as source, ZipFile(output, "w") as target:
+        for info in source.infolist():
+            xml = source.read(info)
+            if info.filename == part:
+                root = etree.fromstring(xml)
+                root.set("matchingName", 'Слайд "Спасибо!"')
+                xml = etree.tostring(root, encoding="UTF-8")
+            target.writestr(info, xml)
+    original = output.getvalue()
+    doc_id = store.create("test/quoted-layout", "test.pptx", original)["id"]
+    key = store.open(doc_id)["active_key"]
+    output = io.BytesIO()
+    with ZipFile(io.BytesIO(original)) as source, ZipFile(output, "w") as target:
+        for info in source.infolist():
+            xml = source.read(info)
+            if info.filename == part:
+                xml = xml.replace(b"&quot;", b'"')
+            target.writestr(info, xml)
+    raw = output.getvalue()
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        onlyoffice.httpx,
+        "AsyncClient",
+        lambda **kw: real_client(
+            transport=httpx.MockTransport(lambda request: httpx.Response(200, content=raw)),
+            **kw,
+        ),
+    )
+    response = client.post(
+        f"/api/office/documents/{doc_id}/callback",
+        json={
+            "token": sign(
+                {"key": key, "status": 2, "url": "http://onlyoffice/cache/files/test"},
+                SECRET,
+            )
+        },
+    )
+    assert response.json() == {"error": 0}
+    doc = store.get(doc_id)
+    assert doc["active_key"] is None
+    assert doc["error"] is None
+    assert doc["normalizations"][0]["parts"] == [part]
+    saved = store.read(doc_id, doc["revision"])
+    with ZipFile(io.BytesIO(saved)) as archive:
+        assert etree.fromstring(archive.read(part)).get("matchingName") == 'Слайд "Спасибо!"'
+    assert store.read(doc_id, 0) == original
+    with store.connect() as db:
+        assert (
+            bytes(
+                db.execute(
+                    "SELECT raw_pptx FROM save_normalizations WHERE document_id=?", (doc_id,)
+                ).fetchone()[0]
+            )
+            == raw
+        )
 
 
 @pytest.mark.parametrize(

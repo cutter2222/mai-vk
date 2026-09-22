@@ -90,6 +90,31 @@ def _deck(plan, *, autofit="none"):
 # -- чтение фактов -----------------------------------------------------------
 
 
+def test_дозапрос_по_сборке_сохраняет_ссылки_на_факты_тезиса():
+    plan = _plan([("title_1", "Итоги пилота")])
+    plan["slides"][0]["thesis_refs"] = ["t1"]
+    story = {
+        "theses": [
+            {
+                "thesis_id": "t1",
+                "statement": "Простой снижен на {fact:f1}",
+                "source_refs": ["block_1"],
+                "fact_refs": ["f1"],
+            }
+        ]
+    }
+    captured = []
+
+    def ask(_system, user):
+        captured.extend(json.loads(user)["slides"])
+        return "{}"
+
+    facts = feedback.read(_deck(plan), plan, PROFILE)
+    feedback.ask_slots(plan, facts, PROFILE, story, ask, rounds=1)
+    assert captured[0]["fact_refs"] == ["f1"]
+    assert captured[0]["material"] == ["Простой снижен на {fact:f1}"]
+
+
 def test_ряд_без_единой_подписи_считается_дырой():
     """Три пустые карточки из трёх — грубый дефект, а не низкая плотность."""
     plan = _plan([("title_1", "Итоги пилота")])

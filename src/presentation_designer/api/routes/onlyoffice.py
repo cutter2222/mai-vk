@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 import time
 import uuid
@@ -12,14 +13,17 @@ from urllib.parse import urlencode
 import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from presentation_designer.api.deps import Orch
 from presentation_designer.api.errors import ApiError
 from presentation_designer.export.office_download import export_revision
+from presentation_designer.export.office_ooxml import validate_saved_pptx
+from presentation_designer.export.office_preview import cache_path, preview_page, preview_revision
 from presentation_designer.export.office_source import saved_url, source_path
 from presentation_designer.export.pdf import ConversionError, RendererUnavailableError
-from presentation_designer.generation import office_edit
+from presentation_designer.generation import office_edit, office_object_edit
+from presentation_designer.generation.office_objects import ObjectTarget, objects
 from presentation_designer.llm.types import LlmError
 from presentation_designer.parsing.template.embedded_fonts import prepare_fonts
 from presentation_designer.pipeline.artifacts import content_type_for
@@ -38,6 +42,24 @@ class OpenRequest(BaseModel):
 class EditRequest(BaseModel):
     revision: int = Field(ge=0)
     instruction: str = Field(min_length=1, max_length=4000)
+    target: ObjectTarget | None = None
+    targets: list[ObjectTarget] | None = Field(default=None, min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_targets(self) -> EditRequest:
+        if self.targets is not None:
+            if self.target is not None:
+                raise ValueError("Передайте target или targets, не оба поля")
+            keys = {(target.slide, target.shape_id) for target in self.targets}
+            if len(keys) != len(self.targets):
+                raise ValueError("Объекты не должны повторяться")
+        return self
+
+
+@router.get("/documents/{document_id}/objects/{revision}")
+def document_objects(document_id: str, revision: int, orch: Orch) -> dict[str, Any]:
+    data = store(orch).read(document_id, revision)
+    return {"revision": revision, "objects": [obj.model_dump() for obj in objects(data)]}
 
 
 @router.post("/documents/{document_id}/edit")
@@ -46,13 +68,27 @@ async def edit(document_id: str, body: EditRequest, orch: Orch) -> dict[str, Any
     token = office.begin_edit(document_id, body.revision)
     try:
         original = office.read(document_id, body.revision)
-        plan = await office_edit.propose(original, body.instruction, orch.settings)
-        updated = office_edit.patch_pptx(original, plan)
+        if body.targets is not None:
+            multi_plan = await office_object_edit.propose_many(
+                original, body.instruction, orch.settings, body.targets
+            )
+            updated = office_object_edit.patch_objects(original, body.targets, multi_plan)
+            explanation = multi_plan.explanation
+        elif body.target is not None:
+            object_plan = await office_object_edit.propose(
+                original, body.instruction, orch.settings, body.target
+            )
+            updated = office_object_edit.patch_object(original, body.target, object_plan)
+            explanation = object_plan.explanation
+        else:
+            plan = await office_edit.propose(original, body.instruction, orch.settings)
+            updated = office_edit.patch_pptx(original, plan)
+            explanation = plan.explanation
         office.commit_edit(document_id, token, body.revision, updated)
         return {
             "document": office.get(document_id),
             "changed": original != updated,
-            "message": plan.explanation,
+            "message": explanation,
         }
     except (ValueError, LlmError) as exc:
         raise ApiError(422, "office_edit_failed", "Правка не применена: " + str(exc)) from exc
@@ -100,6 +136,30 @@ def template_source(template_id: str, orch: Orch) -> tuple[dict[str, Any], Path]
     if not path.is_file():
         raise ApiError(404, "template_source_missing", "Исходный PPTX отсутствует")
     return template, path
+
+
+class TemplateCopyRequest(BaseModel):
+    template_id: str = Field(max_length=100)
+
+
+@router.post("/projects/{project_id}/template")
+def project_template_copy(project_id: str, body: TemplateCopyRequest, orch: Orch) -> dict[str, Any]:
+    office = store(orch)
+    try:
+        project = orch.state.get_project(project_id)
+    except NotFound as exc:
+        raise ApiError(404, "project_not_found", "Проект не найден") from exc
+    if project.get("template_id") != body.template_id:
+        raise ApiError(409, "template_changed", "Шаблон проекта изменился. Обновите страницу")
+    template, path = template_source(body.template_id, orch)
+    if path.stat().st_size > orch.files.max_bytes:
+        raise ApiError(413, "office_file_too_large", "PPTX превышает лимит загрузки")
+    # A project-local copy: never edit the library template or another project's copy.
+    return office.create(
+        f"project/{project_id}/template/{body.template_id}/{template['sha256']}",
+        template["name"],
+        path.read_bytes(),
+    )
 
 
 @router.post("/templates/{template_id}/config")
@@ -245,6 +305,38 @@ def config(document_id: str, orch: Orch) -> dict[str, Any]:
     }
 
 
+@router.get("/documents/{document_id}/preview/{revision}")
+def preview(document_id: str, revision: int, orch: Orch) -> dict[str, Any]:
+    content = store(orch).read(document_id, revision)
+    try:
+        _, manifest = preview_revision(content, orch.settings)
+    except (ConversionError, RendererUnavailableError, OSError, ValueError) as exc:
+        raise ApiError(503, "office_preview_failed", "Не удалось сформировать превью") from exc
+    return {"revision": revision, **manifest}
+
+
+@router.get("/documents/{document_id}/preview/{revision}/{name}")
+def preview_image(document_id: str, revision: int, name: str, orch: Orch) -> FileResponse:
+    content = store(orch).read(document_id, revision)
+    root = cache_path(content, orch.settings)
+    manifest = root / "manifest.json"
+    try:
+        slides = json.loads(manifest.read_text(encoding="utf-8"))["slides"]
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise ApiError(404, "office_preview_missing", "Превью не найдено") from exc
+    if name not in slides or Path(name).name != name:
+        raise ApiError(404, "office_preview_missing", "Превью не найдено")
+    try:
+        image = preview_page(root, name)
+    except (ConversionError, OSError, ValueError) as exc:
+        raise ApiError(503, "office_preview_failed", "Не удалось отрисовать слайд") from exc
+    return FileResponse(
+        image,
+        media_type="image/png",
+        headers={"Cache-Control": "private, max-age=31536000, immutable"},
+    )
+
+
 @router.get("/documents/{document_id}/source/{revision}")
 def source(document_id: str, revision: int, token: str, orch: Orch) -> Response:
     office = store(orch)
@@ -321,9 +413,12 @@ async def callback(document_id: str, request: Request, orch: Orch) -> dict[str, 
     key, status = claims.get("key"), claims.get("status")
     if not isinstance(key, str) or type(status) is not int or status not in {1, 2, 3, 4, 6, 7}:
         return {"error": 1}
-    if office.get(document_id)["active_key"] != key:
+    document = office.get(document_id)
+    if document["active_key"] != key:
         return {"error": 1}
     data = None
+    raw_data = None
+    normalized_parts: list[str] = []
     if status in {2, 6}:
         try:
             cfg = orch.settings.onlyoffice
@@ -339,12 +434,28 @@ async def callback(document_id: str, request: Request, orch: Orch) -> dict[str, 
                         if len(chunks) > orch.files.max_bytes:
                             raise ValueError("save exceeds size limit")
                     data = bytes(chunks)
+            raw_data = data
             with tempfile.TemporaryDirectory() as directory:
                 path = Path(directory) / "deck.pptx"
                 path.write_bytes(data)
+                # Check ZIP paths, CRC and uncompressed size before reading XML parts.
                 if orch.files.check(path, "pptx")["status"] != "ok":
                     raise ValueError("invalid saved PPTX")
+            data, normalized_parts = validate_saved_pptx(
+                data, office.read(document_id, document["seed_revision"])
+            )
         except (httpx.HTTPError, ValueError, KeyError, TypeError):
             office.callback(document_id, key, 7, None)
             return {"error": 1}
-    return {"error": 0 if office.callback(document_id, key, status, data) else 1}
+    return {
+        "error": 0
+        if office.callback(
+            document_id,
+            key,
+            status,
+            data,
+            raw_pptx=raw_data if normalized_parts else None,
+            normalized_parts=normalized_parts,
+        )
+        else 1
+    }

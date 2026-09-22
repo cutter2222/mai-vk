@@ -68,7 +68,8 @@ def render_thumbnails(
                     scale = width_px / page.get_width()
                     bitmap = page.render(scale=scale)
                     try:
-                        image = bitmap.to_pil()
+                        # Own the pixels before closing PDFium's backing buffer.
+                        image = bitmap.to_pil().copy()
                     finally:
                         bitmap.close()
                 finally:

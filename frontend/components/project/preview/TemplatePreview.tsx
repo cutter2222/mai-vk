@@ -3,7 +3,9 @@
 import { Anchor, Badge, ColorSwatch, Group, Loader, Stack, Text, Tooltip } from "@mantine/core";
 import { IconExternalLink } from "@tabler/icons-react";
 
-import type { TemplateDetail } from "@/lib/api/client";
+import { useState } from "react";
+import { api, type TemplateDetail } from "@/lib/api/client";
+import { SlideViewer } from "./SlideViewer";
 
 interface Props {
   templateId: string;
@@ -12,15 +14,24 @@ interface Props {
 }
 
 /**
- * Правая часть до генерации: пустой первый слайд, как в редакторе презентаций, и подпись «шаблон выбран».
- * Сам шаблон здесь не показывается: достаточно понимать, что он есть и с ним можно работать,
- * а что из него извлечено, видно в библиотеке шаблонов.
+ * До генерации показываем готовые миниатюры шаблона без сессии Document Server.
+ * Пока анализ не опубликовал миниатюры, остаётся индикатор состояния шаблона.
  */
 export function TemplatePreview({ templateId, detail, error }: Props) {
+  const [index, setIndex] = useState(0);
   const profile = detail?.profile;
   const name = detail?.name?.replace(/\.pptx$/i, "") ?? templateId;
   const fonts = profile ? [...new Set(profile.design_tokens.typography.fonts.map((f) => f.family))].slice(0, 2).join(", ") : "";
   const palette = profile?.design_tokens.colors.palette.slice(0, 8) ?? [];
+  // Manifest также содержит пустые макеты для библиотеки композиций, не слайды файла.
+  const previews = (detail?.previews ?? []).filter((path) => /(^|\/)slide-\d+\.png$/.test(path))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+  if (previews.length) return <div className="project-office" data-testid="project-template-preview">
+    <Text size="xs" c="dimmed" p="xs">Исходный шаблон · только просмотр. После генерации здесь появится превью презентации.</Text>
+    <SlideViewer index={index} onIndex={setIndex} caption={<Text size="xs">{name}</Text>}
+      slides={previews.map((path, i) => ({ key: path, deckIndex: i, label: `Слайд ${i + 1}`, src: api.templates.assetUrl(templateId, path) }))} />
+  </div>;
 
   return (
     <div className="viewer" data-testid={error ? "template-error" : profile ? "template-ready" : "template-analyzing"}>

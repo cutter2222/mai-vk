@@ -20,15 +20,25 @@ from typing import Any
 from presentation_designer.pipeline.jobs import renderer_check, worker_name
 
 
-def healthcheck(url: str) -> int:
-    """0, если в Valkey есть живой воркер с hostname этого контейнера, иначе 1."""
+def healthcheck(url: str, queues: list[str] | None = None) -> int:
+    """Require full identity, an expiring heartbeat and the expected queues."""
     import redis
     from rq import Worker
 
     host = socket.gethostname()
     try:
-        connection = redis.Redis.from_url(url, socket_timeout=5)
-        alive = [w.name for w in Worker.all(connection=connection) if host in w.name]
+        connection = redis.Redis.from_url(url, socket_timeout=5, socket_connect_timeout=5)
+        alive = [
+            w.name
+            for w in Worker.all(connection=connection)
+            if w.hostname == host
+            and w.pid
+            and w.birth_date
+            and w.last_heartbeat
+            and w.queue_names()
+            and (queues is None or set(queues).issubset(w.queue_names()))
+            and connection.ttl(w.key) > 0
+        ]
     except Exception as e:
         print(f"healthcheck: Valkey недоступен: {e}", file=sys.stderr)
         return 1
@@ -42,9 +52,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="presentation-designer-worker", description="Воркер очереди заданий"
     )
-    parser.add_argument(
-        "--queues", nargs="+", default=["generation"], help="очереди RQ в порядке приоритета"
-    )
+    parser.add_argument("--queues", nargs="+", default=None, help="очереди RQ в порядке приоритета")
     parser.add_argument("--name", default=None, help="имя воркера; по умолчанию роль и hostname")
     parser.add_argument(
         "--skip-render-check", action="store_true", help="не проверять ONLYOFFICE при старте"
@@ -54,7 +62,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     if args.healthcheck:
-        return healthcheck(os.environ.get("PD_VALKEY_URL", "redis://localhost:6379/0"))
+        return healthcheck(os.environ.get("PD_VALKEY_URL", "redis://localhost:6379/0"), args.queues)
+    args.queues = args.queues or ["generation"]
 
     logging.basicConfig(
         level=os.environ.get("PD_LOG_LEVEL", "INFO"),
@@ -65,8 +74,9 @@ def main(argv: list[str] | None = None) -> int:
     # и docker stop ждёт всю грацию. RQ ставит свои обработчики уже в work().
     signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(128 + signum))
     import redis
-    from rq import Queue, Worker
+    from rq import Queue
 
+    from presentation_designer.pipeline.worker import RegisteredWorker
     from presentation_designer.shared.settings import get_settings
 
     url = os.environ.get("PD_VALKEY_URL", "redis://localhost:6379/0")
@@ -83,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     # чтобы отображения памяти WAL не наследовались через fork.
     # Срок регистрации в Valkey — queue.heartbeat_ttl_s: после аварии или пересоздания
     # контейнера прежняя запись исчезает из /api/health за это время, а не за 7 минут RQ.
-    worker = Worker(
+    worker = RegisteredWorker(
         [Queue(q, connection=connection) for q in args.queues],
         connection=connection,
         name=name,

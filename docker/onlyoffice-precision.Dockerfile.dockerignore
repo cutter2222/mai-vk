@@ -1,0 +1,7 @@
+# Allowlist: no environment, documents, SDK artifacts or private data in context.
+**
+!scripts
+!scripts/patch_onlyoffice_precision.py
+!docker
+!docker/onlyoffice-precision.Dockerfile
+!docker/onlyoffice-precision-entrypoint.sh

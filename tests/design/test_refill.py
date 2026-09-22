@@ -127,6 +127,47 @@ def test_модель_видит_вместимость_в_задании():
     assert "max_chars" in slot and slot["max_chars"] > 0
 
 
+def test_дозапрос_получает_ссылки_на_факты_а_не_блоки_источника():
+    plan = _plan()
+    plan["slides"][0]["thesis_refs"] = ["t2", "missing", "t1"]
+    story = {
+        "theses": [
+            {
+                "thesis_id": "t1",
+                "statement": "Выручка выросла на {fact:f1}",
+                "source_refs": ["block_1"],
+                "fact_refs": ["f1"],
+            },
+            {
+                "thesis_id": "t2",
+                "statement": "Простой снизился на {fact:f2}",
+                "source_refs": ["block_2"],
+                "fact_refs": ["f2", "f1"],
+            },
+            {"thesis_id": "unselected", "statement": "Другой слайд", "fact_refs": ["f3"]},
+        ]
+    }
+    captured = []
+
+    def ask(_system, user):
+        captured.extend(json.loads(user)["slides"])
+        return "{}"
+
+    refill(plan, PROFILE, ask, prompt="p", story=story)
+    assert captured[0]["fact_refs"] == ["f2", "f1"]
+    assert captured[0]["material"] == [
+        "Простой снизился на {fact:f2}",
+        "Выручка выросла на {fact:f1}",
+    ]
+
+
+def test_блок_источника_не_становится_фактом_при_отсутствии_fact_refs():
+    from presentation_designer.design.refill import _slide_material
+
+    story = {"theses": [{"thesis_id": "t1", "statement": "Вывод", "source_refs": ["b1"]}]}
+    assert _slide_material(story, ["t1"])["fact_refs"] == []
+
+
 def test_пересказ_заголовка_отвергается():
     """Усечение заголовка формально не повтор, по смыслу — пустая строка.
 

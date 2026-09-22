@@ -26,7 +26,8 @@ interface Props {
   activeOverlay?: string | null;
   onOverlayClick?: (id: string) => void;
   outlines?: Outline[];
-  onOutlineClick?: (id: string) => void;
+  onOutlineClick?: (id: string, additive: boolean) => void;
+  onClearSelection?: () => void;
   /** Подпись слева от счётчика: «ревизия 2». */
   caption?: React.ReactNode;
   /** Элементы справа от счётчика. */
@@ -53,7 +54,7 @@ const SIDE_MS = 240;
  * Вертикальная лента миниатюр слева и крупный слайд справа, как в редакторах презентаций.
  * Слайды вариантов генерации; образцы шаблона показываются в его карточке в библиотеке.
  */
-export function SlideViewer({ slides, index, onIndex, overlays, activeOverlay, onOverlayClick, outlines, onOutlineClick, caption, actions, children, aside, stage, onReorder, editing, ratio }: Props) {
+export function SlideViewer({ slides, index, onIndex, overlays, activeOverlay, onOverlayClick, outlines, onOutlineClick, onClearSelection, caption, actions, children, aside, stage, onReorder, editing, ratio }: Props) {
   const total = slides.length;
   const safeIndex = Math.min(index, Math.max(total - 1, 0));
   const current = slides[safeIndex];
@@ -235,7 +236,7 @@ export function SlideViewer({ slides, index, onIndex, overlays, activeOverlay, o
             >
               <span className="thumb-number">{i + 1}</span>
               <span className="thumb-image">
-                <SlideImage src={s.src} alt={s.label} />
+                <SlideImage src={s.src} alt={s.label} loading="lazy" />
                 {s.flagged && <span className="thumb-issues" />}
                 {s.edited && <span className="thumb-edited" title="изменён в черновике" />}
                 {onReorder && (
@@ -272,6 +273,7 @@ export function SlideViewer({ slides, index, onIndex, overlays, activeOverlay, o
                   onOverlayClick={onOverlayClick}
                   outlines={outlines}
                   onOutlineClick={onOutlineClick}
+                  onClearSelection={onClearSelection}
                 />
               )}
             </div>

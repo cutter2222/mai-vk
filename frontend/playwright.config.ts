@@ -37,7 +37,11 @@ export default defineConfig({
   // лента миниатюр при открытой панели свойств убирается совсем, и перестановка слайдов
   // в редакторе недоступна. Ширина задаётся явно в каждом проекте.
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"], viewport: VIEWPORT } },
+    { name: "chromium", use: { ...devices["Desktop Chrome"], viewport: VIEWPORT,
+      // Run the same live acceptance outside the Docker VM when it is memory-starved.
+      // This changes only the browser binary, not the page lifecycle or assertions.
+      channel: process.env.PLAYWRIGHT_CHROMIUM_CHANNEL || undefined,
+    } },
     { name: "firefox", use: { ...devices["Desktop Firefox"], viewport: VIEWPORT } },
     { name: "webkit", use: { ...devices["Desktop Safari"], viewport: VIEWPORT } },
   ],

@@ -121,7 +121,9 @@ services:
         condition: service_healthy
       onlyoffice:
         condition: service_healthy
-    healthcheck: *worker-health
+    healthcheck:
+      <<: *worker-health
+      test: ["CMD", "python", "-m", "presentation_designer.cli.worker", "--healthcheck", "--queues", "analysis", "repair"]
 
   worker-generation:
     <<: *app
@@ -132,7 +134,9 @@ services:
     image: presentation-designer/worker:${PD_IMAGE_TAG:-latest}
     command: ["python", "-m", "presentation_designer.cli.worker", "--queues", "generation"]
     depends_on: *render-dependencies
-    healthcheck: *worker-health
+    healthcheck:
+      <<: *worker-health
+      test: ["CMD", "python", "-m", "presentation_designer.cli.worker", "--healthcheck", "--queues", "generation"]
     deploy:
       replicas: ${PD_GENERATION_WORKERS:-3}
 

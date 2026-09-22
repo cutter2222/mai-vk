@@ -44,5 +44,5 @@ export function ProjectClient() {
       </Container>
     );
   }
-  return <ProjectEditor project={project} />;
+  return <ProjectEditor key={project.project_id} project={project} />;
 }

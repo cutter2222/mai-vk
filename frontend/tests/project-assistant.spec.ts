@@ -1,29 +1,24 @@
 import { expect, test } from "@playwright/test";
 
-test("template-only project opens ONLYOFFICE before any generation", async ({ page }) => {
+test("template-only project shows preview without an editor session", async ({ page }) => {
   await page.route("**/api/projects/template-view-test", (r) => r.fulfill({ json: {
     project_id: "template-view-test", title: "Тест", template_id: "tpl-view", brief: {}, settings: {}, files: [], events: [],
   } }));
   await page.route("**/api/templates", (r) => r.fulfill({ json: [] }));
-  await page.route("**/api/templates/tpl-view", (r) => r.fulfill({ json: { template_id: "tpl-view", status: "succeeded", name: "Шаблон" } }));
+  await page.route("**/api/templates/tpl-view", (r) => r.fulfill({ json: { template_id: "tpl-view", status: "succeeded", name: "Шаблон", previews: ["slide-01.png"] } }));
   await page.route("**/api/office/capabilities", (r) => r.fulfill({ json: { enabled: true } }));
-  await page.route("**/api/office/templates/tpl-view/config", (r) => r.fulfill({ json: {
-    script_url: "/template-sdk.js", config: { editorConfig: { mode: "view" } },
-  } }));
-  await page.route("**/template-sdk.js", (r) => r.fulfill({ contentType: "application/javascript", body: `
-    window.DocsAPI = { DocEditor: function(id, config) {
-      if (config.editorConfig.mode !== 'view') throw new Error('Template must be read-only');
-      const host = document.getElementById(id); const frame = document.createElement('iframe');
-      host.appendChild(frame); setTimeout(() => config.events.onDocumentReady(), 10);
-      this.destroyEditor = () => frame.remove();
-    }};
-  ` }));
+  const doc = { id: "view-copy", revision: 0, active_key: null, error: null };
+  await page.route("**/api/office/projects/template-view-test/template", (r) => r.fulfill({ json: doc }));
+  await page.route("**/api/office/documents/view-copy", (r) => r.fulfill({ json: doc }));
+  await page.route("**/api/office/documents/view-copy/objects/0", (r) => r.fulfill({ json: { revision: 0, objects: [] } }));
   let documents = 0;
   await page.route("**/api/office/documents", (r) => { documents++; return r.fulfill({ status: 500 }); });
   await page.goto("/project?id=template-view-test");
-  await expect(page.getByTestId("project-template-office").locator("iframe")).toBeVisible();
+  await expect(page.getByTestId("project-office")).toBeVisible();
+  await expect(page.getByTestId("slide-counter")).toHaveText("Слайд 1 из 1");
+  await expect(page.locator("iframe")).toHaveCount(0);
   await expect(page.getByText("Открываем исходный PPTX…")).toHaveCount(0);
-  await expect(page.getByText("Исходный шаблон · только просмотр.", { exact: false })).toBeVisible();
+  await expect(page.getByText("Рабочая копия шаблона", { exact: false })).toBeVisible();
   expect(documents).toBe(0);
 });
 
@@ -80,9 +75,10 @@ test("first published variant opens while other variants generate, without reope
     variants: [{ variant_id: "compact", revision: 1, artifacts: { pptx: "compact/r1/deck.pptx" } },
       { variant_id: "detailed", revision: 1, artifacts: finished ? { pptx: "detailed/r1/deck.pptx" } : {} }],
   } }));
-  const doc = { id: "async-doc", revision: 0, active_key: "key", revisions: [] };
+  const doc = { id: "async-doc", revision: 0, active_key: null, revisions: [] };
   await page.route("**/api/office/documents", (r) => { opens++; return r.fulfill({ json: doc }); });
   await page.route("**/api/office/documents/async-doc", (r) => r.fulfill({ json: doc }));
+  await page.route("**/api/office/documents/async-doc/preview/0", (r) => r.fulfill({ json: { revision: 0, slides: ["slide-01.png"], ratio: 16 / 9 } }));
   await page.route("**/api/office/documents/async-doc/config", (r) => r.fulfill({ json: { script_url: "/async-sdk.js", config: {} } }));
   await page.route("**/async-sdk.js", (r) => r.fulfill({ contentType: "application/javascript", body: `
     window.DocsAPI = { DocEditor: function(id, config) {
@@ -91,11 +87,12 @@ test("first published variant opens while other variants generate, without reope
     }};
   ` }));
   await page.goto("/project?id=async-test");
-  await expect(page.getByTestId("project-office").locator("iframe")).toBeVisible();
-  await expect(page.getByText("Готовый вариант уже открыт.", { exact: false })).toBeVisible();
+  await expect(page.getByTestId("slide-counter")).toHaveText("Слайд 1 из 1");
+  await expect(page.getByText("Готовый вариант уже доступен.", { exact: false })).toBeVisible();
   finished = true;
-  await expect(page.getByText("Готовый вариант уже открыт.", { exact: false })).toHaveCount(0, { timeout: 20000 });
-  await expect(page.getByTestId("project-office").locator("iframe")).toBeVisible();
+  await expect(page.getByText("Готовый вариант уже доступен.", { exact: false })).toHaveCount(0, { timeout: 20000 });
+  await expect(page.getByTestId("slide-counter")).toHaveText("Слайд 1 из 1");
+  await expect(page.locator("iframe")).toHaveCount(0);
   expect(opens).toBe(1);
 });
 
