@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-22T13:47:50Z",
+ "entry_version": 1,
+ "key": "679dd95ff2c402fc96608119a979ec8bfdbe1c377a932d4d87354fbb1ce55867",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 10005,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 576,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 837,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Рост активных пользователей и вовлеченно» (pat_builtin_kpi_row_cardFalse_count4), слот title: текст не помещается — 43 символов / 2 строк при ёмкости 35 символов / 1 ",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 6945,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_builtin_comparison\",\n      \"theses\": [\n        \"t6\"\n      ],\n      \"title\": \"Рост открываемости и снижение отписок\",\n      \"visual\": \"comparison\"\n    },\n    {\n      \"pattern\": \"pat_builtin_chart_kpi_count2\",\n      \"theses\": [\n        \"t7\"\n      ],\n      \"title\": \"Устойчивый рост метрик вовлеченности\",\n      \"visual\": \"chart\"\n    },\n    {\n      \"pattern\": \"pat_builtin_chart_kpi_count2\",\n      \"theses\": [\n        \"t8\"\n      ],\n      \"title\": \"Экономия превысила затраты на пилот\",\n      \"visual\": \"chart\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 192,
+   "prompt_tokens": 6102,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

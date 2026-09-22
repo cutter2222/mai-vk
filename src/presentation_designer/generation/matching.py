@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import collections
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -109,6 +110,7 @@ class SlotInfo:
     sample_text: str
     indent_emu: int
     bullet: bool
+    is_ordinal: bool = False
 
     @property
     def is_text(self) -> bool:
@@ -160,6 +162,7 @@ class PatternInfo:
     # Композиция собственной библиотеки, а не образец шаблона: в отборе идёт после паттернов
     # автора и выигрывает только там, где шаблон не покрывает подачу или не вмещает содержание.
     builtin: bool = False
+    ordinal_slot_ids: set[str] = field(default_factory=set)
 
     # ----- состав -----
 
@@ -223,10 +226,10 @@ class PatternInfo:
 
     @property
     def number_capacity(self) -> int:
-        n = len(self.single("number"))
-        for g in self.groups:
-            n += len(g.by_kind.get("number", []))
-        return n
+        return sum(
+            s.kind == "number" and s.slot_id not in self.ordinal_slot_ids
+            for s in self.slots.values()
+        )
 
     @property
     def item_capacity(self) -> int:
@@ -301,14 +304,18 @@ class PatternInfo:
                     parts.append(f"список до {s.max_items} пунктов по ≤{per_item}")
                 else:
                     parts.append(f"{label} ≤{s.max_chars}")
-        nums = len(self.single("number"))
+        nums = sum(s.slot_id not in self.ordinal_slot_ids for s in self.single("number"))
         if nums:
             parts.append(f"{nums} {plural(nums, 'показатель', 'показателя', 'показателей')}")
         cards = self.cards
         if cards is not None:
             inner = []
             if "number" in cards.by_kind:
-                inner.append("число")
+                inner.append(
+                    "номер шага"
+                    if all(s.slot_id in self.ordinal_slot_ids for s in cards.by_kind["number"])
+                    else "число"
+                )
             for kind in cards.text_kinds:
                 label = _KIND_LABEL.get(kind, "текст")
                 inner.append(f"{label} ≤{cards.by_kind[kind][0].max_chars}")
@@ -322,7 +329,16 @@ class PatternInfo:
             parts.append("диаграмма")
         if self.has_image_slot:
             parts.append("изображение")
-        return f"{self.pattern_id} · {self.role} · {'; '.join(parts)}"
+        origin = "библиотека в дизайн-коде шаблона" if self.builtin else "образец шаблона"
+        boxes = "; ".join(
+            f"{s.slot_id} ({','.join(f'{v:.2f}' for v in s.bbox)})"
+            for s in self.slots.values()
+            if s.slot_id not in self.ordinal_slot_ids
+        )
+        return (
+            f"{self.pattern_id} · {self.role} · {self.name} · {origin} · {self.tone} · "
+            f"{' ; '.join(parts)} · слоты (x,y,w,h в долях слайда): {boxes}"
+        )
 
 
 _KIND_LABEL = {
@@ -374,6 +390,24 @@ def _slot_info(raw: JsonDict) -> SlotInfo:
     )
 
 
+def ordinal_slots(raw: JsonDict) -> set[str]:
+    """Recognize small repeated step badges, including in old stored profiles."""
+    badges = sorted(
+        (
+            _slot_info(s)
+            for s in raw.get("slots", [])
+            if s.get("kind") == "number"
+            and 0 < float((s.get("bbox") or {}).get("width", 0)) <= 0.12
+        ),
+        key=lambda s: (round(s.bbox[1], 2), s.bbox[0]),
+    )
+    if len(badges) >= 2 and all(
+        re.fullmatch(r"0*" + str(i), s.sample_text.strip()) for i, s in enumerate(badges, 1)
+    ):
+        return {s.slot_id for s in badges}
+    return set()
+
+
 def pattern_info(raw: JsonDict) -> PatternInfo:
     slots = [_slot_info(s) for s in raw.get("slots", [])]
     title = next((s for s in slots if s.kind == "title"), None)
@@ -400,6 +434,11 @@ def pattern_info(raw: JsonDict) -> PatternInfo:
         groups.append(CardGroup(gid, count, dict(by_kind)))
     hints = raw.get("sequence_hints") or {}
     tone = raw.get("tone") or {}
+    # A repeated sequence 1..N in small badges is navigation, not N KPI slots.
+    # Require both the sequence and geometry; a large hero number remains a KPI.
+    ordinals = ordinal_slots(raw)
+    for slot in slots:
+        slot.is_ordinal = slot.slot_id in ordinals
     return PatternInfo(
         pattern_id=str(raw["pattern_id"]),
         role=str(raw.get("role", "freeform")),
@@ -417,6 +456,7 @@ def pattern_info(raw: JsonDict) -> PatternInfo:
         style_key=str(raw.get("style_key") or ""),
         slide_index=int((raw.get("source") or {}).get("slide_index") or 0),
         builtin=(raw.get("source") or {}).get("kind") == "builtin",
+        ordinal_slot_ids=ordinals,
     )
 
 
@@ -621,6 +661,7 @@ def candidates_for(
     *,
     limit: int = 3,
     has_datasets: bool = False,
+    include_library_alternative: bool = False,
 ) -> list[PatternInfo]:
     """Кандидаты по убыванию оценки; таблица и диаграмма только при наборе данных.
 
@@ -648,7 +689,18 @@ def candidates_for(
             t[1].pattern_id,
         ),
     )
-    return [p for _, p in ranked[:limit]]
+    selected = [p for _, p in ranked[:limit]]
+    if (
+        include_library_alternative
+        and limit >= 2
+        and selected
+        and not any(p.builtin for p in selected)
+    ):
+        alternative = next((p for _, p in scored if p.builtin and need.visual in p.visuals()), None)
+        if alternative is not None:
+            # Keep the preferred template first, but let the model see another composition.
+            selected = [*selected[: limit - 1], alternative]
+    return selected
 
 
 def fallback_visual(visual: str, patterns: list[PatternInfo], *, has_datasets: bool) -> str:

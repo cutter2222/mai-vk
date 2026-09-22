@@ -32,6 +32,7 @@ import hashlib
 import logging
 import pathlib
 import re
+import shutil
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -39,6 +40,7 @@ from typing import Any
 from pptx import Presentation
 
 from presentation_designer.generation.matching import SlotInfo, pattern_info
+from presentation_designer.generation.original import original_profile, unchanged_slide
 from presentation_designer.layout import charts, diagrams, icons, images, tables
 from presentation_designer.layout import text as tx
 from presentation_designer.layout.composed import SlideRecord, SlotFill, build_composed_deck
@@ -376,7 +378,12 @@ def _apply_block(
             # судьбу объекта решают правила карточек.
             return None
         result = tx.fill_text(element, text, size_pt=size, facts=ctx.facts)
-        if kind == "number" and "\n" not in text and _is_tiny(slot):
+        if (
+            kind == "number"
+            and re.fullmatch(r"\d{1,2}", text.strip())
+            and _is_tiny(slot)
+            and int((block.get("fit") or {}).get("lines") or 1) <= 1
+        ):
             tx.set_wrap(element, False)
         _record_text(ctx, fill, result, block, slide_index)
         fill.content_source = (
@@ -1419,6 +1426,9 @@ def compose_deck(
             "compose_template_mismatch",
             "профиль построен по другому файлу шаблона: ссылки слотов недействительны",
         )
+    preserve = str((plan.get("variant") or {}).get("variant_id")) == "original"
+    if preserve:
+        profile = original_profile(profile)
     patterns_raw = {str(p["pattern_id"]): p for p in profile.get("patterns") or []}
     try:
         prs = Presentation(str(template_path))
@@ -1456,9 +1466,27 @@ def compose_deck(
     records: list[SlideRecord] = []
     new_slides: list[Any] = []
     pinfos: dict[str, Any] = {}
-    for index, plan_slide in enumerate(
-        sorted(plan.get("slides") or [], key=lambda s: int(s.get("order", 0)))
-    ):
+    ordered_slides = sorted(plan.get("slides") or [], key=lambda s: int(s.get("order", 0)))
+    unchanged = preserve and len(ordered_slides) == len(samples)
+    source_indices = [
+        (patterns_raw.get(str(s.get("pattern_id")), {}).get("source") or {}).get("slide_index")
+        for s in ordered_slides
+    ]
+    preserved_slides: dict[int, Any] = {}
+    if preserve:
+        seen: set[int] = set()
+        # Clone only extra occurrences, before any original is edited. Keeping the first
+        # occurrence preserves slide IDs and targets of internal navigation links.
+        for index, source_index in enumerate(source_indices):
+            sample_index = int(source_index or 0)
+            if not 1 <= sample_index <= len(samples):
+                continue
+            sample = samples[sample_index - 1]
+            preserved_slides[index] = (
+                clone_slide(prs, sample, copy_notes=True) if sample_index in seen else sample
+            )
+            seen.add(sample_index)
+    for index, plan_slide in enumerate(ordered_slides):
         pattern_id = str(plan_slide.get("pattern_id"))
         pattern_raw = patterns_raw.get(pattern_id)
         if pattern_raw is None:
@@ -1467,6 +1495,7 @@ def compose_deck(
             )
         source = pattern_raw.get("source") or {}
         if source.get("kind") == "builtin":
+            unchanged = False
             # Собственная композиция: слайд строится на макете шаблона из его дизайн-кода,
             # а заполняется дальше тем же путём, что и клон образца.
             clone, pattern_raw = _build_builtin(ctx, pattern_id, pattern_raw, source)
@@ -1482,8 +1511,25 @@ def compose_deck(
                 "compose_sample_missing",
                 f"паттерн {pattern_id}: образец {sample_index} отсутствует в шаблоне",
             )
-        clone = clone_slide(prs, samples[sample_index - 1])
+        keep = preserve and unchanged_slide(plan_slide, pattern_raw)
+        unchanged = unchanged and keep and sample_index == index + 1
+        # Reuse original parts: cloning rewrites relationships, slide IDs and notes.
+        clone = preserved_slides[index] if preserve else clone_slide(prs, samples[sample_index - 1])
         new_slides.append(clone)
+        if keep:
+            records.append(
+                SlideRecord(
+                    slide_id=str(plan_slide["slide_id"]),
+                    order=index + 1,
+                    pattern_id=pattern_id,
+                    source_slide_index=sample_index,
+                    source_slide_part=str(source.get("pptx_slide_part") or ""),
+                    layout_id=str(source.get("layout_id") or ""),
+                    title=str(plan_slide.get("title") or ""),
+                    static_object_ids=[str(i) for i in pattern_raw.get("static_object_ids") or []],
+                )
+            )
+            continue
         if pattern_id not in pinfos:
             pinfos[pattern_id] = pattern_info(pattern_raw)
         layout = (
@@ -1499,15 +1545,25 @@ def compose_deck(
         raise ComposeError("compose_plan_empty", "в плане нет слайдов")
     t0 = time.perf_counter()
     keep_only_slides(prs, new_slides)
+    if preserve:
+        # keep_only_slides removes pages but does not reorder reused original parts.
+        ids = {prs.part.related_part(item.rId): item for item in prs.slides._sldIdLst}
+        for slide in new_slides:
+            prs.slides._sldIdLst.append(ids[slide.part])
     # Знак шаблона снимается после отбора слайдов: он лежит на макетах, а не на слайдах, и
     # правкой слайда его не убрать (план: template_logo).
     drop_logos = str(plan.get("template_logo") or "keep") == "drop"
     logos_removed = drop_template_logos(prs, profile) if drop_logos else 0
-    layouts_removed = prune_unused_layouts(prs) if prune_layouts else 0
-    update_slide_numbers(prs)
+    layouts_removed = prune_unused_layouts(prs) if prune_layouts and not preserve else 0
+    if not preserve:
+        update_slide_numbers(prs)
     out_pptx = pathlib.Path(out_pptx)
     out_pptx.parent.mkdir(parents=True, exist_ok=True)
-    prs.save(str(out_pptx))
+    if unchanged and not drop_logos:
+        if template_path.resolve() != out_pptx.resolve():
+            shutil.copyfile(template_path, out_pptx)
+    else:
+        prs.save(str(out_pptx))
     timings["save_ms"] = int((time.perf_counter() - t0) * 1000)
     if logos_removed:
         ctx.count("logos_removed", logos_removed)

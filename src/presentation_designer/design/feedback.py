@@ -606,7 +606,13 @@ def ask_slots(
             for slot in t.get("overflow_slots") or []
         }
         taken += apply_answer(
-            plan, patterns, answer, markers, facts.canvas, facts_index(package), replace
+            plan,
+            patterns,
+            answer,
+            markers,
+            facts.canvas,
+            facts_index(package) if package is not None else None,
+            replace,
         )
 
     log.info("дозапрос по фактам: принято слотов %d", len(taken))
@@ -849,6 +855,10 @@ def complete_rows(
             if slot is None:
                 continue
             for source in list(spare):
+                # A numeric cell is paired with its own metric, not any spare deck fact.
+                # Only the planner can assign that pair; row completion fills prose only.
+                if slot.get("kind") == "number":
+                    break
                 short = source if _fits_as_is(source, slot, facts.canvas) else None
                 if short is None and source not in labels:
                     short = condense(source, slot, facts.canvas)

@@ -425,7 +425,7 @@ class RealLayers(StubLayers):
             TemplateProfile,
         )
         from presentation_designer.contracts.validators import check_slide_plan
-        from presentation_designer.generation.original import original_plan
+        from presentation_designer.generation.original import original_plan, original_profile
 
         plan = original_plan(
             inp.story,
@@ -439,7 +439,7 @@ class RealLayers(StubLayers):
             v
             for v in check_slide_plan(
                 SlidePlan.model_validate(plan),
-                TemplateProfile.model_validate(inp.template_profile),
+                TemplateProfile.model_validate(original_profile(inp.template_profile)),
                 ContentPackage.model_validate(inp.package),
                 StoryPlan.model_validate(inp.story),
             )

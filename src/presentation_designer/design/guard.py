@@ -78,7 +78,11 @@ def drop_duplicates(slide: JsonDict) -> list[str]:
     kept, dropped = [], []
     for block in slide.get("blocks", []):
         text = _norm(block.get("text", ""))
-        if text and text in seen:
+        refs = set(_FACT.findall(str(block.get("text") or "")))
+        covered_refs = {
+            ref for previous in kept for ref in _FACT.findall(str(previous.get("text") or ""))
+        }
+        if text and text in seen and refs <= covered_refs:
             dropped.append(block.get("slot_id"))
             continue
         if text:
@@ -120,7 +124,14 @@ def enforce_capacity(
             continue
 
         short = _shorten(text)
-        if short and _fits(slot, short, canvas) is True:
+        from presentation_designer.parsing.content.numbers import find_numbers
+
+        protected = set(_FACT.findall(text)) | {n.raw for n in find_numbers(text)}
+        if (
+            short
+            and all(token in short for token in protected)
+            and _fits(slot, short, canvas) is True
+        ):
             block["text"] = short
             block["shortened_by"] = "design.guard"
             changes.append((block.get("slot_id"), "сокращён"))
@@ -132,6 +143,11 @@ def enforce_capacity(
         # и его решает `generation/capacity.py`. Оставляем и сообщаем.
         if block.get("kind") == "title":
             changes.append((block.get("slot_id"), "тесно, но заголовок сохранён"))
+            kept.append(block)
+            continue
+
+        if protected or block.get("fact_refs"):
+            changes.append((block.get("slot_id"), "тесно, но факты сохранены для перевёрстки"))
             kept.append(block)
             continue
 

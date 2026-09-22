@@ -18,6 +18,7 @@ from presentation_designer.generation.office_facts import (
     SHORTENING_RULE,
     validate_shortening,
     validate_shortening_length,
+    validate_shortening_meaning,
 )
 from presentation_designer.llm.client import build_client
 from presentation_designer.llm.types import Deadline, Message, Request
@@ -73,6 +74,7 @@ class EditPlan(BaseModel):
                 for original, replacement in zip(*paragraphs, strict=True):
                     validate_shortening(instruction, original, replacement)
                     validate_shortening_length(instruction, original, replacement)
+                    validate_shortening_meaning(instruction, original, replacement)
 
 
 def slides(archive: ZipFile) -> list[str]:
@@ -115,7 +117,7 @@ def patch_pptx(data: bytes, plan: EditPlan) -> bytes:
             if patch.run >= len(runs):
                 raise ValueError("Текст документа не совпадает с базой правки: run не существует")
             if (runs[patch.run].text or "") != patch.before:
-                expected = json.dumps(runs[patch.run].text or "", ensure_ascii=False)
+                expected = text_context_json(runs[patch.run].text or "")
                 raise ValueError(
                     "Текст документа не совпадает с базой правки: "
                     f"slide={patch.slide}, run={patch.run}. "
@@ -138,6 +140,16 @@ def patch_pptx(data: bytes, plan: EditPlan) -> bytes:
                     else archive.read(entry),
                 )
         return output.getvalue()
+
+
+def text_context_json(value: object) -> str:
+    """Expose non-ASCII separators to the model without normalizing source identity."""
+    encoded = json.dumps(value, ensure_ascii=False)
+    # Keep Cyrillic readable, but make visually confusable whitespace explicit.
+    for char in set(encoded):
+        if ord(char) > 127 and (char.isspace() or char in "\u200b\u2060\ufeff"):
+            encoded = encoded.replace(char, json.dumps(char, ensure_ascii=True)[1:-1])
+    return encoded
 
 
 def paragraph_context(root: etree._Element, allowed: list[int]) -> list[dict[str, object]]:
@@ -213,9 +225,7 @@ async def propose(data: bytes, instruction: str, settings: Settings) -> EditPlan
                     ),
                     Message(
                         "user",
-                        json.dumps(
-                            {"instruction": instruction, "slides": content}, ensure_ascii=False
-                        ),
+                        text_context_json({"instruction": instruction, "slides": content}),
                     ),
                 ],
             ),

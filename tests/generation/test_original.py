@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import pathlib
+from copy import deepcopy
 from typing import Any
 
 import pytest
@@ -12,7 +13,13 @@ from pptx import Presentation
 
 from presentation_designer.contracts import ContentPackage, SlidePlan, StoryPlan, TemplateProfile
 from presentation_designer.contracts.validators import check_slide_plan, check_story_plan
-from presentation_designer.generation.original import original_plan, original_story
+from presentation_designer.generation.original import (
+    deck_patterns,
+    original_plan,
+    original_profile,
+    original_story,
+    skipped_slides,
+)
 from presentation_designer.layout.compose import compose_deck
 from presentation_designer.parsing.content.importer import import_content
 from presentation_designer.parsing.content.parsers import ParseCache
@@ -88,6 +95,7 @@ def test_original_compose_keeps_texts_and_edit_changes_only_its_block(
     out = tmp_path / "r1.pptx"
     result = compose_deck(plan, mini_profile, MINI_TEMPLATE, package, out_pptx=out, job_id="job_o")
     assert result.integrity.ok
+    assert out.read_bytes() == MINI_TEMPLATE.read_bytes()
     assert _texts(out) == _texts(MINI_TEMPLATE)
     assert all(not s.get("removed_object_ids") for s in result.deck["slides"])
     assert all(
@@ -160,3 +168,161 @@ def test_edit_validation_tolerates_sample_filled_required_slots(
     as_balanced = {**plan, "variant": {**plan["variant"], "variant_id": "balanced"}}
     with pytest.raises(EditError):
         validate_plan(as_balanced, mini_profile, package, story)
+
+
+def test_unrecognized_blank_hidden_slides_survive_import_and_edit(
+    tmp_path: pathlib.Path, import_settings: Settings
+) -> None:
+    from presentation_designer.generation.edit import validate_plan
+    from presentation_designer.pipeline.real import RealLayers
+    from presentation_designer.pipeline.run import PlanInput
+
+    source = tmp_path / "source.pptx"
+    prs = Presentation(str(MINI_TEMPLATE))
+    prs.slides[1]._element.set("show", "0")
+    prs.slides[1].notes_slide.notes_text_frame.text = "Сохранить заметки скрытого слайда"
+    prs.slides.add_slide(prs.slide_layouts[6])
+    prs.save(str(source))
+    profile = own_profile(source, "tpl_import")
+    # Reproduce classification exclusions deterministically, including an interior page.
+    profile["patterns"] = [
+        p for p in profile["patterns"] if p["source"].get("slide_index") not in (2, 5)
+    ]
+    before = deepcopy(profile)
+    package = _package(tmp_path, import_settings)
+    story = original_story(package, profile, {"language": "ru"})
+    layers = RealLayers(Settings())
+    layers._llm_failed = True
+    plan = layers.plan(PlanInput("job_o", "original", profile, package, story, {}, None))
+    assert len(plan["slides"]) == len(story["theses"]) == 5
+    assert [p["source"]["slide_index"] for p in deck_patterns(profile)] == [1, 2, 3, 4, 5]
+    assert skipped_slides(profile) == []
+    validate_plan(plan, profile, package, story)
+    TemplateProfile.model_validate(original_profile(profile))
+    out = tmp_path / "original.pptx"
+    result = compose_deck(plan, profile, source, package, out_pptx=out, prune_layouts=True)
+    assert result.integrity.ok
+    assert len(result.deck["slides"]) == 5
+    assert out.read_bytes() == source.read_bytes()
+    assert profile == before, "обычная генерация не должна получать служебные композиции"
+
+    edited = deepcopy(plan)
+    edited["slides"][0]["blocks"][0]["text"] = "Точечная правка"
+    revised = tmp_path / "edited.pptx"
+    compose_deck(edited, profile, source, package, out_pptx=revised)
+    actual = Presentation(str(revised))
+    assert len(actual.slides) == 5
+    assert _texts(revised)[1:] == _texts(source)[1:]
+    assert actual.slides[1]._element.get("show") == "0"
+    assert (
+        actual.slides[1].notes_slide.notes_text_frame.text
+        == prs.slides[1].notes_slide.notes_text_frame.text
+    )
+    for old, new in zip(prs.slides, actual.slides, strict=True):
+        if old == prs.slides[0]:
+            continue
+        assert old._element.xml == new._element.xml
+
+
+@pytest.mark.organizer_data
+def test_vk_education_original_preserves_every_byte(tmp_path: pathlib.Path) -> None:
+    source = (
+        pathlib.Path(__file__).resolve().parents[2]
+        / "data/organizers/Шаблон презентации VK Education.pptx"
+    )
+    if not source.is_file():
+        pytest.skip("закрытый шаблон организаторов отсутствует")
+    profile = own_profile(source, "tpl_vk")
+    package = {"package_id": "pkg_vk", "facts": [], "blocks": []}
+    story = original_story(package, profile, {"language": "ru"})
+    plan = original_plan(story, profile, package, plan_id="plan_vk")
+    total = len(Presentation(str(source)).slides)
+    assert len(plan["slides"]) == len(story["theses"]) == total
+    assert [p["source"]["slide_index"] for p in deck_patterns(profile)] == list(range(1, total + 1))
+    out = tmp_path / "original.pptx"
+    result = compose_deck(plan, profile, source, package, out_pptx=out)
+    assert result.integrity.ok and len(result.deck["slides"]) == total
+    assert out.read_bytes() == source.read_bytes()
+
+
+def test_original_reorder_delete_and_duplicate(
+    mini_profile: dict[str, Any], tmp_path: pathlib.Path, import_settings: Settings
+) -> None:
+    package = _package(tmp_path, import_settings)
+    story = original_story(package, mini_profile, {})
+    plan = original_plan(story, mini_profile, package, plan_id="plan_orig")
+    texts = _texts(MINI_TEMPLATE)
+    for sequence in ([3, 0, 2], [2, 0, 2, 1]):
+        edited = deepcopy(plan)
+        edited["slides"] = []
+        for order, source_index in enumerate(sequence, 1):
+            slide = deepcopy(plan["slides"][source_index])
+            slide.update(order=order, slide_id=f"s{order}")
+            edited["slides"].append(slide)
+        out = tmp_path / f"reordered-{len(sequence)}.pptx"
+        result = compose_deck(edited, mini_profile, MINI_TEMPLATE, package, out_pptx=out)
+        assert result.integrity.ok
+        assert _texts(out) == [texts[i] for i in sequence]
+
+
+def test_original_duplicate_preserves_notes_links_and_independent_edits(
+    tmp_path: pathlib.Path, import_settings: Settings
+) -> None:
+    from pptx.opc.constants import RELATIONSHIP_TYPE as RT
+
+    source = tmp_path / "source.pptx"
+    prs = Presentation(str(MINI_TEMPLATE))
+    for index, slide in enumerate(prs.slides):
+        slide.notes_slide.notes_text_frame.text = f"Заметки {index}"
+    prs.slides[2]._element.set("show", "0")
+    prs.slides[0].shapes[0].click_action.target_slide = prs.slides[1]
+    prs.save(str(source))
+    profile = own_profile(source, "tpl_duplicate")
+    package = _package(tmp_path, import_settings)
+    plan = original_plan(original_story(package, profile, {}), profile, package, plan_id="p")
+    duplicate = deepcopy(plan["slides"][0])
+    duplicate.update(slide_id="duplicate", order=5)
+    plan["slides"].append(duplicate)
+    plan["slides"][0]["blocks"][0]["text"] = "Правка только оригинала"
+    out = tmp_path / "duplicated.pptx"
+    compose_deck(plan, profile, source, package, out_pptx=out)
+    actual = Presentation(str(out))
+    assert all(slide.has_notes_slide for slide in actual.slides)
+    assert [slide.notes_slide.notes_text_frame.text for slide in actual.slides] == [
+        "Заметки 0",
+        "Заметки 1",
+        "Заметки 2",
+        "Заметки 3",
+        "Заметки 0",
+    ]
+    assert _texts(out)[4] == _texts(source)[0]
+    assert "Правка только оригинала" in _texts(out)[0]
+    assert actual.slides[2]._element.get("show") == "0"
+    for index in (0, 4):
+        slide = actual.slides[index]
+        assert slide.shapes[0].click_action.target_slide.part is actual.slides[1].part
+        back_links = [
+            rel.target_part
+            for rel in slide.notes_slide.part.rels.values()
+            if rel.reltype == RT.SLIDE
+        ]
+        assert back_links == [slide.part]
+    assert len({s.notes_slide.part.partname for s in actual.slides}) == 5
+    actual.slides[4].notes_slide.notes_text_frame.text = "Независимые заметки"
+    assert actual.slides[0].notes_slide.notes_text_frame.text == "Заметки 0"
+
+
+def test_original_notes_only_edit_is_not_discarded(
+    mini_profile: dict[str, Any], tmp_path: pathlib.Path, import_settings: Settings
+) -> None:
+    package = _package(tmp_path, import_settings)
+    plan = original_plan(
+        original_story(package, mini_profile, {}), mini_profile, package, plan_id="p"
+    )
+    plan["slides"][0]["notes"] = "Новые заметки докладчика"
+    out = tmp_path / "notes.pptx"
+    compose_deck(plan, mini_profile, MINI_TEMPLATE, package, out_pptx=out)
+    slide = Presentation(str(out)).slides[0]
+    assert slide.has_notes_slide
+    assert slide.notes_slide.notes_text_frame.text == "Новые заметки докладчика"
+    assert _texts(out) == _texts(MINI_TEMPLATE)

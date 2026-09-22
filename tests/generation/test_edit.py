@@ -73,6 +73,15 @@ def _content_index(plan: dict[str, Any]) -> int:
         and any(b.get("kind") == "title" for b in s.get("blocks") or [])
     ]
     if single:
+        # The canned answer contains prose and two bullets, not a KPI-only edit.
+        # Choose a text slide so keeping its layout does not require losing that prose.
+        text_slides = [
+            i
+            for i in single
+            if any(b.get("kind") in ("body", "bullets") for b in slides[i].get("blocks", []))
+        ]
+        if text_slides:
+            return text_slides[0]
         return single[0]
     return next(
         i for i, s in enumerate(slides) if s["role"] not in mt.FIXED_ROLES and s["thesis_refs"]

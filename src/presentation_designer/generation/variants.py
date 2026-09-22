@@ -55,7 +55,7 @@ log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 
-PLAN_VERSION = "0.3.3"
+PLAN_VERSION = "0.3.5"
 PLAN_SCHEMA_VERSION = "1.3"
 # Версии плана, отличающиеся от текущей только добавленными необязательными полями: план
 # прежней ревизии (правки из чата и редактора читают его с диска) поднимается до текущей.
@@ -356,6 +356,7 @@ class Draft:
     # Слоты, заполненные подписью-наполнителем (сообщение, пояснение): при переполнении
     # необязательного слота такой блок убирается, а не считается потерей содержания.
     filler_slots: set[str] = field(default_factory=set)
+    unplaced_text: str = ""
 
     @property
     def splittable(self) -> bool:
@@ -671,7 +672,14 @@ def packet_candidates(ctx: Context, packet: Packet) -> dict[str, list[PatternInf
     for t in packet.theses:
         need = thesis_need(ctx, t)
         has_ds = need.has_dataset
-        found = candidates_for(ctx.patterns, need, ctx.variant_id, limit=per, has_datasets=has_ds)
+        found = candidates_for(
+            ctx.patterns,
+            need,
+            ctx.variant_id,
+            limit=per,
+            has_datasets=has_ds,
+            include_library_alternative=True,
+        )
         if not found:
             found = candidates_for(
                 ctx.patterns,
@@ -679,6 +687,7 @@ def packet_candidates(ctx: Context, packet: Packet) -> dict[str, list[PatternInf
                 ctx.variant_id,
                 limit=per,
                 has_datasets=has_ds,
+                include_library_alternative=True,
             )
         out[t.id] = found
     return out
@@ -705,10 +714,24 @@ def _fact_line(f: JsonDict) -> str:
 
 
 def packet_digest(ctx: Context, structure: Structure, packet: Packet) -> str:
+    from dataclasses import asdict
+
+    from presentation_designer.library.tokens import DesignCode
+
     story = ctx.story
     brief = story.get("effective_brief") or {}
     lines: list[str] = []
     lines.append(f"Вариант: {ctx.variant_id}. {VARIANT_RULES.get(ctx.variant_id, '')}")
+    lines.append(
+        "Дизайн-код шаблона (обязателен для всех композиций; missing — значения по умолчанию): "
+        + json.dumps(asdict(DesignCode.from_profile(ctx.profile)), ensure_ascii=False)
+    )
+    lines.append(
+        "Выбирай разные композиции по смыслу: крупный показатель, сравнение, этапы, карточки. "
+        "Библиотечные композиции уже оформлены дизайн-кодом шаблона. Не меняй шрифты и палитру. "
+        "Разнообразие не оправдывает пустые блоки, выдуманные данные или потерю фактов. "
+        "Номера шагов — не слоты для показателей."
+    )
     lines.append(
         "Бриф: "
         + "; ".join(
@@ -878,6 +901,9 @@ def drafts_from_answer(ctx: Context, packet: Packet, answer: JsonDict) -> list[D
             t = ctx.thesis(tid)
             if t:
                 source_refs.extend(b for b in t.source_refs if b in ctx.blocks)
+                # Coverage is not just the thesis ID: retain its source quantities
+                # even when the model forgets the slide-level facts field.
+                facts.extend(f for f in t.fact_refs if f in ctx.facts and f not in facts)
         drafts.append(
             Draft(
                 kind="content",
@@ -1074,6 +1100,7 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
     blocks: list[JsonDict] = []
     used: set[str] = set()
     draft.filler_slots = set()
+    draft.unplaced_text = ""
 
     def put(block: JsonDict, *, filler: bool = False) -> None:
         if block["slot_id"] in used:
@@ -1162,6 +1189,19 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
                     and cap.substitute_facts(it["text"], ctx.facts).strip() in shown_texts
                 )
             ]
+    # A fact reference in slide metadata is not visible content. Quantities which
+    # did not fit a numeric slot must remain in prose, with their source labels.
+    visible = " ".join(
+        [draft.title, text, *[it.get("text", "") for it in items]]
+        + [str(b.get("text") or "") for b in blocks]
+    )
+    shown_ids = {b["number"]["fact_id"] for b in blocks if b.get("number")}
+    for fid in facts:
+        if fid in shown_ids or f"{{fact:{fid}}}" in visible:
+            continue
+        fact = ctx.facts[fid]
+        label = str((fact.get("context") or {}).get("metric") or fact.get("label") or "")
+        items.append({"text": f"{label}: {{fact:{fid}}}".lstrip(": "), "fact_refs": [fid]})
     # Пункты: слот списка, иначе карточки, иначе текстом.
     if items:
         bullets = free("bullets")
@@ -1342,6 +1382,7 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
                 if slot.kind == "table"
                 else _chart_block(ctx, draft, slot)
             )
+    draft.unplaced_text = text
     return blocks
 
 
@@ -1350,7 +1391,11 @@ TINY_SLOT_CHARS = 12
 
 def _number_slots(p: PatternInfo, used: set[str]) -> list[SlotInfo]:
     """Свободные слоты чисел в порядке чтения: одиночные и из всех групп."""
-    slots = [s for s in p.slots.values() if s.kind == "number" and s.slot_id not in used]
+    slots = [
+        s
+        for s in p.slots.values()
+        if s.kind == "number" and s.slot_id not in used | p.ordinal_slot_ids
+    ]
     slots.sort(key=lambda s: (round(s.bbox[1], 2), s.bbox[0]))
     return slots
 
@@ -1476,7 +1521,12 @@ def _fill_card(
             put({"slot_id": card[body].slot_id, "kind": "bullets", "items": [{"text": text}]})
         else:
             put(_text_block(card[body], text, fact_refs=refs))
-    if "number" in card and card["number"].slot_id not in used and refs:
+    if (
+        "number" in card
+        and card["number"].slot_id not in used
+        and not card["number"].is_ordinal
+        and refs
+    ):
         put(_number_block(ctx, card["number"], refs[0]))
     return True
 
@@ -1901,11 +1951,23 @@ def fit_draft(ctx: Context, draft: Draft) -> Draft:
     right_size_pattern(ctx, draft)
     blocks = fill_blocks(ctx, draft)
     measured = _drop_overflowing_fillers(draft, measure_blocks(ctx, draft, blocks))
-    if draft.overflow and draft.candidates:
+    if draft.overflow or draft.unplaced_text:
         # Более вместительный паттерн среди кандидатов при исходных кеглях.
         original = draft.pattern
-        for alt in sorted(draft.candidates, key=lambda c: -c.text_capacity):
-            if alt.text_capacity <= original.text_capacity:
+        alternatives = list(draft.candidates)
+        if draft.unplaced_text:
+            alternatives += candidates_for(
+                ctx.patterns,
+                Need("text", text_chars=len(draft.unplaced_text)),
+                ctx.variant_id,
+                limit=8,
+                has_datasets=ctx.has_datasets,
+                include_library_alternative=True,
+            )
+        for alt in sorted(alternatives, key=lambda c: -c.text_capacity):
+            if alt is original or (
+                not draft.unplaced_text and alt.text_capacity <= original.text_capacity
+            ):
                 continue
             trial = copy.copy(draft)
             trial.pattern = alt
@@ -1913,8 +1975,10 @@ def fit_draft(ctx: Context, draft: Draft) -> Draft:
             alt_blocks = _drop_overflowing_fillers(
                 trial, measure_blocks(ctx, trial, fill_blocks(ctx, trial))
             )
-            if not trial.overflow and all(
-                b.get("fit", {}).get("action", "as_is") == "as_is" for b in alt_blocks
+            if (
+                not trial.overflow
+                and not trial.unplaced_text
+                and all(b.get("fit", {}).get("action", "as_is") == "as_is" for b in alt_blocks)
             ):
                 draft.pattern = alt
                 draft.candidates = [c for c in draft.candidates if c is not alt] + [original]
@@ -1924,6 +1988,7 @@ def fit_draft(ctx: Context, draft: Draft) -> Draft:
                     for b in alt_blocks
                 ]
                 draft.overflow = []
+                draft.unplaced_text = ""
                 break
     draft.blocks = measured
     for b in measured:
@@ -2269,15 +2334,34 @@ def split_draft(ctx: Context, draft: Draft) -> tuple[Draft, Draft] | None:
     return fit_draft(ctx, a), fit_draft(ctx, b)
 
 
-def merge_drafts(ctx: Context, a: Draft, b: Draft) -> Draft | None:
+def merge_drafts(
+    ctx: Context, a: Draft, b: Draft, *, across_sections: bool = False
+) -> Draft | None:
     """Два соседних содержательных слайда одного раздела → один список/карточки."""
-    if a.kind != "content" or b.kind != "content" or a.section != b.section:
+    if a.kind != "content" or b.kind != "content":
+        return None
+    if a.section != b.section and not across_sections:
         return None
     if a.visual in ("chart", "table") or b.visual in ("chart", "table"):
         return None
-    items = (a.items or [{"text": a.message or a.title, "fact_refs": a.facts[:1]}]) + (
-        b.items or [{"text": b.message or b.title, "fact_refs": b.facts[:1]}]
-    )
+
+    def content_items(draft: Draft) -> list[JsonDict]:
+        if draft.items:
+            return copy.deepcopy(draft.items)
+        text = draft.text or draft.message or draft.title
+        # IDs alone do not render a quantity in a text list. Keep every source fact visible.
+        missing = [f for f in draft.facts if f"{{fact:{f}}}" not in text]
+        if missing:
+            text += "; " + "; ".join(
+                f"{ctx.facts[f].get('label') or ''} {{fact:{f}}}".strip()
+                for f in missing
+                if f in ctx.facts
+            )
+        return [{"text": text, "fact_refs": draft.facts[:]}]
+
+    items = content_items(a) + content_items(b)
+    if len(items) > 8:
+        return None
     need = Need(
         "bullets", items=len(items), numbers=0, text_chars=sum(len(i["text"]) for i in items)
     )
@@ -2286,7 +2370,7 @@ def merge_drafts(ctx: Context, a: Draft, b: Draft) -> Draft | None:
     )
     if not cands:
         return None
-    section = ctx.thesis(a.section) if a.section else None
+    section = ctx.thesis(a.section) if a.section and a.section == b.section else None
     merged = Draft(
         kind="content",
         theses=list(dict.fromkeys(a.theses + b.theses)),
@@ -2296,7 +2380,7 @@ def merge_drafts(ctx: Context, a: Draft, b: Draft) -> Draft | None:
         else a.title,
         message=a.message,
         visual="bullets",
-        items=items[:8],
+        items=items,
         facts=list(dict.fromkeys(a.facts + b.facts)),
         section=a.section,
         source_refs=list(dict.fromkeys(a.source_refs + b.source_refs)),
@@ -2430,6 +2514,8 @@ def _control_count(ctx: Context, structure: Structure, deck: list[Draft]) -> lis
             continue
         if _merge_one(ctx, deck):
             continue
+        if _merge_one(ctx, deck, across_sections=True):
+            continue
         if _drop_optional(ctx, deck):
             continue
         break
@@ -2534,13 +2620,13 @@ def _drop_optional(ctx: Context, deck: list[Draft]) -> bool:
     return False
 
 
-def _merge_one(ctx: Context, deck: list[Draft]) -> bool:
+def _merge_one(ctx: Context, deck: list[Draft], *, across_sections: bool = False) -> bool:
     best: tuple[int, Draft] | None = None
     for i in range(len(deck) - 1):
         a, b = deck[i], deck[i + 1]
-        if a.kind != "content" or b.kind != "content" or a.section != b.section:
+        if a.kind != "content" or b.kind != "content":
             continue
-        merged = merge_drafts(ctx, a, b)
+        merged = merge_drafts(ctx, a, b, across_sections=across_sections)
         if merged is None:
             continue
         size = len(a.items) + len(b.items)
@@ -3096,11 +3182,13 @@ def profile_digest(profile: JsonDict) -> str:
         "template_hash": profile.get("template_hash"),
         "analyzer": profile.get("analyzer"),
         "slide_size": profile.get("slide_size"),
-        "scale": ((profile.get("design_tokens") or {}).get("typography") or {}).get("scale"),
+        "design_tokens": profile.get("design_tokens"),
         "patterns": [
             {
                 "id": p.get("pattern_id"),
                 "role": p.get("role"),
+                "name": p.get("name"),
+                "source": p.get("source"),
                 "confidence": p.get("confidence"),
                 "constraints": p.get("constraints"),
                 "group_id": p.get("group_id"),
@@ -3118,6 +3206,7 @@ def profile_digest(profile: JsonDict) -> str:
                             "repeat_group",
                             "capacity",
                             "paragraph_params",
+                            "sample_text",
                         )
                     }
                     for s in p.get("slots", [])

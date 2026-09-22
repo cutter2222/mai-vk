@@ -88,6 +88,7 @@ def test_assemble_repairs_refs_and_covers_required_content(example_package: dict
         generation_meta={"skills": [], "models": []},
     )
     doc = StoryPlan.model_validate(story)
+    assert "Обязательный пункт брифа" not in json.dumps(story, ensure_ascii=False)
     assert not check_story_plan(doc, ContentPackage.model_validate(example_package))
     ids = [t["thesis_id"] for t in story["theses"]]
     assert ids == [f"t{i}" for i in range(1, len(ids) + 1)]

@@ -30,7 +30,7 @@ interface Props {
   overlays?: Overlay[];
   activeOverlay?: string | null;
   onOverlayClick?: (id: string) => void;
-  onLoad?: () => void;
+  onLoad?: (src: string) => void;
   loading?: "eager" | "lazy";
   /** Контуры объектов слайда (из ComposedDeck): подсвечиваются при наведении, клик открывает редактор. */
   outlines?: Outline[];
@@ -125,7 +125,7 @@ function SlideImageContent({ src, alt, loading = "eager", onLoad, overlays = [],
         // eslint-disable-next-line @next/next/no-img-element
         <img ref={ref} src={imageSrc} alt={alt} loading={loading} decoding="async"
           style={{ visibility: loaded ? "visible" : "hidden" }}
-          onLoad={() => { setLoaded(true); setFailed(false); onLoad?.(); }}
+          onLoad={() => { setLoaded(true); setFailed(false); if (imageSrc) onLoad?.(imageSrc); }}
           onError={() => { setLoaded(false); setFailed(true); }} />
       ) : (
         <Text c="dimmed" size="sm" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}>

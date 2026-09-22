@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-22T14:08:19Z",
+ "entry_version": 1,
+ "key": "48dfae4b4adbb617efb4e431db83582a7fa31ca06ecd987bceea428721f3f9f3",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 8861,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 762,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 1833,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Устойчивый рост вовлеченности за 3 месяц» (pat_builtin_chart_kpi_count3), слот title: текст не помещается — 41 символов / 2 строк при ёмкости 35 символов / 1 строк — ",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5272,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_builtin_comparison\",\n      \"theses\": [\n        \"t6\"\n      ],\n      \"title\": \"Рост открываемости до 44%\",\n      \"visual\": \"comparison\"\n    },\n    {\n      \"pattern\": \"pat_builtin_chart_kpi_count3\",\n      \"theses\": [\n        \"t7\"\n      ],\n      \"title\": \"Рост вовлеченности за 3 месяца\",\n      \"visual\": \"chart\"\n    },\n    {\n      \"pattern\": \"pat_builtin_table_sheet_leadTrue\",\n      \"theses\": [\n        \"t8\"\n      ],\n      \"title\": \"Экономия 12,5 млн ₽ за год\",\n      \"visual\": \"table\"\n    },\n    {\n      \"pattern\": \"pat_builtin_quote_photoFalse\",\n      \"theses\": [\n        \"t9\"\n      ],\n      \"title\": \"Уведомления стали помогать\",\n      \"visual\": \"quote\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 246,
+   "prompt_tokens": 5938,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

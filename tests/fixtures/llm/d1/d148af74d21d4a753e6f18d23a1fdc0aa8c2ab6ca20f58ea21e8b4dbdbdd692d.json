@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-22T13:49:21Z",
+ "entry_version": 1,
+ "key": "d148af74d21d4a753e6f18d23a1fdc0aa8c2ab6ca20f58ea21e8b4dbdbdd692d",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 9040,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 723,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 363,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Открываемость выросла до 44 %» (pat_builtin_comparison): 0 пункт(ов) на композицию из 16 карточек — раскрой тезис до 4 пунктов по пояснению (без выдуманных цифр) или ",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4028,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_builtin_matrix\",\n      \"theses\": [\n        \"t6\"\n      ],\n      \"title\": \"Открываемость выросла до 44 %\",\n      \"visual\": \"comparison\"\n    },\n    {\n      \"pattern\": \"pat_builtin_chart_kpi_count3\",\n      \"theses\": [\n        \"t7\"\n      ],\n      \"title\": \"Устойчивый рост вовлеченности\",\n      \"visual\": \"chart\"\n    },\n    {\n      \"pattern\": \"pat_builtin_table_sheet_leadTrue\",\n      \"theses\": [\n        \"t8\"\n      ],\n      \"title\": \"Экономия 12,5 млн ₽ за год\",\n      \"visual\": \"table\"\n    },\n    {\n      \"pattern\": \"pat_builtin_quote_photoFalse\",\n      \"theses\": [\n        \"t9\"\n      ],\n      \"title\": \"Уведомления помогают, а не отвлекают\",\n      \"visual\": \"quote\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 251,
+   "prompt_tokens": 5422,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

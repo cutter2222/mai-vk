@@ -24,7 +24,7 @@ from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.opc.package import Part, XmlPart
 from pptx.parts.chart import ChartPart
 from pptx.parts.embeddedpackage import EmbeddedXlsxPart
-from pptx.parts.slide import SlidePart
+from pptx.parts.slide import NotesSlidePart, SlidePart
 
 NS_R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -42,11 +42,13 @@ _XML_PARSER = etree.XMLParser(remove_blank_text=False, resolve_entities=False, h
 # --- клонирование -------------------------------------------------------------------
 
 
-def clone_slide(prs: Any, source: Any, index: int | None = None) -> Any:
+def clone_slide(
+    prs: Any, source: Any, index: int | None = None, *, copy_notes: bool = False
+) -> Any:
     """Клонирует слайд `source` в ту же презентацию и возвращает новый слайд.
 
     Копируются фигуры, группы, обрезка картинок, стили текста, связи с макетом и
-    ресурсами; заметки докладчика не копируются. Диаграммы клонируются вместе с книгами
+    ресурсами; заметки докладчика копируются только при `copy_notes`. Диаграммы вместе с книгами
     данных, чтобы копии редактировались независимо. `index` — позиция в колоде.
     """
     package = prs.part.package
@@ -56,6 +58,17 @@ def clone_slide(prs: Any, source: Any, index: int | None = None) -> Any:
     )
     _copy_rels(new_part, src_part, skip_reltypes={RT.NOTES_SLIDE})
     rid = prs.part.relate_to(new_part, RT.SLIDE)
+    if copy_notes and source.has_notes_slide:
+        source_notes = source.notes_slide.part
+        notes = NotesSlidePart.load(
+            package.next_partname("/ppt/notesSlides/notesSlide%d.xml"),
+            CT.PML_NOTES_SLIDE,
+            package,
+            source_notes.blob,
+        )
+        new_part.relate_to(notes, RT.NOTES_SLIDE)
+        _copy_rels(notes, source_notes, skip_reltypes={RT.SLIDE})
+        notes.relate_to(new_part, RT.SLIDE)
     sld_id_lst = prs.slides._sldIdLst  # публичного API для списка слайдов у python-pptx нет
     sld_id = sld_id_lst.add_sldId(rid)
     if index is not None:

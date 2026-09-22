@@ -40,6 +40,16 @@ def test_numbers_russian_formats() -> None:
     assert parse_number_text("12 500,5") == 12500.5 and parse_number_text("1,234") == 1.234
 
 
+def test_area_and_volume_units_survive_extraction() -> None:
+    for unit in ("км²", "км³", "м²", "м³", "см²", "см³", "мм²", "мм³"):
+        text = f"Плановая площадь: 40 {unit}."
+        matches = find_numbers(text)
+        assert len(matches) == 1
+        assert (matches[0].raw, matches[0].unit, matches[0].value) == (f"40 {unit}", unit, 40)
+        facts = extract_text_facts([TextUnit("b1", "src_1", text)])
+        assert (facts[0].raw, facts[0].unit) == (f"40 {unit}", unit)
+
+
 def test_text_facts_context_and_derived() -> None:
     units = [
         TextUnit(

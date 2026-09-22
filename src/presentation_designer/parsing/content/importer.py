@@ -41,7 +41,7 @@ log = logging.getLogger(__name__)
 JsonDict = dict[str, Any]
 
 IMPORTER_NAME = "content_importer"
-IMPORTER_VERSION = "0.1.0"
+IMPORTER_VERSION = "0.1.1"
 BRIEF_PARSER_VERSION = "0.1.0"
 PURPOSES = ("feature", "product", "project", "initiative", "report", "other")
 _EXT_BY_MIME = {

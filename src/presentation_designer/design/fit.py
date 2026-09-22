@@ -68,6 +68,13 @@ def _area(slot: JsonDict) -> float:
     return float(box.get("width", 0.0)) * float(box.get("height", 0.0))
 
 
+def _data_slots(pattern: JsonDict) -> list[JsonDict]:
+    from presentation_designer.generation.matching import ordinal_slots
+
+    ordinals = ordinal_slots(pattern)
+    return [s for s in pattern.get("slots", []) if s.get("slot_id") not in ordinals]
+
+
 def content_slots(pattern: JsonDict) -> list[JsonDict]:
     """Слоты паттерна, которые несут содержание.
 
@@ -75,7 +82,7 @@ def content_slots(pattern: JsonDict) -> list[JsonDict]:
     паттернах шаблона их бывает больше, чем текстовых (у «Карточек × 3» шесть
     иконок на три текста).
     """
-    return [s for s in pattern.get("slots", []) if s.get("kind") in TEXT_KINDS]
+    return [s for s in _data_slots(pattern) if s.get("kind") in TEXT_KINDS]
 
 
 def fill_ratio(slide: JsonDict, pattern: JsonDict) -> float:
@@ -131,7 +138,7 @@ def _can_host(pattern: JsonDict, needed: dict[str, int]) -> bool:
     """Вместит ли паттерн все блоки слайда по видам, считая родственные."""
     from collections import Counter
 
-    have = Counter(s.get("kind") for s in pattern.get("slots", []))
+    have = Counter(s.get("kind") for s in _data_slots(pattern))
     for kind, count in needed.items():
         for alt in _kin(str(kind)):
             take = min(count, have.get(alt, 0))
@@ -244,7 +251,7 @@ def remap_blocks(slide: JsonDict, pattern: JsonDict) -> None:
     предсказуем и объясним.
     """
     by_kind: dict[str, list[str]] = {}
-    for slot in pattern.get("slots", []):
+    for slot in _data_slots(pattern):
         by_kind.setdefault(slot.get("kind"), []).append(slot.get("slot_id"))
 
     used: dict[str, int] = {}

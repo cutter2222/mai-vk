@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-22T13:49:18Z",
+ "entry_version": 1,
+ "key": "611dc5c062502a51974180ec60ef2e10574d83300bac6b31d25824c8db1ef664",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 6993,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 389,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 443,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Масштабирование: от новых продуктов к 60» (pat_builtin_process_count3): 0 пункт(ов) на композицию из 6 карточек — раскрой тезис до 4 пунктов по пояснению (без выдуман",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 2937,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_builtin_process_count3\",\n      \"theses\": [\n        \"t11\"\n      ],\n      \"title\": \"Масштабирование: от новых продуктов к 60% открываемости\",\n      \"visual\": \"timeline\"\n    },\n    {\n      \"pattern\": \"pat_s2\",\n      \"theses\": [\n        \"t13\"\n      ],\n      \"title\": \"Риски управляемы и не влияют на бизнес-цели\",\n      \"visual\": \"cards\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 141,
+   "prompt_tokens": 4669,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

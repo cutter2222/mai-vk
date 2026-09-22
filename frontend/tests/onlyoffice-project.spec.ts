@@ -23,6 +23,10 @@ test("pages load independently and a failed page can be retried", async ({ page 
   await retry.click();
   await expect(image).toBeVisible();
   await expect(image).toHaveAttribute("src", /slide-02.png\?retry=1$/);
+  const thumbnail = page.getByTestId("thumb-1").locator("img");
+  await expect(thumbnail).toHaveAttribute("src", /slide-02.png\?retry=1$/);
+  await expect(thumbnail).toBeVisible();
+  await expect(page.getByTestId("thumb-1").getByText("Откройте слайд, чтобы повторить")).toHaveCount(0);
   await page.getByTestId("thumb-0").click();
   await expect(image).toBeVisible();
   expect(state.configs).toBe(0);

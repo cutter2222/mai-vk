@@ -81,6 +81,19 @@ def test_ответ_модели_принимается_после_провер�
     assert added[0]["text"] == "3400 рейсов ежемесячно"
 
 
+def test_refill_rejects_invented_schedule_and_changed_dimension():
+    facts = {"f1": {"raw": "5 дней"}, "f2": {"raw": "40 км²"}}
+    for text in ("14 дней подготовки", "40 км маршрута", "{fact:unknown}"):
+        plan = _plan()
+        assert not apply_answer(
+            plan, {"cards_3": PATTERN}, {"s7": {"body_2": text}}, set(), facts=facts
+        )
+    plan = _plan()
+    assert apply_answer(
+        plan, {"cards_3": PATTERN}, {"s7": {"body_2": "5 дней подготовки"}}, set(), facts=facts
+    ) == [("s7", "body_2")]
+
+
 def test_образец_шаблона_от_модели_отвергается():
     plan = _plan()
     apply_answer(plan, {"cards_3": PATTERN}, {"s7": {"body_2": "Описание"}}, {"Описание"})

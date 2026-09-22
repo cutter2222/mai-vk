@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-22T13:49:14Z",
+ "entry_version": 1,
+ "key": "60fae7d89047d7288fd485bb00cf00da01708988083cc65b4fe896408d3a1ea5",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 5881,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: balanced. Сбалансированная подача: один тезис на слайд, заголовок-вывод, короткое пояснение (одно-два предложения) и до четырёх пунктов или показателей. Ряды данных — диаграмма с подписями; т",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 3545,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_builtin_kpi_row_cardFalse_count2\",\n      \"theses\": [\n        \"t2\"\n      ],\n      \"title\": \"Информационный шум снижает эффективность\",\n      \"visual\": \"number\"\n    },\n    {\n      \"pattern\": \"pat_s2\",\n      \"theses\": [\n        \"t4\"\n      ],\n      \"title\": \"Сервис консолидирует каналы и фильтрует шум\",\n      \"visual\": \"cards\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 131,
+   "prompt_tokens": 3676,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

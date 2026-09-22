@@ -90,6 +90,28 @@ def _deck(plan, *, autofit="none"):
 # -- чтение фактов -----------------------------------------------------------
 
 
+def test_row_completion_does_not_assign_unrelated_kpi():
+    slots = [
+        _slot("number_1", "number", 0.27, 0.16),
+        _slot("number_2", "number", 0.27, 0.16),
+    ]
+    pattern = {"pattern_id": "kpi", "role": "cards", "slots": slots}
+    plan = {
+        "slides": [
+            {
+                "slide_id": "s1",
+                "pattern_id": "kpi",
+                "title": "Безопасность",
+                "blocks": [{"slot_id": "number_1", "kind": "number", "text": "2 м"}],
+            }
+        ]
+    }
+    facts = feedback.Facts(items=[feedback.Fact("s1", 1, "number_2", "hole")])
+    package = {"facts": [{"fact_id": "f1", "raw": "3000 м", "context": {"metric": "Глубина"}}]}
+    assert feedback.complete_rows(plan, facts, {"patterns": [pattern]}, {}, package) == []
+    assert len(plan["slides"][0]["blocks"]) == 1
+
+
 def test_дозапрос_по_сборке_сохраняет_ссылки_на_факты_тезиса():
     plan = _plan([("title_1", "Итоги пилота")])
     plan["slides"][0]["thesis_refs"] = ["t1"]
@@ -288,9 +310,9 @@ def test_правка_принимается_только_когда_дефек�
     plan = _plan([("title_1", "Итоги пилота")])
     package = {
         "facts": [
-            {"raw": "34%", "context": {"metric": "Простой"}},
-            {"raw": "18%", "context": {"metric": "Выручка"}},
-            {"raw": "3400", "context": {"metric": "рейсов"}},
+            {"fact_id": "f1", "raw": "−34%", "context": {"metric": "Простой"}},
+            {"fact_id": "f2", "raw": "+18%", "context": {"metric": "Выручка"}},
+            {"fact_id": "f3", "raw": "3400", "context": {"metric": "рейсов"}},
         ]
     }
 
@@ -430,9 +452,9 @@ def test_запертый_слайд_полировка_не_трогает():
     plan["slides"].append(second)
     package = {
         "facts": [
-            {"raw": "34%", "context": {"metric": "Простой"}},
-            {"raw": "18%", "context": {"metric": "Выручка"}},
-            {"raw": "3400", "context": {"metric": "рейсов"}},
+            {"fact_id": "f1", "raw": "−34%", "context": {"metric": "Простой"}},
+            {"fact_id": "f2", "raw": "+18%", "context": {"metric": "Выручка"}},
+            {"fact_id": "f3", "raw": "3400", "context": {"metric": "рейсов"}},
         ]
     }
 

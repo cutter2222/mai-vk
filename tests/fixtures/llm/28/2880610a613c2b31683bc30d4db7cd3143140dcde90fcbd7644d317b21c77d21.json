@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-22T13:47:51Z",
+ "entry_version": 1,
+ "key": "2880610a613c2b31683bc30d4db7cd3143140dcde90fcbd7644d317b21c77d21",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 6222,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 705,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 524,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Масштабирование на все продукты к декабр» (pat_builtin_process_count3): 0 пункт(ов) на композицию из 6 карточек — раскрой тезис до 4 пунктов по пояснению (без выдуман",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 7507,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"notes\": \"Слайд раскрывает обязательный тезис t11. Использована композиция процесса на 3 шага, соответствующая трем этапам из источника b10 (Октябрь, Ноябрь, Декабрь). Каждый шаг содержит подпись (месяц) и тело (действие/цель). Факт f11 подставлен в последний шаг.\",\n      \"pattern\": \"pat_builtin_process_count3\",\n      \"text\": \"\",\n      \"theses\": [\n        \"t11\"\n      ],\n      \"title\": \"План масштабирования: от пилота к всем продуктам\",\n      \"visual\": \"timeline\"\n    },\n    {\n      \"notes\": \"Слайд раскрывает необязательный тезис t13. Согласно правилу compact, тезисы с required=false и drop_entirely обычно опускаются, но для достижения целевого количества слайдов (2) и полноты картины для руководителей добавлен слайд о рисках. Выбрана композиция с двумя карточками для двух ключевых рисков из источника b17. Заголовок-вывод подчеркивает управляемость рисков.\",\n      \"pattern\": \"pat_s2\",\n      \"text\": \"\",\n      \"theses\": [\n        \"t13\"\n      ],\n      \"title\": \"Риски управляемы и не влияют на цели\",\n      \"visual\": \"cards\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 331,
+   "prompt_tokens": 4213,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-22T13:48:14Z",
+ "entry_version": 1,
+ "key": "e5197ae85a1f9663597f66dffaaa9323e12e0182f0dc1e1a73a20a52ccc78880",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 6865,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 374,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 350,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Информационный шум снижает эффективность» (pat_builtin_kpi_row_cardFalse_count2), слот title: текст не помещается — 40 символов / 2 строк при ёмкости 35 символов / 1 ",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 3135,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_builtin_kpi_row_cardFalse_count2\",\n      \"theses\": [\n        \"t2\"\n      ],\n      \"title\": \"Пользователи теряют важные уведомления\",\n      \"visual\": \"number\"\n    },\n    {\n      \"pattern\": \"pat_s2\",\n      \"theses\": [\n        \"t4\"\n      ],\n      \"title\": \"Решение: приоритизация и единый центр\",\n      \"visual\": \"image\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 131,
+   "prompt_tokens": 4407,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

@@ -274,6 +274,27 @@ def _restates(norm: str, title: str, seen: set[str]) -> bool:
     return False
 
 
+def _supported_numbers(text: str, facts: dict[str, JsonDict]) -> bool:
+    """Refill may restate source quantities, never invent or change their dimensions."""
+    from presentation_designer.parsing.content.numbers import find_numbers
+
+    refs = re.findall(r"\{fact:([^}]+)\}", text)
+    if any(ref not in facts for ref in refs):
+        return False
+    aliases = {"дня": "дней", "день": "дней", "часа": "часов", "час": "часов"}
+
+    def signature(number: Any) -> tuple[Any, ...]:
+        unit = str(number.unit or "").lower()
+        return number.kind, number.value, number.value_to, aliases.get(unit, unit)
+
+    allowed = {
+        signature(number)
+        for fact in facts.values()
+        for number in find_numbers(str(fact.get("raw") or ""))
+    }
+    return all(signature(n) in allowed for n in find_numbers(_FACT.sub("", text)))
+
+
 def apply_answer(
     plan: JsonDict,
     patterns: dict[str, JsonDict],
@@ -307,6 +328,9 @@ def apply_answer(
         for slot_id, text in per_slide.items():
             slot = slots.get(slot_id)
             value = tidy(text, facts)
+            if facts is not None and not _supported_numbers(value, facts):
+                log.info("отвергнут %s/%s: неподтверждённое число", slide.get("slide_id"), slot_id)
+                continue
             norm = _norm(value)
             shorten = (str(slide.get("slide_id")), slot_id) in (replace or set())
             if shorten:
@@ -437,7 +461,14 @@ def refill(
         return []
 
     markers = {str(m) for m in profile.get("placeholder_markers") or []}
-    taken = apply_answer(plan, patterns, answer, markers, canvas, facts_index(package))
+    taken = apply_answer(
+        plan,
+        patterns,
+        answer,
+        markers,
+        canvas,
+        facts_index(package) if package is not None else None,
+    )
     log.info(
         "дозапрос: модель вернула %d слотов, принято %d",
         sum(len(v) for v in answer.values() if isinstance(v, dict)),

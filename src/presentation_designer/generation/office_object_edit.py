@@ -15,6 +15,7 @@ from presentation_designer.generation.office_edit import (
     paragraph_context,
     patch_pptx,
     slides,
+    text_context_json,
 )
 from presentation_designer.generation.office_facts import SHORTENING_RULE
 from presentation_designer.generation.office_objects import ObjectTarget, geometry, selected, xml
@@ -91,6 +92,9 @@ async def propose(
 ) -> ObjectEditPlan:
     def validate(value: object) -> ObjectEditPlan:
         plan = ObjectEditPlan.model_validate(value)
+        # Scope and geometry errors need the same repair loop as stale text/facts.
+        # This is an in-memory dry run; only the caller may commit a revision.
+        patch_object(data, target, plan)
         plan.validate_facts(instruction, data)
         return plan
 
@@ -138,7 +142,7 @@ async def propose(
                     ),
                     Message(
                         "user",
-                        json.dumps({"instruction": instruction, **content}, ensure_ascii=False),
+                        text_context_json({"instruction": instruction, **content}),
                     ),
                 ],
             ),
@@ -161,10 +165,15 @@ class ObjectsEditPlan(BaseModel):
     edits: list[SelectedObjectEdit] = Field(max_length=100)
 
 
-def patch_objects(data: bytes, targets: list[ObjectTarget], plan: ObjectsEditPlan) -> bytes:
+def _allowed_targets(targets: list[ObjectTarget]) -> set[tuple[int, str]]:
     allowed = {(target.slide, target.shape_id) for target in targets}
     if not allowed or len(allowed) != len(targets):
         raise ValueError("Пустой или повторяющийся выбор объектов")
+    return allowed
+
+
+def patch_objects(data: bytes, targets: list[ObjectTarget], plan: ObjectsEditPlan) -> bytes:
+    allowed = _allowed_targets(targets)
     for target in targets:
         selected(data, target)
     seen = set()
@@ -184,10 +193,13 @@ async def propose_many(
 ) -> ObjectsEditPlan:
     def validate(value: object) -> ObjectsEditPlan:
         plan = ObjectsEditPlan.model_validate(value)
+        # Validate the entire batch before accepting any of its object edits.
+        patch_objects(data, targets, plan)
         for edit in plan.edits:
             edit.plan.validate_facts(instruction, data)
         return plan
 
+    _allowed_targets(targets)
     chosen = [selected(data, target) for target in targets]
     with ZipFile(io.BytesIO(data)) as archive:
         names = slides(archive)
@@ -236,9 +248,7 @@ async def propose_many(
                     ),
                     Message(
                         "user",
-                        json.dumps(
-                            {"instruction": instruction, "objects": content}, ensure_ascii=False
-                        ),
+                        text_context_json({"instruction": instruction, "objects": content}),
                     ),
                 ],
             ),

@@ -10,8 +10,8 @@
 - композер в режиме сохранения (`_Context.preserve`) не трогает объекты образца, поэтому
   первая ревизия совпадает с исходником; правка слайда из чата меняет только его блоки.
 
-Слайды, которые анализатор не считает образцами содержания (скрытые, пустые, инструкции по
-оформлению), в план не попадают — план предупреждает об этом кодом `original_slides_skipped`.
+Все страницы, включая скрытые, пустые и нераспознанные, сохраняются в исходном порядке.
+Композиции без слотов добавляются только для original, не для генерации по шаблону.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from presentation_designer.generation.variants import PLAN_SCHEMA_VERSION
 
 JsonDict = dict[str, Any]
 
-ORIGINAL_VERSION = "0.1.0"
+ORIGINAL_VERSION = "0.2.0"
 VARIANT_ID = "original"
 SERVICE_ROLES = ("title", "divider", "section", "agenda", "final", "thanks")
 # Виды слотов, которые план описывает текстовым блоком. Числа (number) и QR блоком не
@@ -47,19 +47,53 @@ PURPOSES = ("feature", "product", "project", "initiative", "report", "other")
 
 
 def deck_patterns(profile: JsonDict) -> list[JsonDict]:
-    """Композиции слайдов файла в порядке слайдов: только образцы со слайдов, не из макетов."""
-    patterns = [
-        p
+    """Ровно одна композиция на исходную страницу, независимо от классификации."""
+    patterns = {
+        int(p["source"]["slide_index"]): p
         for p in profile.get("patterns") or []
-        if (p.get("source") or {}).get("kind") != "layout"
+        if (p.get("source") or {}).get("kind") == "sample_slide"
         and int((p.get("source") or {}).get("slide_index") or 0) >= 1
-    ]
-    patterns.sort(key=lambda p: int(p["source"]["slide_index"]))
-    return patterns
+    }
+    samples = {int(s["slide_index"]): s for s in profile.get("sample_slides") or []}
+    total = int((profile.get("stats") or {}).get("slides") or 0)
+    for index in sorted(set(range(1, total + 1)) | samples.keys()):
+        if index in patterns:
+            continue
+        sample = samples.get(index, {})
+        patterns[index] = {
+            "pattern_id": f"original_slide_{index}",
+            "role": "freeform",
+            "source": {
+                "kind": "sample_slide",
+                "slide_index": index,
+                "layout_id": sample.get("layout_id") or "original",
+                "pptx_slide_part": sample.get("pptx_slide_part") or "",
+            },
+            "slots": [],
+        }
+    return [patterns[index] for index in sorted(patterns)]
+
+
+def original_profile(profile: JsonDict) -> JsonDict:
+    """Локальное дополнение профиля; общий каталог композиций не мутируется."""
+    patterns = list(profile.get("patterns") or [])
+    ids = {p["pattern_id"] for p in patterns}
+    return {
+        **profile,
+        "patterns": patterns + [p for p in deck_patterns(profile) if p["pattern_id"] not in ids],
+    }
+
+
+def unchanged_slide(slide: JsonDict, pattern: JsonDict) -> bool:
+    """Можно перенести XML страницы, не заполняя её заново."""
+    blocks = [b for b in (_block_for(s) for s in pattern.get("slots") or []) if b]
+    return (
+        slide.get("blocks", []) == blocks and not slide.get("overrides") and not slide.get("notes")
+    )
 
 
 def skipped_slides(profile: JsonDict) -> list[int]:
-    """Номера слайдов файла, для которых нет композиции (не образцы содержания)."""
+    """Страницы, не представленные в original (включая резервные композиции)."""
     have = {int(p["source"]["slide_index"]) for p in deck_patterns(profile)}
     total = int((profile.get("stats") or {}).get("slides") or 0)
     listed = {

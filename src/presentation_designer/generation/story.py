@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 
-STORY_VERSION = "0.1.0"
+STORY_VERSION = "0.1.1"
 STORY_SCHEMA_VERSION = "1.2"
 THESIS_KINDS = ("section", "claim", "evidence", "conclusion", "call_to_action", "context")
 VISUALS = (
@@ -573,8 +573,6 @@ def assemble_story(
                 "order": 0,
                 "kind": "claim",
                 "statement": item[:1].upper() + item[1:],
-                "explanation": "Обязательный пункт брифа: раскрыть по материалам, "
-                "без выдуманных показателей",
                 "required": True,
                 "suggested_visual": "text",
                 "_covers": [item],

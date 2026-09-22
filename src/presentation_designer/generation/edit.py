@@ -566,6 +566,11 @@ def apply_slide(
 
 
 def validate_plan(doc: JsonDict, profile: JsonDict, package: JsonDict, story: JsonDict) -> None:
+    from presentation_designer.generation.original import original_profile
+
+    original = str((doc.get("variant") or {}).get("variant_id")) == "original"
+    if original:
+        profile = original_profile(profile)
     validated = SlidePlan.model_validate(doc)
     violations = check_slide_plan(
         validated,
@@ -575,7 +580,6 @@ def validate_plan(doc: JsonDict, profile: JsonDict, package: JsonDict, story: Js
     )
     # У исходной презентации (вариант original) обязательные слоты без блока заполнены самим
     # образцом — композер в режиме сохранения их не трогает.
-    original = str((doc.get("variant") or {}).get("variant_id")) == "original"
     violations = [
         v
         for v in violations

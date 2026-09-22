@@ -9,6 +9,7 @@ import hashlib
 import json
 import pathlib
 import tempfile
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -33,6 +34,43 @@ EXAMPLE_FILES = ("overview.docx", "metrics.xlsx", "notes.md", "openrate_chart.pn
 MINI_TEMPLATE = (
     pathlib.Path(__file__).resolve().parents[1] / "fixtures" / "pptx" / "mini_template.pptx"
 )
+
+
+def test_merge_across_sections_preserves_text_and_all_facts(monkeypatch: Any) -> None:
+    ctx = SimpleNamespace(
+        patterns=[],
+        variant_id="balanced",
+        has_datasets=False,
+        facts={"f1": {"raw": "5 дней"}, "f2": {"raw": "12 дней"}},
+    )
+    monkeypatch.setattr(vr, "candidates_for", lambda *a, **kw: [object()])
+    monkeypatch.setattr(vr, "fit_draft", lambda ctx, draft: draft)
+    a = vr.Draft(
+        kind="content",
+        theses=["t1"],
+        pattern=None,
+        section="s1",
+        title="Сроки",
+        text="Подготовка {fact:f1}",
+        facts=["f1", "f2"],
+    )
+    b = vr.Draft(
+        kind="content",
+        theses=["t2"],
+        pattern=None,
+        section="s2",
+        title="Условия",
+        text="Выход только после разрешений",
+    )
+    assert vr.merge_drafts(ctx, a, b) is None
+    merged = vr.merge_drafts(ctx, a, b, across_sections=True)
+    assert merged is not None
+    assert merged.theses == ["t1", "t2"]
+    text = " ".join(item["text"] for item in merged.items)
+    assert "Подготовка {fact:f1}" in text and "{fact:f2}" in text
+    assert "Выход только после разрешений" in text
+    a.items = [{"text": str(i)} for i in range(8)]
+    assert vr.merge_drafts(ctx, a, b, across_sections=True) is None
 
 
 def own_profile(path: pathlib.Path, template_id: str) -> dict[str, Any]:
@@ -766,8 +804,17 @@ def test_bad_packet_is_retried_with_hint_only_for_that_packet(
     example_package: dict[str, Any],
     make_client: Any,
     stub: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Ответ с чужим тезисом повторяется с подсказкой; второй пакет не трогается."""
+    # Isolate schema retries from the separate capacity retry loop. Inheriting all
+    # thesis facts can legitimately require a capacity retry for other packets.
+    fit_packet = vr.fit_packet
+
+    async def schema_only(ctx: Any, packet: Any, req: Any, client: Any, **kw: Any) -> Any:
+        return await fit_packet(ctx, packet, req, client, capacity_retries=0)
+
+    monkeypatch.setattr(vr, "fit_packet", schema_only)
     settings = get_settings()
     ctx = vr.build_context(
         example_story, mini_profile, example_package, "balanced", {"language": "ru"}, settings, 12

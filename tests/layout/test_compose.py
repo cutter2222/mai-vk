@@ -144,6 +144,49 @@ def test_measured_text_wraps_even_when_template_disables_wrapping(
         assert all(r.font.size.pt == 26.0 for p in shape.text_frame.paragraphs for r in p.runs)
 
 
+@pytest.mark.parametrize(
+    "text,lines,wrap",
+    [("3000 м", 2, True), ("18 млн руб", 2, True), ("27", 1, False), ("27", 2, True)],
+)
+def test_small_number_slot_respects_measured_wrap(
+    text: str,
+    lines: int,
+    wrap: bool,
+    rich_profile: dict[str, Any],
+    rich_template_path: pathlib.Path,
+    example_package: dict[str, Any],
+    tmp_path: pathlib.Path,
+) -> None:
+    profile = copy.deepcopy(rich_profile)
+    slot = _slot(profile, "pat_s3", "subtitle_1")
+    slot["kind"] = "number"
+    slot["capacity"]["max_chars"] = 3
+    plan = _plan_with(
+        profile,
+        [
+            {
+                "pattern_id": "pat_s3",
+                "title": "Показатели",
+                "blocks": [
+                    {
+                        "slot_id": "subtitle_1",
+                        "kind": "number",
+                        "text": text,
+                        "fit": {"size_pt": 26.0, "lines": lines, "max_lines": 2, "action": "as_is"},
+                    }
+                ],
+            }
+        ],
+    )
+    result = _compose(plan, profile, rich_template_path, example_package, tmp_path / "number.pptx")
+    shape = next(
+        s
+        for s in Presentation(result.pptx_path).slides[0].shapes
+        if s.has_text_frame and s.text == text
+    )
+    assert shape.text_frame.word_wrap is wrap
+
+
 def test_compose_mini_template_matches_plan_and_deck(
     mini_profile: dict[str, Any], make_plan: Any, example_package: dict[str, Any], tmp_path: Any
 ) -> None:

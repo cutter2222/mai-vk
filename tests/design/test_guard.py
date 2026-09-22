@@ -94,6 +94,25 @@ def test_заголовок_никогда_не_удаляется():
     assert any("сохранён" in what for _, what in changes)
 
 
+def test_capacity_guard_does_not_erase_source_quantities():
+    pattern = {"slots": [_slot("body_1", "body", 0.1, 0.02, size_pt=48.0)]}
+    for text in ("План. Подготовка {fact:f1}, море {fact:f2}.", "План. Покрытие 40 км²."):
+        slide = {"blocks": [{"slot_id": "body_1", "kind": "body", "text": text}]}
+        changes = enforce_capacity(slide, pattern)
+        assert slide["blocks"][0]["text"] == text
+        assert changes
+
+
+def test_deduplication_preserves_different_fact_references():
+    slide = {
+        "blocks": [
+            {"slot_id": "a", "kind": "body", "text": "Срок {fact:f1}"},
+            {"slot_id": "b", "kind": "body", "text": "Срок {fact:f2}"},
+        ]
+    }
+    assert drop_duplicates(slide) == []
+
+
 def test_все_три_проверки_отчитываются_отдельно():
     pattern = {
         "slots": [

@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-22T14:08:42Z",
+ "entry_version": 1,
+ "key": "350cc35931de9e2785e842cd0836cbc4a895c53ef7ff0dabd87c3b58ca12f339",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 9040,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 723,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 601,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Экономия 12,5 млн ₽ за год» (pat_builtin_table_sheet_leadTrue), слот lead: текст не помещается — 103 символов / 4 строк при ёмкости 165 символов / 2 строк — сократи ф",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5694,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"pattern\": \"pat_builtin_matrix\",\n      \"theses\": [\n        \"t6\"\n      ],\n      \"title\": \"Рост открываемости и снижение отписок\",\n      \"visual\": \"comparison\"\n    },\n    {\n      \"pattern\": \"pat_builtin_chart_kpi_count3\",\n      \"theses\": [\n        \"t7\"\n      ],\n      \"title\": \"Устойчивый рост вовлеченности\",\n      \"visual\": \"chart\"\n    },\n    {\n      \"pattern\": \"pat_builtin_table_sheet_leadTrue\",\n      \"theses\": [\n        \"t8\"\n      ],\n      \"title\": \"Экономия 12,5 млн ₽ за год\",\n      \"visual\": \"table\"\n    },\n    {\n      \"pattern\": \"pat_builtin_quote_photoFalse\",\n      \"theses\": [\n        \"t9\"\n      ],\n      \"title\": \"Уведомления помогают, а не отвлекают\",\n      \"visual\": \"quote\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 250,
+   "prompt_tokens": 5502,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

@@ -58,6 +58,7 @@ export function SlideViewer({ slides, index, onIndex, overlays, activeOverlay, o
   const total = slides.length;
   const safeIndex = Math.min(index, Math.max(total - 1, 0));
   const current = slides[safeIndex];
+  const [recovered, setRecovered] = useState<Record<string, string>>({});
   const stripRef = useRef<HTMLDivElement | null>(null);
   // Перетаскивание в ленте: откуда, куда сейчас, смещение указателя от точки захвата и
   // шаг сдвига соседей (высота миниатюры с зазором). Пока кнопка не отпущена, порядок не
@@ -236,7 +237,7 @@ export function SlideViewer({ slides, index, onIndex, overlays, activeOverlay, o
             >
               <span className="thumb-number">{i + 1}</span>
               <span className="thumb-image">
-                <SlideImage src={s.src} alt={s.label} loading="lazy" />
+                <SlideImage src={s.src ? recovered[s.src] ?? s.src : undefined} alt={s.label} loading="lazy" />
                 {s.flagged && <span className="thumb-issues" />}
                 {s.edited && <span className="thumb-edited" title="изменён в черновике" />}
                 {onReorder && (
@@ -267,6 +268,11 @@ export function SlideViewer({ slides, index, onIndex, overlays, activeOverlay, o
               {stage ?? (
                 <SlideImage
                   src={current?.src}
+                  onLoad={(src) => {
+                    if (current?.src && src !== current.src) {
+                      setRecovered((previous) => ({ ...previous, [current.src!]: src }));
+                    }
+                  }}
                   alt={current?.label ?? "Слайд"}
                   overlays={overlays}
                   activeOverlay={activeOverlay}

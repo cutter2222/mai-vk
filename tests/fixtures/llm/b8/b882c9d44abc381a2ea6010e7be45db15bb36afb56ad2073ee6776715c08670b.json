@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-22T13:49:05Z",
+ "entry_version": 1,
+ "key": "b882c9d44abc381a2ea6010e7be45db15bb36afb56ad2073ee6776715c08670b",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4630,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 6071,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 355,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 245,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Приоритизация и тихие часы» (pat_s2): 0 пункт(ов) на композицию из 3 карточек — раскрой тезис до 3 пунктов по пояснению (без выдуманных цифр). Верни исправленный доку",
+  "prompt": [
+   "plan.slides",
+   "0.3.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.3.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 9607,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t2\"\n      ],\n      \"pattern\": \"pat_builtin_kpi_row_cardFalse_count2\",\n      \"title\": \"Информационный шум снижает охват\",\n      \"message\": \"Пользователи получают слишком много уведомлений, из-за чего пропускают важные сообщения.\",\n      \"visual\": \"number\",\n      \"text\": \"\",\n      \"items\": [],\n      \"facts\": [\n        \"f1\",\n        \"f2\"\n      ],\n      \"dataset\": \"\",\n      \"chart_type\": \"\",\n      \"columns\": [],\n      \"image\": \"\",\n      \"notes\": \"\"\n    },\n    {\n      \"theses\": [\n        \"t4\"\n      ],\n      \"pattern\": \"pat_s2\",\n      \"title\": \"Приоритизация и тихие часы\",\n      \"message\": \"Сервис повышает релевантность за счет контекстной сортировки, единого центра и отложенной доставки.\",\n      \"visual\": \"cards\",\n      \"text\": \"\",\n      \"items\": [\n        {\n          \"text\": \"Важные уведомления поднимаются наверх\",\n          \"sub\": \"Приоритизация\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Единый центр вместо трех каналов\",\n          \"sub\": \"Центр уведомлений\",\n          \"facts\": []\n        },\n        {\n          \"text\": \"Отложенная доставка в тихие часы\",\n          \"sub\": \"Тихие часы\",\n          \"facts\": []\n        }\n      ],\n      \"facts\": [],\n      \"dataset\": \"\",\n      \"chart_type\": \"\",\n      \"columns\": [],\n      \"image\": \"img_1\",\n      \"notes\": \"\"\n    }\n  ],\n  \"rationale\": \"Компактная подача: первый слайд выносит ключевые показатели проблемы (t2), второй раскрывает решение (t4) тремя карточками по функциям сервиса.\"\n}",
+  "usage": {
+   "completion_tokens": 464,
+   "prompt_tokens": 4301,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}
