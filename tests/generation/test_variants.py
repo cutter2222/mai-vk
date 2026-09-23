@@ -763,9 +763,9 @@ def test_exact_count_too_small_is_structured_error(
 def test_default_range_relaxes_for_short_content(
     example_story: dict[str, Any], mini_profile: dict[str, Any], example_package: dict[str, Any]
 ) -> None:
-    """Короткое содержание даёт короткую колоду, а не слайды из одного пункта: диапазон по
-    умолчанию — с предупреждением slide_count_relaxed, явный диапазон — slide_count_short,
-    точное число — ошибка с причиной."""
+    """Короткое содержание даёт короткую колоду, а не слайды из одного пункта и не ошибку:
+    диапазон по умолчанию — с предупреждением slide_count_relaxed, явный диапазон и точное
+    число — slide_count_short."""
     short = json.loads(json.dumps(example_story))
     short["effective_brief"] = {"language": "ru", "purpose": short["purpose"]}
     short["theses"] = [t for t in short["theses"] if t["order"] <= 4]
@@ -804,17 +804,21 @@ def test_default_range_relaxes_for_short_content(
     for slide in explicit.plan["slides"]:
         items = [b for b in slide["blocks"] if b["kind"] == "bullets"]
         assert not (items and len(items[0]["items"]) == 1 and len(slide["blocks"]) <= 2), slide
-    with pytest.raises(vr.PlanError) as info:
-        vr.build_variant_plan(
-            short,
-            mini_profile,
-            example_package,
-            "compact",
-            {"language": "ru", "slide_count": {"exact": 10}},
-            slide_count=10,
-            use_model=False,
-        )
-    assert info.value.code == "plan_slide_count"
+    exact = vr.build_variant_plan(
+        short,
+        mini_profile,
+        example_package,
+        "compact",
+        {"language": "ru", "slide_count": {"exact": 10}},
+        slide_count=10,
+        use_model=False,
+    )
+    n = len(exact.plan["slides"])
+    assert n < 10
+    assert exact.plan["slide_count"] == {"min": n, "max": 10, "target": n}
+    short_warning = next(w for w in exact.plan["warnings"] if w["code"] == "slide_count_short")
+    assert short_warning["message"] == f"просили 10 слайдов, содержания хватило на {n}"
+    _assert_valid(exact.plan, mini_profile, example_package, short)
 
 
 def test_exact_count_is_respected(

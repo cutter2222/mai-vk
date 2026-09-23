@@ -14,6 +14,7 @@ from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import reduce
+from itertools import pairwise
 from statistics import median
 
 from PIL import Image, ImageChops, ImageFilter
@@ -23,6 +24,9 @@ from presentation_designer.parsing.raster_charts.model import Basis, ChartStruct
 from presentation_designer.parsing.raster_charts.pixels import Box, Rgb, ink_bands, palette, rgb_of
 
 ROUND_STEPS = 1440
+# Высота цифр — около 0,7 кегля, строка легенды с выносными элементами — около 0,95.
+DIGIT_EM = 0.7
+LINE_EM = 0.95
 
 
 class MeasureError(ValueError):
@@ -36,6 +40,7 @@ class Scale:
     lo: float
     hi: float
     major: float | None
+    text: float | None = None  # высота цифр подписей делений, px
 
     def value(self, pos: float) -> float:
         return self.a * pos + self.b
@@ -71,6 +76,15 @@ class Measured:
     order: list[int] | None = None
     marks: list[Mark] = field(default_factory=list)
     issues: list[str] = field(default_factory=list)
+    # Для нативной диаграммы: область данных (left, top, right, bottom; у кольца — его рамка),
+    # толщина линий по рядам, толщина столбца и шаг категорий, px.
+    plot: tuple[int, int, int, int] | None = None
+    stroke: list[float | None] = field(default_factory=list)
+    bar: float | None = None
+    pitch: float | None = None
+    font: float | None = None
+    # Столбцы одного ряда разного цвета (выделение): цвет каждой категории.
+    point_colors: list[Rgb] = field(default_factory=list)
 
 
 # ---------- цвета и маски ----------
@@ -212,15 +226,20 @@ def calibrate(
         groups = sorted(_merge(ink_bands(image, band, along="rows"), 3), key=lambda t: t[1])
         subs = [Box(band.left, g[1], band.right, g[2] + 1) for g in groups]
     seq: list[float] | None = None
+    text: float | None = None
     for sub in subs:
         if vertical:
-            centers = [c for c, _, _ in ink_bands(image, sub, along="rows")]
+            rows = ink_bands(image, sub, along="rows")
+            centers = [c for c, _, _ in rows]
+            heights = [b - a + 1 for _, a, b in rows]
         else:
             centers = [c for c, _, _ in _merge(ink_bands(image, sub, along="cols"), 5)]
+            heights = [sub.height]
         candidates = _even_runs(centers, len(values))
         if candidates:
             pick = (lambda s: abs(s[-1] - anchor)) if vertical else (lambda s: abs(s[0] - anchor))
             seq = min(candidates, key=pick)
+            text = float(median(heights)) if heights else None
             break
     if seq is None:
         return None
@@ -236,7 +255,7 @@ def calibrate(
     step = (values[-1] - values[0]) / (len(values) - 1)
     if any(abs(a * p + b - v) > 0.2 * step for p, v in zip(seq, ordered, strict=True)):
         return None
-    return Scale(a, b, values[0], values[-1], step)
+    return Scale(a, b, values[0], values[-1], step, text)
 
 
 # ---------- круг и кольцо ----------
@@ -322,6 +341,8 @@ def measure_round(image: Image.Image, st: ChartStructure) -> Measured:
         hole=round(hole, 3),
         first_angle=round(segments[0][1] * 360 / ROUND_STEPS, 1),
         issues=issues,
+        plot=(round(cx - r_out), round(cy - r_out), round(cx + r_out), round(cy + r_out)),
+        font=_legend_font(image, (cx - r_out, cy - r_out, cx + r_out, cy + r_out), st.legend),
     )
     missing = [
         st.categories[i] if i < len(st.categories) else str(i + 1)
@@ -348,6 +369,25 @@ def measure_round(image: Image.Image, st: ChartStructure) -> Measured:
             )
         )
     return m
+
+
+def _legend_font(
+    image: Image.Image, ring: tuple[float, float, float, float], legend: str
+) -> float | None:
+    """Кегль легенды кольца: высота строк текста в полосе между кольцом и краем картинки."""
+    w, h = image.size
+    left, top, right, bottom = (round(v) for v in ring)
+    band = {
+        "bottom": Box(0, min(h, bottom + 3), w, h),
+        "top": Box(0, 0, w, max(0, top - 3)),
+        "right": Box(min(w, right + 3), 0, w, h),
+        "left": Box(0, 0, max(0, left - 3), h),
+    }.get(legend)
+    if band is None or band.width <= 0 or band.height <= 0:
+        return None
+    rows = [b - a + 1 for _, a, b in ink_bands(image, band, along="rows")]
+    rows = [r for r in rows if 4 <= r <= 60]
+    return round(median(rows) / LINE_EM, 1) if rows else None
 
 
 def _segments(labels: list[int]) -> list[tuple[int, int, int]]:
@@ -478,12 +518,17 @@ def measure_axes(image: Image.Image, st: ChartStructure) -> Measured:
     colors = resolve_colors(image, [s.color for s in series])
     shaped = [s.type in ("column", "bar", "area") for s in series]
     masks = masks_for(image, colors, shaped)
-    plot = _plot_area(masks, st.legend, horizontal)
-    w, h = image.size
-    masks = [_keep(mk, (plot.left, plot.top, plot.right + 1, plot.bottom + 1)) for mk in masks]
     ncat = len(st.categories)
     if ncat == 0:
         raise MeasureError("категории не прочитаны")
+    highlight: list[tuple[Rgb, Image.Image]] = []
+    if len(series) == 1 and series[0].type in ("column", "bar"):
+        highlight = _highlighted_bars(image, colors[0], masks[0], ncat, horizontal)
+        if highlight:
+            masks[0] = reduce(ImageChops.lighter, [mk for _, mk in highlight])
+    plot = _plot_area(masks, st.legend, horizontal)
+    w, h = image.size
+    masks = [_keep(mk, (plot.left, plot.top, plot.right + 1, plot.bottom + 1)) for mk in masks]
     m = Measured(
         values=[[None] * ncat for _ in series],
         basis=[[None] * ncat for _ in series],
@@ -526,6 +571,8 @@ def measure_axes(image: Image.Image, st: ChartStructure) -> Measured:
     if bar_idx:
         groups = _category_groups(masks, bar_idx, ncat, horizontal)
         centers = [(a + b) / 2 for a, b in groups]
+        if highlight:
+            m.point_colors = [_group_color(highlight, g, horizontal) for g in groups]
     else:
         lo_hi = [_extent(masks[i], horizontal) for i in range(len(series))]
         present = [e for e in lo_hi if e is not None]
@@ -548,7 +595,67 @@ def measure_axes(image: Image.Image, st: ChartStructure) -> Measured:
             _measure_area(m, i, masks[i], centers, scale, (plot.left, plot.right))
     if any(s.type == "area" for s in series):
         m.order = _area_order(m, series)
+    _geometry(m, masks, series, centers, groups, plot, horizontal, st.stacked)
     return m
+
+
+def _geometry(
+    m: Measured,
+    masks: list[Image.Image],
+    series: list[SeriesInfo],
+    centers: list[float],
+    groups: list[tuple[int, int]],
+    plot: _Plot,
+    horizontal: bool,
+    stacked: bool,
+) -> None:
+    """Размеры для нативной диаграммы.
+
+    Область построения по оси категорий шире данных на полшага с каждой стороны (подписи —
+    между делениями, как у PowerPoint по умолчанию); у областей данные идут от края до края.
+    По оси значений — от минимума до максимума шкалы, если она откалибрована.
+    """
+    m.pitch = float(median(b - a for a, b in pairwise(centers))) if len(centers) > 1 else None
+    half = 0.0 if any(s.type == "area" for s in series) else (m.pitch or 0.0) / 2
+    c0, c1 = (centers[0] - half, centers[-1] + half) if centers else (0.0, 0.0)
+    if horizontal:
+        v0, v1 = float(plot.left), float(plot.right)
+        if m.primary is not None:
+            v0, v1 = m.primary.pos(m.primary.lo), m.primary.pos(m.primary.hi)
+        m.plot = (round(v0), round(c0), round(v1), round(c1))
+    else:
+        v0, v1 = float(plot.top), float(plot.bottom)
+        if m.primary is not None:
+            v0, v1 = m.primary.pos(m.primary.hi), m.primary.pos(m.primary.lo)
+        m.plot = (round(c0), round(v0), round(c1), round(v1))
+    widths = [b - a + 1 for a, b in groups]
+    bars = [i for i, s in enumerate(series) if s.type in ("column", "bar")]
+    if widths and bars:
+        # Столбцы рядов в группе стоят вплотную: толщина одного — ширина группы на их число.
+        m.bar = float(median(widths)) / (1 if stacked else len(bars))
+    m.stroke = [
+        _stroke(masks[i], m.plot) if s.type == "line" else None for i, s in enumerate(series)
+    ]
+    if m.primary is not None and m.primary.text:
+        m.font = round(m.primary.text / DIGIT_EM, 1)
+
+
+def _stroke(mask: Image.Image, box: tuple[int, int, int, int]) -> float | None:
+    """Толщина линии: вертикальная протяжённость там, где линия почти горизонтальна —
+    нижняя пятая часть длин по столбцам пикселей."""
+    left, top, right, bottom = box
+    lengths: list[int] = []
+    px = mask.load()
+    assert px is not None
+    w, h = mask.size
+    for x in range(max(0, left), min(w, right)):
+        column = [px[x, y] for y in range(max(0, top), min(h, bottom + 1))]
+        for a, b in runs([1 if v else 0 for v in column]):
+            lengths.append(b - a + 1)
+    if len(lengths) < 5:
+        return None
+    lengths.sort()
+    return float(lengths[len(lengths) // 5])
 
 
 def _keep(mask: Image.Image, box: tuple[int, int, int, int]) -> Image.Image:
@@ -569,6 +676,74 @@ def _extent(mask: Image.Image, horizontal: bool) -> tuple[int, int] | None:
     if box is None:
         return None
     return (box[1], box[3] - 1) if horizontal else (box[0], box[2] - 1)
+
+
+def _bar_boxes(mask: Image.Image, horizontal: bool) -> list[tuple[int, int, int, int, float]]:
+    """Сплошные столбцы маски: (начало и конец по оси категорий, ближний к базе и дальний
+    края по оси значений, заполненность рамки)."""
+    cols, rows = mask.getprojection()
+    w, h = mask.size
+    out = []
+    for a, b in runs(rows if horizontal else cols):
+        if b - a < 2:
+            continue
+        box = (0, a, w, b + 1) if horizontal else (a, 0, b + 1, h)
+        bb = mask.crop(box).getbbox()
+        if bb is None:
+            continue
+        x0, y0, x1, y1 = bb
+        area = (x1 - x0) * (y1 - y0)
+        fill = mask.crop(box).crop(bb).histogram()[255] / area if area else 0.0
+        # Столбец стоит на базе: снизу у вертикального, слева у горизонтального.
+        base, tip = (x0, x1 - 1) if horizontal else (y1 - 1, y0)
+        out.append((a, b, base, tip, fill))
+    return out
+
+
+def _highlighted_bars(
+    image: Image.Image, color: Rgb, mask: Image.Image, ncat: int, horizontal: bool
+) -> list[tuple[Rgb, Image.Image]]:
+    """Столбцы одного ряда, часть которых выделена другим цветом (VK синим, конкуренты —
+    светлым). Модель называет один цвет ряда, и по нему находится только выделенный столбец.
+    Остальные — сплошные прямоугольники другого цвета палитры на той же базе и той же ширины;
+    подписи, ось и легенда этим условиям не отвечают. Возвращает цвета с масками (первым —
+    цвет ряда), если вместе столбцов хватает на все категории, иначе пусто."""
+    own = [b for b in _bar_boxes(mask, horizontal) if b[4] >= 0.85]
+    if not own or len(own) >= ncat:
+        return []
+    base = median(b[2] for b in own)
+    width = median(b[1] - b[0] + 1 for b in own)
+    found: list[tuple[Rgb, Image.Image]] = [(color, mask)]
+    count = len(own)
+    for other, _ in palette(image):
+        if cheb(other, color) <= 24:
+            continue
+        other_mask = color_mask(image, other, color_tolerance(other, [color]), clean=True)
+        bars = [
+            b
+            for b in _bar_boxes(other_mask, horizontal)
+            if b[4] >= 0.85
+            and abs(b[2] - base) <= 3
+            and 0.6 * width <= b[1] - b[0] + 1 <= 1.6 * width
+        ]
+        if bars:
+            found.append((other, other_mask))
+            count += len(bars)
+    return found if count >= ncat else []
+
+
+def _group_color(
+    highlight: list[tuple[Rgb, Image.Image]], group: tuple[int, int], horizontal: bool
+) -> Rgb:
+    a, b = group
+
+    def weight(item: tuple[Rgb, Image.Image]) -> int:
+        mask = item[1]
+        w, h = mask.size
+        box = (0, a, w, b + 1) if horizontal else (a, 0, b + 1, h)
+        return mask.crop(box).histogram()[255]
+
+    return max(highlight, key=weight)[0]
 
 
 def _category_groups(

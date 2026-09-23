@@ -143,6 +143,19 @@ class ComposeInput:
     polish: bool = True
     locked_slide_ids: frozenset[str] = frozenset()
     settings: JsonDict = field(default_factory=dict)
+    # Вариант original: charts.json предварительной ревизии (чтения диаграмм-картинок по
+    # sha256 картинки) — сборка повторяет те же замены; None — прочитать самим.
+    chart_report: JsonDict | None = None
+
+
+@dataclass
+class ChartImagesOutput:
+    """Диаграммы-картинки готовой презентации: отчёт charts.json (чтения по sha256 картинки
+    и замены) и фраза для чата; заглушки ничего не читают."""
+
+    report: JsonDict = field(default_factory=dict)
+    message: str | None = None
+    replaced: int = 0
 
 
 @dataclass
@@ -283,6 +296,13 @@ class Layers:
     def compose(self, inp: ComposeInput) -> ComposeOutput:
         raise NotImplementedError
 
+    def chart_images(
+        self, pptx_path: pathlib.Path, progress: Callable[[str, float], None] | None = None
+    ) -> ChartImagesOutput:
+        """Диаграммы-картинки файла → нативные диаграммы на месте (копия готовой презентации);
+        без модели ничего не меняется. `progress(фраза, доля готовности 0–1)`."""
+        return ChartImagesOutput()
+
     def export(self, inp: ExportInput) -> ExportOutput:
         raise NotImplementedError
 
@@ -325,6 +345,7 @@ class VariantContext:
     is_canceled: Callable[[], bool] = lambda: False
     package_dir: pathlib.Path | None = None
     prerendered: pathlib.Path | None = None
+    chart_report: JsonDict | None = None
 
 
 @dataclass
@@ -447,6 +468,7 @@ def run_variant(layers: Layers, ctx: VariantContext, emit: Emit) -> VariantOutco
                 ctx.staging,
                 package_dir=ctx.package_dir,
                 settings=ctx.settings,
+                chart_report=ctx.chart_report,
             )
         )
         outcome.slide_count = composed.slide_count

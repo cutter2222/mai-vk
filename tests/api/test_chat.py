@@ -74,14 +74,12 @@ def test_chat_design_mode_persists_without_changing_density(
     assert label in result.json()["reply"]
 
 
-def test_assistant_requests_design_mode_only_before_first_generation() -> None:
+def test_assistant_never_blocks_on_design_mode() -> None:
+    # Сборка стартует со смешанным режимом сама: ассистент не задерживает её вопросом о режиме.
     state = assistant.ProjectState(template="Template", materials=["Report"])
-    assert assistant.answer(state, "Что дальше?")["options"] == list(LABELS.values())
-    state.design_mode = "mixed"
-    assert assistant.answer(state, "Что дальше?")["options"] != list(LABELS.values())
-    state.design_mode = None
-    state.job_status = "succeeded"
-    assert assistant.answer(state, "Что дальше?")["options"] != list(LABELS.values())
+    answer = assistant.answer(state, "Что дальше?")
+    assert answer["options"] != list(LABELS.values())
+    assert "Как оформить" not in answer["reply"]
 
 
 def test_chat_uses_server_context_and_history(

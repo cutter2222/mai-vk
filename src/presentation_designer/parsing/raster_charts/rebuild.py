@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -32,6 +33,7 @@ from presentation_designer.parsing.raster_charts.measure import (
 from presentation_designer.parsing.raster_charts.model import (
     ChartReading,
     ChartStructure,
+    Geometry,
     Point,
     ReadSeries,
 )
@@ -132,6 +134,7 @@ def _reconcile_round(image: Image.Image, st: ChartStructure, m: Measured) -> Cha
         title=st.title,
         width=image.width,
         height=image.height,
+        geometry=Geometry(plot=m.plot, font=m.font),
         notes=list(m.issues),
     )
 
@@ -145,6 +148,7 @@ def _reconcile_axes(image: Image.Image, st: ChartStructure, m: Measured) -> Char
     thousands = comma_thousands(all_texts)
     out: list[ReadSeries] = []
     given_all: list[LabelNumber] = []
+    value_max: float | None = None
     for i, s in enumerate(st.series):
         scale = m.secondary if s.axis == "secondary" else m.primary
         labels = _labels(s.labels, ncat, thousands=thousands)
@@ -155,15 +159,26 @@ def _reconcile_axes(image: Image.Image, st: ChartStructure, m: Measured) -> Char
         # Без шкалы значения столбцов — по пропорции длины к подписанным.
         k_len: float | None = None
         if scale is None:
-            ks = [
-                lb.value / ln
-                for lb, ln in zip(labels, m.lengths[i], strict=True)
-                if lb is not None and ln
+            pairs = [
+                (pl, ln)
+                for pl, ln in zip(labels, m.lengths[i], strict=True)
+                if pl is not None and ln
             ]
-            if ks:
-                if max(ks) > 1.04 * min(ks) + 1e-9:
-                    raise MeasureError(f"подписи ряда {i + 1} не пропорциональны длинам столбцов")
-                k_len = sum(ks) / len(ks)
+            if pairs:
+                # Масштаб — по сумме: у короткого столбца пиксель и округление подписи («2%» —
+                # это от 1,5 до 2,5) дают десятки процентов ошибки, у длинного — доли.
+                k_len = sum(pl.value for pl, _ in pairs) / sum(ln for _, ln in pairs)
+                for pl, ln in pairs:
+                    tol = max(0.04 * abs(pl.value), 0.51 * 10**-pl.decimals, 1.5 * abs(k_len))
+                    if abs(k_len * ln - pl.value) > tol:
+                        raise MeasureError(
+                            f"подписи ряда {i + 1} не пропорциональны длинам столбцов"
+                        )
+                if value_max is None and m.plot is not None and s.axis == "primary":
+                    # Шкалы нет: ось значений кончается там же, где область данных на картинке.
+                    left, top, right, bottom = m.plot
+                    extent = right - left + 1 if st.kind == "bar" else bottom - top + 1
+                    value_max = round(k_len * extent, 4)
         points: list[Point] = []
         for c in range(ncat):
             lb, measured, basis = labels[c], m.values[i][c], m.basis[i][c]
@@ -202,10 +217,17 @@ def _reconcile_axes(image: Image.Image, st: ChartStructure, m: Measured) -> Char
                 axis=s.axis,
                 smooth=s.smooth,
                 points=points,
+                point_colors=[hex_of(c) for c in m.point_colors] if i == 0 else [],
             )
         )
+    if value_max is not None:
+        # Средний масштаб по подписям чуть занижает конец оси: самая длинная полоса не
+        # должна упираться в край и обрезаться.
+        value_max = max([value_max, *(p.value for r in out for p in r.points)])
+    stroke = list(m.stroke) or [None] * len(out)
     if m.order:
         out = [out[k] for k in m.order]
+        stroke = [stroke[k] for k in m.order]
     primary_ticks = st.primary_axis.ticks if st.primary_axis else []
     secondary_ticks = st.secondary_axis.ticks if st.secondary_axis else []
     units = {lb.unit for lb in given_all if lb.unit}
@@ -223,6 +245,14 @@ def _reconcile_axes(image: Image.Image, st: ChartStructure, m: Measured) -> Char
         title=st.title,
         width=image.width,
         height=image.height,
+        geometry=Geometry(
+            plot=m.plot,
+            stroke=stroke,
+            bar=m.bar,
+            pitch=m.pitch,
+            font=m.font,
+            value_max=value_max,
+        ),
         notes=list(m.issues),
     )
 
@@ -301,8 +331,10 @@ def read_chart_images(
     budget_s: float,
     max_images: int,
     concurrency: int = 4,
+    on_read: Callable[[int, int], None] | None = None,
 ) -> dict[str, Outcome]:
-    """Картинки по sha256, не больше `max_images` запросов к модели и `budget_s` секунд всего."""
+    """Картинки по sha256, не больше `max_images` запросов к модели и `budget_s` секунд всего.
+    `on_read(готово, всего)` вызывается после каждой картинки — для хода в интерфейсе."""
     deadline = Deadline.after(budget_s)
     gate = asyncio.Semaphore(concurrency)
     results: dict[str, Outcome] = {}
@@ -324,8 +356,13 @@ def read_chart_images(
                 return
             results[sha] = await _read(prepared, client, deadline)
 
+    async def tracked(sha: str, data: bytes) -> None:
+        await one(sha, data)
+        if on_read is not None:
+            on_read(len(results), len(images))
+
     async def run() -> None:
-        await asyncio.gather(*(one(sha, data) for sha, data in images.items()))
+        await asyncio.gather(*(tracked(sha, data) for sha, data in images.items()))
 
     asyncio.run(run())
     return results

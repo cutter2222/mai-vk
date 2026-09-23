@@ -14,7 +14,7 @@ interface Props {
   session: GenerationSession;
   onTitle: (title: string) => void;
   officeActionsRef?: Ref<HTMLDivElement>;
-  /** Выбор шаблона, когда презентация уже есть: правая панель занята ею. */
+  /** Выбор шаблона оформления: всегда в правом углу шапки. */
   templatePicker?: ReactNode;
 }
 
@@ -58,13 +58,11 @@ export function ProjectHeader({ project, session, onTitle, officeActionsRef, tem
         data-testid="project-title"
       />
       <div style={{ flex: 1 }} />
-      {/* Действия проекта одной группой у правого края: состояние и файлы. */}
+      {/* Действия проекта одной группой у правого края: состояние, файлы и шаблон. */}
       <div className="editor-header-actions">
-        {templatePicker}
-        {templatePicker && result && <div className="editor-header-sep" />}
         {result && <StatusBadge status={result.status} />}
         {result?.partial && <Badge color="ink" variant="light">частичный результат</Badge>}
-        {/* Разделитель нужен только когда за ним есть действия задания. */}
+        {/* Состояние отделено от всего, что правее: кнопок задания, редактора и шаблона. */}
         {result && <div className="editor-header-sep" />}
         {result && !session.terminal && (
           <Button variant="light" color="red" size="xs" leftSection={<IconPlayerStop size={14} />} onClick={session.cancel} loading={session.busy} data-testid="cancel">
@@ -77,6 +75,9 @@ export function ProjectHeader({ project, session, onTitle, officeActionsRef, tem
           </Button>
         )}
         <div ref={officeActionsRef} className="office-header-actions" />
+        {/* Шаблон — в самом углу: кнопки задания и редактора появляются левее и его не двигают. */}
+        {templatePicker && <div className="editor-header-sep" />}
+        {templatePicker}
       </div>
     </div>
   );

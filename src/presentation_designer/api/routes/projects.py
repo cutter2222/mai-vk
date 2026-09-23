@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Response, UploadFile
+from fastapi import APIRouter, Request, Response, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from presentation_designer.api.deps import Orch
@@ -13,6 +15,7 @@ from presentation_designer.contracts import models as m
 from presentation_designer.pipeline.files import MIME_BY_FORMAT, default_kind, format_for, safe_name
 from presentation_designer.pipeline.results import result_or_none
 from presentation_designer.pipeline.state import NotFound
+from presentation_designer.pipeline.thumbnails import thumbnail
 
 router = APIRouter(tags=["projects"])
 
@@ -295,3 +298,95 @@ def delete_file(project_id: str, file_id: str, orch: Orch) -> Response:
     except NotFound as e:
         raise ApiError(404, "file_not_found", "Файл не найден") from e
     return Response(status_code=204)
+
+
+# Байты файла по идентификатору не меняются: ссылка кэшируется навсегда.
+IMMUTABLE = "private, max-age=31536000, immutable"
+# Картинки и PDF открываются во вкладке; остальное только скачивается. Тип берётся из
+# проверенного формата, а не из заголовка браузера при загрузке: SVG и HTML под видом
+# картинки не исполняются на домене сервиса.
+INLINE_TYPES = {
+    "png": "image/png",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "pdf": "application/pdf",
+}
+
+
+def _project_file(orch: Orch, project_id: str, file_id: str) -> dict[str, Any]:
+    try:
+        return orch.state.get_file(file_id, project_id)
+    except NotFound as e:
+        raise ApiError(404, "file_not_found", "Файл не найден") from e
+
+
+def _not_modified(request: Request, sha256: str) -> tuple[bool, str]:
+    etag = f'"{sha256}"'
+    return request.headers.get("if-none-match") == etag, etag
+
+
+@router.get("/projects/{project_id}/files/{file_id}/content")
+def file_content(project_id: str, file_id: str, orch: Orch, request: Request) -> Response:
+    """Байты файла проекта: картинка для сетки «Файлы» и для вставки на слайд редактором."""
+    row = _project_file(orch, project_id, file_id)
+    fresh, etag = _not_modified(request, row["sha256"])
+    if fresh:
+        return Response(status_code=304)
+    path = orch.files.path_for(row["sha256"])
+    if not path.is_file():
+        raise ApiError(404, "file_missing", "Байты файла удалены из хранилища")
+    ext = row["name"].rsplit(".", 1)[-1].lower() if "." in row["name"] else ""
+    checked = (row.get("check") or {}).get("status") == "ok"
+    inline = INLINE_TYPES.get(ext) if checked else None
+    fallback = MIME_BY_FORMAT.get(format_for(row["name"]), "application/octet-stream")
+    return FileResponse(
+        path,
+        filename=row["name"],
+        media_type=inline or fallback,
+        content_disposition_type="inline" if inline else "attachment",
+        headers={"ETag": etag, "Cache-Control": IMMUTABLE, "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@router.get("/projects/{project_id}/files/{file_id}/thumbnail")
+def file_thumbnail(project_id: str, file_id: str, orch: Orch, request: Request) -> Response:
+    """Миниатюра WebP до 480 px: картинка, первая страница PDF, обложка PPTX (из пакета или
+    первый образец разобранного шаблона). Строится один раз на байты; `404
+    thumbnail_unavailable` — показать значок типа."""
+    row = _project_file(orch, project_id, file_id)
+    fresh, etag = _not_modified(request, row["sha256"])
+    if fresh:
+        return Response(status_code=304)
+    if (row.get("check") or {}).get("status") != "ok":
+        raise ApiError(404, "thumbnail_unavailable", "Для этого файла миниатюры нет")
+    try:
+        path = thumbnail(
+            orch.files,
+            row["sha256"],
+            str(row["check"].get("format") or ""),
+            fallback=_template_cover(orch, row.get("template_id")),
+        )
+    except FileNotFoundError as e:
+        raise ApiError(404, "file_missing", "Байты файла удалены из хранилища") from e
+    if path is None:
+        raise ApiError(404, "thumbnail_unavailable", "Для этого файла миниатюры нет")
+    return FileResponse(
+        path, media_type="image/webp", headers={"ETag": etag, "Cache-Control": IMMUTABLE}
+    )
+
+
+def _template_cover(orch: Orch, template_id: str | None) -> Path | None:
+    """Первый отрисованный слайд шаблона, если PPTX уже разобран как шаблон."""
+    if not template_id:
+        return None
+    try:
+        template = orch.state.get_template(template_id)
+    except NotFound:
+        return None
+    slides = sorted(
+        (name for name in template.get("previews") or [] if "/layout-" not in name),
+        key=lambda name: (len(name), name),
+    )
+    if template["status"] != "succeeded" or not slides:
+        return None
+    return orch.artifacts.template_dir(template_id) / str(slides[0])

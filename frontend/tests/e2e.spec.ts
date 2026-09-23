@@ -243,7 +243,7 @@ test.describe("сквозной сценарий в чате на заглушк
     await expect(page.getByTestId("msg-assistant").last()).toContainText("удалён");
   });
 
-  test("метки ленты: аудит и генерация отделяются от разговора", async ({ page }) => {
+  test("панель: только чат и файлы, шаги работы — реплики одной ленты", async ({ page }) => {
     await speedUp(page, 8);
     await createProject(page);
     await uploadTemplate(page);
@@ -252,20 +252,10 @@ test.describe("сквозной сценарий в чате на заглушк
     await startGeneration(page);
     await waitForAllVariantsDone(page);
 
-    // Ряд меток — оглавление ленты: у каждой свой счётчик, пустых меток в ряду нет.
-    await expect(page.getByTestId("tab-job")).toBeVisible();
-    await expect(page.getByTestId("tab-template")).toBeVisible();
-    await page.getByTestId("tab-audit").click();
-    await expect(page.getByTestId("audit-card")).toBeVisible();
-    await expect(page.getByTestId("job-card")).toHaveCount(0);
-
-    // Метка без сообщений честно об этом говорит, а разговор возвращается кнопкой «Всё».
-    await page.getByTestId("tab-message").click();
-    await expect(page.getByTestId("msg-user").first()).toBeVisible();
-    await expect(page.getByTestId("audit-card")).toHaveCount(0);
-    await page.getByTestId("tab-chat").click();
-    await expect(page.getByTestId("audit-card")).toBeVisible();
-    await expect(page.getByTestId("job-card")).toBeVisible();
+    await expect(page.locator(".editor-panel-tabs [role=tab]")).toHaveText([/Чат/, /Файлы/]);
+    await expect(page.getByTestId("template-card").last()).toBeVisible();
+    await expect(page.getByTestId("job-card").last()).toBeVisible();
+    await expect(page.locator(".chat-tag")).toHaveCount(0);
   });
 
   test("пустой экран новой презентации проекта не создаёт", async ({ page }) => {
@@ -392,20 +382,18 @@ test.describe("сквозной сценарий в чате на заглушк
     expect(await jobIdFromChat(page)).toMatch(/^job_/);
   });
 
-  test("готовая презентация: третий ответ на PPTX открывает один вариант original", async ({ page }) => {
+  test("готовая презентация: третий ответ на PPTX открывает один вариант original, чат молчит", async ({ page }) => {
     await speedUp(page, 8);
     await createProject(page);
     await attach(page, [{ name: "Отчёт за квартал.pptx", mimeType: PPTX_MIME, buffer: PPTX() }]);
     await page.getByTestId("answer-deck").last().click();
     await expect(page.locator('[data-testid^="template-question-"]').last()).toContainText("готовую презентацию");
-    const card = page.getByTestId("job-card").last();
-    await expect(card).toBeVisible({ timeout: 15000 });
-    await expect(card).toContainText("Исходная презентация");
-    await expect(page.getByTestId("variant-progress-original")).toBeVisible();
-    await expect(page.getByTestId("variant-progress-compact")).toHaveCount(0);
-    await waitForAllVariantsDone(page);
-    await expect(page.getByTestId("template-menu")).toContainText("Отчёт за квартал");
-    await expect(page.getByTestId("download-menu")).toBeEnabled();
+    await expect(page.getByTestId("template-menu")).toContainText("Отчёт за квартал", { timeout: 15000 });
+    await expect(page.locator(".editor-header")).toContainText(/Готово|Требует проверки/, { timeout: WAIT.variantsDone });
+    // Ход сборки — полоса над слайдами. В ленте ни вопроса о режиме оформления, ни хода сборки.
+    await expect(page.getByTestId("job-card")).toHaveCount(0);
+    await expect(page.getByTestId("chat-list")).not.toContainText("Как оформить презентацию");
+    await expect(page.getByTestId("chat-suggestions")).toHaveCount(0);
   });
 
   test("PPTX первым действием: вопрос виден, пока файл грузится, ответ применяется после загрузки", async ({ page }) => {
@@ -415,7 +403,7 @@ test.describe("сквозной сценарий в чате на заглушк
     await page.addInitScript(() => window.localStorage.setItem("mock_upload_ms", "4000"));
     await createProject(page);
     const greeting = page.getByTestId("chat-greeting");
-    await expect(greeting).toHaveText("Опишите, какая нужна презентация, или перетащите сюда материалы. Шаблон оформления выберите справа.");
+    await expect(greeting).toHaveText("Опишите, какая нужна презентация, или перетащите сюда материалы. Шаблон оформления выберите вверху справа.");
     await attach(page, [{ name: "Новый шаблон.pptx", mimeType: PPTX_MIME, buffer: PPTX() }]);
     await projectIdAfterAction(page);
     const staged = page.locator('[data-testid^="template-question-stg_"]');
@@ -434,12 +422,12 @@ test.describe("сквозной сценарий в чате на заглушк
     await expect(page.locator('[data-testid^="template-question-stg_"]')).toContainText("Отчёт.pptx");
   });
 
-  test("шаблон из библиотеки первым действием: выбор справа сохраняется вместе с карточкой", async ({ page }) => {
+  test("шаблон из библиотеки первым действием: выбор в углу шапки сохраняется вместе с карточкой", async ({ page }) => {
     // Выбор заводит проект на сервере; шаблон и карточка, появившиеся, пока шёл запрос,
     // не должны затираться снимком черновика.
     await createProject(page);
-    await expect(page.getByTestId("preview-empty")).toContainText("Выберите шаблон оформления");
-    await page.getByTestId("preview-pane").getByTestId("template-menu").click();
+    await expect(page.getByTestId("preview-empty")).toContainText("Выберите шаблон оформления вверху справа");
+    await page.locator(".editor-header").getByTestId("template-menu").click();
     const option = page.locator('[data-testid^="template-option-"]').first();
     const name = (await option.innerText()).split("\n")[0];
     await option.click();

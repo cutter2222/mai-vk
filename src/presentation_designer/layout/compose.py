@@ -34,6 +34,7 @@ import pathlib
 import re
 import shutil
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -41,7 +42,7 @@ from pptx import Presentation
 
 from presentation_designer.generation.matching import SlotInfo, pattern_info
 from presentation_designer.generation.original import original_profile, unchanged_slide
-from presentation_designer.layout import charts, diagrams, icons, images, tables
+from presentation_designer.layout import chart_images, charts, diagrams, icons, images, tables
 from presentation_designer.layout import text as tx
 from presentation_designer.layout.composed import SlideRecord, SlotFill, build_composed_deck
 from presentation_designer.layout.integrity import IntegrityReport, check_deck
@@ -71,13 +72,14 @@ from presentation_designer.layout.shapes import (
 from presentation_designer.library.build import build_slide as build_builtin_slide
 from presentation_designer.library.spec import find_composition
 from presentation_designer.library.tokens import DesignCode
+from presentation_designer.parsing.raster_charts.model import ChartReading
 from presentation_designer.parsing.template.geometry import walk_shapes
 
 log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 COMPOSER_NAME = "layout_composer"
-COMPOSER_VERSION = "0.2.0"
+COMPOSER_VERSION = "0.3.1"
 TEXT_KINDS = (
     "title",
     "subtitle",
@@ -120,6 +122,8 @@ class ComposeResult:
     warnings: list[JsonDict]
     report: JsonDict
     integrity: IntegrityReport
+    # Диаграммы-картинки, заменённые нативными (или оставленные с причиной), — вариант original.
+    chart_swaps: list[chart_images.ChartSwap] = field(default_factory=list)
 
 
 @dataclass
@@ -1431,13 +1435,16 @@ def compose_deck(
     extra_assets: dict[str, pathlib.Path] | None = None,
     media_dir: pathlib.Path | None = None,
     media_prefix: str = "",
+    chart_readings: Mapping[str, Any] | None = None,
 ) -> ComposeResult:
     """Собирает PPTX по плану и возвращает ComposedDeck, заголовки и отчёт.
 
     `fit_*` — лестница кеглей при сужении слотов из-за бокового декора (как `plan.*` в
     config/app.yaml). `extra_assets` — файлы проекта для ручных правок (`file_id` → путь);
     `media_dir` — куда выложить медиа колоды для интерфейса (имена артефактов получают
-    `media_prefix`, как `<variant>/r<N>/`)."""
+    `media_prefix`, как `<variant>/r<N>/`). `chart_readings` — чтения диаграмм-картинок по
+    sha256 картинки (ChartReading или его JSON): в варианте original такие картинки
+    заменяются нативными диаграммами."""
     started = time.perf_counter()
     template_path = pathlib.Path(template_path)
     if not template_path.is_file():
@@ -1564,6 +1571,26 @@ def compose_deck(
     timings["clone_fill_ms"] = int((time.perf_counter() - t0) * 1000)
     if not new_slides:
         raise ComposeError("compose_plan_empty", "в плане нет слайдов")
+    swaps: list[chart_images.ChartSwap] = []
+    if preserve and chart_readings:
+        # Готовая презентация: диаграммы-картинки → нативные диаграммы по готовым чтениям.
+        readings = {
+            str(sha): r if isinstance(r, ChartReading) else ChartReading.model_validate(r)
+            for sha, r in chart_readings.items()
+        }
+        swaps = chart_images.swap_pictures(prs, readings, slides=new_slides)
+        replaced = sum(1 for s in swaps if s.status == "replaced")
+        if replaced:
+            unchanged = False
+            ctx.count("charts_rebuilt", replaced)
+    if preserve:
+        # Готовая презентация: пустое место, которое редактор подписывает «Заголовок слайда»,
+        # получает этот текст — как в предварительной ревизии, чей рендер переиспользуется.
+        # Правки из чата и редактора уже записаны, заполненное не трогается.
+        prompts = tx.fill_empty_placeholders(new_slides, ctx.language)
+        if prompts:
+            unchanged = False
+            ctx.count("prompts_filled", prompts)
     t0 = time.perf_counter()
     keep_only_slides(prs, new_slides)
     if preserve:
@@ -1639,6 +1666,7 @@ def compose_deck(
         warnings=list(ctx.warnings),
         report=report,
         integrity=integrity,
+        chart_swaps=swaps,
     )
 
 

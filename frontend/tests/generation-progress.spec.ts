@@ -1,20 +1,31 @@
 import { expect, test, type Page } from "@playwright/test";
 
-async function setup(page: Page, initial: string, percent?: number) {
+/** deck — «открыть как презентацию»: один PPTX стал и шаблоном, и содержанием, вариант original. */
+async function setup(page: Page, initial: string, percent?: number, deck = false) {
   const state = { status: initial, percent, available: false, error: 0 };
   const createdAt = new Date().toISOString();
+  const variantId = deck ? "original" : "balanced";
+  const files = deck ? [{ file_id: "file_deck", name: "Отчёт.pptx", size_bytes: 12, kind: "template", template_id: "tpl_deck", package_id: "pkg_deck", check: { status: "ok", format: "pptx" } }] : [];
+  // Готовая презентация в чате — ответ «Открыть как презентацию» на вопрос о файле.
+  const events = deck ? [{ event_id: "deck-answer", at: createdAt, role: "assistant", kind: "template_question", file_id: "file_deck", resolved: "deck" }] : [];
   await page.route("**/api/projects/progress-test", (r) => r.fulfill({ json: {
-    project_id: "progress-test", title: "Генерация", job_id: "job_progress", files: [], brief: {}, settings: {}, events: [],
+    project_id: "progress-test", title: "Генерация", job_id: "job_progress", files, brief: {}, settings: {}, events,
+    ...(deck ? { template_id: "tpl_deck", package_id: "pkg_deck" } : {}),
   } }));
   await page.route("**/api/templates", (r) => r.fulfill({ json: [] }));
-  await page.route("**/api/office/capabilities", (r) => r.fulfill({ json: { enabled: true } }));
+  await page.route("**/api/office/capabilities", (r) => r.fulfill({ json: { enabled: true, ...(deck ? { script_url: "/progress-sdk.js" } : {}) } }));
+  // Готовая презентация: число слайдов известно сразу, файл публикуется раньше рендера (ready_at).
+  const deckVariant = () => state.available || state.status === "succeeded"
+    ? [{ variant_id: "original", status: state.status === "succeeded" ? "ready" : "running", revision: 1, slide_count: 12, ready_at: createdAt, artifacts: { pptx: "original/r1/deck.pptx" } }]
+    : [{ variant_id: "original", status: "running", revision: 1, slide_count: 12 }];
   await page.route("**/api/generations/job_progress", (r) => state.error
     ? r.fulfill({ status: state.error, json: { error: { code: `http_${state.error}`, message: "Connection unavailable" } } })
     : r.fulfill({ json: {
     job_id: "job_progress", status: state.status, stage: state.status === "running" ? "compose" : "queued",
     metrics: { totals: { duration_ms: 1000 } }, execution_mode: { mode: "real", layers: {} },
     created_at: createdAt, progress: { percent: state.percent, message: "Собираем слайды" },
-    variants: state.available || state.status === "succeeded" ? [{ variant_id: "balanced", status: "ready", revision: 1, artifacts: { pptx: "balanced/r1/deck.pptx" } }] : [],
+    ...(deck ? { request: { schema_version: "1.2", template_id: "tpl_deck", package_id: "pkg_deck", settings: { variants: ["original"] } } } : {}),
+    variants: deck ? deckVariant() : state.available || state.status === "succeeded" ? [{ variant_id: variantId, status: "ready", revision: 1, artifacts: { pptx: `${variantId}/r1/deck.pptx` } }] : [],
   } }));
   return state;
 }
@@ -31,6 +42,7 @@ async function setupOffice(page: Page) {
       this.requestClose = () => config.events.onRequestClose();
       setTimeout(() => config.events.onDocumentReady(), 0);
     }};
+    window.DocsAPI.DocEditor.warmUp = (id) => { window.__officeWarmedUp = id; };
   ` }));
   await page.route("**/api/office/documents/progress-doc/objects/1", (r) => r.fulfill({ json: { revision: 1, objects: [] } }));
   await page.route("**/api/office/documents/progress-doc/preview/1", (r) => r.fulfill({ json: { revision: 1, slides: ["slide-01.png"], ratio: 16 / 9 } }));
@@ -81,6 +93,63 @@ test("partial presentation keeps compact progress until completion", async ({ pa
   state.status = "succeeded";
   await expect(progress).toHaveCount(0);
   await expect(page.getByTestId("preview-pane").locator("iframe")).toBeVisible();
+});
+
+test("opening a deck shows compact progress with a timer in the chat, not on top", async ({ page }) => {
+  const state = await setup(page, "running", 5, true);
+  await setupOffice(page);
+  await page.goto("/project?id=progress-test");
+  // Ход открытия — строкой под «Открываю…»; справа сразу место редактора, полосы сверху нет.
+  const progress = page.getByTestId("chat-list").getByTestId("deck-progress");
+  await expect(progress).toContainText("Собираем слайды");
+  await expect(progress.getByTestId("deck-progress-percent")).toHaveText("5%");
+  await expect(page.getByTestId("generation-progress")).toHaveCount(0);
+  await expect(page.getByTestId("office-pending")).toBeVisible();
+  await expect(page.locator(".preview-empty")).toHaveCount(0);
+  // Справа — место под каждый из 12 слайдов, пока файл готовится.
+  await expect(page.getByTestId("slide-skeletons").locator(".slide-skeleton")).toHaveCount(12);
+  await expect(page.getByTestId("office-pending")).toContainText("Готовлю 12 слайдов к показу");
+  // Редактор прогрет заранее штатным warmUp ONLYOFFICE.
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __officeWarmedUp?: string }).__officeWarmedUp)).toBe("office-warmup");
+  const timer = progress.getByTestId("deck-progress-timer");
+  const first = await timer.textContent();
+  await expect(timer).not.toHaveText(first!, { timeout: 3000 });
+  expect((await progress.boundingBox())!.height).toBeLessThan(48);
+  // Файл опубликован раньше рендера: редактор открывается, пока задание ещё идёт, и
+  // строка превращается в итог — фоновый разбор её не держит.
+  state.available = true;
+  state.percent = 60;
+  await expect(page.getByTestId("preview-pane").locator("iframe")).toBeVisible();
+  const opened = page.getByTestId("chat-list").getByTestId("deck-opened");
+  await expect(opened).toContainText("Презентация открыта за");
+  await expect(progress).toHaveCount(0);
+  await expect(page.getByTestId("generation-progress")).toHaveCount(0);
+  state.status = "succeeded";
+  await expect(page.locator(".editor-header")).toContainText("Готово");
+  // Итог остаётся в истории чата и после конца задания.
+  await expect(opened).toBeVisible();
+  await expect(page.getByTestId("job-card")).toHaveCount(0);
+});
+
+test("opening a deck keeps the chat quiet until something needs attention", async ({ page }) => {
+  const state = await setup(page, "running", 5, true);
+  await page.goto("/project?id=progress-test");
+  await expect(page.getByTestId("deck-progress")).toBeVisible();
+  await expect(page.locator(".editor-panel-tabs [role=tab]")).toHaveText([/Чат/, /Файлы/]);
+  // Полоса сверху уже говорит, что идёт сборка: в ленте её не повторяем.
+  await expect(page.getByTestId("job-card")).toHaveCount(0);
+  state.status = "succeeded";
+  await expect(page.getByTestId("deck-opened")).toContainText("Презентация открыта за");
+  await expect(page.getByTestId("deck-progress")).toHaveCount(0);
+  await expect(page.getByTestId("job-card")).toHaveCount(0);
+});
+
+test("a deck that failed to open says so in the chat", async ({ page }) => {
+  const state = await setup(page, "running", 5, true);
+  await page.goto("/project?id=progress-test");
+  await expect(page.getByTestId("job-card")).toHaveCount(0);
+  state.status = "failed";
+  await expect(page.getByTestId("job-summary")).toContainText("Не открыл презентацию");
 });
 
 test("retry keeps the existing document while the next generation runs", async ({ page }) => {

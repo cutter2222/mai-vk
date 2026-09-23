@@ -62,8 +62,12 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
     setLayout("single");
   }
 
-  // Вариант по умолчанию: первый с готовыми файлами, иначе первый в списке.
-  const selectedVariant = selectedVariantRaw ?? (result?.variants.find((v) => v.artifacts?.pptx) ?? result?.variants[0])?.variant_id ?? null;
+  // Вариант по умолчанию: первый с готовыми файлами, иначе первый в списке. Первый готовый
+  // закрепляется: варианты собираются по очереди, и доделанный следом «Компактный» (он раньше
+  // в списке) не должен сам подменять уже открытую презентацию.
+  const firstReady = result?.variants.find((v) => v.artifacts?.pptx)?.variant_id ?? null;
+  if (selectedVariantRaw === null && firstReady) setSelectedVariant(firstReady);
+  const selectedVariant = selectedVariantRaw ?? firstReady ?? result?.variants[0]?.variant_id ?? null;
   const variant: Variant | null = result?.variants.find((v) => v.variant_id === selectedVariant) ?? null;
   const currentRevision = variant?.revision ?? 1;
   const viewRevision = revision ?? currentRevision;

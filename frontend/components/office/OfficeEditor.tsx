@@ -1,18 +1,24 @@
 "use client";
 
 import { ActionIcon, Alert, Button, Group, Loader, Menu, Select, Stack, Text } from "@mantine/core";
-import { IconDots, IconDownload } from "@tabler/icons-react";
+import { notifications } from "@mantine/notifications";
+import { IconDots, IconDownload, IconPhotoPlus } from "@tabler/icons-react";
 import Link from "next/link";
-import { useEffect, useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
+import { useCallback, useEffect, useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 import { createPortal } from "react-dom";
 
-import { api, type OfficeDocument } from "@/lib/api/client";
+import { api, type OfficeDocument, type OfficeLogoAction } from "@/lib/api/client";
 import { downloadArtifact } from "@/lib/download";
 import { Logo } from "@/components/app/Logo";
 import { flushOfficeFrame } from "@/lib/editor/officeSave";
+import { draggedImage, setDraggedImage, useDraggedImage, type DraggedImage } from "@/lib/state/drag";
 
-type Editor = { destroyEditor: () => void; requestClose: () => void };
-export type OfficeEditHandle = { edit: (instruction: string, target?: import("@/lib/api/client").OfficeSelection) => Promise<string> };
+type Editor = { destroyEditor: () => void; requestClose: () => void; insertImage?: (command: Record<string, unknown>) => void };
+export type OfficeEditHandle = {
+  edit: (instruction: string, target?: import("@/lib/api/client").OfficeSelection, logo?: import("@/lib/api/client").OfficeLogoAction) => Promise<string>;
+  /** Картинка из файлов проекта или шаблона — на текущий слайд открытого редактора. */
+  insertImage: (image: DraggedImage) => Promise<void>;
+};
 let sdkPromise: Promise<void> | undefined;
 
 export function loadSDK(url: string): Promise<void> {
@@ -33,13 +39,34 @@ export function loadSDK(url: string): Promise<void> {
   }
   return sdkPromise;
 }
+
+let warmed = false;
+/**
+ * Прогрев редактора, пока презентация ещё готовится: SDK и штатный `DocEditor.warmUp`
+ * ONLYOFFICE (невидимый iframe с preload.html) кладут скрипты редактора в кэш браузера,
+ * и документ открывается без их загрузки. Ошибка прогрева ничего не ломает.
+ */
+export function warmUpOffice(url: string): void {
+  if (warmed) return;
+  warmed = true;
+  void loadSDK(url).then(() => {
+    const warmUp = window.DocsAPI?.DocEditor.warmUp;
+    if (!warmUp) return;
+    const holder = document.createElement("div");
+    holder.id = "office-warmup";
+    holder.hidden = true;
+    document.body.appendChild(holder);
+    warmUp(holder.id);
+  }).catch(() => { warmed = false; });
+}
+
 declare global {
   interface Window {
-    DocsAPI?: { DocEditor: new (id: string, config: Record<string, unknown>) => Editor };
+    DocsAPI?: { DocEditor: { new (id: string, config: Record<string, unknown>): Editor; warmUp?: (id: string) => void } };
   }
 }
 
-export function OfficeEditor({ id, title, embedded = false, onActiveChange, documentActions, editRef, actionsTarget, returnHref = "/", onSaved }: {
+export function OfficeEditor({ id, title, embedded = false, onActiveChange, documentActions, editRef, actionsTarget, returnHref = "/", onSaved, onReady }: {
   id: string;
   title?: string;
   embedded?: boolean;
@@ -49,6 +76,8 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
   actionsTarget?: HTMLElement | null;
   returnHref?: string;
   onSaved?: (document: OfficeDocument) => void;
+  /** Документ открыт и слайды видны. */
+  onReady?: () => void;
 }) {
   const [doc, setDoc] = useState<OfficeDocument | null>(null);
   const [error, setError] = useState("");
@@ -70,6 +99,8 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
   const dirty = useRef(false);
   const closeRequested = useRef<(() => void) | null>(null);
   const pollEpoch = useRef(0);
+  const readyRef = useRef(onReady);
+  useEffect(() => { readyRef.current = onReady; }, [onReady]);
   const returnedAfterSave = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; saveAbort.current?.abort(); }; }, []);
 
@@ -130,7 +161,27 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
     return () => window.removeEventListener("beforeunload", warn);
   }, [closed, doc, pollError]);
 
-  useImperativeHandle(editRef, () => ({ edit: async (instruction: string) => {
+  // Вставка картинки: сервер подписывает ссылку на байты, Document Server сам скачивает их
+  // и ставит картинку на текущий слайд; сохранение идёт обычным путём редактора.
+  const insertImage = useCallback(async (image: DraggedImage) => {
+    if (busy.current || editing || closing) throw new Error("Дождитесь окончания ИИ-правки.");
+    if (!ready || closed || !sdk.current) throw new Error("Дождитесь открытия редактора слайдов.");
+    if (!sdk.current.insertImage) throw new Error("Редактор не поддерживает вставку картинок.");
+    const command = await api.office.imageCommand(id, image);
+    if (!mounted.current || !sdk.current?.insertImage) return;
+    sdk.current.insertImage({ ...command });
+  }, [id, ready, closed, editing, closing]);
+  const dragged = useDraggedImage();
+  const [dropOver, setDropOver] = useState(false);
+  const dropImage = async (image: DraggedImage) => {
+    try {
+      await insertImage(image);
+    } catch (e) {
+      notifications.show({ color: "red", title: "Картинка не вставлена", message: e instanceof Error ? e.message : "Повторите перетаскивание." });
+    }
+  };
+
+  useImperativeHandle(editRef, () => ({ insertImage, edit: async (instruction: string, _target?: unknown, logo?: OfficeLogoAction) => {
     if (busy.current) throw new Error("Предыдущая ИИ-правка ещё выполняется.");
     if (!ready || error || pollError || doc?.error) throw new Error("Сначала дождитесь готовности редактора и устраните ошибку сохранения.");
     busy.current = true;
@@ -160,7 +211,7 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
         if (current.error) throw new Error(current.error);
         if (current.active_key) continue;
         saved = true;
-        const result = await api.office.edit(id, current.revision, instruction);
+        const result = await api.office.edit(id, current.revision, instruction, undefined, logo);
         if (mounted.current) { setDoc(result.document); setVersion(null); }
         return result.changed ? `Правка сохранена в этом PPTX · v${result.document.revision}. ${result.message}` : `Документ не изменён. ${result.message}`;
       }
@@ -172,7 +223,7 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
         if (saved) { setReady(false); setModified(false); setError(""); setClosed(false); }
       }
     }
-  } }), [id, ready, error, pollError, doc?.error, closed]);
+  } }), [id, ready, error, pollError, doc?.error, closed, insertImage]);
 
   useEffect(() => {
     onActiveChange?.(editing || !closed || !doc || Boolean(doc.active_key) || Boolean(pollError));
@@ -213,7 +264,7 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
       editor = new window.DocsAPI.DocEditor(editorId, {
         ...response.config,
         events: {
-          onDocumentReady: () => { if (!cancelled) setReady(true); },
+          onDocumentReady: () => { if (!cancelled) { setReady(true); readyRef.current?.(); } },
           onDocumentStateChange: (event: { data: boolean }) => { if (!cancelled) { dirty.current = event.data; setModified(event.data); } },
           onRequestClose: () => { if (!cancelled) closeRequested.current?.(); },
           onError: () => { if (!cancelled) setError("Ошибка ONLYOFFICE. Не закрывайте вкладку до подтверждения сохранения на сервере."); },
@@ -301,6 +352,22 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
           <div ref={canvas} className="office-canvas" inert={editing || closing} aria-label="Редактор презентации ONLYOFFICE">
             {!ready && !error && <div className="office-loading"><Loader size="sm" /><Text size="sm">Загружается редактор…</Text></div>}
             <div id={editorId} />
+            {/* Крышка над iframe на время перетаскивания: сам iframe событий родителю не отдаёт. */}
+            {dragged && ready && (
+              <div className="office-drop" data-over={dropOver || undefined} data-testid="office-drop"
+                onDragEnter={(e) => { e.preventDefault(); setDropOver(true); }}
+                onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
+                onDragLeave={() => setDropOver(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDropOver(false);
+                  const image = draggedImage();
+                  setDraggedImage(null);
+                  if (image) void dropImage(image);
+                }}>
+                <span><IconPhotoPlus size={20} stroke={1.6} />Отпустите — «{dragged.name}» встанет на текущий слайд</span>
+              </div>
+            )}
           </div>
         </>
       )}

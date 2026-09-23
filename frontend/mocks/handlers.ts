@@ -58,6 +58,10 @@ function filesFrom(form: FormData, request: Request, field: string): FileMeta[] 
 const err = (status: number, code: string, message: string, details?: Record<string, unknown>) =>
   HttpResponse.json({ error: { code, message, details } }, { status });
 
+/** Цвет картинки-заглушки по sha256: разные файлы в сетке различимы. */
+const MOCK_COLORS = ["#0077FF", "#FF3885", "#2DB86A", "#F5A623", "#7B61FF"];
+const mockColor = (sha: string) => MOCK_COLORS[parseInt(sha.slice(0, 2), 16) % MOCK_COLORS.length];
+
 const SLIDE_TITLES = [
   "Умные уведомления: пилот и план запуска",
   "Проблема",
@@ -166,6 +170,28 @@ export const handlers = [
 
   http.delete(base("/projects/:id/files/:fileId"), ({ params }) => (projects.deleteFile(String(params.id), String(params.fileId)) ? new HttpResponse(null, { status: 204 }) : err(404, "file_not_found", "Файл не найден"))),
 
+  // Байты файла заглушка не хранит: картинка рисуется по имени, остальное — файлом-подобием.
+  http.get(base("/projects/:id/files/:fileId/content"), async ({ params }) => {
+    const found = projects.findFile(String(params.fileId));
+    if (!found || found.project.project_id !== String(params.id)) return err(404, "file_not_found", "Файл не найден");
+    const { file } = found;
+    const format = file.check.format;
+    if (format === "image") return new HttpResponse(await assetPng(`file:${file.sha256}`, mockColor(file.sha256), false, 480), { headers: { "Content-Type": "image/png" } });
+    if (format === "pdf") return new HttpResponse(pdfBlob(file.name), { headers: { "Content-Type": "application/pdf" } });
+    if (format === "pptx") return new HttpResponse(pptxBlob(file.name), { headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.presentationml.presentation" } });
+    return new HttpResponse(file.name, { headers: { "Content-Type": "application/octet-stream" } });
+  }),
+
+  http.get(base("/projects/:id/files/:fileId/thumbnail"), async ({ params }) => {
+    const found = projects.findFile(String(params.fileId));
+    if (!found || found.project.project_id !== String(params.id)) return err(404, "file_not_found", "Файл не найден");
+    const { file } = found;
+    const format = file.check.format;
+    if (format === "image") return new HttpResponse(await assetPng(`file:${file.sha256}`, mockColor(file.sha256), false, 480), { headers: { "Content-Type": "image/png" } });
+    if (format === "pdf" || format === "pptx") return new HttpResponse(await slidePng(`file-cover:${file.sha256}`, file.name, format === "pdf" ? "Первая страница документа" : "Обложка презентации", "#0077FF", 480), { headers: { "Content-Type": "image/png" } });
+    return err(404, "thumbnail_unavailable", "Для этого файла миниатюры нет");
+  }),
+
   // ---------- шаблоны ----------
   http.get(base("/templates"), () => {
     seedDemoTemplate();
@@ -229,6 +255,14 @@ export const handlers = [
     if (!asset) return err(404, "asset_not_found", "Ресурс не найден в профиле шаблона");
     const png = await assetPng(`tpl-media:${asset.asset_id}`, asset.kind === "icon" ? "#0077FF" : "#FF3885", asset.kind === "icon" || asset.kind === "logo");
     return new HttpResponse(png, { headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" } });
+  }),
+
+  http.get(base("/templates/:id/media/:assetId/thumbnail"), async ({ params }) => {
+    const t = store.templates.get(String(params.id));
+    const asset = t?.profile.assets.find((a) => a.asset_id === String(params.assetId));
+    if (!asset) return err(404, "asset_not_found", "Ресурс не найден в профиле шаблона");
+    const png = await assetPng(`tpl-media:${asset.asset_id}`, asset.kind === "icon" ? "#0077FF" : "#FF3885", asset.kind === "icon" || asset.kind === "logo");
+    return new HttpResponse(png, { headers: { "Content-Type": "image/png" } });
   }),
 
   http.get(base("/templates/:id/assets/*"), async ({ params, request }) => {

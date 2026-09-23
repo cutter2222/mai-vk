@@ -45,7 +45,8 @@ test("questions about a generated deck call chat, not office edit, and survive r
   await page.route("**/api/chat", (r) => {
     chats++;
     expect(r.request().postDataJSON().project_id).toBe("assistant-test");
-    const event = { event_id: "reply", at: new Date().toISOString(), role: "assistant", kind: "text", text: "Могу объяснить состояние проекта." };
+    const text = chats === 1 ? "Могу объяснить состояние проекта." : "Дальше можно править слайды.";
+    const event = { event_id: `reply-${chats}`, at: new Date().toISOString(), role: "assistant", kind: "text", text };
     events.push(event);
     return r.fulfill({ json: { reply: event.text, event, options: ["Что дальше?"], source: "model" } });
   });
@@ -54,9 +55,12 @@ test("questions about a generated deck call chat, not office edit, and survive r
   await page.getByTestId("chat-input").fill("Что ты умеешь?");
   await page.getByTestId("chat-send").click();
   await expect(page.getByText("Могу объяснить состояние проекта.")).toBeVisible();
+  // Подсказка — готовый ответ: уходит сразу, поле ввода остаётся пустым.
   await page.getByTestId("chat-suggestions").getByRole("button").click();
-  await expect(page.getByTestId("chat-input")).toHaveValue("Что дальше?");
-  expect(chats).toBe(1);
+  await expect.poll(() => chats).toBe(2);
+  await expect(page.getByTestId("chat-input")).toHaveValue("");
+  await expect(page.getByTestId("msg-user").filter({ hasText: "Что дальше?" })).toBeVisible();
+  await expect(page.getByText("Дальше можно править слайды.")).toBeVisible();
   expect(edits).toBe(0);
   await page.reload();
   await expect(page.getByText("Могу объяснить состояние проекта.")).toBeVisible();

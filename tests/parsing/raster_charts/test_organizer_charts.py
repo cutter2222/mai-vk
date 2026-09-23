@@ -1,4 +1,4 @@
-"""Диаграммы-картинки шаблона VK Education (слайды 45–50): все проходят предфильтр и меряются
+"""Диаграммы-картинки шаблона VK Education (слайды 45–51): все проходят предфильтр и меряются
 при устройстве, какое описывает модель; значения сверяются с числами на самих слайдах."""
 
 from __future__ import annotations
@@ -109,3 +109,22 @@ def test_labelled_horizontal_bars(pictures: dict[tuple[int, int], bytes]) -> Non
     r = _read(pictures[(50, 0)], st)
     assert [p.value for p in r.series[0].points] == [float(x) for x in labels]
     assert all(p.basis == "label" for p in r.series[0].points)
+
+
+def test_highlighted_competitor_columns_on_slide_51(organizer_dir: pathlib.Path) -> None:
+    # Устройство — как его вернула модель: один цвет ряда (выделенный столбец VK), без
+    # цветов категорий. Светлые столбцы конкурентов находит замер.
+    (item,) = collect([str(organizer_dir / VKEDU)], {51})
+    st = ChartStructure(
+        status="chart",
+        kind="column",
+        categories=["VK", "Конкурент 1", "Конкурент 2", "Конкурент 3", "Конкурент 4"],
+        series=[
+            SeriesInfo(color="#007BFF", type="column", labels=["43%", "23%", "18%", "8%", "2%"])
+        ],
+        primary_axis=AxisInfo(ticks=[]),
+    )
+    r = _read(item["data"], st)
+    assert [p.value for p in r.series[0].points] == [43, 23, 18, 8, 2]
+    assert r.series[0].point_colors[0] == "#0077FF"
+    assert len(set(r.series[0].point_colors[1:])) == 1 != r.series[0].point_colors[0]

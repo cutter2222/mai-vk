@@ -12,6 +12,12 @@
 устройство), `<out>/<ключ>.overlay.png` (найденная шкала, вершины, точки, сегменты; точки,
 восстановленные по соседям или ребру, — оранжевые со звёздочкой) и `<ключ>.structure.json`.
 Сводка — в stdout. Модель вызывается только для картинок, прошедших предфильтр.
+
+CLI `rebuild-charts`: те же чтения — и диаграммы-картинки заменяются нативными диаграммами,
+как при «Открыть как презентацию»:
+
+    uv run -m presentation_designer.cli rebuild-charts deck.pptx --out runs/charts/deck.pptx
+    … --structure runs/charts/vkedu/  без модели, по сохранённым устройствам
 """
 
 from __future__ import annotations
@@ -25,6 +31,12 @@ from typing import Any
 
 from pptx import Presentation
 
+from presentation_designer.layout.chart_images import (
+    deck_pictures,
+    swap_pictures,
+    swap_summary,
+    unread_charts,
+)
 from presentation_designer.parsing.raster_charts.model import ChartStructure
 from presentation_designer.parsing.raster_charts.overlay import draw_overlay
 from presentation_designer.parsing.raster_charts.pixels import chart_likeness, load
@@ -117,16 +129,11 @@ def _client() -> Any:
     return client
 
 
-def run(args: argparse.Namespace) -> int:
-    items = collect(args.inputs, _slides(args.slides))
-    if not items:
-        print("картинок не найдено", file=sys.stderr)
-        return 1
-    out = pathlib.Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
-    started = time.perf_counter()
+def _outcomes(items: list[dict[str, Any]], args: argparse.Namespace) -> dict[str, Outcome] | None:
+    """Исходы чтения по sha256: только предфильтр, по сохранённым устройствам или моделью.
+    None — клиент моделей не создан."""
     outcomes: dict[str, Outcome] = {}
-    if args.no_model:
+    if getattr(args, "no_model", False):
         for it in items:
             likeness = chart_likeness(load(it["data"]))
             outcomes[it["sha256"]] = Outcome("skipped", likeness.reason or "похоже на диаграмму")
@@ -144,13 +151,28 @@ def run(args: argparse.Namespace) -> int:
             client = _client()
         except Exception as e:
             print(f"клиент моделей не создан: {e}", file=sys.stderr)
-            return 2
+            return None
         outcomes = read_chart_images(
             {it["sha256"]: it["data"] for it in items},
             client,
             budget_s=args.budget,
             max_images=args.max_images,
         )
+    return outcomes
+
+
+def run(args: argparse.Namespace) -> int:
+    items = collect(args.inputs, _slides(args.slides))
+    if not items:
+        print("картинок не найдено", file=sys.stderr)
+        return 1
+    out = pathlib.Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    started = time.perf_counter()
+    found = _outcomes(items, args)
+    if found is None:
+        return 2
+    outcomes = found
     rows = []
     for it in items:
         o = outcomes[it["sha256"]]
@@ -169,6 +191,37 @@ def run(args: argparse.Namespace) -> int:
     for o in outcomes.values():
         counts[o.status] = counts.get(o.status, 0) + 1
     print(f"итог: {counts}, {time.perf_counter() - started:.1f} с, выходы в {out}")
+    return 0
+
+
+def build_rebuild_parser(parser: argparse.ArgumentParser | None = None) -> argparse.ArgumentParser:
+    parser = parser or argparse.ArgumentParser(prog="presentation-designer rebuild-charts")
+    parser.add_argument("pptx", help="готовая презентация")
+    parser.add_argument("--out", required=True, help="PPTX с нативными диаграммами")
+    parser.add_argument("--structure", default=None, help="каталог с <ключ>.structure.json")
+    parser.add_argument("--budget", type=float, default=240.0, help="секунд на все вызовы модели")
+    parser.add_argument("--max-images", type=int, default=40, help="не больше вызовов модели")
+    return parser
+
+
+def rebuild(args: argparse.Namespace) -> int:
+    """Диаграммы-картинки файла → нативные диаграммы, сводка — в stdout."""
+    source = pathlib.Path(args.pptx)
+    items = collect([str(source)], None)
+    outcomes = _outcomes(items, args)
+    if outcomes is None:
+        return 2
+    prs = Presentation(str(source))
+    _, where = deck_pictures(prs)
+    readings = {sha: o.reading for sha, o in outcomes.items() if o.reading is not None}
+    swaps = swap_pictures(prs, readings)
+    out = pathlib.Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    prs.save(str(out))
+    for swap in swaps:
+        print(f"слайд {swap.slide:>3}  {swap.status:8} {swap.name} {swap.reason}".rstrip())
+    print(swap_summary(swaps, unread_charts(outcomes, where)) or "диаграмм-картинок не найдено")
+    print(f"сохранено: {out}")
     return 0
 
 

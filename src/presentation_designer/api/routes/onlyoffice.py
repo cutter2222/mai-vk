@@ -8,7 +8,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any, Literal
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import httpx
 from fastapi import APIRouter, Request
@@ -22,7 +22,7 @@ from presentation_designer.export.office_ooxml import validate_saved_pptx
 from presentation_designer.export.office_preview import cache_path, preview_page, preview_revision
 from presentation_designer.export.office_source import saved_url, source_path
 from presentation_designer.export.pdf import ConversionError, RendererUnavailableError
-from presentation_designer.generation import office_edit, office_object_edit
+from presentation_designer.generation import office_edit, office_logo, office_object_edit
 from presentation_designer.generation.office_objects import ObjectTarget, objects
 from presentation_designer.llm.types import LlmError
 from presentation_designer.parsing.template.embedded_fonts import prepare_fonts
@@ -30,6 +30,7 @@ from presentation_designer.pipeline.artifacts import content_type_for
 from presentation_designer.pipeline.office import OfficeStore, sign, verify
 from presentation_designer.pipeline.results import build_generation_result
 from presentation_designer.pipeline.state import NotFound
+from presentation_designer.shared.text import plural
 
 router = APIRouter(prefix="/office", tags=["onlyoffice"])
 
@@ -39,14 +40,24 @@ class OpenRequest(BaseModel):
     artifact: str = Field(max_length=300)
 
 
+class LogoRequest(BaseModel):
+    """Знак шаблона на всех слайдах: заменить картинкой из файлов проекта или убрать."""
+
+    action: Literal["replace", "remove"]
+    file_id: str | None = Field(default=None, max_length=100)
+
+
 class EditRequest(BaseModel):
     revision: int = Field(ge=0)
     instruction: str = Field(min_length=1, max_length=4000)
     target: ObjectTarget | None = None
     targets: list[ObjectTarget] | None = Field(default=None, min_length=1, max_length=100)
+    logo: LogoRequest | None = None
 
     @model_validator(mode="after")
     def validate_targets(self) -> EditRequest:
+        if self.logo is not None and (self.target is not None or self.targets is not None):
+            raise ValueError("Логотип меняется на всех слайдах: объекты не передаются")
         if self.targets is not None:
             if self.target is not None:
                 raise ValueError("Передайте target или targets, не оба поля")
@@ -54,6 +65,79 @@ class EditRequest(BaseModel):
             if len(keys) != len(self.targets):
                 raise ValueError("Объекты не должны повторяться")
         return self
+
+
+class ImageRequest(BaseModel):
+    """Картинка для текущего слайда живого редактора: файл проекта или ресурс шаблона."""
+
+    project_id: str | None = Field(default=None, max_length=100)
+    file_id: str | None = Field(default=None, max_length=100)
+    template_id: str | None = Field(default=None, max_length=100)
+    asset_id: str | None = Field(default=None, max_length=200)
+
+    @model_validator(mode="after")
+    def validate_source(self) -> ImageRequest:
+        from_file = bool(self.project_id and self.file_id)
+        from_template = bool(self.template_id and self.asset_id)
+        if from_file == from_template:
+            raise ValueError("Передайте project_id и file_id или template_id и asset_id")
+        return self
+
+
+# Картинки, которые Document Server вставляет по ссылке; тип — по расширению проверенного файла.
+INSERTABLE = {"png": "png", "jpg": "jpg", "jpeg": "jpg", "gif": "gif", "bmp": "bmp"}
+
+
+@router.post("/documents/{document_id}/images")
+def insert_image(document_id: str, body: ImageRequest, orch: Orch) -> dict[str, Any]:
+    """Подписанная команда `docEditor.insertImage`: Document Server сам скачивает картинку
+    по внутреннему адресу API (`storage_url`) и ставит её на текущий слайд. Сервер только
+    проверяет источник и подписывает ссылку, документ не меняет."""
+    store(orch).get(document_id)
+    cfg = orch.settings.onlyoffice
+    base = cfg.storage_url.rstrip("/") + "/api"
+    if body.project_id and body.file_id:
+        try:
+            row = orch.state.get_file(body.file_id, body.project_id)
+        except NotFound as exc:
+            raise ApiError(404, "file_not_found", "Файл не найден в проекте") from exc
+        ext = _extension(str(row["name"]))
+        check = row.get("check") or {}
+        if check.get("status") != "ok" or check.get("format") != "image" or ext not in INSERTABLE:
+            raise ApiError(422, "file_not_image", "На слайд вставляются картинки PNG или JPEG")
+        if not orch.files.path_for(str(row["sha256"])).is_file():
+            raise ApiError(404, "file_missing", "Байты файла удалены из хранилища")
+        url = f"{base}/projects/{quote(body.project_id)}/files/{quote(body.file_id)}/content"
+    else:
+        template_id, asset_id = str(body.template_id), str(body.asset_id)
+        try:
+            template = orch.state.get_template(template_id)
+        except NotFound as exc:
+            raise ApiError(404, "template_not_found", "Шаблон не найден") from exc
+        asset = next(
+            (
+                a
+                for a in (template.get("profile") or {}).get("assets") or []
+                if a.get("asset_id") == asset_id
+            ),
+            None,
+        )
+        if asset is None:
+            raise ApiError(404, "asset_not_found", "Ресурс не найден в профиле шаблона")
+        ext = _extension(str(asset.get("media_path") or ""))
+        if ext not in INSERTABLE:
+            raise ApiError(422, "file_not_image", "Этот ресурс шаблона нельзя вставить картинкой")
+        try:
+            orch.extract_template_media(template_id, asset)
+        except FileNotFoundError as exc:
+            raise ApiError(404, "asset_not_found", "Файл ресурса отсутствует") from exc
+        url = f"{base}/templates/{quote(template_id)}/media/{quote(asset_id)}"
+    command: dict[str, Any] = {"c": "add", "images": [{"fileType": INSERTABLE[ext], "url": url}]}
+    return {**command, "token": sign(command, cfg.jwt_secret)}
+
+
+def _extension(name: str) -> str:
+    return name.rsplit(".", 1)[-1].lower() if "." in name else ""
 
 
 @router.get("/documents/{document_id}/objects/{revision}")
@@ -68,7 +152,9 @@ async def edit(document_id: str, body: EditRequest, orch: Orch) -> dict[str, Any
     token = office.begin_edit(document_id, body.revision)
     try:
         original = office.read(document_id, body.revision)
-        if body.targets is not None:
+        if body.logo is not None:
+            updated, explanation = _apply_logo(orch, office.get(document_id), original, body.logo)
+        elif body.targets is not None:
             multi_plan = await office_object_edit.propose_many(
                 original, body.instruction, orch.settings, body.targets
             )
@@ -96,6 +182,52 @@ async def edit(document_id: str, body: EditRequest, orch: Orch) -> dict[str, Any
         office.end_edit(document_id, token)
 
 
+def _document_template(orch: Orch, source: str) -> str | None:
+    """Шаблон офисной копии по её источнику: копия шаблона проекта
+    (`project/<id>/template/<template_id>/<sha>`) или артефакт задания (`<job_id>/<путь>`)."""
+    parts = source.split("/")
+    if len(parts) >= 4 and parts[0] == "project" and parts[2] == "template":
+        return parts[3]
+    try:
+        return str(orch.state.get_generation(parts[0])["template_id"])
+    except (NotFound, KeyError):
+        return None
+
+
+def _apply_logo(
+    orch: Orch, document: dict[str, Any], original: bytes, logo: LogoRequest
+) -> tuple[bytes, str]:
+    """Знак шаблона заменяется или убирается на образцах, макетах и слайдах сразу; картинки
+    знака берутся из профиля шаблона, в документе находятся по содержимому."""
+    template_id = _document_template(orch, str(document.get("source") or ""))
+    try:
+        template = orch.state.get_template(template_id) if template_id else None
+    except NotFound:
+        template = None
+    if template is None:
+        raise ValueError("не найден шаблон этой презентации")
+    if template.get("status") != "succeeded" or not template.get("profile"):
+        raise ValueError("шаблон ещё разбирается — повторите через минуту")
+    hashes = office_logo.logo_hashes(template["profile"])
+    if not hashes:
+        raise ValueError("в шаблоне нет логотипа на макетах")
+    image: bytes | None = None
+    if logo.action == "replace":
+        if not logo.file_id:
+            raise ValueError("прикрепите картинку нового логотипа (PNG или JPG)")
+        try:
+            row = orch.state.get_file(logo.file_id)
+        except NotFound as exc:
+            raise ValueError("картинка логотипа не найдена в файлах проекта") from exc
+        image = orch.files.path_for(str(row["sha256"])).read_bytes()
+    updated, count = office_logo.replace_logo(original, hashes, image)
+    if not count:
+        raise ValueError("логотипа шаблона в этой презентации уже нет")
+    done = "заменён" if image is not None else "убран"
+    places = f"{count} {plural(count, 'место', 'места', 'мест')}"
+    return updated, f"Логотип шаблона {done} на всех слайдах ({places} в макетах)."
+
+
 def store(orch: Orch) -> OfficeStore:
     cfg = orch.settings.onlyoffice
     if not cfg.enabled or len(cfg.jwt_secret) < 32:
@@ -104,9 +236,18 @@ def store(orch: Orch) -> OfficeStore:
 
 
 @router.get("/capabilities")
-def capabilities(orch: Orch) -> dict[str, bool]:
+def capabilities(orch: Orch) -> dict[str, Any]:
+    """Включён ли редактор и адрес его SDK: интерфейс прогревает редактор заранее, пока
+    презентация ещё готовится, а не после того, как файл появился."""
     cfg = orch.settings.onlyoffice
-    return {"enabled": cfg.enabled and len(cfg.jwt_secret) >= 32}
+    enabled = cfg.enabled and len(cfg.jwt_secret) >= 32
+    if not enabled:
+        return {"enabled": False}
+    return {"enabled": True, "script_url": _script_url(cfg.public_url)}
+
+
+def _script_url(public_url: str) -> str:
+    return f"{public_url.rstrip('/')}/web-apps/apps/api/documents/api.js?rendering=pd16v2"
 
 
 @router.post("/documents")
@@ -226,9 +367,7 @@ def template_config(template_id: str, orch: Orch) -> dict[str, Any]:
     }
     return {
         "font_report": font_report,
-        "script_url": (
-            f"{cfg.public_url.rstrip('/')}/web-apps/apps/api/documents/api.js?rendering=pd16v2"
-        ),
+        "script_url": _script_url(cfg.public_url),
         "config": {**editor, "token": sign(editor, cfg.jwt_secret)},
     }
 
@@ -328,9 +467,7 @@ def config(document_id: str, orch: Orch) -> dict[str, Any]:
     }
     return {
         "font_report": font_report,
-        "script_url": (
-            f"{cfg.public_url.rstrip('/')}/web-apps/apps/api/documents/api.js?rendering=pd16v2"
-        ),
+        "script_url": _script_url(cfg.public_url),
         "config": {**editor, "token": sign(editor, cfg.jwt_secret)},
     }
 

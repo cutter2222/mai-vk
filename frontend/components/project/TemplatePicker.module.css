@@ -1,10 +1,5 @@
+/* В правом углу шапки проекта: одна строка высотой с кнопки шапки, миниатюра и имя шаблона. */
 .root {
-  display: flex;
-  justify-content: center;
-  width: 100%;
-}
-
-.compactRoot {
   display: flex;
   min-width: 0;
 }
@@ -12,16 +7,21 @@
 .trigger {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   width: 100%;
-  max-width: 380px;
+  max-width: 260px;
   min-width: 0;
-  padding: 12px;
+  padding: 3px 8px 3px 4px;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 8px;
   background: var(--page);
-  box-shadow: var(--shadow-flat);
   color: var(--ink);
+}
+
+.trigger[data-empty] {
+  border-color: var(--accent-soft);
+  background: var(--sky);
+  color: var(--accent-dark);
 }
 
 .trigger:hover,
@@ -44,13 +44,22 @@
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  width: 64px;
-  height: 40px;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 6px;
   background: var(--card);
   color: var(--accent);
+}
+
+.preview {
+  width: 40px;
+  height: 24px;
+  border-radius: 4px;
+}
+
+.optionPreview {
+  width: 64px;
+  height: 40px;
+  border-radius: 6px;
 }
 
 .preview img,
@@ -68,15 +77,9 @@
   min-width: 0;
 }
 
-.caption {
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--ink2);
-}
-
 .name {
   overflow: hidden;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -127,22 +130,4 @@
 .option[data-selected] {
   background: var(--sky);
   color: var(--accent-dark);
-}
-/* В шапке проекта: одна строка высотой с кнопки шапки, миниатюра и имя шаблона. */
-.compact {
-  gap: 8px;
-  max-width: 260px;
-  padding: 3px 8px 3px 4px;
-  border-radius: 8px;
-  box-shadow: none;
-}
-
-.compact .preview {
-  width: 40px;
-  height: 24px;
-  border-radius: 4px;
-}
-
-.compact .name {
-  font-size: 13px;
 }

@@ -58,6 +58,7 @@ from presentation_designer.generation.matching import (
 from presentation_designer.layout import diagrams
 from presentation_designer.shared import text_metrics
 from presentation_designer.shared.settings import Settings, get_settings
+from presentation_designer.shared.text import plural
 
 log = logging.getLogger(__name__)
 
@@ -2737,29 +2738,26 @@ def _control_count(ctx: Context, structure: Structure, deck: list[Draft]) -> lis
             continue
         break
     if _count(deck) < lo:
+        # Содержания меньше, чем нужно на нижнюю границу: колода короче, а не ошибка и не
+        # слайды из одного пункта. Просьбу пользователя (точное число или его диапазон)
+        # задание называет фразой — предупреждение slide_count_short; диапазон по умолчанию
+        # пользователь не выбирал, и его сокращение остаётся только в плане.
         n = _count(deck)
-        if spec.exact is None:
-            # Диапазон — ориентир: слайд из одного пункта хуже короткой колоды. Нехватка
-            # содержания на нижнюю границу записывается предупреждением, точное число —
-            # ошибкой с причиной.
+        asked = str(spec.exact) if spec.exact is not None else f"{lo}–{hi}"
+        noun = plural(spec.exact, "слайд", "слайда", "слайдов") if spec.exact else "слайдов"
+        if spec.explicit:
+            ctx.fix("slide_count_short", f"просили {asked} {noun}, содержания хватило на {n}")
+        else:
             ctx.fix(
-                "slide_count_relaxed" if not spec.explicit else "slide_count_short",
-                f"{'диапазон по умолчанию' if not spec.explicit else 'запрошено'} {lo}–{hi} "
-                f"слайдов, содержания хватило на {n}"
-                + ("" if not spec.explicit else ": добавьте материалы или уменьшите диапазон"),
+                "slide_count_relaxed",
+                f"диапазон по умолчанию {asked} слайдов, содержания хватило на {n}",
             )
-            spec.min = n
-            spec.target = min(spec.target, n)
-            return deck
-        raise PlanError(
-            "plan_slide_count",
-            f"Содержания не хватает на {lo} слайдов: получилось {_count(deck)}",
-            details={
-                "variant_id": ctx.variant_id,
-                "required": spec.as_dict(),
-                "actual": _count(deck),
-            },
-        )
+        # Точное число становится диапазоном «сколько вышло — сколько просили»: верхняя
+        # граница остаётся местом для обязательных тезисов на шаге покрытия.
+        spec.exact = None
+        spec.min = n
+        spec.target = min(spec.target, n)
+        return deck
     # К цели — только обратимыми действиями.
     guard = 0
     while _count(deck) < target and guard < 20:

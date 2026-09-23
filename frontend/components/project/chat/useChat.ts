@@ -22,7 +22,7 @@ import {
   type SettingsDraft,
 } from "@/lib/state/projects";
 import type { GenerationRequest } from "@/lib/api/types";
-import { DESIGN_MODES, DESIGN_MODE_QUESTION, isDesignModeReply } from "@/lib/designMode";
+import { isDesignModeReply } from "@/lib/designMode";
 
 const GENERATE_RE = /сгенерир|запусти|собер[иа]|сдела[йт]|сделаем|построй|начина|давай/i;
 const EDIT_RE = /поменя[йть]|перестав|местами|удали|убери|добавь слайд|переимен/i;
@@ -30,6 +30,25 @@ const EDIT_RE = /поменя[йть]|перестав|местами|удали
 const isPptx = (f: ProjectFile) => f.check.format === "pptx";
 const isMaterial = (f: ProjectFile) => f.kind === "material";
 const isPptxFile = (f: File) => /\.pptx$/i.test(f.name);
+
+/**
+ * Что услышано из сообщения — одной фразой перед запуском сборки: «Понял задачу: «Тема»,
+ * аудитория — …». Ошибиться видно сразу, поправить можно словами.
+ */
+function understoodLine(brief: BriefDraft): string {
+  const title = brief.title.trim();
+  if (!title) return "";
+  const audience = brief.audience.trim();
+  const short = audience.length > 90 ? `${audience.slice(0, 90).replace(/[,;\s]+\S*$/, "")}…` : audience;
+  return `Понял задачу: «${title}»${short ? `, аудитория — ${short.charAt(0).toLowerCase()}${short.slice(1)}` : ""}. `;
+}
+
+/** Открытие готовой презентации в этой вкладке: файл, начало отсчёта, идёт ли подготовка до задания. */
+export interface DeckStart {
+  fileId: string;
+  since: string;
+  preparing: boolean;
+}
 
 /** PPTX, брошенный в чат: вопрос «шаблон, готовая презентация или материал» показан сразу, файл ещё едет на сервер. */
 export interface StagedPptx {
@@ -51,6 +70,9 @@ export function useChat(project: Project, session: GenerationSession, generate: 
   const say = useCallback((text: string) => appendMessage(id, { role: "assistant", kind: "text", text }), [id]);
 
   const [staged, setStaged] = useState<StagedPptx[]>([]);
+  // Готовая презентация открывается: с какого момента (таймер в чате) и идёт ли ещё подготовка
+  // до задания — загрузка шаблона и содержания занимает секунды, а задания ещё нет.
+  const [deckStart, setDeckStart] = useState<DeckStart | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const respond = useCallback(async (messageId: string) => {
     try {
@@ -62,8 +84,33 @@ export function useChat(project: Project, session: GenerationSession, generate: 
   }, [id, say]);
   const stagedAnswers = useRef(new Map<string, PptxAnswer>());
 
-  /** Импорт всех материалов проекта в новый пакет по file_ids. Возвращает package_id или null. */
-  const importMaterials = useCallback(async (): Promise<string | null> => {
+  /**
+   * Тихий импорт после загрузки: в ленте ничего не появляется, пока разбор не упал. Опрос
+   * ограничен десятью минутами; ошибку говорим, только если пакет ещё текущий у проекта.
+   */
+  const watchImport = useCallback(async (packageId: string) => {
+    const until = Date.now() + 10 * 60_000;
+    for (let delay = 1500; Date.now() < until; delay = Math.min(delay * 1.5, 5000)) {
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      let detail;
+      try {
+        detail = await api.content.get(packageId);
+      } catch {
+        return;
+      }
+      if (detail.status === "succeeded") return;
+      if (detail.status === "failed") {
+        if (current().package_id === packageId) say(`Не смог прочитать материалы: ${(detail.error?.message ?? "импорт не удался").split("\n")[0]}. Удалите файл во вкладке «Файлы» или загрузите его заново.`);
+        return;
+      }
+    }
+  }, [say, current]);
+
+  /**
+   * Импорт всех материалов проекта в новый пакет по file_ids. Возвращает package_id или null.
+   * `quiet` — импорт после загрузки файлов: без карточки «Прочитал…», только ошибка.
+   */
+  const importMaterials = useCallback(async ({ quiet = false }: { quiet?: boolean } = {}): Promise<string | null> => {
     const p = current();
     const materials = p.files.filter(isMaterial);
     const briefFilled = p.brief.title.trim().length > 0;
@@ -72,13 +119,14 @@ export function useChat(project: Project, session: GenerationSession, generate: 
       const res = await api.content.create(materials.map((f) => f.file_id), briefFilled ? { ...p.brief } : undefined);
       materials.forEach((f) => patchProjectFile(id, f.file_id, { package_id: res.package_id }));
       updateProject(id, { package_id: res.package_id });
-      appendMessage(id, { role: "assistant", kind: "content_card", package_id: res.package_id, file_ids: materials.map((f) => f.file_id) });
+      if (quiet) void watchImport(res.package_id);
+      else appendMessage(id, { role: "assistant", kind: "content_card", package_id: res.package_id, file_ids: materials.map((f) => f.file_id) });
       return res.package_id;
     } catch (e) {
       say(`Не удалось импортировать материалы: ${e instanceof ApiError ? e.message : "неизвестная ошибка"}.`);
       return null;
     }
-  }, [id, say, current]);
+  }, [id, say, current, watchImport]);
 
   /** Файл проекта в библиотеку шаблонов с карточкой хода анализа в чате. */
   const uploadTemplate = useCallback(async (fileId: string, { quiet = false }: { quiet?: boolean } = {}) => {
@@ -104,19 +152,48 @@ export function useChat(project: Project, session: GenerationSession, generate: 
   }, [id, current]);
 
   /**
-   * Материалы импортированы без задачи в тексте: без шаблона — просьба выбрать его, с шаблоном —
-   * презентация собирается сразу (назначение можно уточнить в карточке задачи и пересобрать).
+   * Шаблон и содержание есть, презентации ещё нет — сборка стартует сразу, без карточки с кнопкой:
+   * назначение и режим оформления берутся по умолчанию, уточнить их можно словами. Шаблона нет —
+   * просьба выбрать его. Презентация уже есть — карточка задачи с «Сгенерировать заново»:
+   * пересборка сама не начинается. `lead` — фраза перед этим («Понял задачу…», «Выбрал шаблон…»).
    */
-  const afterMaterials = useCallback(async () => {
+  const proceed = useCallback(async (lead = "") => {
     const p = current();
-    if (!p.package_id) return;
-    if (!p.template_id) {
-      say("Материалы в работе. Шаблон оформления не выбран: выберите его справа или перетащите PPTX и ответьте «Сделать шаблоном» — и я соберу презентацию.");
+    if (!p.package_id) {
+      if (lead) say(lead.trim());
       return;
     }
-    offerGeneration();
-    if (!p.job_id && p.settings.design_mode) await generate();
+    if (p.job_id) {
+      if (lead) say(lead.trim());
+      offerGeneration();
+      return;
+    }
+    if (!p.template_id) {
+      say(`${lead}Выберите шаблон оформления вверху справа — и я сразу начну собирать.`);
+      return;
+    }
+    const n = p.settings.variants.length;
+    say(`${lead}${n > 1 ? `Собираю презентацию: сначала один вариант, ${n === 2 ? "второй" : `ещё ${n - 1}`} — следом.` : "Собираю презентацию."}`);
+    await generate();
   }, [current, say, offerGeneration, generate]);
+
+  /**
+   * Материалы импортированы без задачи в тексте: без шаблона — просьба выбрать его, с шаблоном —
+   * презентация собирается сразу (назначение можно уточнить в карточке задачи и пересобрать).
+   * После простой загрузки файлов (`quiet`) чат не просит выбрать шаблон — об этом говорит
+   * правая панель, — а при готовой презентации молчит совсем: новые файлы нужны для слайдов,
+   * а не для пересборки.
+   */
+  const afterMaterials = useCallback(async ({ quiet = false }: { quiet?: boolean } = {}) => {
+    const p = current();
+    if (!p.package_id) return;
+    if (quiet && p.job_id) return;
+    if (!p.template_id) {
+      if (!quiet) say("Материалы в работе. Шаблон оформления не выбран: выберите его вверху справа — и я сразу начну собирать.");
+      return;
+    }
+    await proceed();
+  }, [current, say, proceed]);
 
   /** Сообщение, адресованное слайду: событие с адресом, запрос правки, карточка хода и результата. */
   const editSlide = useCallback(async (text: string, target: SlideTarget) => {
@@ -157,15 +234,16 @@ export function useChat(project: Project, session: GenerationSession, generate: 
         if (!rest) return;
       }
     }
-    const message = appendMessage(id, { role: "user", kind: "message", text: rest, file_ids: rows.map((r) => r.file_id) });
-    if (isDesignModeReply(rest)) {
+    // Загрузка без текста в ленту не пишется: файлы видны во вкладке «Файлы».
+    const message = rest ? appendMessage(id, { role: "user", kind: "message", text: rest, file_ids: rows.map((r) => r.file_id) }) : null;
+    if (message && isDesignModeReply(rest)) {
       await respond(message.event_id);
       await refreshProject(id);
       if (!files.length) return;
       rest = ""; // Выбор режима не становится темой брифа при отправке с вложениями.
     }
     // A conversation about an existing deck must not become a new brief or an office edit.
-    if (rest && !files.length && current().job_id) {
+    if (message && !files.length && current().job_id) {
       await respond(message.event_id);
       return;
     }
@@ -173,26 +251,22 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     // 2. PPTX может быть и шаблоном, и материалом: спрашиваем.
     rows.filter((r) => isPptx(r) && r.kind !== "template").forEach((r) => appendMessage(id, { role: "assistant", kind: "template_question", file_id: r.file_id }));
 
-    // 3. Неподдерживаемые типы остаются в файлах проекта.
-    const others = rows.filter((r) => !isPptx(r) && r.kind === "other");
-    if (others.length) {
-      say(`${others.map((o) => `«${o.name}»`).join(", ")}: такой тип файла сохранён в файлах проекта, но при генерации пока не используется. Поддерживаются docx, xlsx, csv, pdf, md, txt и изображения.`);
-    }
+    // 3. Неподдерживаемые типы молча остаются в файлах проекта: карточка там подписана
+    //    «не используется при генерации».
 
-    // 4. Материалы импортируются пакетом вместе с уже загруженными; без текста задачи
-    //    презентация собирается сразу, если выбран шаблон, иначе чат просит его выбрать.
+    // 4. Материалы импортируются пакетом вместе с уже загруженными, без карточки в ленте;
+    //    без текста задачи презентация собирается сразу, если выбран шаблон.
     let imported = false;
     if (rows.some(isMaterial)) {
-      imported = Boolean(await importMaterials());
+      imported = Boolean(await importMaterials({ quiet: true }));
       if (imported && !rest) {
-        await afterMaterials();
+        await afterMaterials({ quiet: true });
         return;
       }
     }
 
     // 5. Текст: бриф извлекает сервер; поля, которых нет в сообщении, не трогаем.
     let understood: string[] = [];
-    let briefSource: "model" | "heuristic" | undefined;
     // Намерение собрать презентацию: сервер (модель или правила) либо явная команда в тексте.
     let wantsGeneration = Boolean(rest) && GENERATE_RE.test(rest);
     if (rest) {
@@ -202,7 +276,6 @@ export function useChat(project: Project, session: GenerationSession, generate: 
       try {
         const res = await api.brief.extract(rest, { ...current().brief });
         understood = res.understood;
-        briefSource = res.source;
         if (res.intent === "generate") wantsGeneration = true;
         if (understood.length) {
           updateProject(id, (p) => {
@@ -216,13 +289,13 @@ export function useChat(project: Project, session: GenerationSession, generate: 
           });
           // Бриф — часть контент-пакета: если материалы уже импортированы без него, переимпортируем.
           if (!imported && current().package_id && (res.brief.title || res.brief.purpose || res.brief.goal)) {
-            imported = Boolean(await importMaterials());
+            imported = Boolean(await importMaterials({ quiet: true }));
           }
         }
       } catch {
         /* сервер не ответил: бриф можно заполнить вручную через «Изменить» */
       }
-      if (!understood.length && !rows.length && !EDIT_RE.test(rest)) {
+      if (message && !understood.length && !rows.length && !EDIT_RE.test(rest)) {
         await respond(message.event_id);
         if (!wantsGeneration) return;
       }
@@ -231,37 +304,41 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     // 6. Бриф без файлов тоже содержание: пакет из одного брифа.
     const p = current();
     if (!p.package_id && p.brief.title.trim() && !imported) {
-      imported = Boolean(await importMaterials());
+      imported = Boolean(await importMaterials({ quiet: true }));
     }
 
-    // 7. Карточка брифа с кнопкой, когда есть что показать; просьба собрать запускает генерацию.
-    if (understood.length || wantsGeneration || (current().template_id && current().package_id)) {
-      offerGeneration(understood, understood.length ? briefSource : undefined);
+    // 7. Задача понята или просят собрать — сборка стартует сразу, если есть шаблон и
+    //    содержание; иначе чат просит выбрать шаблон. Карточки с кнопкой и выбором назначения нет.
+    if (understood.length || wantsGeneration || imported) {
+      await proceed(understood.length ? understoodLine(current().brief) : "");
     }
-    const ready = current().template_id && current().package_id && current().brief.purpose;
-    if (wantsGeneration && ready && current().settings.design_mode && !current().job_id) {
-      await generate();
-    }
-  }, [id, importMaterials, afterMaterials, offerGeneration, say, generate, current, editSlide, respond]);
+  }, [id, importMaterials, afterMaterials, proceed, say, current, editSlide, respond]);
 
-  /** Выбор из библиотеки — первый шаг построения в чате. */
-  const selectTemplate = useCallback((templateId: string) => {
+  /**
+   * Выбор уже разобранного шаблона (из библиотеки, из «Файлов», повторный бросок того же PPTX):
+   * одна фраза с названием. Карточка «Разобрал шаблон… за N с» — только при загрузке файла
+   * шаблоном: здесь разбора не было, и отчёт о нём путает.
+   */
+  const selectTemplate = useCallback((templateId: string, name: string) => {
     if (current().template_id === templateId) return;
     updateProject(id, { template_id: templateId });
-    appendMessage(id, { role: "assistant", kind: "template_card", template_id: templateId });
-    if (current().package_id) offerGeneration();
-    else say("Шаблон выбран. Опишите задачу презентации или добавьте материалы.");
-  }, [id, current, offerGeneration, say]);
+    const title = name.replace(/\.pptx$/i, "");
+    if (current().package_id) void proceed(`Выбрал шаблон «${title}». `);
+    else say(`Выбрал шаблон «${title}». Загрузите материалы или опишите задачу для дальнейшей работы.`);
+  }, [id, current, proceed, say]);
 
   /** Действие по ответу на вопрос о PPTX: разбор как шаблона или импорт как материала. */
   /**
    * Готовая презентация: тот же файл разбирается как шаблон (композиции слайдов) и импортируется
    * как содержание (тексты, факты), затем запускается генерация одного варианта original —
    * слайды переносятся как есть, а правки идут из чата по слайдам.
+   * Шаблон, содержание и задание попадают в проект одним обновлением: проект с шаблоном и
+   * содержанием, но без задания, — это новая презентация, и чат спросил бы о режиме оформления.
    */
   const openAsDeck = useCallback(async (fileId: string) => {
     const meta = current().files.find((f) => f.file_id === fileId);
     if (!meta) return;
+    setDeckStart({ fileId, since: new Date().toISOString(), preparing: true });
     try {
       const tpl = await api.templates.upload(fileId);
       patchProjectFile(id, fileId, { kind: "template", template_id: tpl.template_id });
@@ -269,7 +346,6 @@ export function useChat(project: Project, session: GenerationSession, generate: 
       const briefFilled = p.brief.title.trim().length > 0;
       const pkg = await api.content.create([fileId], briefFilled ? { ...p.brief } : undefined);
       patchProjectFile(id, fileId, { package_id: pkg.package_id });
-      updateProject(id, { template_id: tpl.template_id, package_id: pkg.package_id });
       const req: GenerationRequest = {
         schema_version: "1.2",
         template_id: tpl.template_id,
@@ -278,8 +354,10 @@ export function useChat(project: Project, session: GenerationSession, generate: 
         settings: { variants: ["original"], language: p.brief.language || "ru", run_contextual_audit: p.settings.contextual, generate_images: false },
       };
       const job = await api.generations.create(req);
-      updateProject(id, { job_id: job.job_id, chosen_variant: null });
+      updateProject(id, { template_id: tpl.template_id, package_id: pkg.package_id, job_id: job.job_id, chosen_variant: null });
+      setDeckStart((s) => (s?.fileId === fileId ? { ...s, preparing: false } : s));
     } catch (e) {
+      setDeckStart(null);
       say(`Не удалось открыть «${meta.name}» как готовую презентацию: ${e instanceof ApiError ? e.message : "неизвестная ошибка"}.`);
     }
   }, [id, say, current]);
@@ -297,8 +375,8 @@ export function useChat(project: Project, session: GenerationSession, generate: 
       await afterMaterials();
       return;
     }
-    if (current().template_id && current().package_id) offerGeneration();
-  }, [id, uploadTemplate, openAsDeck, importMaterials, afterMaterials, offerGeneration, say, current]);
+    if (current().template_id && current().package_id) await proceed();
+  }, [id, uploadTemplate, openAsDeck, importMaterials, afterMaterials, proceed, say, current]);
 
   const resolveTemplateQuestion = useCallback(async (messageId: string, fileId: string, answer: PptxAnswer) => {
     void patchMessage(id, messageId, { resolved: answer });
@@ -323,11 +401,10 @@ export function useChat(project: Project, session: GenerationSession, generate: 
       stagedAnswers.current.delete(localId);
       setStaged((s) => s.filter((x) => x.local_id !== localId));
       if (!row) return;
-      appendMessage(id, { role: "user", kind: "message", text: "", file_ids: [row.file_id] });
+      // Сам бросок в ленту не пишется: вопрос ниже называет файл.
       if (row.kind === "template") {
         // Те же байты уже разобраны как шаблон этого проекта: вопрос не нужен.
-        if (row.template_id && current().template_id !== row.template_id) selectTemplate(row.template_id);
-        else say(`«${row.name}» уже используется как шаблон проекта.`);
+        if (row.template_id && current().template_id !== row.template_id) selectTemplate(row.template_id, row.name);
         return;
       }
       appendMessage(id, { role: "assistant", kind: "template_question", file_id: row.file_id, ...(answer ? { resolved: answer } : {}) });
@@ -359,7 +436,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     await removeProjectFile(id, fileId);
     if (meta.kind === "template" && meta.template_id === current().template_id) {
       updateProject(id, { template_id: null });
-      say(`Шаблон «${meta.name}» убран из проекта. Он остаётся в библиотеке шаблонов, выбрать другой можно справа.`);
+      say(`Шаблон «${meta.name}» убран из проекта. Он остаётся в библиотеке шаблонов, выбрать другой можно вверху справа.`);
     } else if (meta.kind === "material") {
       const pkg = await importMaterials();
       if (!pkg) {
@@ -384,9 +461,9 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     if (!row) return;
     await uploadTemplate(row.file_id);
     await refreshProject(id);
-    if (current().template_id && current().package_id) offerGeneration();
+    if (current().template_id && current().package_id) await proceed();
     else if (current().template_id) say("Шаблон добавлен. Опишите задачу презентации или добавьте материалы.");
-  }, [id, uploadTemplate, offerGeneration, current, say]);
+  }, [id, uploadTemplate, proceed, current, say]);
 
   // Карточка задания при запуске. Служебные отчёты не добавляются в разговор.
   useEffect(() => {
@@ -398,14 +475,10 @@ export function useChat(project: Project, session: GenerationSession, generate: 
   }, [id, project.job_id, project.events]);
 
 
-  const needsDesignMode = Boolean(project.template_id && (project.package_id || project.brief.title) && !project.settings.design_mode && !project.job_id);
-  useEffect(() => {
-    if (needsDesignMode && !current().events.some((event) => event.kind === "text" && event.text === DESIGN_MODE_QUESTION)) say(DESIGN_MODE_QUESTION);
-  }, [needsDesignMode, project.events, say, current]);
 
   const notifyError = (title: string, e: unknown) => notifications.show({ color: "red", title, message: e instanceof ApiError ? e.message : "Неизвестная ошибка" });
 
-  return { send, suggestions: needsDesignMode ? DESIGN_MODES.map((mode) => mode.label) : suggestions, attach, staged, answerStaged, resolveTemplateQuestion, setPurpose, removeFile, importMaterials, selectTemplate, addTemplate, notifyError };
+  return { send, suggestions, attach, staged, answerStaged, resolveTemplateQuestion, setPurpose, removeFile, importMaterials, selectTemplate, addTemplate, notifyError, deckStart };
 }
 
 export type Chat = ReturnType<typeof useChat>;

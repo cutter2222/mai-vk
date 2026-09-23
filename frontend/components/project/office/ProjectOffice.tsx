@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Button, Group, Loader, Menu, Select, Stack, Text } from "@mantine/core";
+import { Alert, Button, Group, Loader, Menu, SegmentedControl, Stack, Text } from "@mantine/core";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
@@ -15,8 +15,10 @@ import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
 import { SlideViewer } from "../preview/SlideViewer";
 
 /** Saved office bytes are the source of previews and AI edits, not stale generation artifacts. */
-export function ProjectOffice({ session, title, projectId, editRef, actionsTarget, selection, onSelectionChange, template }: {
+export function ProjectOffice({ session, title, projectId, editRef, actionsTarget, selection, onSelectionChange, template, onEditorReady }: {
   session: GenerationSession; title: string; projectId: string;
+  /** Редактор открыл документ: слайды видны. */
+  onEditorReady?: () => void;
   editRef?: Ref<OfficeEditHandle>; actionsTarget?: HTMLElement | null;
   selection: OfficeSelection | null;
   onSelectionChange: (value: OfficeSelection | null) => void;
@@ -114,22 +116,26 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
     : preview;
   const visibleRevision = visiblePreview?.revision;
 
-  useImperativeHandle(editRef, () => ({ edit: async (instruction, target) => {
+  useImperativeHandle(editRef, () => ({ insertImage: async (image) => {
+    // Картинка встаёт на текущий слайд живого редактора; в сохранённом превью слайда нет.
+    if (!manual || !manualEdit.current) throw new Error("Откройте редактор слайдов, чтобы вставить картинку.");
+    return manualEdit.current.insertImage(image);
+  }, edit: async (instruction, target, logo) => {
     if (manual) {
-      if (target) throw new Error("Для правки выбранных объектов откройте сохранённое превью и выберите их заново.");
+      if (target && !logo) throw new Error("Для правки выбранных объектов откройте сохранённое превью и выберите их заново.");
       if (!manualEdit.current) throw new Error("Дождитесь загрузки редактора.");
-      return manualEdit.current.edit(instruction);
+      return manualEdit.current.edit(instruction, undefined, logo);
     }
     if (!doc || pollError) throw new Error("Дождитесь проверки сохранённой презентации.");
     if (busy.current) throw new Error("Предыдущая ИИ-правка ещё выполняется.");
     if (doc.active_key || doc.error) throw new Error("Завершите ручное редактирование во всех вкладках и дождитесь сохранения.");
     if (visibleRevision !== doc.revision) throw new Error("Дождитесь актуального превью перед ИИ-правкой.");
-    if (target && (target.documentId !== doc.id || target.revision !== doc.revision || target.slide !== index + 1)) throw new Error("Выбранный объект устарел. Выберите его заново.");
+    if (!logo && target && (target.documentId !== doc.id || target.revision !== doc.revision || target.slide !== index + 1)) throw new Error("Выбранный объект устарел. Выберите его заново.");
     busy.current = true;
     setEditing(true);
     try {
-      const targets = target?.objects.map(({ slide, shape_id }) => ({ slide, shape_id }));
-      const result = await api.office.edit(doc.id, doc.revision, instruction, targets?.length === 1 ? targets[0] : targets);
+      const targets = logo ? undefined : target?.objects.map(({ slide, shape_id }) => ({ slide, shape_id }));
+      const result = await api.office.edit(doc.id, doc.revision, instruction, targets?.length === 1 ? targets[0] : targets, logo);
       setDoc(result.document);
       setPreviewError("");
       return result.changed ? `Правка сохранена в этом PPTX · v${result.document.revision}. ${result.message}` : `Документ не изменён. ${result.message}`;
@@ -140,11 +146,39 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
   const currentObjects = selectable ? objectMap?.objects.filter((obj) => obj.slide === index + 1) ?? [] : [];
 
   const retry = () => { setError(""); setPreviewError(""); setAttempt((n) => n + 1); };
+
+  // Варианты собираются по очереди: первый открыт, пока остальные доделываются в фоне. Все три
+  // видны сразу, неготовые — с загрузкой и без нажатия. Выбор открывает PPTX этого варианта;
+  // правки прежнего остаются в его собственной офисной копии.
+  const variants = templateId ? [] : session.result?.variants ?? [];
+  const switchVariant = (value: string) => {
+    const v = variants.find((item) => item.variant_id === value);
+    if (!v?.artifacts?.pptx || !session.jobId || editing) return;
+    session.setSelectedVariant(value);
+    if (source.jobId === session.jobId && source.artifact === v.artifacts.pptx) return;
+    const next = { jobId: session.jobId, artifact: v.artifacts.pptx };
+    setDoc(null); setPreview(null); setError(""); setPreviewError(""); setIndex(0); setSource(next);
+    router.replace(`/project?${new URLSearchParams({ id: projectId, officeJob: next.jobId, officeArtifact: next.artifact })}`);
+  };
+  // Отмечен вариант, чей PPTX открыт сейчас, а не выбранный в сессии: до переключения это одно.
+  const shownVariant = source.jobId === session.jobId ? variants.find((v) => v.artifacts?.pptx === source.artifact) : undefined;
+  const switcher = variants.length > 1 && (
+    <SegmentedControl size="xs" value={shownVariant?.variant_id ?? ""} onChange={switchVariant} data-testid="office-variants" aria-label="Вариант презентации"
+      data={variants.map((v) => {
+        const ready = Boolean(v.artifacts?.pptx);
+        const failed = v.status === "failed";
+        const label = VARIANT_LABELS[v.variant_id] ?? v.variant_id;
+        return {
+          value: v.variant_id,
+          disabled: !ready || editing,
+          label: <Group gap={6} wrap="nowrap" title={ready ? label : failed ? `${label}: не собрался` : `${label}: собирается`} data-testid={`office-variant-${v.variant_id}`} data-state={ready ? "ready" : failed ? "failed" : "building"}>
+            {!ready && !failed && <Loader size={10} aria-label="собирается" />}
+            <span style={failed ? { textDecoration: "line-through" } : undefined}>{label}</span>
+          </Group>,
+        };
+      })} />
+  );
   const actions = doc && <Group gap="xs">
-    {(session.result?.variants.length ?? 0) > 1 && <Select size="xs" aria-label="Вариант презентации" value={session.selectedVariant}
-      disabled={editing || Boolean(doc.active_key) || Boolean(doc.error) || Boolean(pollError)}
-      onChange={(value) => { if (value) session.setSelectedVariant(value); }}
-      data={(session.result?.variants ?? []).filter((v) => v.artifacts?.pptx).map((v) => ({ value: v.variant_id, label: VARIANT_LABELS[v.variant_id] ?? v.variant_id }))} />}
     <Button disabled={editing} onClick={() => { onSelectionChange(null); setManual(true); }} data-testid="edit-slides">Редактировать слайды</Button>
     <Button variant="subtle" component={Link} href={`/office?${new URLSearchParams({ id: doc.id, project: projectId, ...(templateId ? {} : { officeJob: source.jobId, officeArtifact: source.artifact }) })}`} disabled={editing} data-testid="open-office">На весь экран</Button>
     <Menu>
@@ -156,6 +190,7 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
   </Group>;
 
   return <div className="project-office" data-testid="project-office">
+    {switcher && (actionsTarget ? createPortal(switcher, actionsTarget) : <Group p="xs">{switcher}</Group>)}
     {!manual && (actionsTarget ? createPortal(actions, actionsTarget) : actions)}
     {templateId && <Text size="xs" c="dimmed" p="xs">Рабочая копия шаблона · ИИ-правки сохраняются только в этом проекте. Исходный шаблон не изменяется.</Text>}
     {!templateId && !session.terminal && <Text size="xs" c="dimmed" p="xs" role="status">Готовый вариант уже доступен. Остальные варианты и проверки выполняются в фоне; этот PPTX не заменяется.</Text>}
@@ -179,7 +214,7 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
       {selection && <Button size="xs" variant="subtle" onClick={() => onSelectionChange(null)}>Снять выделение ({selection.objects.length})</Button>}
     </Group>}
     {!manual && previewError && <Alert color="red">{previewError}<Button ml="sm" size="xs" onClick={() => { setPreviewError(""); setPreviewAttempt((n) => n + 1); }}>Повторить превью</Button></Alert>}
-    {manual ? (doc ? <OfficeEditor key={doc.id} id={doc.id} title={title} embedded editRef={manualEdit} actionsTarget={actionsTarget} onSaved={saved} />
+    {manual ? (doc ? <OfficeEditor key={doc.id} id={doc.id} title={title} embedded editRef={manualEdit} actionsTarget={actionsTarget} onSaved={saved} onReady={onEditorReady} />
       : !error && <Stack align="center" justify="center" flex={1}><Loader size="sm" /><Text size="sm">Открываем редактор слайдов…</Text></Stack>) : doc && visiblePreview ? <>
       {visiblePreview.revision !== doc.revision && <Text p="xs" size="sm" role="status">Обновляем превью v{doc.revision}; пока показана v{visiblePreview.revision}.</Text>}
       <SlideViewer index={index} onIndex={setIndex} ratio={visiblePreview.ratio} caption={<Text size="xs">Превью · v{visiblePreview.revision}</Text>}

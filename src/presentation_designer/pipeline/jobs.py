@@ -545,13 +545,16 @@ class Orchestrator:
             )
             rq_ids.append(preview_id)
             deps_variant.append(preview_id)
+        # Первый вариант собирается один: планы вариантов упираются в модель, и три плана
+        # параллельно делят её между собой — первый готовый появлялся через минуты. Остальные
+        # ставятся за ним (и при его ошибке тоже) и идут в фоне, пока человек смотрит первый.
         variant_rq: list[str] = []
-        for variant_id in variant_ids:
+        for variant_id in ordered_variants(variant_ids):
             vid = self.executor.enqueue(
                 q.generation_queue,
                 task_variant,
                 (job_id, variant_id),
-                depends_on=deps_variant,
+                depends_on=deps_variant if not variant_rq else [variant_rq[0]],
                 timeout=t.stage_plan_s + t.stage_compose_s + t.stage_export_s + t.stage_audit_s,
                 description=f"variant {job_id} {variant_id}",
             )
@@ -1080,6 +1083,17 @@ def get_orchestrator() -> Orchestrator:
 # ---------- задачи воркеров ----------
 
 
+# Вариант, который собирается первым: средняя плотность — то, что человек видит по умолчанию.
+PRIMARY_VARIANT = "balanced"
+
+
+def ordered_variants(variant_ids: list[str]) -> list[str]:
+    """Порядок сборки: основной вариант первым, остальные в порядке запроса."""
+    if PRIMARY_VARIANT not in variant_ids:
+        return list(variant_ids)
+    return [PRIMARY_VARIANT, *(v for v in variant_ids if v != PRIMARY_VARIANT)]
+
+
 def task_analyze(template_id: str) -> None:
     o = get_orchestrator()
     try:
@@ -1351,13 +1365,21 @@ def task_story(job_id: str) -> None:
             "cache_hit": hit,
         },
     )
-    o.state.update_job(job_id, stage="plan", progress={"percent": 20, "message": "Планы вариантов"})
+    # Без текста: ход вариантов («Собираю первый вариант», «Готово 1 из 3…») строка результата
+    # считает сама по их состоянию (results._progress_message).
+    o.state.update_job(
+        job_id,
+        stage="plan",
+        progress={"percent": 20, "message": "Планы вариантов"} if original else {"percent": 20},
+    )
 
 
 def task_original_preview(job_id: str) -> None:
-    """Предварительная ревизия исходной презентации: копия загруженного файла и её рендер
-    (PDF, миниатюры) публикуются как r1 варианта original, пока анализ и импорт ещё идут.
-    Полная сборка потом переписывает r1 планом, описанием и аудитом, а рендер переиспользует."""
+    """Предварительная ревизия исходной презентации: копия загруженного файла публикуется как
+    r1 варианта original, пока анализ и импорт ещё идут. Редактору нужен только PPTX, поэтому
+    он публикуется сразу, а PDF и миниатюры рендерятся следом в ту же ревизию — слайды видны
+    на рендер раньше. Полная сборка потом переписывает r1 планом, описанием и аудитом, а рендер
+    переиспользует."""
     o = get_orchestrator()
     job = o.state.get_job(job_id)
     gen = o.state.get_generation(job_id)
@@ -1371,11 +1393,12 @@ def task_original_preview(job_id: str) -> None:
     variant_id, revision = "original", 1
     started = now_iso()
     o.state.job_started(job_id)
-    o.state.update_variant(job_id, variant_id, status="running")
+    # Число слайдов известно сразу: интерфейс держит место под каждый, пока копия готовится.
+    o.state.update_variant(
+        job_id, variant_id, status="running", slide_count=_slide_count(source) or None
+    )
     o.state.update_job(
-        job_id,
-        stage="export",
-        progress={"percent": 10, "message": "Показываю презентацию, анализ идёт в фоне"},
+        job_id, stage="export", progress={"percent": 5, "message": "Готовлю презентацию к показу"}
     )
     try:
         from pptx import Presentation
@@ -1391,6 +1414,23 @@ def task_original_preview(job_id: str) -> None:
             import shutil
 
             shutil.copyfile(source, staging.path("deck.pptx"))
+            _preview_prompts(staging.path("deck.pptx"), gen["request"].get("settings") or {})
+            _preview_charts(o, job_id, staging)
+            prefix = o.artifacts.prefix(variant_id, revision)
+            manifest = o.artifacts.publish(staging)
+            o.state.add_revision(
+                job_id=job_id,
+                variant_id=variant_id,
+                revision=revision,
+                artifacts_prefix=prefix,
+                manifest=manifest,
+                pptx_hash=_pptx_hash(manifest, prefix),
+            )
+            o.state.update_variant(job_id, variant_id, ready_at=now_iso())
+            o.state.update_job(
+                job_id, progress={"percent": 40, "message": "Открываю презентацию в редакторе"}
+            )
+            shown_ms = _ms_since(started)
             exported = o.layers.export(
                 ExportInput(
                     job_id,
@@ -1402,28 +1442,80 @@ def task_original_preview(job_id: str) -> None:
                 )
             )
             manifest = o.artifacts.publish(staging)
-            prefix = o.artifacts.prefix(variant_id, revision)
-            o.state.add_revision(
-                job_id=job_id,
-                variant_id=variant_id,
-                revision=revision,
-                artifacts_prefix=prefix,
+            o.state.update_revision(
+                job_id,
+                variant_id,
+                revision,
                 manifest=manifest,
                 pptx_hash=_pptx_hash(manifest, prefix),
             )
-            o.state.update_variant(
-                job_id, variant_id, slide_count=len(exported.thumbnails), ready_at=now_iso()
+            o.state.update_variant(job_id, variant_id, slide_count=len(exported.thumbnails))
+            o.state.update_job(
+                job_id, progress={"percent": 50, "message": "Разбираю презентацию в фоне"}
             )
     except Exception:
         # Предварительный показ не обязателен: без него презентация появится после полной сборки.
         log.exception("предварительная ревизия %s не собрана", job_id)
         return
     log.info(
-        "предварительная ревизия %s: %d слайдов, %d мс",
+        "предварительная ревизия %s: %d слайдов, PPTX показан через %d мс, с рендером %d мс",
         job_id,
         len(exported.thumbnails),
+        shown_ms,
         _ms_since(started),
     )
+
+
+def _preview_prompts(path: pathlib.Path, settings: JsonDict) -> None:
+    """Пустые плейсхолдеры копии получают текст подсказки, как в полной сборке: ONLYOFFICE
+    открывает эту копию, и «Заголовок слайда» должен быть текстом, а не подсказкой, которая
+    исчезает по щелчку и не видна в миниатюрах."""
+    from pptx import Presentation
+
+    from presentation_designer.layout.text import fill_empty_placeholders
+
+    prs = Presentation(str(path))
+    if fill_empty_placeholders(prs.slides, str(settings.get("language") or "ru")):
+        prs.save(str(path))
+
+
+def _preview_charts(o: Orchestrator, job_id: str, staging: Any) -> None:
+    """Диаграммы-картинки копии → нативные диаграммы до первого показа: ONLYOFFICE откроет
+    копию уже с редактируемыми диаграммами, а полная сборка повторит те же замены по
+    charts.json. Отчёт — в предупреждения задания, его показывает карточка сборки в чате."""
+
+    def progress(message: str, share: float) -> None:
+        percent = 10 + round(25 * max(0.0, min(1.0, share)))
+        o.state.update_job(job_id, progress={"percent": percent, "message": message})
+
+    try:
+        out = o.layers.chart_images(staging.path("deck.pptx"), progress)
+    except Exception:  # замена необязательна: покажется исходная презентация
+        log.exception("диаграммы-картинки %s не заменены", job_id)
+        return
+    finally:
+        _record_llm(o, job_id)
+    if out.report:
+        staging.write_json("charts.json", out.report)
+    if out.message:
+        current = o.state.get_generation(job_id)["warnings"]
+        o.state.update_generation(
+            job_id, warnings=[*current, {"code": "chart_images", "message": out.message}]
+        )
+    log.info("диаграммы-картинки %s: заменено %d; %s", job_id, out.replaced, out.message or "—")
+
+
+def _preview_chart_report(preview_dir: pathlib.Path | None) -> JsonDict | None:
+    """charts.json предварительной ревизии. Без него (чтения не было или оно сломалось)
+    полная сборка ничего не заменяет, иначе колода разойдётся с уже показанной копией и её
+    рендером; None — предварительной ревизии нет, сборка читает сама."""
+    if preview_dir is None:
+        return None
+    try:
+        report = json.loads((preview_dir / "charts.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return report if isinstance(report, dict) else {}
 
 
 def _slide_count(path: pathlib.Path) -> int:
@@ -1470,17 +1562,17 @@ def task_variant(job_id: str, variant_id: str) -> None:
     template_path = o.files.path_for(template["sha256"])
     revision = 1
     prefix = o.artifacts.prefix(variant_id, revision)
-    # Предварительная ревизия исходной презентации: её рендер переиспользуется, запись r1
-    # обновляется, а не создаётся заново.
-    preview_dir: pathlib.Path | None = None
+    # Предварительная ревизия исходной презентации: запись r1 обновляется, а не создаётся
+    # заново, замены диаграмм повторяются по её charts.json, рендер переиспользуется, если
+    # успел (PPTX публикуется раньше PDF, и рендер мог не дойти до конца).
+    shown_dir: pathlib.Path | None = None
     if variant_id == "original":
-        candidate = o.artifacts.revision_dir(job_id, variant_id, revision)
-        if (candidate / "deck.pdf").is_file():
-            try:
-                o.state.get_revision(job_id, variant_id, revision)
-                preview_dir = candidate
-            except NotFound:
-                preview_dir = None
+        try:
+            o.state.get_revision(job_id, variant_id, revision)
+            shown_dir = o.artifacts.revision_dir(job_id, variant_id, revision)
+        except NotFound:
+            shown_dir = None
+    preview_dir = shown_dir if shown_dir and (shown_dir / "deck.pdf").is_file() else None
 
     def emit(event: str, data: JsonDict) -> None:
         if event == "stage":
@@ -1489,7 +1581,7 @@ def task_variant(job_id: str, variant_id: str) -> None:
                 o.state.update_job(job_id, stage=data["stage"])
         elif event == "files_ready":
             manifest = o.artifacts.publish(staging)
-            if preview_dir is not None:
+            if shown_dir is not None:
                 # r1 уже опубликована предварительной ревизией: запись обновляется.
                 o.state.update_revision(
                     job_id,
@@ -1535,6 +1627,7 @@ def task_variant(job_id: str, variant_id: str) -> None:
             is_canceled=lambda: o.is_canceled(job_id),
             package_dir=o.artifacts.package_dir(gen["package_id"]),
             prerendered=preview_dir,
+            chart_report=_preview_chart_report(shown_dir) if variant_id == "original" else None,
         )
         outcome = run_variant(o.layers, ctx, emit)
         _record_llm(o, job_id)
@@ -1602,6 +1695,7 @@ def task_finalize(job_id: str) -> None:
             }
         )
     warnings.extend(_plan_distinctness(o, job_id, variants))
+    warnings.extend(_slide_count_short(o, job_id, variants, gen.get("request") or {}))
     if gen["canceled"]:
         status, error = (
             "canceled",
@@ -1630,6 +1724,42 @@ def task_finalize(job_id: str) -> None:
         error=error,
         progress={"percent": 100, "message": _final_message(variants)},
     )
+
+
+def _slide_count_short(
+    o: Orchestrator, job_id: str, variants: list[JsonDict], request: JsonDict
+) -> list[JsonDict]:
+    """Содержания меньше, чем просил пользователь: варианты собраны короче, и задание говорит
+    об этом одной фразой. Диапазон по умолчанию сокращается молча — его никто не просил."""
+    counts: list[int] = []
+    for v in variants:
+        if v["status"] in ("failed", "pending", "running"):
+            continue
+        path = o.artifacts.revision_dir(job_id, v["variant_id"], v["revision"]) / "plan.json"
+        try:
+            plan = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if any(w.get("code") == "slide_count_short" for w in plan.get("warnings") or []):
+            counts.append(int(v.get("slide_count") or len(plan.get("slides") or [])))
+    if not counts:
+        return []
+    spec = (request.get("settings") or {}).get("slide_count") or {}
+    got = f"{min(counts)}–{max(counts)}" if min(counts) != max(counts) else str(counts[0])
+    if spec.get("exact"):
+        exact = int(spec["exact"])
+        asked = f"Просили {exact} {plural(exact, 'слайд', 'слайда', 'слайдов')}"
+    elif spec.get("min") and spec.get("max"):
+        asked = f"Просили {spec['min']}–{spec['max']} слайдов"
+    else:
+        asked = "Просили больше слайдов"
+    return [
+        {
+            "code": "slide_count_short",
+            "message": f"{asked} — содержания хватило на {got}. Добавьте материалы или "
+            "расскажите о теме подробнее, и я соберу больше.",
+        }
+    ]
 
 
 def _plan_distinctness(o: Orchestrator, job_id: str, variants: list[JsonDict]) -> list[JsonDict]:

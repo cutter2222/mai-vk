@@ -118,13 +118,42 @@ def columns(
     return png(image), ticks, right_ticks
 
 
-def hbars(values: list[float], names: list[str], *, per_unit: float = 5.0) -> bytes:
+def highlighted(values: list[float], names: list[str], *, per_unit: float = 7.0) -> bytes:
+    """Столбцы одного ряда без шкалы, как на слайде VK Education «Оформление диаграмм»: первый
+    выделен синим, остальные светлые, подпись «N%» над столбцом, базовая линия серая."""
+    image, d = _canvas()
+    f = font(14)
+    group = (RIGHT - LEFT) / len(values)
+    centers = []
+    for k, v in enumerate(values):
+        x0 = LEFT + group * k + group * 0.2
+        x1 = x0 + group * 0.6
+        centers.append((x0 + x1) / 2)
+        top = BOTTOM - v * per_unit
+        d.rectangle([x0, top, x1 - 1, BOTTOM - 1], fill=BLUE if k == 0 else LIGHT)
+        text = f"{v:g}%"
+        d.text(
+            ((x0 + x1) / 2 - d.textlength(text, font=f) / 2, top - 20), text, fill=(0, 0, 0), font=f
+        )
+    d.line([(LEFT - 10, BOTTOM), (RIGHT + 10, BOTTOM)], fill=GRAY, width=2)
+    _categories(d, names, centers)
+    return png(image)
+
+
+def hbars(
+    values: list[float],
+    names: list[str],
+    *,
+    per_unit: float = 5.0,
+    colors: list[tuple[int, int, int]] | None = None,
+) -> bytes:
     """Горизонтальные полосы без шкалы, значение подписано справа от полосы."""
     image, d = _canvas()
     f = font(14)
     for k, (v, name) in enumerate(zip(values, names, strict=True)):
         y = 20 + k * 34
-        d.rectangle([170, y, 170 + v * per_unit, y + 16], fill=BLUE)
+        fill = colors[k] if colors else BLUE
+        d.rectangle([170, y, 170 + v * per_unit, y + 16], fill=fill)
         d.text((175 + v * per_unit, y - 1), f"{v:g}", fill=(30, 30, 30), font=f)
         d.text((10, y - 1), name, fill=(30, 30, 30), font=f)
     return png(image)

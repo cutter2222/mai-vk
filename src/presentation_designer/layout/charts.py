@@ -56,6 +56,35 @@ _XL_FAMILY: dict[str, set[Any]] = {
     },
 }
 DEFAULT_ACCENTS = ("#0077FF", "#FF3985", "#520A77", "#00B2A9", "#FFAA00", "#7B61FF")
+# Логические элементы диаграммы (CT_Boolean): val по схеме по умолчанию «true», и python-pptx
+# при True атрибут опускает. ONLYOFFICE такой пустой элемент читает как «false»: скрытая ось
+# остаётся видна, сглаженная линия ломается. Поэтому val пишется всегда.
+BOOLEAN_TAGS = frozenset(
+    {
+        "autoTitleDeleted",
+        "auto",
+        "bubble3D",
+        "date1904",
+        "delete",
+        "invertIfNegative",
+        "marker",
+        "noMultiLvlLbl",
+        "overlay",
+        "plotVisOnly",
+        "roundedCorners",
+        "showBubbleSize",
+        "showCatName",
+        "showDLblsOverMax",
+        "showLeaderLines",
+        "showLegendKey",
+        "showPercent",
+        "showSerName",
+        "showVal",
+        "smooth",
+        "varyColors",
+    }
+)
+_C_NS = "{http://schemas.openxmlformats.org/drawingml/2006/chart}"
 
 
 @dataclass
@@ -345,7 +374,21 @@ def add_chart(
     x, y, cx, cy = box
     frame = slide.shapes.add_chart(CHART_TYPES[spec.chart_type], x, y, cx, cy, chart_data(spec))
     style_chart(frame.chart, spec, style, restyle_series=True)
+    explicit_booleans(frame.chart)
     return frame
+
+
+def explicit_booleans(chart: Any) -> None:
+    """Пустые логические элементы диаграммы получают явный val="1" (см. BOOLEAN_TAGS)."""
+    for el in chart._chartSpace.iter():
+        tag = el.tag if isinstance(el.tag, str) else ""
+        if (
+            tag.startswith(_C_NS)
+            and tag[len(_C_NS) :] in BOOLEAN_TAGS
+            and el.get("val") is None
+            and len(el) == 0
+        ):
+            el.set("val", "1")
 
 
 def chart_family_of(chart: Any) -> str:
@@ -377,6 +420,7 @@ def replace_or_add_chart(
         chart = frame.chart
         chart.replace_data(chart_data(spec))
         style_chart(chart, spec, style, restyle_series=False)
+        explicit_booleans(chart)
         return frame, "replaced"
     if frame is not None:
         remove_shape(slide, frame._element)
@@ -414,6 +458,7 @@ __all__ = [
     "chart_family_of",
     "chart_spec",
     "describe_chart",
+    "explicit_booleans",
     "luminance",
     "replace_or_add_chart",
     "style_chart",

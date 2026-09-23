@@ -64,6 +64,9 @@ class ReadSeries(_Strict):
     axis: Literal["primary", "secondary"] = "primary"
     smooth: bool = False
     points: list[Point]
+    point_colors: list[str] = Field(
+        default_factory=list, description="цвет каждой точки, когда столбцы ряда выделены цветом"
+    )
 
 
 class Scale(_Strict):
@@ -71,6 +74,21 @@ class Scale(_Strict):
     maximum: float
     major_unit: float | None = None
     number_format: str = "General"
+
+
+class Geometry(_Strict):
+    """Размеры на картинке в пикселях: по ним нативная диаграмма повторяет пропорции."""
+
+    plot: tuple[int, int, int, int] | None = Field(
+        default=None, description="область данных: left, top, right, bottom (кольцо — его рамка)"
+    )
+    stroke: list[float | None] = Field(default_factory=list, description="толщина линии ряда")
+    bar: float | None = Field(default=None, description="толщина столбца или полосы")
+    pitch: float | None = Field(default=None, description="шаг категорий")
+    font: float | None = Field(default=None, description="кегль подписей (шкала, легенда), px")
+    value_max: float | None = Field(
+        default=None, description="максимум оси значений, когда шкалы на картинке нет"
+    )
 
 
 class ChartReading(_Strict):
@@ -92,6 +110,7 @@ class ChartReading(_Strict):
     title: str | None = None
     width: int
     height: int
+    geometry: Geometry = Field(default_factory=Geometry)
     notes: list[str] = Field(default_factory=list)
 
     def counts(self) -> dict[str, int]:

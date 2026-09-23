@@ -317,6 +317,42 @@ def _replace_paragraphs(body: Any, old: list[Any], new: list[Any]) -> None:
         body.insert(first_index + offset, p)
 
 
+# Подсказки пустых плейсхолдеров — те же слова, что редактор рисует на пустом месте.
+PROMPTS = {
+    "ru": {"title": "Заголовок слайда", "subtitle": "Подзаголовок слайда", "body": "Текст слайда"},
+    "en": {"title": "Slide title", "subtitle": "Slide subtitle", "body": "Slide text"},
+}
+_PROMPT_KIND = {
+    "title": "title",
+    "ctrTitle": "title",
+    "subTitle": "subtitle",
+    "body": "body",
+    "obj": "body",
+}
+
+
+def fill_empty_placeholders(slides: Any, language: str = "ru") -> int:
+    """Пустые текстовые плейсхолдеры получают текст своей подсказки.
+
+    Редактор показывает на пустом плейсхолдере «Заголовок слайда», но в миниатюрах, превью и
+    экспорте подсказки нет, а по щелчку она исчезает: на слайде виден заголовок, которого нет.
+    Текст ложится с оформлением пустого абзаца, то есть макета. Возвращает число заполненных."""
+    prompts = PROMPTS.get(language) or PROMPTS["ru"]
+    filled = 0
+    for slide in slides:
+        for shape in slide.placeholders:
+            element = shape._element
+            ph = element.find("p:nvSpPr/p:nvPr/p:ph", NS)
+            if ph is None:  # картинки, таблицы и диаграммы-плейсхолдеры — не p:sp
+                continue
+            kind = _PROMPT_KIND.get(ph.get("type", "obj"))
+            if kind is None or plain_text(element).strip():
+                continue
+            fill_text(element, prompts[kind])
+            filled += 1
+    return filled
+
+
 def plain_text(element: Any) -> str:
     """Текст фигуры: абзацы через `\\n`, `a:br` тоже как перенос строки."""
     body = text_body(element)
@@ -442,10 +478,12 @@ def set_field_text(element: Any, field_type: str, text: str) -> int:
 
 __all__ = [
     "FACT_REF",
+    "PROMPTS",
     "TextResult",
     "clear_text",
     "fact_text",
     "fill_bullets",
+    "fill_empty_placeholders",
     "fill_text",
     "plain_text",
     "set_field_text",

@@ -273,7 +273,14 @@ def _progress_message(stage: str, variants: list[JsonDict]) -> str:
         return "Задание в очереди"
     if stage == "story":
         return "Строится общий смысловой план"
-    return f"Вариантов с файлами: {ready} из {len(variants)}; аудит завершён у {audited}"
+    # Первый вариант собирается один, остальные — за ним в фоне: строка говорит о том же.
+    if ready == 0:
+        return "Собираю первый вариант" if len(variants) > 1 else "Собираю презентацию"
+    if ready < len(variants):
+        rest = len(variants) - ready
+        word = plural(rest, "вариант собирается", "варианта собираются", "вариантов собираются")
+        return f"Готово {ready} из {len(variants)}, ещё {rest} {word} в фоне"
+    return f"Все варианты готовы, аудит завершён у {audited} из {len(variants)}"
 
 
 def build_job_status(state: State, job_id: str) -> JsonDict:

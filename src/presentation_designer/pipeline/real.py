@@ -19,6 +19,7 @@ import logging
 import pathlib
 import re
 import time
+from collections.abc import Callable
 from typing import Any
 
 from presentation_designer import design
@@ -47,6 +48,7 @@ from presentation_designer.pipeline.run import (
     AnalyzeOutput,
     AuditInput,
     BriefInput,
+    ChartImagesOutput,
     ComposeInput,
     ComposeOutput,
     EditInput,
@@ -478,6 +480,90 @@ class RealLayers(StubLayers):
         )
         return plan
 
+    # ----- диаграммы-картинки готовой презентации -----
+
+    def _read_deck_charts(
+        self, prs: Any, progress: Callable[[str, float], None] | None = None
+    ) -> tuple[dict[str, Any], dict[str, list[int]]] | None:
+        """Картинки презентации, похожие на диаграммы, — чтение моделью vlm: исходы по
+        sha256 картинки и номера слайдов. None — чтение выключено или модели нет."""
+        from presentation_designer.layout.chart_images import deck_pictures
+        from presentation_designer.parsing.raster_charts.pixels import chart_likeness, load
+        from presentation_designer.parsing.raster_charts.rebuild import read_chart_images
+        from presentation_designer.shared.text import plural
+
+        cfg = self.settings.layout.chart_images
+        if not cfg.enabled or cfg.max_images == 0:
+            return None
+        blobs, where = deck_pictures(prs)
+        candidates: dict[str, bytes] = {}
+        for sha, data in blobs.items():
+            try:
+                if chart_likeness(load(data)).ok:
+                    candidates[sha] = data
+            except Exception:  # битая картинка остаётся как есть
+                continue
+        if not candidates:
+            return {}, where
+        client = self.llm_client()
+        if client is None or not client.target("vlm").provider.configured():
+            log.warning("диаграммы-картинки не читаются: модель vlm не настроена")
+            return None
+        on_read: Callable[[int, int], None] | None = None
+        if progress is not None:
+            n = len(candidates)
+            what = plural(n, "картинка похожа", "картинки похожи", "картинок похожи")
+            progress(f"Делаю диаграммы редактируемыми: {n} {what} на диаграммы", 0.0)
+
+            def on_read(done: int, total: int) -> None:
+                progress(f"Делаю диаграммы редактируемыми: {done} из {total}", done / total)
+
+        started = time.perf_counter()
+        outcomes = read_chart_images(
+            candidates, client, budget_s=cfg.budget_s, max_images=cfg.max_images, on_read=on_read
+        )
+        counts: dict[str, int] = {}
+        for o in outcomes.values():
+            counts[o.status] = counts.get(o.status, 0) + 1
+        log.info(
+            "диаграммы-картинки: %d кандидатов из %d картинок, %s, %d мс",
+            len(candidates),
+            len(blobs),
+            counts,
+            int((time.perf_counter() - started) * 1000),
+        )
+        return outcomes, where
+
+    def chart_images(
+        self, pptx_path: pathlib.Path, progress: Callable[[str, float], None] | None = None
+    ) -> ChartImagesOutput:
+        """Копия готовой презентации: диаграммы-картинки заменяются нативными на месте."""
+        from pptx import Presentation
+
+        from presentation_designer.layout.chart_images import (
+            charts_report,
+            swap_pictures,
+            swap_summary,
+            unread_charts,
+        )
+
+        prs = Presentation(str(pptx_path))
+        read = self._read_deck_charts(prs, progress)
+        if read is None:
+            return ChartImagesOutput()
+        outcomes, where = read
+        readings = {sha: o.reading for sha, o in outcomes.items() if o.reading is not None}
+        swaps = swap_pictures(prs, readings) if readings else []
+        replaced = sum(1 for s in swaps if s.status == "replaced")
+        if replaced:
+            prs.save(str(pptx_path))
+        message = swap_summary(swaps, unread_charts(outcomes, where))
+        return ChartImagesOutput(
+            report=charts_report(outcomes, where, swaps, message),
+            message=message,
+            replaced=replaced,
+        )
+
     # ----- вёрстка -----
 
     def compose(self, inp: ComposeInput) -> ComposeOutput:
@@ -503,6 +589,7 @@ class RealLayers(StubLayers):
             from presentation_designer.generation.design_mode import validate_plan_mode
 
             validate_plan_mode(plan, inp.template_profile, inp.settings)
+        chart_readings, read_here = self._original_charts(inp)
         try:
             result = compose_deck(
                 plan,
@@ -522,15 +609,17 @@ class RealLayers(StubLayers):
                 extra_assets=dict(inp.extra_assets),
                 media_dir=inp.staging.path("media"),
                 media_prefix=inp.staging.prefix,
+                chart_readings=chart_readings,
             )
         except ComposeError as e:
             raise StageError(e.code, str(e), retryable=e.retryable, stage="compose") from e
         attach_deck_fonts(result.deck, inp.staging)
+        chart_warning = self._chart_report(inp, result, read_here)
         inp.staging.write_json("composed.json", result.deck)
         inp.staging.write_json("plan.json", plan)
         inp.staging.write_json("story.json", inp.story)
         self.last_compose_report = result.report
-        warnings: list[JsonDict] = []
+        warnings: list[JsonDict] = [chart_warning] if chart_warning else []
         if (
             inp.variant_id != ORIGINAL_VARIANT
             and inp.settings.get("design_mode") == "template_only"
@@ -570,6 +659,54 @@ class RealLayers(StubLayers):
             composed_deck=result.deck,
             warnings=warnings,
         )
+
+    def _original_charts(self, inp: ComposeInput) -> tuple[dict[str, Any] | None, Any]:
+        """Чтения диаграмм-картинок для сборки original: из charts.json предварительной
+        ревизии (та же колода, что уже показана) или прочитанные по самому шаблону —
+        файл шаблона не меняется, заменяет compose_deck. Второе значение — исходы
+        собственного чтения для отчёта."""
+        if inp.variant_id != ORIGINAL_VARIANT or inp.template_path is None:
+            return None, None
+        from presentation_designer.layout.chart_images import report_readings
+
+        if inp.chart_report is not None:
+            return dict(report_readings(inp.chart_report)), None
+        try:
+            from pptx import Presentation
+
+            read = self._read_deck_charts(Presentation(str(inp.template_path)))
+        except Exception:  # замена диаграмм необязательна: колода собирается как есть
+            log.warning("диаграммы-картинки %s не прочитаны", inp.job_id, exc_info=True)
+            return None, None
+        if read is None:
+            return None, None
+        outcomes, _ = read
+        readings = {sha: o.reading for sha, o in outcomes.items() if o.reading is not None}
+        return readings, read
+
+    def _chart_report(self, inp: ComposeInput, result: Any, read_here: Any) -> JsonDict | None:
+        """charts.json ревизии original; предупреждение для чата — только если диаграммы
+        читала сама сборка (после предварительной ревизии фраза уже в задании)."""
+        if inp.variant_id != ORIGINAL_VARIANT:
+            return None
+        from presentation_designer.layout.chart_images import (
+            charts_report,
+            swap_summary,
+            unread_charts,
+        )
+
+        if inp.chart_report is not None:
+            if inp.chart_report:
+                inp.staging.write_json("charts.json", inp.chart_report)
+            return None
+        if read_here is None:
+            return None
+        outcomes, where = read_here
+        message = swap_summary(result.chart_swaps, unread_charts(outcomes, where))
+        inp.staging.write_json(
+            "charts.json", charts_report(outcomes, where, result.chart_swaps, message)
+        )
+        return {"code": "chart_images", "message": message} if message else None
 
     def polish_plan(self, inp: ComposeInput) -> JsonDict:
         """План, исправленный по фактам черновой сборки.

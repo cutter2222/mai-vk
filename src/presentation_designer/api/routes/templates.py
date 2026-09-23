@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Request, Response
@@ -17,6 +18,7 @@ from presentation_designer.api.errors import ApiError
 from presentation_designer.pipeline.files import MIME_BY_FORMAT, format_for, safe_name
 from presentation_designer.pipeline.results import template_detail
 from presentation_designer.pipeline.state import NotFound
+from presentation_designer.pipeline.thumbnails import render
 
 router = APIRouter(tags=["templates"])
 
@@ -159,10 +161,7 @@ def download_template(template_id: str, orch: Orch) -> FileResponse:
     )
 
 
-@router.get("/templates/{template_id}/media/{asset_id}")
-def template_media(template_id: str, asset_id: str, orch: Orch, request: Request) -> Response:
-    """Байты ресурса шаблона (иконка, логотип, картинка) из профиля: извлекаются из файла
-    шаблона в каталог шаблона при первом запросе; ETag — sha256 ресурса."""
+def _profile_asset(orch: Orch, template_id: str, asset_id: str) -> dict[str, Any]:
     try:
         template = orch.state.get_template(template_id)
     except NotFound as e:
@@ -177,19 +176,56 @@ def template_media(template_id: str, asset_id: str, orch: Orch, request: Request
     )
     if asset is None:
         raise ApiError(404, "asset_not_found", "Ресурс не найден в профиле шаблона")
+    return dict(asset)
+
+
+def _media_path(orch: Orch, template_id: str, asset: dict[str, Any]) -> Path:
     try:
-        path = orch.extract_template_media(template_id, asset)
+        return orch.extract_template_media(template_id, asset)
     except FileNotFoundError as e:
         raise ApiError(404, "asset_not_found", "Файл ресурса отсутствует") from e
+
+
+def _media_etag(asset: dict[str, Any], path: Path) -> str:
     sha = str(asset.get("sha256") or "").split(":", 1)[-1].lower()
     if not re.fullmatch(r"[0-9a-f]{16,64}", sha):
         sha = hashlib.sha256(path.read_bytes()).hexdigest()
-    etag = f'"{sha}"'
+    return sha
+
+
+@router.get("/templates/{template_id}/media/{asset_id}")
+def template_media(template_id: str, asset_id: str, orch: Orch, request: Request) -> Response:
+    """Байты ресурса шаблона (иконка, логотип, картинка) из профиля: извлекаются из файла
+    шаблона в каталог шаблона при первом запросе; ETag — sha256 ресурса."""
+    asset = _profile_asset(orch, template_id, asset_id)
+    path = _media_path(orch, template_id, asset)
+    etag = f'"{_media_etag(asset, path)}"'
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304)
     headers = {"Cache-Control": "public, max-age=86400", "ETag": etag}
     return FileResponse(
         path, media_type=_media_type(str(asset.get("media_path") or "")), headers=headers
+    )
+
+
+@router.get("/templates/{template_id}/media/{asset_id}/thumbnail")
+def template_media_thumbnail(
+    template_id: str, asset_id: str, orch: Orch, request: Request
+) -> Response:
+    """Миниатюра ресурса для сетки «Из шаблона»: картинки шаблона бывают по 2000 px, а
+    в сетке их сотни. Лежит рядом с извлечённым файлом и уходит вместе с шаблоном."""
+    asset = _profile_asset(orch, template_id, asset_id)
+    path = _media_path(orch, template_id, asset)
+    etag = f'"{_media_etag(asset, path)}-thumb"'
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304)
+    thumb = render(path, "image", path.parent / "thumbs" / f"{path.stem}.webp")
+    if thumb is None:
+        raise ApiError(404, "thumbnail_unavailable", "Для этого ресурса миниатюры нет")
+    return FileResponse(
+        thumb,
+        media_type="image/webp",
+        headers={"Cache-Control": "public, max-age=86400", "ETag": etag},
     )
 
 

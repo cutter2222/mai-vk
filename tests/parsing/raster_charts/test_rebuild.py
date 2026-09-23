@@ -165,6 +165,47 @@ def test_bars_without_axis_take_labels_and_scale_the_rest_by_length() -> None:
     assert abs(points[3].value - 38) <= 0.5
 
 
+COMPETITORS = ["VK", "Конкурент 1", "Конкурент 2", "Конкурент 3", "Конкурент 4"]
+
+
+def test_highlighted_columns_are_found_by_every_color_of_the_series() -> None:
+    # Модель называет один цвет ряда — выделенный; остальные столбцы светлые, их находит замер.
+    st = ChartStructure(
+        status="chart",
+        kind="column",
+        categories=COMPETITORS,
+        series=[
+            SeriesInfo(color="#007BFF", type="column", labels=["43%", "23%", "18%", "8%", "2%"])
+        ],
+        primary_axis=AxisInfo(ticks=[]),
+    )
+    r = _read(synth.highlighted([43, 23, 18, 8, 2], COMPETITORS), st)
+    points = r.series[0].points
+    assert [p.value for p in points] == [43, 23, 18, 8, 2]
+    assert all(p.basis == "label" for p in points)
+    light = "#{:02X}{:02X}{:02X}".format(*synth.LIGHT)
+    assert r.series[0].point_colors == ["#0077FF", light, light, light, light]
+
+
+def test_highlighted_bars_work_sideways_and_plain_bars_keep_one_color() -> None:
+    values = [79, 63, 43, 38, 10]
+    names = ["Первый", "Второй", "Третий", "Четвёртый", "Пятый"]
+    colors = [synth.LIGHT, synth.LIGHT, synth.BLUE, synth.LIGHT, synth.LIGHT]
+    st = ChartStructure(
+        status="chart",
+        kind="bar",
+        categories=names,
+        series=[SeriesInfo(color="#1E88E5", type="bar", labels=["79", "63", "43", "38", "10"])],
+        primary_axis=AxisInfo(ticks=[]),
+    )
+    r = _read(synth.hbars(values, names, colors=colors), st)
+    assert [p.value for p in r.series[0].points] == values
+    assert r.series[0].point_colors[2] == "#0077FF"
+    assert len(set(r.series[0].point_colors)) == 2
+    plain = _read(synth.hbars(values, names), st)
+    assert plain.series[0].point_colors == []
+
+
 def test_lines_are_measured_at_category_centers() -> None:
     a = [1.5, 13.6, 9.5, 18.8, 27.3]
     b = [0.5, 16.7, 8.5, 24.6, 18.8]

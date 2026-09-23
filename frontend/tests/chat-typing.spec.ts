@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 const reply = "Не нашёл в сообщении ничего про презентацию. Опишите задачу одной фразой: «сделай презентацию про запуск сервиса умных уведомлений для руководителей, чтобы одобрили пилот» — и перетащите шаблон PPTX и материалы.";
 const replies = (page: Page) => page.locator(".chat-msg > .chat-assistant-text");
-const greeting = "Опишите, какая нужна презентация, или перетащите сюда материалы. Шаблон оформления выберите справа.";
+const greeting = "Опишите, какая нужна презентация, или перетащите сюда материалы. Шаблон оформления выберите вверху справа.";
 
 async function setup(page: Page, history = false, settleGreeting = true) {
   const project = {

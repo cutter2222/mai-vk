@@ -103,6 +103,10 @@ class FileStore:
     def path_for(self, sha256: str) -> pathlib.Path:
         return self.root / sha256[:2] / sha256
 
+    def thumbnail_path(self, sha256: str) -> pathlib.Path:
+        """Миниатюра байтов для сетки файлов (см. pipeline/thumbnails.py)."""
+        return self.root / ".thumbs" / sha256[:2] / f"{sha256}.webp"
+
     def exists(self, sha256: str) -> bool:
         return self.path_for(sha256).is_file()
 
@@ -227,6 +231,7 @@ class FileStore:
     def remove(self, sha256: str) -> int:
         """Удаляет файл хранилища; возвращает освобождённые байты."""
         path = self.path_for(sha256)
+        self.thumbnail_path(sha256).unlink(missing_ok=True)
         try:
             size = path.stat().st_size
         except FileNotFoundError:

@@ -15,6 +15,7 @@
   --sky: #eef4ff;
   --mist: #f1f2f5;
   --line: #eceef2;
+  --checker: #c6cad3; /* ink.4: тёмная клетка шахматки под прозрачными картинками, на ней видны и белые логотипы */
 
   /* Текст. */
   --ink: #1a1a1a;
@@ -708,7 +709,65 @@ body {
   min-height: 0;
 }
 
+/* Сюда порталами кладут свои действия переключатель вариантов и редактор: одной строкой. */
+.office-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
 .office-header-actions:empty { display: none; }
+/* Место под слайды, пока PPTX готовой презентации ещё не открылся: под полосой прогресса. */
+.office-pending {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  min-height: 0;
+  padding: 40px;
+}
+
+/* Место под слайды, пока файл готовится: по плиткам проходит волна, число — настоящее. */
+.slide-skeletons {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 12px;
+  width: min(100%, 880px);
+  max-height: 70%;
+  overflow: hidden;
+}
+
+.slide-skeleton {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: 6px;
+  background: var(--mantine-color-gray-1);
+  animation: slide-skeleton 1.8s ease-in-out infinite;
+}
+
+.slide-skeleton span {
+  position: absolute;
+  left: 8px;
+  bottom: 5px;
+  color: var(--mantine-color-gray-5);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes slide-skeleton {
+  50% { background: var(--mantine-color-gray-3); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slide-skeleton { animation: none; }
+}
+/* Разделитель перед выбором шаблона лишний, если левее пусто или уже стоит разделитель:
+   слот редактора пуст, пока документ не открыт, а кнопок задания может не быть. */
+.editor-header-actions > .office-header-actions:empty:first-child + .editor-header-sep,
+.editor-header-sep + .office-header-actions:empty + .editor-header-sep { display: none; }
 
 .office-canvas {
   position: relative;
@@ -719,6 +778,46 @@ body {
 }
 
 .office-canvas > iframe { display: block; border: 0; }
+/* Приёмник брошенной картинки поверх iframe редактора: виден только во время перетаскивания. */
+.office-drop {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  border: 2px dashed var(--accent);
+  background: color-mix(in srgb, var(--sky) 35%, transparent);
+  transition: background 120ms ease;
+}
+
+.office-drop[data-over] {
+  background: color-mix(in srgb, var(--accent-soft) 60%, transparent);
+}
+
+.office-drop span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 10px 16px;
+  border-radius: var(--mantine-radius-md);
+  background: var(--page);
+  box-shadow: var(--shadow-lift);
+  color: var(--accent-dark);
+  font-size: 14px;
+  font-weight: 500;
+  pointer-events: none;
+}
+
+.file-card[draggable="true"] {
+  cursor: grab;
+}
+
+.file-card[draggable="true"]:active {
+  cursor: grabbing;
+}
 .office-loading {
   position: absolute;
   inset: 0;
@@ -1059,41 +1158,99 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
-.file-row {
+/* Сетка карточек: миниатюра сверху, имя и роль под ней, действия поверх миниатюры. */
+.files-head {
+  padding-bottom: 0;
+}
+
+.file-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 10px;
+}
+
+.file-grid-assets {
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 8px;
+}
+
+.file-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--mantine-radius-md);
+  background: var(--page);
+  overflow: hidden;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.file-card:hover,
+.file-card:focus-within {
+  border-color: var(--accent-soft);
+  box-shadow: var(--shadow-soft);
+}
+
+.file-thumb {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 7px 8px;
-  margin: 0 -8px;
-  border-radius: var(--mantine-radius-sm);
-}
-
-.file-row:hover {
+  justify-content: center;
+  aspect-ratio: 4 / 3;
   background: var(--card);
-}
-
-.file-row .file-icon {
-  display: inline-flex;
   color: var(--ink2);
-  flex: 0 0 auto;
+  overflow: hidden;
 }
 
-.file-row .file-main {
-  min-width: 0;
-  flex: 1;
+.file-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
-.file-row .file-actions {
+/* Ресурсы шаблона часто прозрачные: шахматка показывает их границы. */
+.asset-card .file-thumb {
+  aspect-ratio: 1;
+  padding: 8px;
+  background: repeating-conic-gradient(var(--checker) 0% 25%, var(--mist) 0% 50%) 0 0 / 12px 12px;
+}
+
+.file-thumb-icon {
   display: inline-flex;
-  gap: 2px;
+}
+
+.file-meta {
+  min-width: 0;
+  padding: 6px 8px 7px;
+  border-top: 1px solid var(--line);
+}
+
+.file-card .file-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  gap: 4px;
   opacity: 0;
   transition: opacity 120ms ease;
 }
 
-.file-row:hover .file-actions,
-.file-row:focus-within .file-actions,
-.file-row .file-actions[data-always] {
+.file-card:hover .file-actions,
+.file-card:focus-within .file-actions {
   opacity: 1;
+}
+
+@media (hover: none) {
+  .file-card .file-actions {
+    opacity: 1;
+  }
+}
+
+.template-assets-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0 12px;
 }
 
 /* Подсказка в конце списка: вся панель принимает перетаскивание, клик открывает выбор файла. */
@@ -2107,6 +2264,21 @@ body {
 
 /* Варианты ответа: кнопки-реплики под сообщением, как у ботов в мессенджерах. Отдельный вид
    от кнопок формы: это продолжение разговора, а не действие над экраном. */
+/* Ход открытия готовой презентации под «Открываю…»: время, этап и процент одной строкой. */
+.deck-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 380px;
+  margin-top: 2px;
+}
+
+.deck-progress-time {
+  flex-shrink: 0;
+  color: var(--mantine-primary-color-filled);
+  font-variant-numeric: tabular-nums;
+}
+
 .chat-options {
   display: flex;
   flex-wrap: wrap;
@@ -2166,24 +2338,3 @@ body {
   background: var(--card);
 }
 
-/* Метка сообщения: «#аудит» мелким серым под текстом. Нажатие сужает ленту до этого шага. */
-.chat-tag {
-  margin-top: 4px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--ink2);
-  font: inherit;
-  font-size: 11px;
-  opacity: 0.7;
-  cursor: pointer;
-}
-
-.chat-tag:hover {
-  color: var(--accent);
-  opacity: 1;
-}
-
-.chat-msg-user .chat-tag {
-  align-self: flex-end;
-}

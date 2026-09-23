@@ -47,6 +47,11 @@ def build_parser() -> argparse.ArgumentParser:
             "read-charts", help="диаграммы-картинки из PPTX: устройство, значения, оверлеи"
         )
     )
+    charts_cmd.build_rebuild_parser(
+        sub.add_parser(
+            "rebuild-charts", help="диаграммы-картинки PPTX → нативные редактируемые диаграммы"
+        )
+    )
     for name in PLANNED:
         sub.add_parser(name, help="подключается на этапе реализации соответствующего слоя")
     return parser
@@ -64,6 +69,8 @@ def main(argv: list[str] | None = None) -> int:
         return import_cmd.run(args)
     if args.command == "read-charts":
         return charts_cmd.run(args)
+    if args.command == "rebuild-charts":
+        return charts_cmd.rebuild(args)
     if args.command == "story":
         return story_cmd.run(args)
     if args.command == "plan":

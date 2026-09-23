@@ -337,6 +337,34 @@ def test_disabled(client):
     assert client.post("/api/office/templates/no/config").status_code == 503
 
 
+def test_capabilities_give_the_sdk_address_for_warm_up(client, office):
+    # Интерфейс прогревает редактор, пока презентация готовится, а не после её появления.
+    body = client.get("/api/office/capabilities").json()
+    assert body["enabled"] is True
+    assert body["script_url"].endswith("/web-apps/apps/api/documents/api.js?rendering=pd16v2")
+
+
+def test_logo_edit_explains_what_is_missing(client, office):
+    _, doc_id = office
+    # Документ без задания-источника: шаблона нет, логотип менять не по чему.
+    response = client.post(
+        f"/api/office/documents/{doc_id}/edit",
+        json={"revision": 0, "instruction": "убери логотип", "logo": {"action": "remove"}},
+    )
+    assert response.status_code == 422
+    assert "шаблон" in response.json()["error"]["message"]
+    both = client.post(
+        f"/api/office/documents/{doc_id}/edit",
+        json={
+            "revision": 0,
+            "instruction": "убери логотип",
+            "logo": {"action": "remove"},
+            "target": {"slide": 1, "shape_id": "2"},
+        },
+    )
+    assert both.status_code == 422
+
+
 @pytest.mark.parametrize("format,media", [("pdf", "application/pdf"), ("html", "text/html")])
 def test_export_saved_revision(client, office, monkeypatch, format, media):
     store, doc_id = office
@@ -774,3 +802,65 @@ def test_concurrent_creation_and_keys(office, pptx_bytes):
         keys = list(pool.map(open_copy, range(8)))
     assert len(set(keys)) == 1
     assert store.get(doc_id)["revision"] == 0
+
+
+def test_insert_image_signs_command_for_project_file_and_template_asset(client, office, tmp_path):
+    from PIL import Image
+
+    from tests.fixtures.rich_template import build_rich_template
+
+    _, doc_id = office
+    url = f"/api/office/documents/{doc_id}/images"
+    project = client.post("/api/projects", json={}).json()["project_id"]
+    png = io.BytesIO()
+    Image.new("RGB", (40, 20), (200, 30, 30)).save(png, format="PNG")
+    photo, notes = client.post(
+        f"/api/projects/{project}/files",
+        files=[
+            ("files", ("фото.png", png.getvalue(), "image/png")),
+            ("files", ("notes.txt", b"text", "text/plain")),
+        ],
+    ).json()
+
+    response = client.post(url, json={"project_id": project, "file_id": photo["file_id"]})
+    assert response.status_code == 200, response.text
+    command = response.json()
+    image_url = f"http://api:8000/api/projects/{project}/files/{photo['file_id']}/content"
+    assert command["c"] == "add"
+    assert command["images"] == [{"fileType": "png", "url": image_url}]
+    # Document Server проверяет подпись браузерной команды тем же секретом.
+    assert verify(command["token"], SECRET) == {"c": "add", "images": command["images"]}
+    # Ссылка для Document Server отдаёт ровно эти байты.
+    assert client.get(urlsplit(image_url).path).content == png.getvalue()
+
+    def error(body):
+        r = client.post(url, json=body)
+        return r.status_code, r.json()["error"]["code"]
+
+    assert error({"project_id": project, "file_id": notes["file_id"]}) == (422, "file_not_image")
+    other = client.post("/api/projects", json={}).json()["project_id"]
+    assert error({"project_id": other, "file_id": photo["file_id"]}) == (404, "file_not_found")
+    assert client.post(url, json={"file_id": photo["file_id"]}).status_code == 422
+    assert (
+        client.post(
+            "/api/office/documents/missing/images",
+            json={"project_id": project, "file_id": photo["file_id"]},
+        ).status_code
+        == 404
+    )
+
+    rich = build_rich_template(tmp_path / "rich.pptx").read_bytes()
+    template_id = client.post("/api/templates", files={"file": ("Шаблон.pptx", rich)}).json()[
+        "template_id"
+    ]
+    assets = client.get(f"/api/templates/{template_id}").json()["profile"]["assets"]
+    asset = next(a for a in assets if a["media_path"].startswith("ppt/media/"))
+    command = client.post(url, json={"template_id": template_id, "asset_id": asset["asset_id"]})
+    assert command.status_code == 200, command.text
+    image = command.json()["images"][0]
+    assert image["url"] == f"http://api:8000/api/templates/{template_id}/media/{asset['asset_id']}"
+    assert client.get(urlsplit(image["url"]).path).status_code == 200
+    assert error({"template_id": template_id, "asset_id": "asset_nope"}) == (
+        404,
+        "asset_not_found",
+    )

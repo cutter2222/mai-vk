@@ -560,6 +560,8 @@ def test_template_media_endpoint(client: TestClient, tmp_path: pathlib.Path) -> 
     """Ресурсы шаблона для панели редактора: байты по asset_id профиля с ETag, 404 для
     чужого идентификатора. Заглушка анализа отдаёт профиль примера (asset_logo →
     ppt/media/image1.png), поэтому шаблон — синтетический с картинками."""
+    from PIL import Image
+
     from tests.fixtures.rich_template import build_rich_template
 
     rich = build_rich_template(tmp_path / "rich_template.pptx").read_bytes()
@@ -588,6 +590,13 @@ def test_template_media_endpoint(client: TestClient, tmp_path: pathlib.Path) -> 
         headers={"if-none-match": r.headers["etag"]},
     )
     assert cached.status_code == 304
+    # Миниатюра для сетки «Из шаблона»: WebP не больше 480 px, отдельный ETag.
+    thumb = client.get(f"/api/templates/{template_id}/media/{asset['asset_id']}/thumbnail")
+    assert thumb.status_code == 200 and thumb.headers["content-type"] == "image/webp"
+    assert thumb.headers["etag"] != r.headers["etag"]
+    with Image.open(io.BytesIO(thumb.content)) as image:
+        assert max(image.size) <= 480
+    assert client.get(f"/api/templates/{template_id}/media/asset_nope/thumbnail").status_code == 404
 
 
 def test_partial_failure_and_cancel(

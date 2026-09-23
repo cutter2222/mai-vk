@@ -1,7 +1,7 @@
 "use client";
 
 import { FileButton, Group, Loader, Menu, Text, UnstyledButton } from "@mantine/core";
-import { IconCheck, IconChevronDown, IconPlus, IconTemplate } from "@tabler/icons-react";
+import { IconAlertTriangle, IconCheck, IconChevronDown, IconPlus, IconTemplate } from "@tabler/icons-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from "react";
 import { api, type TemplateListItem } from "@/lib/api/client";
@@ -9,15 +9,13 @@ import type { Project } from "@/lib/state/projects";
 import styles from "./TemplatePicker.module.css";
 
 /**
- * Выбор шаблона оформления: из библиотеки или свой PPTX. До первой генерации стоит в центре
- * правой панели — там, где потом появится презентация; после — компактно в шапке проекта,
- * чтобы шаблон можно было сменить и пересобрать.
+ * Выбор шаблона оформления: из библиотеки или свой PPTX. Всегда в правом углу шапки проекта —
+ * и до первой генерации, и когда презентация уже есть: шаблон можно сменить и пересобрать.
  */
-export function TemplatePicker({ project, onSelectTemplate, onUploadTemplate, compact = false }: {
+export function TemplatePicker({ project, onSelectTemplate, onUploadTemplate }: {
   project: Project;
-  onSelectTemplate: (id: string) => void;
+  onSelectTemplate: (id: string, name: string) => void;
   onUploadTemplate: (file: File) => Promise<void>;
-  compact?: boolean;
 }) {
   const [uploading, setUploading] = useState(false);
   const upload = async (file: File | null) => {
@@ -31,6 +29,7 @@ export function TemplatePicker({ project, onSelectTemplate, onUploadTemplate, co
   const [menuOpen, setMenuOpen] = useState(false);
   const currentTemplate = templates.find((t) => t.template_id === project.template_id);
   const analyzing = Boolean(project.template_id) && (!currentTemplate || currentTemplate.status === "queued" || currentTemplate.status === "running");
+  const failed = currentTemplate?.status === "failed";
   useEffect(() => {
     let cancelled = false;
     const load = () => api.templates.list().then((t) => { if (!cancelled) setTemplates(t); }).catch(() => { if (!cancelled) setTemplates([]); });
@@ -73,43 +72,43 @@ export function TemplatePicker({ project, onSelectTemplate, onUploadTemplate, co
   /* eslint-disable @next/next/no-img-element */
 
   return (
-    <div className={compact ? styles.compactRoot : styles.root} data-testid="template-start">
+    <div className={styles.root} data-testid="template-start">
       {/* FileButton остаётся смонтированным после закрытия меню, пока открыт выбор файла. */}
       <FileButton onChange={(file) => void upload(file)} accept=".pptx">
         {(uploadProps) => (
         <Menu
           withinPortal
-          position={compact ? "bottom-end" : "bottom-start"}
+          position="bottom-end"
           shadow="md"
           opened={menuOpen}
           onChange={setMenuOpen}
-          width={compact ? 340 : "target"}
+          width={340}
           // Длинное имя шаблона не должно раздвигать список и уводить его за край окна:
           // ширина списка ограничена окном, подпись сжимается и обрезается многоточием.
           styles={{ dropdown: { maxWidth: "calc(100vw - 24px)" }, itemLabel: { minWidth: 0 } }}
         >
           <Menu.Target>
             <UnstyledButton
-              className={compact ? `${styles.trigger} ${styles.compact}` : styles.trigger}
+              className={styles.trigger}
               disabled={uploading}
               aria-busy={uploading}
-              title={compact ? "Шаблон оформления" : undefined}
+              // Пока шаблон не выбран, кнопка выделена цветом: это первый шаг проекта.
+              data-empty={!project.template_id || undefined}
+              title={uploading ? "Загружаем шаблон" : failed ? "Анализ шаблона не удался — выберите другой" : analyzing ? "Анализируем оформление шаблона" : "Шаблон оформления"}
               onKeyDown={onTriggerKeyDown}
               data-testid="template-menu"
             >
               <span className={styles.preview}>
-                {uploading || analyzing ? <Loader size={compact ? 14 : 20} /> : thumb(currentTemplate) ? (
+                {uploading || analyzing ? <Loader size={14} /> : failed ? (
+                  <IconAlertTriangle size={16} stroke={1.7} color="var(--mantine-color-red-6)" aria-label="Анализ не удался" data-testid="template-failed" />
+                ) : thumb(currentTemplate) ? (
                   <img src={thumb(currentTemplate)} alt="" data-testid="template-thumb" />
-                ) : <IconTemplate size={compact ? 16 : 24} stroke={1.5} />}
+                ) : <IconTemplate size={16} stroke={1.5} />}
               </span>
               <span className={styles.copy}>
-                {!compact && <span className={styles.caption}>Шаблон оформления</span>}
                 <span className={styles.name}>
                   {uploading ? "Загружаем шаблон…" : currentTemplate ? currentTemplate.name.replace(/\.pptx$/i, "") : project.template_id ? "Шаблон" : "Выбрать шаблон"}
                 </span>
-                {!compact && (analyzing || currentTemplate?.status === "failed") && !uploading && (
-                  <span className={styles.caption}>{currentTemplate?.status === "failed" ? "Анализ не удался · выберите другой" : "Анализируем оформление…"}</span>
-                )}
               </span>
               <IconChevronDown size={16} className={styles.chevron} aria-hidden />
             </UnstyledButton>
@@ -128,7 +127,7 @@ export function TemplatePicker({ project, onSelectTemplate, onUploadTemplate, co
                 key={t.template_id}
                 className={styles.option}
                 data-selected={t.template_id === project.template_id || undefined}
-                onClick={() => onSelectTemplate(t.template_id)}
+                onClick={() => onSelectTemplate(t.template_id, t.name)}
                 leftSection={<span className={styles.optionPreview}>{thumb(t) ? <img src={thumb(t)} alt="" /> : <IconTemplate size={20} stroke={1.5} />}</span>}
                 rightSection={t.template_id === project.template_id ? <IconCheck size={14} /> : undefined}
                 data-testid={`template-option-${t.template_id}`}

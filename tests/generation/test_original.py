@@ -5,11 +5,13 @@
 from __future__ import annotations
 
 import pathlib
+import shutil
 from copy import deepcopy
 from typing import Any
 
 import pytest
 from pptx import Presentation
+from pptx.enum.shapes import PP_PLACEHOLDER as PP
 
 from presentation_designer.contracts import ContentPackage, SlidePlan, StoryPlan, TemplateProfile
 from presentation_designer.contracts.validators import check_slide_plan, check_story_plan
@@ -21,6 +23,7 @@ from presentation_designer.generation.original import (
     skipped_slides,
 )
 from presentation_designer.layout.compose import compose_deck
+from presentation_designer.layout.text import fill_empty_placeholders
 from presentation_designer.parsing.content.importer import import_content
 from presentation_designer.parsing.content.parsers import ParseCache
 from presentation_designer.shared.settings import Settings
@@ -224,8 +227,20 @@ def test_unrecognized_blank_hidden_slides_survive_import_and_edit(
         assert old._element.xml == new._element.xml
 
 
+def _has_empty_text_placeholder(slide: Any) -> bool:
+    return any(
+        ph.has_text_frame
+        and not ph.text_frame.text.strip()
+        and ph.placeholder_format.type
+        in (PP.TITLE, PP.CENTER_TITLE, PP.SUBTITLE, PP.BODY, PP.OBJECT)
+        for ph in slide.placeholders
+    )
+
+
 @pytest.mark.organizer_data
-def test_vk_education_original_preserves_every_byte(tmp_path: pathlib.Path) -> None:
+def test_vk_education_original_keeps_slides_and_turns_prompts_into_text(
+    tmp_path: pathlib.Path,
+) -> None:
     source = (
         pathlib.Path(__file__).resolve().parents[2]
         / "data/organizers/Шаблон презентации VK Education.pptx"
@@ -242,7 +257,77 @@ def test_vk_education_original_preserves_every_byte(tmp_path: pathlib.Path) -> N
     out = tmp_path / "original.pptx"
     result = compose_deck(plan, profile, source, package, out_pptx=out)
     assert result.integrity.ok and len(result.deck["slides"]) == total
-    assert out.read_bytes() == source.read_bytes()
+    # Титул VK Education — пустые заголовок и текст: редактор подписывал их подсказкой, которая
+    # исчезала по щелчку и не попадала в превью. Теперь это текст с оформлением макета.
+    before, after = Presentation(str(source)), Presentation(str(out))
+    first = {ph.placeholder_format.type: ph.text_frame.text for ph in after.slides[0].placeholders}
+    assert first == {PP.TITLE: "Заголовок слайда", PP.BODY: "Текст слайда"}
+    assert not any(_has_empty_text_placeholder(s) for s in after.slides)
+    first_texts = [(o.get("text") or {}).get("plain") for o in result.deck["slides"][0]["objects"]]
+    assert "Заголовок слайда" in first_texts
+    # Остальные страницы переносятся как есть.
+    kept = [
+        (old, new)
+        for old, new in zip(before.slides, after.slides, strict=True)
+        if not _has_empty_text_placeholder(old)
+    ]
+    assert len(kept) > total // 2
+    assert all(old._element.xml == new._element.xml for old, new in kept)
+
+
+def test_empty_placeholders_become_the_prompt_text_the_editor_shows() -> None:
+    prs = Presentation(str(MINI_TEMPLATE))
+    samples = [s._element.xml for s in prs.slides]
+    title = prs.slides.add_slide(prs.slide_layouts[0])
+    caption = prs.slides.add_slide(prs.slide_layouts[8])
+    caption.shapes.title.text = "Свой заголовок"
+    assert fill_empty_placeholders(prs.slides) == 3
+    assert [ph.text_frame.text for ph in title.placeholders] == [
+        "Заголовок слайда",
+        "Подзаголовок слайда",
+    ]
+    texts = {ph.placeholder_format.type: ph.text_frame.text for ph in caption.placeholders}
+    # Заполненный заголовок не трогается, пустое место под картинку остаётся пустым.
+    assert texts == {PP.TITLE: "Свой заголовок", PP.PICTURE: "", PP.BODY: "Текст слайда"}
+    assert [s._element.xml for s in list(prs.slides)[: len(samples)]] == samples
+    english = Presentation(str(MINI_TEMPLATE))
+    fresh = english.slides.add_slide(english.slide_layouts[5])
+    assert fill_empty_placeholders([fresh], "en") == 1
+    assert fresh.shapes.title.text == "Slide title"
+
+
+def test_original_compose_and_preview_fill_empty_placeholders_alike(
+    tmp_path: pathlib.Path, import_settings: Settings
+) -> None:
+    from presentation_designer.pipeline.jobs import _preview_prompts
+
+    source = tmp_path / "source.pptx"
+    prs = Presentation(str(MINI_TEMPLATE))
+    prs.slides.add_slide(prs.slide_layouts[5])
+    prs.save(str(source))
+    profile = own_profile(source, "tpl_prompts")
+    package = _package(tmp_path, import_settings)
+    story = original_story(package, profile, {"language": "ru"})
+    plan = original_plan(story, profile, package, plan_id="plan_prompts")
+    out = tmp_path / "original.pptx"
+    result = compose_deck(plan, profile, source, package, out_pptx=out)
+    assert result.integrity.ok
+    before, after = Presentation(str(source)), Presentation(str(out))
+    assert after.slides[-1].shapes.title.text == "Заголовок слайда"
+    for old, new in zip(list(before.slides)[:-1], list(after.slides)[:-1], strict=True):
+        assert old._element.xml == new._element.xml
+
+    # Предварительная ревизия (её открывает ONLYOFFICE) заполняет ту же копию так же, а файл
+    # без пустых мест не пересохраняет.
+    preview = tmp_path / "preview.pptx"
+    shutil.copyfile(source, preview)
+    _preview_prompts(preview, {"language": "ru"})
+    shown = Presentation(str(preview))
+    assert [s._element.xml for s in shown.slides] == [s._element.xml for s in after.slides]
+    untouched = tmp_path / "untouched.pptx"
+    shutil.copyfile(MINI_TEMPLATE, untouched)
+    _preview_prompts(untouched, {})
+    assert untouched.read_bytes() == MINI_TEMPLATE.read_bytes()
 
 
 def test_original_reorder_delete_and_duplicate(

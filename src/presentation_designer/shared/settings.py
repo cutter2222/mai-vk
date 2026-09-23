@@ -113,10 +113,21 @@ class Plan(BaseModel):
     photo_dividers_for_image_sections: bool = True
 
 
+class ChartImages(BaseModel):
+    """Диаграммы-картинки готовой презентации («Открыть как презентацию») становятся
+    нативными диаграммами: устройство читает модель vlm, значения меряет код."""
+
+    enabled: bool = True
+    budget_s: float = Field(default=150.0, gt=0)
+    max_images: int = Field(default=40, ge=0)
+
+
 class Layout(BaseModel):
-    """Вёрстка (layout): удалять ли неиспользуемые макеты из результата."""
+    """Вёрстка (layout): удалять ли неиспользуемые макеты из результата; замена
+    диаграмм-картинок готовой презентации."""
 
     prune_unused_layouts: bool = False
+    chart_images: ChartImages = Field(default_factory=ChartImages)
 
 
 class Render(BaseModel):

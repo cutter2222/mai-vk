@@ -1,7 +1,7 @@
 "use client";
 
-import { Anchor, Button, ColorSwatch, Group, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
-import { IconRocket } from "@tabler/icons-react";
+import { Anchor, Button, ColorSwatch, Group, Progress, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
+import { IconCircleCheck, IconClock, IconRocket } from "@tabler/icons-react";
 import { useState } from "react";
 
 import { SlideImage } from "@/components/common/SlideImage";
@@ -11,12 +11,14 @@ import { usePolling } from "@/lib/api/usePolling";
 import { formatMs, plural, STAGE_LABELS, VARIANT_LABELS } from "@/lib/format";
 import { useElapsed } from "@/lib/hooks/useElapsed";
 import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
-import type { BriefDraft, ChatMessage, PptxAnswer, Project } from "@/lib/state/projects";
+import { slideCountAsked, type BriefDraft, type ChatMessage, type PptxAnswer, type Project } from "@/lib/state/projects";
 
 import { PURPOSE_LABELS, PURPOSE_OPTIONS } from "../panels/BriefFields";
+import progressStyles from "../preview/GenerationProgress.module.css";
 import { JobDetails } from "./JobDetails";
 import { SlideCompareModal } from "./SlideCompareModal";
-import { editOrigin } from "./tags";
+import type { DeckStart } from "./useChat";
+import { deckJobHasNews, editOrigin, JOB_WARNINGS } from "./feed";
 
 /**
  * Шаги работы говорят фразами, а не показывают карточки.
@@ -40,6 +42,12 @@ export interface CardContext {
   generating: boolean;
   onRepairAll?: () => void;
   onRetryImport: () => void;
+  /** Задание «Открыть как презентацию»: ход сборки — строкой под «Открываю…», карточки сборки нет. */
+  deckJob: boolean;
+  /** Открытие готовой презентации, начатое в этой вкладке (таймер идёт с ответа, а не с задания). */
+  deckStart?: DeckStart | null;
+  /** Когда слайды готовой презентации стали видны в редакторе (без редактора — файл опубликован). */
+  deckShownAt?: string | null;
 }
 
 /** Реплика ассистента: обычный текст ленты. */
@@ -90,17 +98,18 @@ function Details({ label, children, testId }: { label: string; children: React.R
 }
 
 /** Вопрос о PPTX: шаблон оформления, готовая презентация или материал. */
-export function PptxQuestion({ name, resolved, uploading, onAnswer, testId }: { name: string; resolved?: PptxAnswer; uploading?: boolean; onAnswer: (answer: PptxAnswer) => void; testId: string }) {
+export function PptxQuestion({ name, resolved, uploading, onAnswer, testId, progress }: { name: string; resolved?: PptxAnswer; uploading?: boolean; onAnswer: (answer: PptxAnswer) => void; testId: string; progress?: React.ReactNode }) {
   const text = resolved === "template"
-    ? uploading ? `Разберу «${name}» как шаблон, как только файл загрузится.` : `Разбираю «${name}» как шаблон: палитра, шрифты и композиции слайдов.`
+    ? uploading ? `Разберу «${name}» как шаблон, как только файл загрузится.` : `«${name}» загружен, приступаю к разбору шаблона.`
     : resolved === "deck"
-      ? uploading ? `Открою «${name}» как готовую презентацию, как только файл загрузится.` : `Открываю «${name}» как готовую презентацию: слайды остаются как есть, править можно из чата.`
+      ? uploading ? `Открою «${name}» как готовую презентацию, как только файл загрузится.` : `Открываю «${name}» как готовую презентацию: слайды остаются как есть, править можно из чата или в редакторе.`
       : resolved === "material"
         ? uploading ? `Считаю «${name}» материалом: импортирую, как только файл загрузится.` : `Считаю «${name}» материалом: текст слайдов пойдёт в содержание.`
         : `«${name}» похоже на презентацию. Что с ней сделать?`;
   return (
     <Stack gap={6} data-testid={testId}>
       <Say>{text}</Say>
+      {progress}
       {!resolved && (
         <>
           <Options
@@ -110,7 +119,7 @@ export function PptxQuestion({ name, resolved, uploading, onAnswer, testId }: { 
               { label: "Взять как материал", onClick: () => onAnswer("material"), testId: "answer-material" },
             ]}
           />
-          <Aside>Шаблон — по нему собираются новые слайды; готовая презентация — слайды переносятся как есть, а править их можно из чата; материал — текст слайдов пойдёт в содержание.</Aside>
+          <Aside>Шаблон — по нему собираются новые слайды; готовая презентация — слайды переносятся как есть, а править их можно из чата или в редакторе; материал — текст слайдов пойдёт в содержание.</Aside>
         </>
       )}
     </Stack>
@@ -119,7 +128,93 @@ export function PptxQuestion({ name, resolved, uploading, onAnswer, testId }: { 
 
 export function TemplateQuestionCard({ m, ctx }: { m: Msg<"template_question">; ctx: CardContext }) {
   const file = ctx.project.files.find((f) => f.file_id === m.file_id);
-  return <PptxQuestion name={file?.name ?? "файл"} resolved={m.resolved} onAnswer={(answer) => ctx.onResolveTemplate(m.event_id, m.file_id, answer)} testId={`template-question-${m.event_id}`} />;
+  const deck = m.resolved === "deck" ? deckState(m, ctx) : null;
+  return (
+    <PptxQuestion
+      name={file?.name ?? "файл"}
+      resolved={m.resolved}
+      onAnswer={(answer) => ctx.onResolveTemplate(m.event_id, m.file_id, answer)}
+      testId={`template-question-${m.event_id}`}
+      progress={deck?.kind === "opening"
+        ? <DeckProgress session={ctx.session} since={deck.since} />
+        : deck?.kind === "opened" ? <DeckOpened ms={deck.ms} /> : null}
+    />
+  );
+}
+
+type DeckState = { kind: "opening"; since?: string } | { kind: "opened"; ms: number };
+
+/**
+ * Что показать под «Открываю…»: ход, пока слайдов ещё не видно, и итог «открыта за …», когда
+ * они появились; фоновый разбор после этого строку не держит. Строка стоит под последним таким
+ * ответом: повторная сборка старые сообщения не оживляет. Открытие, начатое в этой вкладке,
+ * считается от ответа до появления слайдов в редакторе; после перезагрузки — по серверу, от
+ * задания до публикации файла.
+ */
+function deckState(m: Msg<"template_question">, ctx: CardContext): DeckState | null {
+  const { project, session, deckStart } = ctx;
+  const mine = deckStart?.fileId === m.file_id ? deckStart : null;
+  if (mine?.preparing) return { kind: "opening", since: mine.since };
+  const last = [...project.events].reverse().find((e) => e.role === "assistant" && e.kind === "template_question" && e.resolved === "deck" && e.file_id === m.file_id);
+  if (last?.event_id !== m.event_id || !ctx.deckJob || !project.job_id || session.jobId !== project.job_id) return null;
+  const file = project.files.find((f) => f.file_id === m.file_id);
+  if (file?.template_id !== project.template_id) return null;
+  const result = session.result;
+  const readyAt = session.variant?.ready_at;
+  const span = (from: string, to: string) => Math.max(0, Date.parse(to) - Date.parse(from));
+  if (mine) {
+    const shownAt = ctx.deckShownAt ?? (session.terminal ? readyAt : undefined);
+    if (shownAt) return { kind: "opened", ms: span(mine.since, shownAt) };
+    return session.terminal ? null : { kind: "opening", since: mine.since };
+  }
+  if (!result) return null;
+  if (readyAt) return { kind: "opened", ms: span(result.created_at, readyAt) };
+  return session.terminal ? null : { kind: "opening" };
+}
+
+/** 83 секунды → «1:23»: таймер строкой, цифры одной ширины. */
+function clock(ms: number | null): string {
+  const s = Math.floor((ms ?? 0) / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/** Ход открытия готовой презентации под репликой: время, этап и процент одной строкой. */
+function DeckProgress({ session, since }: { session: GenerationSession; since?: string }) {
+  const result = session.result;
+  const elapsed = useElapsed(since ?? result?.created_at ?? null);
+  const raw = result?.progress?.percent;
+  const current = typeof raw === "number" && Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : null;
+  // Процент не откатывается: после показа файла разбор в фоне начинает свою шкалу заново.
+  const [top, setTop] = useState<number | null>(null);
+  const rising = current != null && (top == null || current > top);
+  if (rising) setTop(current);
+  const percent = rising ? current : top;
+  const shown = Boolean(session.variant?.ready_at);
+  const message = shown ? "Открываю слайды в редакторе"
+    : result?.progress?.message || (result ? STAGE_LABELS[result.stage] : "Загружаю презентацию");
+  return (
+    <div className="deck-progress" data-testid="deck-progress" aria-busy="true">
+      <Group gap={6} wrap="nowrap">
+        <IconClock size={14} stroke={1.8} className="deck-progress-time" aria-hidden />
+        <Text size="xs" fw={600} className="deck-progress-time" data-testid="deck-progress-timer">{clock(elapsed)}</Text>
+        <Text size="xs" c="dimmed" truncate style={{ flex: 1 }} role="status" aria-live="polite">{message}</Text>
+        {percent != null && <Text size="xs" fw={600} data-testid="deck-progress-percent">{Math.round(percent)}%</Text>}
+      </Group>
+      {percent != null
+        ? <Progress size={4} value={percent} aria-label="Открытие презентации" aria-valuenow={percent} />
+        : <div className={progressStyles.track} style={{ height: 4 }} role="progressbar" aria-label="Открытие презентации"><div className={progressStyles.shimmer} /></div>}
+    </div>
+  );
+}
+
+/** Итог в истории чата: сколько открывалась презентация. */
+function DeckOpened({ ms }: { ms: number }) {
+  return (
+    <Group gap={6} wrap="nowrap" data-testid="deck-opened">
+      <IconCircleCheck size={14} stroke={1.8} color="var(--mantine-color-green-7)" aria-hidden />
+      <Text size="xs" c="dimmed">Презентация открыта за {formatMs(Math.max(1000, ms))}</Text>
+    </Group>
+  );
 }
 
 export function TemplateCard({ m, ctx }: { m: Msg<"template_card">; ctx: CardContext }) {
@@ -133,13 +228,25 @@ export function TemplateCard({ m, ctx }: { m: Msg<"template_card">; ctx: CardCon
   const name = detail.data?.name ?? m.template_id;
 
   if (gone) {
-    return <Say testId="template-card">Шаблон «{name}» удалён из библиотеки. Загрузите PPTX снова или выберите другой справа.</Say>;
+    return <Say testId="template-card">Шаблон «{name}» удалён из библиотеки. Загрузите PPTX снова или выберите другой вверху справа.</Say>;
+  }
+  if (detail.error && !detail.data) return <Say testId="template-card">{detail.error.message}</Say>;
+  if (detail.data?.status === "failed") {
+    return <Say testId="template-card">Не удалось разобрать шаблон «{name}»: {detail.data.error?.message ?? "ошибка анализа"}. Загрузите PPTX снова или выберите другой вверху справа.</Say>;
   }
   if (!profile) {
+    // Что делается, сказано репликой выше («загружен, приступаю к разбору»): здесь только ход.
     return (
       <Stack gap={4} data-testid="template-card">
-        <Doing>{detail.error ? detail.error.message : `Разбираю шаблон «${name}»: образцы, палитра и шрифты${elapsed != null ? ` · ${formatMs(elapsed)}` : ""}`}</Doing>
-        {!detail.error && <Aside>Ждать не нужно — можно добавлять материалы.</Aside>}
+        <div className="deck-progress" aria-busy="true" data-testid="template-progress">
+          <Group gap={6} wrap="nowrap">
+            <IconClock size={14} stroke={1.8} className="deck-progress-time" aria-hidden />
+            <Text size="xs" fw={600} className="deck-progress-time" data-testid="template-progress-timer">{clock(elapsed)}</Text>
+            <Text size="xs" c="dimmed" truncate style={{ flex: 1 }} role="status">Разбор: образцы, палитра и шрифты</Text>
+          </Group>
+          <div className={progressStyles.track} style={{ height: 4 }} role="progressbar" aria-label="Разбор шаблона"><div className={progressStyles.shimmer} /></div>
+        </div>
+        <Aside>Ждать не нужно — можно добавлять материалы.</Aside>
       </Stack>
     );
   }
@@ -148,15 +255,21 @@ export function TemplateCard({ m, ctx }: { m: Msg<"template_card">; ctx: CardCon
   return (
     <Stack gap={6} data-testid="template-card">
       <Say testId="template-profile">
-        Разобрал шаблон «{name}»: {profile.patterns.length} {plural(profile.patterns.length, "композиция", "композиции", "композиций")} на {profile.stats.slides} {plural(profile.stats.slides, "слайде", "слайдах", "слайдах")}{fonts ? `, шрифты ${fonts}` : ""}{timing?.duration_ms != null ? ` · ${formatMs(timing.duration_ms)}` : ""}.
+        Разобрал шаблон «{name}»: {profile.patterns.length} {plural(profile.patterns.length, "композиция", "композиции", "композиций")} на {profile.stats.slides} {plural(profile.stats.slides, "слайде", "слайдах", "слайдах")}{fonts ? `, шрифты ${fonts}` : ""}.
       </Say>
+      {timing?.duration_ms != null && (
+        <Group gap={6} wrap="nowrap" data-testid="template-duration">
+          <IconClock size={14} stroke={1.8} className="deck-progress-time" aria-hidden />
+          <Text size="xs" c="dimmed">Разобран за <Text span size="xs" fw={600} className="deck-progress-time">{formatMs(Math.max(1000, timing.duration_ms))}</Text></Text>
+        </Group>
+      )}
       <Group gap={4}>
         {profile.design_tokens.colors.palette.slice(0, 8).map((c) => (
           <Tooltip key={c.hex} label={`${c.hex} · ${c.role}`}><ColorSwatch color={c.hex} size={14} /></Tooltip>
         ))}
       </Group>
       <Aside>
-        {current ? "Слайды соберу из этих композиций; сменить шаблон можно справа." : "Сейчас собираю по другому шаблону."}{" "}
+        {current ? "Слайды соберу из этих композиций; сменить шаблон можно вверху справа." : "Сейчас собираю по другому шаблону."}{" "}
         <Anchor href={`/templates?id=${encodeURIComponent(m.template_id)}`} target="_blank" rel="noreferrer" size="xs" data-testid="template-open-library">Что извлечено из шаблона</Anchor>
       </Aside>
     </Stack>
@@ -216,7 +329,8 @@ export function BriefCard({ m, ctx }: { m: Msg<"brief_card">; ctx: CardContext }
     <Stack gap={6} data-testid="brief-card">
       <Say>{m.understood.length ? "Понял задачу так." : "Задача."}</Say>
       {facts.length > 0 && <Say>{facts.join(", ")}.</Say>}
-      <Say>Соберу {volume} {plural(settings.mode === "exact" ? settings.exact : settings.max, "слайд", "слайда", "слайдов")} в {variants}{settings.contextual ? "" : ", без контекстного аудита"}.</Say>
+      {/* Число слайдов называем, только если о нём просили: диапазон по умолчанию — не обещание. */}
+      <Say>Соберу {slideCountAsked(settings) ? `${volume} ${plural(settings.mode === "exact" ? settings.exact : settings.max, "слайд", "слайда", "слайдов")}` : "презентацию"} в {variants}{settings.contextual ? "" : ", без контекстного аудита"}.</Say>
 
       {missingPurpose && (
         <>
@@ -315,6 +429,23 @@ export function JobCard({ m, ctx }: { m: Msg<"job_card">; ctx: CardContext }) {
       ? `${Math.min(...counts)}–${Math.max(...counts)} слайдов`
       : "слайды";
   const failMessage = (result.error?.message ?? "задание завершилось ошибкой").replace(/\.\s*$/, "");
+  const warnings = result.warnings?.filter((w) => JOB_WARNINGS.has(w.code) && w.code !== "slide_count_short") ?? [];
+  // Содержания меньше, чем просили: варианты собраны короче, и это говорится обычной фразой.
+  const short = result.warnings?.find((w) => w.code === "slide_count_short");
+
+  // Готовая презентация: в ленте уже сказано «открываю как есть», прогресс — над слайдами.
+  // Лента показывает сборку, только если открыть не вышло или в слайдах что-то изменилось.
+  if (ctx.deckJob) {
+    if (!deckJobHasNews(result)) return null;
+    return (
+      <Stack gap={6} data-testid="job-card" data-state={result.status}>
+        {result.status === "failed" && (session.variant?.ready_at
+          ? <Say testId="job-summary">Слайды открыты, но разбор презентации не завершился: {failMessage}. Править можно в редакторе.</Say>
+          : <Say testId="job-summary">Не открыл презентацию: {failMessage}.{result.error?.retryable ? " Можно повторить." : ""}</Say>)}
+        {warnings.map((w) => <Say key={w.code} testId={w.code === "chart_images" ? "job-charts" : "job-warning"}>{w.message}</Say>)}
+      </Stack>
+    );
+  }
 
   const summary = !terminal ? (
     <Doing testId="job-summary">{JOB_PHRASE[result.stage] ?? STAGE_LABELS[result.stage]}</Doing>
@@ -331,6 +462,7 @@ export function JobCard({ m, ctx }: { m: Msg<"job_card">; ctx: CardContext }) {
   return (
     <Stack gap={6} data-testid="job-card" data-state={result.status}>
       {summary}
+      {terminal && short && done.length > 0 && <Say testId="job-short">{short.message}</Say>}
       {terminal && broken.length > 0 && done.length > 0 && (
         <Say testId="job-partial">
           {broken.length === 1
@@ -346,8 +478,8 @@ export function JobCard({ m, ctx }: { m: Msg<"job_card">; ctx: CardContext }) {
           </Text>
         ))}
       </Stack>
-      {result.warnings?.filter((w) => w.code === "original_slides_skipped").map((w) => (
-        <Aside key={w.code} testId="job-warning">{w.message}</Aside>
+      {warnings.map((w) => (
+        <Aside key={w.code} testId={w.code === "chart_images" ? "job-charts" : "job-warning"}>{w.message}</Aside>
       ))}
       <Details label="подробности" testId="job-details"><JobDetails result={result} /></Details>
     </Stack>

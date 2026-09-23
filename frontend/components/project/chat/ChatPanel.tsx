@@ -1,9 +1,9 @@
 "use client";
 
-import { ActionIcon, Badge, Button, CloseButton, FileButton, Group, Loader, Stack, Text, Textarea, Tooltip } from "@mantine/core";
+import { ActionIcon, Badge, Button, CloseButton, FileButton, Group, Stack, Text, Textarea, Tooltip } from "@mantine/core";
 import { Dropzone } from "@mantine/dropzone";
 import { IconArrowUp, IconFile, IconPaperclip, IconSlideshow } from "@tabler/icons-react";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { formatBytes, VARIANT_LABELS } from "@/lib/format";
 import type { OfficeSelection } from "@/lib/api/client";
@@ -11,7 +11,7 @@ import type { SlideTarget } from "@/lib/hooks/useGenerationSession";
 import type { ChatMessage, PptxAnswer } from "@/lib/state/projects";
 
 import { BriefCard, ContentCard, EditCard, JobCard, PptxQuestion, TemplateCard, TemplateQuestionCard, type CardContext } from "./cards";
-import { isVisibleProjectMessage, TAG_HASH, TAG_LABELS, tagOf, type ChatTag } from "./tags";
+import { deckJobHasNews, isVisibleProjectMessage } from "./feed";
 import type { StagedPptx } from "./useChat";
 import { MessageTime } from "./MessageTime";
 import { AssistantTyping } from "./AssistantTyping";
@@ -27,26 +27,23 @@ interface Props {
   onAttach: (files: File[]) => File[];
   staged: StagedPptx[];
   onAnswerStaged: (localId: string, answer: PptxAnswer) => void;
-  /** Выбранная метка сверху: «all» — вся лента. Ряд меток живёт в шапке панели. */
-  filter?: ChatTag | "all";
-  /** Нажали метку на сообщении: лента сужается до этого шага. */
-  onTag?: (tag: ChatTag) => void;
 }
 
-/** Первое сообщение ленты: шаблон выбирается справа, в чате — задача и материалы. */
-export const CHAT_GREETING = "Опишите, какая нужна презентация, или перетащите сюда материалы. Шаблон оформления выберите справа.";
+/** Первое сообщение ленты: шаблон выбирается в правом углу шапки, в чате — задача и материалы. */
+export const CHAT_GREETING = "Опишите, какая нужна презентация, или перетащите сюда материалы. Шаблон оформления выберите вверху справа.";
 
 /**
  * Чат проекта: лента сообщений и карточек шагов, внизу поле ввода с вложениями; файлы можно бросать в любое место панели.
  * PPTX не ждёт отправки: вопрос «шаблон, готовая презентация или материал» появляется в ленте в момент броска, пока файл грузится.
  */
-export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onAnswerStaged, filter = "all", onTag, officeSelection, onDismissOfficeSelection }: Props) {
+export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onAnswerStaged, officeSelection, onDismissOfficeSelection }: Props) {
   const { project, session } = ctx;
   // Выбранный справа слайд — адресат сообщения: чип над полем ввода, крестик снимает адресацию.
   const target = session.slideTarget;
   const [text, setText] = useState("");
   const [pending, setPending] = useState<File[]>([]);
-  const [sending, setSending] = useState(false);
+  // Что уходит: на текст ассистент отвечает, а одни вложения молча ложатся в «Файлы».
+  const [sending, setSending] = useState<false | "text" | "files">(false);
   const listRef = useRef<HTMLDivElement | null>(null);
   const resetRef = useRef<() => void>(null);
   const followRef = useRef(true);
@@ -61,20 +58,19 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
     if (rest.length) setPending((p) => [...p, ...rest]);
   };
 
-  const events = project.events.filter((m) => isVisibleProjectMessage(m, session.jobId));
+  // Сборка готовой презентации идёт полосой над слайдами; в ленте она появляется, только если есть что сказать.
+  const quietDeckJob = ctx.deckJob && !deckJobHasNews(session.result);
+  const visible = (m: ChatMessage) => isVisibleProjectMessage(m, session.jobId) && !(quietDeckJob && m.kind === "job_card");
+  const events = project.events.filter(visible);
   // Лента прокручивается вниз при новом сообщении и когда сообщение о правке получает результат.
   const count = events.length + staged.length;
-  // Метка сужает ленту, но не прячет сам разговор: поле ввода и подсказки остаются на месте.
-  const matchesFilter = (m: ChatMessage) => isVisibleProjectMessage(m, session.jobId) && (filter === "all" || tagOf(m) === filter);
   const shown = project.events.flatMap((m, eventIndex) => {
     const index = eventIndex + 1;
-    if (!matchesFilter(m)) return [];
+    if (!visible(m)) return [];
     const presented = typing.present(m, index);
     return presented ? [{ message: presented, index }] : [];
   });
-  const activeMessage = messages[typing.activeIndex];
-  const showTyping = typing.activeIndex !== 0 && (activeMessage ? matchesFilter(activeMessage) : sending && filter === "all");
-  const stagedShown = filter === "all" || filter === "template" ? staged : [];
+  const showTyping = typing.activeIndex > 0 || (typing.activeIndex < 0 && sending === "text");
   const settledEdits = session.result?.edits?.length ?? 0;
   useEffect(() => {
     const el = listRef.current;
@@ -82,20 +78,29 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
   }, [count, session.result?.status, settledEdits, typing.progress, typing.activeIndex, showTyping]);
 
   const blocked = session.editorDirty;
+  const dispatch = async (t: string, f: File[], to: SlideTarget | null) => {
+    setSending(t.trim() ? "text" : "files");
+    try {
+      await onSend(t, f, to);
+    } finally {
+      setSending(false);
+    }
+  };
   const submit = async () => {
     if (sending || blocked || (!text.trim() && pending.length === 0)) return;
-    setSending(true);
     const t = text;
     const f = pending;
     const to = t.trim() ? target : null;
     setText("");
     setPending([]);
     resetRef.current?.();
-    try {
-      await onSend(t, f, to);
-    } finally {
-      setSending(false);
-    }
+    await dispatch(t, f, to);
+  };
+  // Подсказка — готовый ответ: нажатие сразу его отправляет. Набранный текст и вложения
+  // остаются в поле ввода.
+  const choose = (option: string) => {
+    if (sending || blocked) return;
+    void dispatch(option, [], null);
   };
   const placeholder = officeSelection ? (officeSelection.objects.length > 1 ? "Что изменить в выбранных объектах или куда их переместить?" : "Что изменить в объекте или куда его переместить?") : target
     ? `Что изменить на слайде ${target.slideIndex + 1}?`
@@ -114,47 +119,26 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
         const el = e.currentTarget;
         followRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 64;
       }}>
-        {filter === "all" && (
-          <div className="chat-msg chat-msg-assistant" data-testid="msg-assistant">
-            <Stack gap="xs">
-              <Text size="sm" className="chat-assistant-text" data-testid="chat-greeting" aria-busy={typing.activeIndex === 0} data-typing={typing.activeIndex === 0 || undefined}>
-                {presentedGreeting?.kind === "text" ? presentedGreeting.text : ""}
-              </Text>
-              {typing.activeIndex === 0 && <AssistantTyping />}
-            </Stack>
-            <MessageTime at={project.created_at} />
+        <div className="chat-msg chat-msg-assistant" data-testid="msg-assistant">
+          <Stack gap="xs">
+            <Text size="sm" className="chat-assistant-text" data-testid="chat-greeting" aria-busy={typing.activeIndex === 0} data-typing={typing.activeIndex === 0 || undefined}>
+              {presentedGreeting?.kind === "text" ? presentedGreeting.text : ""}
+            </Text>
+            {typing.activeIndex === 0 && <AssistantTyping />}
+          </Stack>
+          <MessageTime at={project.created_at} />
+        </div>
+        {shown.map(({ message: m, index }) => (
+          <div key={index} className={`chat-msg chat-msg-${m.role}`} data-testid={`msg-${m.role}`} data-typing={index === typing.activeIndex || undefined} aria-busy={index === typing.activeIndex || undefined}>
+            {renderMessage(m, ctx)}
+            <MessageTime at={m.at} />
           </div>
-        )}
-        {filter !== "all" && shown.length === 0 && stagedShown.length === 0 && (
-          <Text size="sm" c="dimmed" data-testid="chat-tag-empty">
-            Под меткой «{TAG_LABELS[filter]}» пока пусто.
-          </Text>
-        )}
-        {shown.map(({ message: m, index }) => {
-          const hash = TAG_HASH[tagOf(m)];
-          return (
-            <div key={index} className={`chat-msg chat-msg-${m.role}`} data-testid={`msg-${m.role}`} data-typing={index === typing.activeIndex || undefined} aria-busy={index === typing.activeIndex || undefined}>
-              {renderMessage(m, ctx)}
-              {/* Метка на самом сообщении: видно, к какому шагу оно относится, и по ней же
-                  лента сужается до этого шага. */}
-              {hash && (
-                <button type="button" className="chat-tag" onClick={() => onTag?.(tagOf(m))} data-testid={`hash-${tagOf(m)}`}>
-                  {hash}
-                </button>
-              )}
-              <MessageTime at={m.at} />
-            </div>
-          );
-        })}
-        {stagedShown.map((s) => (
-          <Fragment key={s.local_id}>
-            <div className="chat-msg chat-msg-user" data-testid="msg-user">
-              <Badge color="gray" size="sm" leftSection={<IconFile size={11} />} rightSection={<Loader size={10} color="gray" />}>{s.name} · {formatBytes(s.size)}</Badge>
-            </div>
-            <div className="chat-msg chat-msg-assistant" data-testid="msg-assistant">
-              <PptxQuestion name={s.name} resolved={s.answer} uploading onAnswer={(answer) => onAnswerStaged(s.local_id, answer)} testId={`template-question-${s.local_id}`} />
-            </div>
-          </Fragment>
+        ))}
+        {/* Сам бросок PPTX в ленту не пишется: вопрос называет файл. */}
+        {staged.map((s) => (
+          <div key={s.local_id} className="chat-msg chat-msg-assistant" data-testid="msg-assistant">
+            <PptxQuestion name={s.name} resolved={s.answer} uploading onAnswer={(answer) => onAnswerStaged(s.local_id, answer)} testId={`template-question-${s.local_id}`} />
+          </div>
         ))}
         {showTyping && <AssistantTyping />}
       </div>
@@ -165,7 +149,7 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
           <Text size="xs" c="dimmed">{officeSelection.objects.length > 1 ? "Правка только выбранных объектов. Например: «перемести все три правее»." : "Правка только этого объекта. Например: «сократи текст» или «перенеси правее»."}</Text>
         </Group>}
         {suggestions.length > 0 && <Group gap={6} mb="xs" data-testid="chat-suggestions">
-          {suggestions.map((option) => <Button key={option} size="compact-xs" variant="light" disabled={sending} onClick={() => setText(option)}>{option}</Button>)}
+          {suggestions.map((option) => <Button key={option} size="compact-xs" variant="light" disabled={Boolean(sending) || blocked} onClick={() => choose(option)}>{option}</Button>)}
         </Group>}
         {target && (
           <Group gap={6} mb={8} data-testid="slide-target">
@@ -215,7 +199,7 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
             style={{ flex: 1 }}
             data-testid="chat-input"
           />
-          <ActionIcon variant="filled" size="lg" onClick={submit} loading={sending} disabled={blocked || (!text.trim() && pending.length === 0)} aria-label="Отправить" data-testid="chat-send"><IconArrowUp size={18} /></ActionIcon>
+          <ActionIcon variant="filled" size="lg" onClick={submit} loading={Boolean(sending)} disabled={blocked || (!text.trim() && pending.length === 0)} aria-label="Отправить" data-testid="chat-send"><IconArrowUp size={18} /></ActionIcon>
         </div>
         {blocked ? (
           <Text size="xs" c="orange" mt={6} data-testid="chat-draft-hint">Сначала примените или отмените правки на слайде: черновик редактора ждёт решения.</Text>

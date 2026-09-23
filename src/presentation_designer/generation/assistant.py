@@ -88,8 +88,8 @@ def answer_without_model(state: ProjectState, text: str) -> JsonDict:
     if not state.template:
         return {
             "reply": (
-                "Шаблон оформления пока не выбран — перетащите PPTX компании"
-                " или выберите его в первом сообщении чата."
+                "Шаблон оформления пока не выбран — выберите его вверху справа"
+                " или перетащите PPTX компании."
             ),
             "options": ["Выбрать шаблон", "Что дальше?"],
             "source": "rules",
@@ -106,8 +106,8 @@ def answer_without_model(state: ProjectState, text: str) -> JsonDict:
     if not state.job_status:
         return {
             "reply": (
-                "Тема или материалы есть. Проверьте назначение в брифе и готовность шаблона;"
-                " затем можно запустить сборку. Генерация ещё не запускалась."
+                "Шаблон и содержание есть, сборка запускается сама. Если она не началась,"
+                " напишите «собери презентацию». Генерация ещё не запускалась."
             ),
             "options": ["Собрать презентацию", "Изменить задачу"],
             "source": "rules",
@@ -140,25 +140,10 @@ def answer(
     skill: Any = None,
     deadline_s: float = 12.0,
 ) -> JsonDict:
-    """Ответ модели с вариантами следующего шага; без модели — правила по состоянию проекта."""
-    if (
-        state.template
-        and (state.materials or state.brief.get("title"))
-        and not state.design_mode
-        and not state.job_status
-    ):
-        from presentation_designer.generation.design_mode import LABELS
+    """Ответ модели с вариантами следующего шага; без модели — правила по состоянию проекта.
 
-        return {
-            "reply": (
-                "Как оформить презентацию? По шаблону — только готовые макеты; "
-                "смешанный — макеты и новые композиции; все слайды новые — новые композиции "
-                "в стиле исходника, включая титул и финал. "
-                "Это не влияет на подробность содержания."
-            ),
-            "options": list(LABELS.values()),
-            "source": "rules",
-        }
+    О режиме оформления ассистент сам не спрашивает: сборка стартует со смешанным режимом, как
+    только есть шаблон и содержание, а сменить режим можно фразой («строго по шаблону»)."""
     if client is None or skill is None:
         return answer_without_model(state, text)
     try:

@@ -35,6 +35,21 @@ export interface OfficePreview {
 }
 
 export interface OfficeObjectTarget { slide: number; shape_id: string }
+/** Знак шаблона на всех слайдах: заменить картинкой из файлов проекта или убрать. */
+export interface OfficeLogoAction {
+  action: "replace" | "remove";
+  file_id?: string;
+}
+/** Картинка для текущего слайда редактора: файл проекта или ресурс шаблона. */
+export type OfficeImageSource =
+  | { project_id: string; file_id: string }
+  | { template_id: string; asset_id: string };
+/** Подписанная сервером команда `docEditor.insertImage`. */
+export interface OfficeImageCommand {
+  c: "add";
+  images: { fileType: string; url: string }[];
+  token: string;
+}
 export interface OfficeObject extends OfficeObjectTarget {
   label: string;
   kind: string;
@@ -175,7 +190,7 @@ function json(body: unknown, method = "POST"): RequestInit {
 
 export const api = {
   office: {
-    capabilities: () => request<{ enabled: boolean }>("/office/capabilities"),
+    capabilities: () => request<{ enabled: boolean; script_url?: string }>("/office/capabilities"),
     templateConfig: (id: string) => request<{ script_url: string; config: Record<string, unknown> }>(`/office/templates/${encodeURIComponent(id)}/config`, json({})),
     create: (jobId: string, artifact: string) => request<OfficeDocument>("/office/documents", json({ job_id: jobId, artifact })),
     templateCopy: (projectId: string, templateId: string) => request<OfficeDocument>(`/office/projects/${encodeURIComponent(projectId)}/template`, json({ template_id: templateId })),
@@ -183,8 +198,12 @@ export const api = {
     preview: (id: string, revision: number) => request<OfficePreview>(`/office/documents/${encodeURIComponent(id)}/preview/${revision}`),
     objects: (id: string, revision: number) => request<{ revision: number; objects: OfficeObject[] }>(`/office/documents/${encodeURIComponent(id)}/objects/${revision}`),
     previewUrl: (id: string, revision: number, name: string) => `${API_BASE}/office/documents/${encodeURIComponent(id)}/preview/${revision}/${encodeURIComponent(name)}`,
-    edit: (id: string, revision: number, instruction: string, target?: OfficeObjectTarget | OfficeObjectTarget[]) => request<{ document: OfficeDocument; changed: boolean; message: string }>(`/office/documents/${encodeURIComponent(id)}/edit`, json({ revision, instruction, ...(Array.isArray(target) ? { targets: target } : target ? { target } : {}) })),
+    edit: (id: string, revision: number, instruction: string, target?: OfficeObjectTarget | OfficeObjectTarget[], logo?: OfficeLogoAction) => request<{ document: OfficeDocument; changed: boolean; message: string }>(`/office/documents/${encodeURIComponent(id)}/edit`, json({ revision, instruction, ...(logo ? { logo } : Array.isArray(target) ? { targets: target } : target ? { target } : {}) })),
     config: (id: string) => request<{ script_url: string; config: Record<string, unknown> }>(`/office/documents/${encodeURIComponent(id)}/config`, json({})),
+    /** Команда вставки картинки на текущий слайд: сервер проверяет источник и подписывает ссылку. */
+    imageCommand: (id: string, source: OfficeImageSource) => request<OfficeImageCommand>(`/office/documents/${encodeURIComponent(id)}/images`, json(
+      "file_id" in source ? { project_id: source.project_id, file_id: source.file_id } : { template_id: source.template_id, asset_id: source.asset_id },
+    )),
     downloadUrl: (id: string, revision: number, format: "pptx" | "pdf" | "html" = "pptx") => `${API_BASE}/office/documents/${encodeURIComponent(id)}/download/${revision}${format === "pptx" ? "" : `?format=${format}`}`,
   },
   health: () => request<HealthResponse>("/health"),
@@ -208,6 +227,10 @@ export const api = {
     patchFile: (id: string, fileId: string, patch: Partial<Pick<ProjectFile, "kind" | "template_id" | "package_id">>) =>
       request<ProjectFile>(`/projects/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}`, json(patch, "PATCH")),
     deleteFile: (id: string, fileId: string) => request<void>(`/projects/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}`, { method: "DELETE" }),
+    /** Байты файла проекта: картинки и PDF открываются во вкладке, остальное скачивается. */
+    fileUrl: (id: string, fileId: string) => `${API_BASE}/projects/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}/content`,
+    /** Миниатюра для сетки «Файлы» (картинка, первая страница PDF, обложка PPTX); 404 — показать значок типа. */
+    thumbnailUrl: (id: string, fileId: string) => `${API_BASE}/projects/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}/thumbnail`,
   },
 
   templates: {
@@ -230,6 +253,8 @@ export const api = {
     assetUrl: (id: string, name: string) => `${API_BASE}/templates/${encodeURIComponent(id)}/assets/${name}`,
     /** Байты ресурса профиля шаблона (иконка, логотип, картинка) для холста и панели редактора. */
     mediaUrl: (id: string, assetId: string) => `${API_BASE}/templates/${encodeURIComponent(id)}/media/${encodeURIComponent(assetId)}`,
+    /** Миниатюра ресурса (WebP до 480 px) для сетки «Из шаблона»: оригиналы бывают по 2000 px. */
+    mediaThumbnailUrl: (id: string, assetId: string) => `${API_BASE}/templates/${encodeURIComponent(id)}/media/${encodeURIComponent(assetId)}/thumbnail`,
     /** Адрес профиля целиком: открыть JSON в новой вкладке. */
     detailUrl: (id: string) => `${API_BASE}/templates/${encodeURIComponent(id)}`,
     sourceUrl: (id: string) => `${API_BASE}/templates/${encodeURIComponent(id)}/source`,

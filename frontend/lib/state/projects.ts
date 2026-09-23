@@ -49,6 +49,14 @@ export type PptxAnswer = "template" | "deck" | "material";
 
 export const DEFAULT_SETTINGS: SettingsDraft = { mode: "range", min: 10, max: 15, exact: 12, variants: ["compact", "balanced", "detailed"], contextual: true, images: false, seed: null, force: false };
 
+/**
+ * Число слайдов по умолчанию, а не просьба пользователя: в генерацию оно не уходит (планировщик
+ * берёт свой диапазон и при коротком содержании молча собирает меньше), в чате не называется.
+ */
+export function slideCountAsked(s: SettingsDraft): boolean {
+  return s.mode === "exact" || s.min !== DEFAULT_SETTINGS.min || s.max !== DEFAULT_SETTINGS.max;
+}
+
 // ---------- кэш и подписки ----------
 
 const projects = new Map<string, Project>();

@@ -13,6 +13,8 @@
   animation: float 3s ease-in-out infinite;
 }
 .phrase { animation: appear 400ms ease-out; }
+/* Время крупно и цветом: видно, что отсчёт идёт; цифры одной ширины не дёргают строку. */
+.timer { flex-shrink: 0; color: var(--mantine-primary-color-filled); font-variant-numeric: tabular-nums; }
 .track { height: 6px; overflow: hidden; border-radius: 8px; background: var(--mantine-color-gray-2); }
 .shimmer { width: 35%; height: 100%; border-radius: inherit; background: var(--mantine-primary-color-filled); animation: travel 1.8s ease-in-out infinite alternate; }
 @keyframes float { 50% { transform: translateY(-8px) rotate(5deg); } }
