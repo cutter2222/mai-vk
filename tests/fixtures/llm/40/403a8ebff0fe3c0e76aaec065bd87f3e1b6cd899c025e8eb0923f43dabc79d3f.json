@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-23T14:44:17Z",
+ "entry_version": 1,
+ "key": "403a8ebff0fe3c0e76aaec065bd87f3e1b6cd899c025e8eb0923f43dabc79d3f",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4785,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3401,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: balanced. Сбалансированная подача: один тезис на слайд, заголовок-вывод, короткое пояснение (одно-два предложения) и до четырёх пунктов или показателей. Ряды данных — диаграмма с подписями; т",
+  "prompt": [
+   "plan.slides",
+   "0.4.1"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.4.1"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4972,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t11\"\n      ],\n      \"title\": \"План масштабирования: от новых продуктов к цели в 60%\",\n      \"visual\": \"timeline\"\n    },\n    {\n      \"theses\": [\n        \"t13\"\n      ],\n      \"title\": \"Риски управляемы и не блокируют бизнес-цели\",\n      \"visual\": \"bullets\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 115,
+   "prompt_tokens": 2299,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

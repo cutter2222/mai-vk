@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-23T14:44:58Z",
+ "entry_version": 1,
+ "key": "df9b7ff0c762b668132e120d1d4e4aefbdfacb4821405f86db1cb25f671605ca",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4785,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 4774,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 464,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 1897,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Открываемость выросла с 31% до 44%, отпи» (pat_builtin_statement), слот title: текст не помещается — 53 символов / 2 строк при ёмкости 35 символов / 1 строк — сократи",
+  "prompt": [
+   "plan.slides",
+   "0.4.1"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.4.1"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 12598,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t6\"\n      ],\n      \"title\": \"Рост открываемости и снижение отписок\",\n      \"visual\": \"comparison\"\n    },\n    {\n      \"theses\": [\n        \"t7\"\n      ],\n      \"title\": \"Рост активности и снижение оттока\",\n      \"visual\": \"number\"\n    },\n    {\n      \"theses\": [\n        \"t8\"\n      ],\n      \"title\": \"Экономия 12,5 млн ₽ при затратах 2,4 млн ₽\",\n      \"visual\": \"number\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 159,
+   "prompt_tokens": 3647,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

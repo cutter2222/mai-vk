@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-23T14:45:27Z",
+ "entry_version": 1,
+ "key": "467b040969b273da95ee946f34fd9c0dc6c7e5733863de54dfc806360bd0e05f",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4785,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3547,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 344,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 927,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Сервис объединяет каналы и вводит тихие » (pat_builtin_statement), слот title: текст не помещается — 72 символов / 3 строк при ёмкости 35 символов / 1 строк — сократи",
+  "prompt": [
+   "plan.slides",
+   "0.4.1"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.4.1"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 3897,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t2\"\n      ],\n      \"title\": \"Потеря 40% важных уведомлений из-за шума\",\n      \"visual\": \"number\"\n    },\n    {\n      \"theses\": [\n        \"t4\"\n      ],\n      \"title\": \"Сервис повышает релевантность через приоритизацию\",\n      \"visual\": \"bullets\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 112,
+   "prompt_tokens": 2760,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

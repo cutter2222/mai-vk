@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-23T14:45:04Z",
+ "entry_version": 1,
+ "key": "110a449285f4967f0e7ea3f641f0fc9462836f60ff7ca16235c38852e8b3ac20",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4785,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3707,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 1627,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 741,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Отсутствие приоритизации приводит к поте» (pat_s3), слот subtitle_1: текст не помещается — 198 символов / 6 строк при ёмкости 46 символов / 1 строк — сократи формулир",
+  "prompt": [
+   "plan.slides",
+   "0.4.1"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.4.1"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 3072,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t2\"\n      ],\n      \"title\": \"Пользователи пропускают важные уведомления\",\n      \"visual\": \"number\"\n    },\n    {\n      \"theses\": [\n        \"t4\"\n      ],\n      \"title\": \"Решение: приоритизация и единый центр\",\n      \"visual\": \"bullets\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 106,
+   "prompt_tokens": 3122,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

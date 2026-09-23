@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-23T14:44:36Z",
+ "entry_version": 1,
+ "key": "d964c19efd9de2b71eeb3fea5299fc5dfda21e3c78fbbd0cd547e60b9ba56d7b",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4785,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3431,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: detailed. Подробная подача: слайдов ближе к верхней границе, разделы получают разделители. Тезис раскрывается пояснением и примерами, до шести пунктов с подписями (sub), карточки и две колонк",
+  "prompt": [
+   "plan.slides",
+   "0.4.1"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.4.1"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4624,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t11\"\n      ],\n      \"title\": \"План масштабирования: от новых продуктов до покрытия всех регионов\",\n      \"visual\": \"timeline\"\n    },\n    {\n      \"theses\": [\n        \"t13\"\n      ],\n      \"title\": \"Риски управляемы и не препятствуют достижению бизнес-целей\",\n      \"visual\": \"bullets\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 116,
+   "prompt_tokens": 2299,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

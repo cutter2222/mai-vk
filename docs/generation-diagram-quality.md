@@ -1,6 +1,6 @@
 # Content-aware diagrams — first quality increment
 
-Implemented on 2026-09-22. Planner implementation 0.4.3; variant_planner prompt/skill 0.4.1.
+Implemented on 2026-09-22. Planner implementation 0.4.4; variant_planner prompt/skill 0.4.1.
 
 ## Behaviour
 
@@ -22,7 +22,8 @@ Implemented on 2026-09-22. Planner implementation 0.4.3; variant_planner prompt/
   never fabricated process stages. Composition also resolves placeholders from manually edited plans.
 - Diagram type and item text survive the PPTX roundtrip as native editable shapes/connectors.
 - Body-derived diagram type is 18–24 pt, explanations at least 16 pt. Three-circle Venn geometry
-  now stays inside its slot.
+  stays inside its slot. Venn labels are separate editable text boxes above all circle fills,
+  positioned away from the central overlap. Cycle spacing reserves visible arrow shafts.
 
 ## Validation and limitations
 
@@ -31,17 +32,40 @@ facts, unchanged input, diagram-aware matching, and the three mode boundaries. I
 bind content against real analyzed compositions, validate the SlidePlan, compose PPTX, reopen it,
 and check all node headings/explanations.
 
-Font-metric checks are conservative estimates, not pixel verification. ONLYOFFICE is not configured
-in the local environment, so PDF/pixel visual acceptance remains outstanding. Model output is
-supplied deterministically in tests; this does not establish real-model selection frequency or
-source-grounding accuracy.
+Font-metric checks are conservative estimates, not pixel verification. The resumed check rendered
+three eight-slide sample decks through the running ONLYOFFICE worker, verified page/thumbnail
+counts and unchanged source hashes/editor revisions, and inspected the images. It exposed and
+fixed obscured Venn text and barely visible cycle arrows. Geometry regressions cover Venn layer
+order, bounds and non-overlapping label boxes, plus cycle arrows for two through six nodes.
+Artifacts from this local check are in `/tmp/mai-diagrams-final-decks` and
+`/tmp/mai-diagrams-render-final` (temporary, not committed). The HTML export used its image/text
+fallback because these sample PPTX files have no accompanying composed-deck description.
 
-Changing the prompt and response schema invalidates existing plan replay keys. The local LLM
-provider is unconfigured, so fresh recordings cannot be created here. Replay-dependent tests
-currently fail with `ReplayMissError` (including the pipeline test wrapping that error), not
-diagram assertions. With a configured provider, run
+These samples use deterministic model answers. They establish rendering and mode boundaries,
+not real-model relationship selection or source-grounding accuracy. The 24 newly recorded model
+responses contain six timeline selections but no explicit `diagram_kind`; all-eight-kind model
+selection acceptance therefore remains outstanding. Several recorded plans also report capacity
+overflow, which must not be treated as clean production-deck acceptance.
+
+Changing the prompt and response schema invalidates existing plan replay keys. The local provider
+is available after loading `/Users/nitemin/Desktop/mai-vk/.env`; direct Python invocation does not
+load that file automatically. Regeneration uses
 `/Users/nitemin/Desktop/mai-vk/.venv/bin/python /Users/nitemin/Desktop/mai-vk/scripts/record_llm_fixtures.py --only plan`
-and rerun the generation/layout suite. Existing recordings have not been relabelled as new responses.
+with the configured environment. On the host, use `PD_QUEUE_MODE=inline` for the local limiter
+instead of the Docker-only `valkey` hostname. The script completed for mini/rich templates and
+all three variants; 24 fresh `plan.slides` 0.4.1 responses were recorded. Existing recordings
+were not relabelled or overwritten. Planner 0.4.4 invalidates saved plan-cache entries after the
+geometry changes without changing the prompt/response replay keys.
+
+The full generation/library/layout/audit/LLM/contracts replay run no longer needs replay exclusions.
+The resumed run completed with 579 passed and 6 skipped; the layout/diagram-content rerun after
+the final Venn sizing adjustment completed with 100 passed. PDF text extraction confirmed all
+six source heading/explanation fragments on every page of the three sample decks.
+Six optional Valkey limiter tests skip without a dedicated test server at `localhost:6399`.
+Ruff and mypy on the changed implementation files pass. Repository-wide mypy currently reports
+three pre-existing errors in `/Users/nitemin/Desktop/mai-vk/src/presentation_designer/design/fit.py`
+and `/Users/nitemin/Desktop/mai-vk/src/presentation_designer/design/guard.py`;
+it is not a clean global typing run.
 
 Not included in this increment: multiple datasets per slide, dashboards, new composition families,
 pixel-based underfill scoring, or a redesign of chart typography. These require separate validation.

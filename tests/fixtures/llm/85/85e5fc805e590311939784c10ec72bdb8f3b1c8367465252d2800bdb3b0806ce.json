@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-23T14:44:41Z",
+ "entry_version": 1,
+ "key": "85e5fc805e590311939784c10ec72bdb8f3b1c8367465252d2800bdb3b0806ce",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4785,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 4613,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 618,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 1044,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Динамика метрик подтверждает устойчивый » (pat_s3), слот body_1: текст не помещается — 141 символов / 6 строк при ёмкости 176 символов / 2 строк — сократи формулировк",
+  "prompt": [
+   "plan.slides",
+   "0.4.1"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.4.1"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4833,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t6\"\n      ],\n      \"title\": \"Рост открываемости и снижение отписок\",\n      \"visual\": \"comparison\"\n    },\n    {\n      \"theses\": [\n        \"t7\"\n      ],\n      \"title\": \"Устойчивый рост вовлеченности за 3 месяца\",\n      \"visual\": \"chart\"\n    },\n    {\n      \"theses\": [\n        \"t8\"\n      ],\n      \"title\": \"Экономия на поддержке окупает пилот\",\n      \"visual\": \"table\"\n    },\n    {\n      \"theses\": [\n        \"t9\"\n      ],\n      \"title\": \"Уведомления стали полезными\",\n      \"visual\": \"quote\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 200,
+   "prompt_tokens": 3417,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

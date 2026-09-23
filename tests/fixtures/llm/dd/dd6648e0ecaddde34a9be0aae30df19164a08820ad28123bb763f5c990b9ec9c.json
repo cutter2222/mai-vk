@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-23T14:44:40Z",
+ "entry_version": 1,
+ "key": "dd6648e0ecaddde34a9be0aae30df19164a08820ad28123bb763f5c990b9ec9c",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4785,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3431,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 343,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 827,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Риски управляемы и не препятствуют дости» (pat_builtin_statement), слот title: текст не помещается — 58 символов / 3 строк при ёмкости 35 символов / 1 строк — сократи",
+  "prompt": [
+   "plan.slides",
+   "0.4.1"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.4.1"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 3897,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t11\"\n      ],\n      \"title\": \"Этапы масштабирования сервиса в четвертом квартале\",\n      \"visual\": \"timeline\"\n    },\n    {\n      \"theses\": [\n        \"t13\"\n      ],\n      \"title\": \"Ключевые риски управляемы\",\n      \"visual\": \"bullets\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 106,
+   "prompt_tokens": 2674,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

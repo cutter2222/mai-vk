@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-23T14:44:09Z",
+ "entry_version": 1,
+ "key": "f8ad3051d283695000f556da4cca3127fc7099e096adaeadf21524b0a9114942",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4785,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3707,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 1627,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 511,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Отсутствие приоритизации приводит к поте»: часть содержания не размещена; выбери текстовую подачу или переразложи содержание без потери пунктов и связей; слайд «Отсут",
+  "prompt": [
+   "plan.slides",
+   "0.4.1"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.4.1"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 3122,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t2\"\n      ],\n      \"title\": \"Шум уведомлений скрывает важное\",\n      \"visual\": \"bullets\"\n      },\n      {\n        \"theses\": [\n          \"t4\"\n        ],\n        \"title\": \"Сервис объединяет каналы и вводит тихие часы\",\n        \"visual\": \"image\"\n      }\n    ]\n  }",
+  "usage": {
+   "completion_tokens": 108,
+   "prompt_tokens": 3047,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

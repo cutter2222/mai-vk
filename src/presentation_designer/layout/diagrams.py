@@ -230,13 +230,18 @@ def _cycle(
     radius = min(cx, cy) // 2
     node_size = max(min(radius * 0.9, cx // 3), 500000) if n > 1 else radius * 2
     node_size = int(min(node_size, radius * 1.1))
+    if n > 3:
+        # Reserve visible arrow shafts between neighbouring circles, including six-node cycles.
+        sine = math.sin(math.pi / n)
+        node_size = min(node_size, int(0.88 * 2 * radius * sine / (1 + sine)))
     center = (x + cx // 2, y + cy // 2)
     orbit = max(radius - node_size // 2, node_size // 2)
+    orbit_x = max(orbit, min(cx // 2 - node_size // 2, int(orbit * 1.5)))
     nodes = []
     centers = []
     for i in range(n):
         angle = -math.pi / 2 + 2 * math.pi * i / n
-        px = center[0] + orbit * math.cos(angle)
+        px = center[0] + orbit_x * math.cos(angle)
         py = center[1] + orbit * math.sin(angle)
         centers.append((int(px), int(py)))
     for i, (text, sub) in enumerate(items):
@@ -401,13 +406,24 @@ def _venn(
             (x + cx // 2 + d // 4, y + cy // 2 - d // 6),
             (x + cx // 2, y + cy // 2 + d // 3),
         ]
-    for i, (text, sub) in enumerate(items[:n]):
+    for i in range(n):
         fill = style.accents[i % len(style.accents)]
         px, py = centers[i]
         node = _node(shapes, MSO_SHAPE.OVAL, (px - d // 2, py - d // 2, d, d), fill, style)
         _set_alpha(node, 70)
-        _text(node, text, sub, style, color=_on_fill(style, fill))
         nodes.append(node)
+    # Labels are separate native text boxes above *all* circles: translucent later
+    # circles must not paint over earlier text. Keep labels in the exclusive lobes.
+    for i, (text, sub) in enumerate(items[:n]):
+        px, py = centers[i]
+        if n > 1:
+            px += (-1 if i == 0 else 1 if i == 1 else 0) * d // 6
+        if n == 3:
+            py += -d // 8 if i < 2 else d // 6
+        width, height = int(d * 0.72), d // 2
+        label = shapes.add_textbox(Emu(px - width // 2), Emu(py - height // 2), width, height)
+        _text(label, text, sub, style, color=style.text_color)
+        nodes.append(label)
     return nodes
 
 
@@ -445,7 +461,7 @@ def content_fits(block: dict[str, Any], box: tuple[int, ...], style: DiagramStyl
         if node.top + node.height > y + height + 1:
             return False
         # Inscribe text in curved/tapered nodes, not in their rectangular bounding box.
-        ratio = 0.68 if kind in ("cycle", "venn", "pyramid", "funnel") else 0.9
+        ratio = 0.68 if kind in ("cycle", "pyramid", "funnel") else 0.9
         available_w = node.width / 12700 * ratio - 7.2
         available_h = node.height / 12700 * ratio - 4.32
         used_h = 0.0

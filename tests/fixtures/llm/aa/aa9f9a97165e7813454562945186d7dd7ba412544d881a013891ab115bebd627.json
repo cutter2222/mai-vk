@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-23T14:44:31Z",
+ "entry_version": 1,
+ "key": "aa9f9a97165e7813454562945186d7dd7ba412544d881a013891ab115bebd627",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4785,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 4583,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 2600,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 886,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Открываемость выросла с 31% до 44%»: часть содержания не размещена; выбери текстовую подачу или переразложи содержание без потери пунктов и связей; слайд «Метрики вов",
+  "prompt": [
+   "plan.slides",
+   "0.4.1"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.4.1"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4895,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t6\"\n      ],\n      \"title\": \"Открываемость выросла с 31% до 44%\",\n      \"visual\": \"text\"\n    },\n    {\n      \"theses\": [\n        \"t7\"\n      ],\n      \"title\": \"Метрики вовлеченности растут\",\n      \"visual\": \"chart\"\n    },\n    {\n      \"theses\": [\n        \"t8\"\n      ],\n      \"title\": \"Экономия на поддержке составила 12,5 млн ₽\",\n      \"visual\": \"table\"\n    },\n    {\n      \"theses\": [\n        \"t9\"\n      ],\n      \"title\": \"Уведомления стали помогать, а не отвлекать\",\n      \"visual\": \"quote\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 208,
+   "prompt_tokens": 3994,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}
