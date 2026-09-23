@@ -29,6 +29,7 @@ import { PreviewPane } from "./preview/PreviewPane";
 import { GenerationProgress } from "./preview/GenerationProgress";
 import { ProjectHeader } from "./ProjectHeader";
 import { ProjectOffice } from "./office/ProjectOffice";
+import { TemplatePicker } from "./TemplatePicker";
 
 /** Что показывает левая панель: всю ленту, ленту под меткой или файлы проекта. */
 type Tab = "all" | ChatTag | "files";
@@ -133,6 +134,18 @@ export function ProjectEditor({ project }: { project: Project }) {
     await chat.send(text, files, target);
   };
 
+  // Выбор шаблона стоит в центре правой панели, пока она пуста; когда там презентация или
+  // её сборка, он переезжает в шапку, чтобы шаблон можно было сменить.
+  const previewBusy = Boolean(project.job_id) || starting || officePresent;
+
+  // Вопрос о брошенной презентации задаётся в ленте чата: из «Файлов» или ленты под меткой
+  // панель возвращается к разговору, иначе вопрос висит невидимым, пока файл грузится.
+  const attach = (files: File[]): File[] => {
+    const rest = chat.attach(files);
+    if (rest.length < files.length) setTab("all");
+    return rest;
+  };
+
   // Бриф — часть контент-пакета: после правок он переимпортируется, чтобы генерация видела новые поля.
   const closeBrief = () => {
     setBriefModal(false);
@@ -171,6 +184,7 @@ export function ProjectEditor({ project }: { project: Project }) {
         session={session}
         onTitle={(title) => patch({ title })}
         officeActionsRef={setOfficeActionsTarget}
+        templatePicker={previewBusy ? <TemplatePicker compact project={project} onSelectTemplate={chat.selectTemplate} onUploadTemplate={chat.addTemplate} /> : null}
       />
       <div className="editor-body">
         {/* Свёрнутая панель оставляет рельс: развернуть и сразу открыть нужный раздел. */}
@@ -218,9 +232,9 @@ export function ProjectEditor({ project }: { project: Project }) {
               </Tooltip>
             </div>
             {tab !== "files" ? (
-              <ChatPanel ctx={ctx} onSend={send} officeSelection={officeSelection} onDismissOfficeSelection={() => setOfficeSelection(null)} suggestions={chat.suggestions} onAttach={chat.attach} staged={chat.staged} onAnswerStaged={chat.answerStaged} onSelectTemplate={chat.selectTemplate} onUploadTemplate={chat.addTemplate} filter={tab} onTag={(tag) => setTab(tag)} />
+              <ChatPanel ctx={ctx} onSend={send} officeSelection={officeSelection} onDismissOfficeSelection={() => setOfficeSelection(null)} suggestions={chat.suggestions} onAttach={attach} staged={chat.staged} onAnswerStaged={chat.answerStaged} filter={tab} onTag={(tag) => setTab(tag)} />
             ) : (
-              <FilesPanel project={project} onAdd={(files) => { const rest = chat.attach(files); if (rest.length) void chat.send("", rest); }} onRemove={(fid) => void chat.removeFile(fid)} onSelectTemplate={chat.selectTemplate} />
+              <FilesPanel project={project} onAdd={(files) => { const rest = attach(files); if (rest.length) void chat.send("", rest); }} onRemove={(fid) => void chat.removeFile(fid)} onSelectTemplate={chat.selectTemplate} />
             )}
           </div>
         </aside>
@@ -235,6 +249,8 @@ export function ProjectEditor({ project }: { project: Project }) {
             session={session}
             officeEnabled={officeEnabled}
             starting={starting}
+            onSelectTemplate={chat.selectTemplate}
+            onUploadTemplate={chat.addTemplate}
           />}
         </section>
       </div>

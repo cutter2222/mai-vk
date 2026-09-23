@@ -24,7 +24,7 @@ for (const officeEnabled of [false, true]) {
       return r.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a4ZkAAAAASUVORK5CYII=", "base64") });
     });
     await page.goto("/project?id=template-preview-test");
-    await expect(page.getByTestId("preview-empty")).toContainText("Макет выбран");
+    await expect(page.getByTestId("preview-empty")).toContainText("Здесь появится ваша презентация");
     await expect(page.getByTestId("preview-pane").locator("img")).toHaveCount(0);
     await expect(page.getByTestId("slide-counter")).toHaveCount(0);
     expect(assets).toEqual([]);
@@ -66,6 +66,9 @@ test("generated presentation selects three objects and sends one scoped AI comma
   });
   await page.goto("/project?id=template-select-test&officeView=preview");
   await expect(page.getByTestId("slide-counter")).toHaveText("Слайд 1 из 2");
+  // Правая панель занята презентацией: выбор шаблона — в шапке, а не в ней.
+  await expect(page.locator(".editor-header").getByTestId("template-menu")).toBeVisible();
+  await expect(page.getByTestId("preview-pane").getByTestId("template-menu")).toHaveCount(0);
   const click = async (id: number, modifier?: "Shift" | "Control" | "Meta") => {
     const outline = page.getByTestId(`object-outline-${id}`);
     await expect(outline).toBeVisible();

@@ -7,6 +7,7 @@ import { ApiError } from "@/lib/api/client";
 import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
 import type { Project } from "@/lib/state/projects";
 
+import { TemplatePicker } from "../TemplatePicker";
 import { GenerationProgress } from "./GenerationProgress";
 
 interface Props {
@@ -14,10 +15,15 @@ interface Props {
   session: GenerationSession;
   officeEnabled: boolean;
   starting: boolean;
+  onSelectTemplate: (id: string) => void;
+  onUploadTemplate: (file: File) => Promise<void>;
 }
 
-/** Правая часть проекта предназначена только для результата, не для образцов шаблона. */
-export function PreviewPane({ project, session, officeEnabled, starting }: Props) {
+/**
+ * Правая часть проекта — место результата, не образцов шаблона. Пока результата нет, по центру
+ * стоит выбор шаблона оформления: это первый шаг, и он там, где появится презентация.
+ */
+export function PreviewPane({ project, session, officeEnabled, starting, onSelectTemplate, onUploadTemplate }: Props) {
   if (starting) return <GenerationProgress session={session} starting />;
   if (project.job_id) {
     if (session.job.error instanceof ApiError && [404, 410].includes(session.job.error.status) && !session.result) {
@@ -50,10 +56,17 @@ export function PreviewPane({ project, session, officeEnabled, starting }: Props
     <div className="preview-empty">
       {/* Кнопки «Перейти в чат» здесь нет: чат открыт в соседней колонке, и она вела бы
           в то же место, где пользователь уже находится. */}
-      <Stack align="center" gap="xs" maw={440} data-testid="preview-empty">
+      <Stack align="center" gap="md" w="100%" maw={440} data-testid="preview-empty">
         <IconLayoutDashboard size={44} stroke={1.2} color="var(--ink2)" opacity={0.5} />
-        <Text fw={600}>Здесь появится ваша презентация</Text>
-        <Text size="sm" c="dimmed" ta="center">{project.template_id ? "Макет выбран. Опишите задачу в чате и запустите генерацию — здесь появятся только созданные ИИ слайды." : "Выберите макет и опишите задачу в чате. Здесь появятся слайды, созданные ИИ по вашим материалам."}</Text>
+        <Stack align="center" gap={4}>
+          <Text fw={600}>{project.template_id ? "Здесь появится ваша презентация" : "Выберите шаблон оформления"}</Text>
+          <Text size="sm" c="dimmed" ta="center">
+            {project.template_id
+              ? "Опишите задачу в чате слева и добавьте материалы — здесь появятся слайды, созданные ИИ в этом шаблоне."
+              : "Из библиотеки или свой PPTX. Затем опишите задачу в чате слева — здесь появятся слайды, созданные ИИ."}
+          </Text>
+        </Stack>
+        <TemplatePicker project={project} onSelectTemplate={onSelectTemplate} onUploadTemplate={onUploadTemplate} />
       </Stack>
     </div>
   );

@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 const reply = "Не нашёл в сообщении ничего про презентацию. Опишите задачу одной фразой: «сделай презентацию про запуск сервиса умных уведомлений для руководителей, чтобы одобрили пилот» — и перетащите шаблон PPTX и материалы.";
 const replies = (page: Page) => page.locator(".chat-msg > .chat-assistant-text");
-const greeting = "Добавьте шаблон презентации или выберите уже ранее загруженный.";
+const greeting = "Опишите, какая нужна презентация, или перетащите сюда материалы. Шаблон оформления выберите справа.";
 
 async function setup(page: Page, history = false, settleGreeting = true) {
   const project = {
@@ -84,7 +84,7 @@ test("assistant types replies sequentially, survives saved IDs and restores hist
   await page.clock.resume();
   await page.reload();
   await expect(replies(page)).toHaveText([reply, reply]);
-  await expect(page.getByTestId("template-greeting")).toHaveText(greeting);
+  await expect(page.getByTestId("chat-greeting")).toHaveText(greeting);
   await expect(page.getByTestId("assistant-typing")).toHaveCount(0);
 });
 
@@ -92,7 +92,7 @@ test("existing messages are immediate and reduced motion skips new text animatio
   await page.emulateMedia({ reducedMotion: "reduce" });
   await setup(page, true);
   await expect(replies(page)).toHaveText(reply);
-  await expect(page.getByTestId("template-greeting")).toHaveText(greeting);
+  await expect(page.getByTestId("chat-greeting")).toHaveText(greeting);
   await send(page);
   await expect(replies(page)).toHaveText([reply, reply]);
   await expect(page.getByTestId("assistant-typing")).toHaveCount(0);
@@ -104,7 +104,7 @@ test("existing messages are immediate and reduced motion skips new text animatio
 
 test("greeting types before replies without blocking template controls", async ({ page }) => {
   const project = await setup(page, false, false);
-  const intro = page.getByTestId("template-greeting");
+  const intro = page.getByTestId("chat-greeting");
   await expect(intro).toHaveAttribute("aria-busy", "true");
   await expect(page.getByTestId("template-menu")).toBeEnabled();
   await page.clock.runFor(600);

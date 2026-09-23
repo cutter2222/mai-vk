@@ -32,6 +32,9 @@ import {
 
 const base = (path: string) => `${API_BASE}${path}`;
 
+/** Сколько «едет» файл проекта; тесты растягивают загрузку через mock_upload_ms, чтобы проверить экран в это время. */
+const UPLOAD_MS = Number(typeof window !== "undefined" ? window.localStorage.getItem("mock_upload_ms") ?? "150" : "150") || 150;
+
 interface FileMeta {
   name: string;
   size: number;
@@ -150,7 +153,7 @@ export const handlers = [
     if (!files.length) return err(400, "file_required", "Не переданы файлы");
     const rejected = files.find((f) => /\.pptx$/i.test(f.name) && f.size < 2);
     if (rejected) return err(422, "file_rejected", `Файл ${rejected.name} не является PPTX`);
-    await delay(150);
+    await delay(UPLOAD_MS);
     const rows = files.map((f) => projects.addFile(String(params.id), f.name, f.size)).filter((r): r is ProjectFile => Boolean(r));
     return rows.length ? HttpResponse.json(rows, { status: 201 }) : err(404, "project_not_found", "Проект не найден");
   }),

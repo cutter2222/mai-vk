@@ -3,7 +3,7 @@
 import { ActionIcon, Badge, Button, TextInput, Tooltip } from "@mantine/core";
 import { IconArrowLeft, IconPlayerStop, IconRefresh } from "@tabler/icons-react";
 import Link from "next/link";
-import { useState, type Ref } from "react";
+import { useState, type ReactNode, type Ref } from "react";
 
 import { StatusBadge } from "@/components/common/StatusBadge";
 import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
@@ -14,10 +14,12 @@ interface Props {
   session: GenerationSession;
   onTitle: (title: string) => void;
   officeActionsRef?: Ref<HTMLDivElement>;
+  /** Выбор шаблона, когда презентация уже есть: правая панель занята ею. */
+  templatePicker?: ReactNode;
 }
 
 /** Шапка проекта: возврат к списку, название, состояние задания, отмена, повтор и скачивание. */
-export function ProjectHeader({ project, session, onTitle, officeActionsRef }: Props) {
+export function ProjectHeader({ project, session, onTitle, officeActionsRef, templatePicker }: Props) {
   const [title, setTitle] = useState(project.title);
   const [prevTitle, setPrevTitle] = useState(project.title);
   if (prevTitle !== project.title) {
@@ -58,6 +60,8 @@ export function ProjectHeader({ project, session, onTitle, officeActionsRef }: P
       <div style={{ flex: 1 }} />
       {/* Действия проекта одной группой у правого края: состояние и файлы. */}
       <div className="editor-header-actions">
+        {templatePicker}
+        {templatePicker && result && <div className="editor-header-sep" />}
         {result && <StatusBadge status={result.status} />}
         {result?.partial && <Badge color="ink" variant="light">частичный результат</Badge>}
         {/* Разделитель нужен только когда за ним есть действия задания. */}

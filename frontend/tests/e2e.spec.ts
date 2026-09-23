@@ -31,7 +31,7 @@ test.describe("сквозной сценарий в чате на заглушк
     const projectId = await projectIdAfterAction(page);
     // На сервере уже разобранный шаблон отдаётся из кэша сразу: состояние «разбираю» может не появиться.
     await expect(page.getByTestId("template-analyzing").or(page.getByTestId("template-profile").last())).toBeVisible();
-    // Текущий шаблон виден в первом сообщении чата, в списке он отмечен галочкой
+    // Текущий шаблон виден в выборе шаблона справа, в списке он отмечен галочкой
     await expect(page.getByTestId("template-menu")).toContainText("Корпоративный шаблон");
     await page.getByTestId("template-menu").click();
     // В библиотеке сервера может быть несколько шаблонов с таким именем (другие байты файла) — достаточно первого.
@@ -406,6 +406,47 @@ test.describe("сквозной сценарий в чате на заглушк
     await waitForAllVariantsDone(page);
     await expect(page.getByTestId("template-menu")).toContainText("Отчёт за квартал");
     await expect(page.getByTestId("download-menu")).toBeEnabled();
+  });
+
+  test("PPTX первым действием: вопрос виден, пока файл грузится, ответ применяется после загрузки", async ({ page }) => {
+    test.skip(REAL_STACK, "растянуть загрузку можно только в заглушке");
+    // Первое действие заводит проект на сервере: редактор при этом не пересоздаётся
+    // и не теряет ни файл, который ещё едет, ни вопрос о нём, ни напечатанное приветствие.
+    await page.addInitScript(() => window.localStorage.setItem("mock_upload_ms", "4000"));
+    await createProject(page);
+    const greeting = page.getByTestId("chat-greeting");
+    await expect(greeting).toHaveText("Опишите, какая нужна презентация, или перетащите сюда материалы. Шаблон оформления выберите справа.");
+    await attach(page, [{ name: "Новый шаблон.pptx", mimeType: PPTX_MIME, buffer: PPTX() }]);
+    await projectIdAfterAction(page);
+    const staged = page.locator('[data-testid^="template-question-stg_"]');
+    await expect(staged).toContainText("Новый шаблон.pptx");
+    expect(await greeting.getAttribute("data-typing")).toBeNull();
+    await staged.getByTestId("answer-template").click();
+    await expect(staged).toContainText("как только файл загрузится");
+    await expect(page.getByTestId("template-card").last()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId("template-menu")).toContainText("Новый шаблон");
+
+    // Из вкладки «Файлы» презентация возвращает панель к чату: вопрос о ней задаётся там.
+    await page.getByTestId("tab-files").click();
+    const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.getByTestId("files-add").click()]);
+    await chooser.setFiles({ name: "Отчёт.pptx", mimeType: PPTX_MIME, buffer: PPTX() });
+    await expect(page.getByTestId("tab-chat")).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator('[data-testid^="template-question-stg_"]')).toContainText("Отчёт.pptx");
+  });
+
+  test("шаблон из библиотеки первым действием: выбор справа сохраняется вместе с карточкой", async ({ page }) => {
+    // Выбор заводит проект на сервере; шаблон и карточка, появившиеся, пока шёл запрос,
+    // не должны затираться снимком черновика.
+    await createProject(page);
+    await expect(page.getByTestId("preview-empty")).toContainText("Выберите шаблон оформления");
+    await page.getByTestId("preview-pane").getByTestId("template-menu").click();
+    const option = page.locator('[data-testid^="template-option-"]').first();
+    const name = (await option.innerText()).split("\n")[0];
+    await option.click();
+    await projectIdAfterAction(page);
+    await expect(page.getByTestId("template-menu")).toContainText(name);
+    await expect(page.getByTestId("template-card").last()).toBeVisible();
+    await expect(page.getByTestId("preview-empty")).toContainText("Здесь появится ваша презентация");
   });
 
   test("визуальный редактор: текст и положение, перестановка, применение создаёт ревизию", async ({ page }) => {

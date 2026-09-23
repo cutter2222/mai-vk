@@ -14,7 +14,7 @@ test("template-only project stays empty without an editor session", async ({ pag
   let documents = 0;
   await page.route("**/api/office/documents", (r) => { documents++; return r.fulfill({ status: 500 }); });
   await page.goto("/project?id=template-view-test");
-  await expect(page.getByTestId("preview-empty")).toContainText("Макет выбран");
+  await expect(page.getByTestId("preview-empty")).toContainText("Здесь появится ваша презентация");
   await expect(page.getByTestId("project-office")).toHaveCount(0);
   await expect(page.getByTestId("slide-counter")).toHaveCount(0);
   await expect(page.locator("iframe")).toHaveCount(0);

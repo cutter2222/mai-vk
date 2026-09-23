@@ -111,7 +111,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     const p = current();
     if (!p.package_id) return;
     if (!p.template_id) {
-      say("Материалы в работе. Шаблон оформления не выбран: выберите его в первом сообщении чата или перетащите PPTX и ответьте «Сделать шаблоном» — и я соберу презентацию.");
+      say("Материалы в работе. Шаблон оформления не выбран: выберите его справа или перетащите PPTX и ответьте «Сделать шаблоном» — и я соберу презентацию.");
       return;
     }
     offerGeneration();
@@ -359,7 +359,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     await removeProjectFile(id, fileId);
     if (meta.kind === "template" && meta.template_id === current().template_id) {
       updateProject(id, { template_id: null });
-      say(`Шаблон «${meta.name}» убран из проекта. Он остаётся в библиотеке шаблонов, выбрать другой можно в карточке шаблона.`);
+      say(`Шаблон «${meta.name}» убран из проекта. Он остаётся в библиотеке шаблонов, выбрать другой можно справа.`);
     } else if (meta.kind === "material") {
       const pkg = await importMaterials();
       if (!pkg) {
@@ -371,7 +371,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     }
   }, [id, importMaterials, say, current]);
 
-  /** Явная загрузка шаблона из первого сообщения — без вопроса о назначении файла. */
+  /** Явная загрузка шаблона из выбора шаблона — без вопроса о назначении файла. */
   const addTemplate = useCallback(async (file: File) => {
     let rows: ProjectFile[] = [];
     try {

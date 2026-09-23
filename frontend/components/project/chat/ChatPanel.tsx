@@ -13,7 +13,6 @@ import type { ChatMessage, PptxAnswer } from "@/lib/state/projects";
 import { BriefCard, ContentCard, EditCard, JobCard, PptxQuestion, TemplateCard, TemplateQuestionCard, type CardContext } from "./cards";
 import { isVisibleProjectMessage, TAG_HASH, TAG_LABELS, tagOf, type ChatTag } from "./tags";
 import type { StagedPptx } from "./useChat";
-import { TEMPLATE_GREETING, TemplateStart } from "./TemplateStart";
 import { MessageTime } from "./MessageTime";
 import { AssistantTyping } from "./AssistantTyping";
 import { useAssistantTyping } from "./useAssistantTyping";
@@ -28,19 +27,20 @@ interface Props {
   onAttach: (files: File[]) => File[];
   staged: StagedPptx[];
   onAnswerStaged: (localId: string, answer: PptxAnswer) => void;
-  onSelectTemplate: (id: string) => void;
-  onUploadTemplate: (file: File) => Promise<void>;
   /** Выбранная метка сверху: «all» — вся лента. Ряд меток живёт в шапке панели. */
   filter?: ChatTag | "all";
   /** Нажали метку на сообщении: лента сужается до этого шага. */
   onTag?: (tag: ChatTag) => void;
 }
 
+/** Первое сообщение ленты: шаблон выбирается справа, в чате — задача и материалы. */
+export const CHAT_GREETING = "Опишите, какая нужна презентация, или перетащите сюда материалы. Шаблон оформления выберите справа.";
+
 /**
  * Чат проекта: лента сообщений и карточек шагов, внизу поле ввода с вложениями; файлы можно бросать в любое место панели.
  * PPTX не ждёт отправки: вопрос «шаблон, готовая презентация или материал» появляется в ленте в момент броска, пока файл грузится.
  */
-export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onAnswerStaged, onSelectTemplate, onUploadTemplate, filter = "all", onTag, officeSelection, onDismissOfficeSelection }: Props) {
+export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onAnswerStaged, filter = "all", onTag, officeSelection, onDismissOfficeSelection }: Props) {
   const { project, session } = ctx;
   // Выбранный справа слайд — адресат сообщения: чип над полем ввода, крестик снимает адресацию.
   const target = session.slideTarget;
@@ -51,7 +51,7 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
   const resetRef = useRef<() => void>(null);
   const followRef = useRef(true);
   // Приветствие — виртуальное первое сообщение; серверную историю не меняем.
-  const greeting: ChatMessage = { event_id: "greeting", at: project.created_at, role: "assistant", kind: "text", text: TEMPLATE_GREETING };
+  const greeting: ChatMessage = { event_id: "greeting", at: project.created_at, role: "assistant", kind: "text", text: CHAT_GREETING };
   const messages = [greeting, ...project.events];
   const typing = useAssistantTyping(project.project_id, messages, project.events.length || project.template_id ? messages.length : 0);
   const presentedGreeting = typing.present(greeting, 0);
@@ -114,13 +114,18 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
         const el = e.currentTarget;
         followRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 64;
       }}>
-        {(filter === "all" || filter === "template") && (
+        {filter === "all" && (
           <div className="chat-msg chat-msg-assistant" data-testid="msg-assistant">
-            <TemplateStart project={project} onSelectTemplate={onSelectTemplate} onUploadTemplate={onUploadTemplate} greeting={presentedGreeting?.kind === "text" ? presentedGreeting.text : ""} typing={typing.activeIndex === 0} />
+            <Stack gap="xs">
+              <Text size="sm" className="chat-assistant-text" data-testid="chat-greeting" aria-busy={typing.activeIndex === 0} data-typing={typing.activeIndex === 0 || undefined}>
+                {presentedGreeting?.kind === "text" ? presentedGreeting.text : ""}
+              </Text>
+              {typing.activeIndex === 0 && <AssistantTyping />}
+            </Stack>
             <MessageTime at={project.created_at} />
           </div>
         )}
-        {filter !== "all" && filter !== "template" && shown.length === 0 && stagedShown.length === 0 && (
+        {filter !== "all" && shown.length === 0 && stagedShown.length === 0 && (
           <Text size="sm" c="dimmed" data-testid="chat-tag-empty">
             Под меткой «{TAG_LABELS[filter]}» пока пусто.
           </Text>

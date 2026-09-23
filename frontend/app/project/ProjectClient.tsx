@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { ProjectEditor } from "@/components/project/ProjectEditor";
-import { isDraft, startDraft, useProject } from "@/lib/state/projects";
+import { isDraft, sameProject, startDraft, useProject } from "@/lib/state/projects";
 
 export function ProjectClient() {
   const params = useSearchParams();
@@ -44,5 +44,8 @@ export function ProjectClient() {
       </Container>
     );
   }
-  return <ProjectEditor key={project.project_id} project={project} />;
+  // Черновик, ставший проектом на сервере, — та же презентация: редактор не пересоздаётся.
+  // Иначе первое действие стирает экран: PPTX ещё грузится, а вопрос о нём уже пропал.
+  const editorKey = draftId && sameProject(draftId, project.project_id) ? draftId : project.project_id;
+  return <ProjectEditor key={editorKey} project={project} />;
 }

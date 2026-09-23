@@ -1,23 +1,23 @@
 "use client";
 
-import { FileButton, Group, Loader, Menu, Stack, Text, UnstyledButton } from "@mantine/core";
+import { FileButton, Group, Loader, Menu, Text, UnstyledButton } from "@mantine/core";
 import { IconCheck, IconChevronDown, IconPlus, IconTemplate } from "@tabler/icons-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from "react";
 import { api, type TemplateListItem } from "@/lib/api/client";
 import type { Project } from "@/lib/state/projects";
-import styles from "./TemplateStart.module.css";
-import { AssistantTyping } from "./AssistantTyping";
+import styles from "./TemplatePicker.module.css";
 
-export const TEMPLATE_GREETING = "Добавьте шаблон презентации или выберите уже ранее загруженный.";
-
-/** Первый шаг чата; остаётся доступным и для смены шаблона. */
-export function TemplateStart({ project, onSelectTemplate, onUploadTemplate, greeting, typing }: {
+/**
+ * Выбор шаблона оформления: из библиотеки или свой PPTX. До первой генерации стоит в центре
+ * правой панели — там, где потом появится презентация; после — компактно в шапке проекта,
+ * чтобы шаблон можно было сменить и пересобрать.
+ */
+export function TemplatePicker({ project, onSelectTemplate, onUploadTemplate, compact = false }: {
   project: Project;
   onSelectTemplate: (id: string) => void;
   onUploadTemplate: (file: File) => Promise<void>;
-  greeting: string;
-  typing: boolean;
+  compact?: boolean;
 }) {
   const [uploading, setUploading] = useState(false);
   const upload = async (file: File | null) => {
@@ -73,42 +73,41 @@ export function TemplateStart({ project, onSelectTemplate, onUploadTemplate, gre
   /* eslint-disable @next/next/no-img-element */
 
   return (
-    <Stack gap="xs" data-testid="template-start">
-      <Text size="sm" className="chat-assistant-text" data-testid="template-greeting" aria-busy={typing} data-typing={typing || undefined}>{greeting}</Text>
-      {typing && <AssistantTyping />}
+    <div className={compact ? styles.compactRoot : styles.root} data-testid="template-start">
       {/* FileButton остаётся смонтированным после закрытия меню, пока открыт выбор файла. */}
       <FileButton onChange={(file) => void upload(file)} accept=".pptx">
         {(uploadProps) => (
         <Menu
           withinPortal
-          position="bottom-start"
+          position={compact ? "bottom-end" : "bottom-start"}
           shadow="md"
           opened={menuOpen}
           onChange={setMenuOpen}
-          width="target"
+          width={compact ? 340 : "target"}
           // Длинное имя шаблона не должно раздвигать список и уводить его за край окна:
           // ширина списка ограничена окном, подпись сжимается и обрезается многоточием.
           styles={{ dropdown: { maxWidth: "calc(100vw - 24px)" }, itemLabel: { minWidth: 0 } }}
         >
           <Menu.Target>
             <UnstyledButton
-              className={styles.trigger}
+              className={compact ? `${styles.trigger} ${styles.compact}` : styles.trigger}
               disabled={uploading}
               aria-busy={uploading}
+              title={compact ? "Шаблон оформления" : undefined}
               onKeyDown={onTriggerKeyDown}
               data-testid="template-menu"
             >
               <span className={styles.preview}>
-                {uploading || analyzing ? <Loader size={20} /> : thumb(currentTemplate) ? (
+                {uploading || analyzing ? <Loader size={compact ? 14 : 20} /> : thumb(currentTemplate) ? (
                   <img src={thumb(currentTemplate)} alt="" data-testid="template-thumb" />
-                ) : <IconTemplate size={24} stroke={1.5} />}
+                ) : <IconTemplate size={compact ? 16 : 24} stroke={1.5} />}
               </span>
               <span className={styles.copy}>
-                <span className={styles.caption}>Шаблон оформления</span>
+                {!compact && <span className={styles.caption}>Шаблон оформления</span>}
                 <span className={styles.name}>
                   {uploading ? "Загружаем шаблон…" : currentTemplate ? currentTemplate.name.replace(/\.pptx$/i, "") : project.template_id ? "Шаблон" : "Выбрать шаблон"}
                 </span>
-                {(analyzing || currentTemplate?.status === "failed") && !uploading && (
+                {!compact && (analyzing || currentTemplate?.status === "failed") && !uploading && (
                   <span className={styles.caption}>{currentTemplate?.status === "failed" ? "Анализ не удался · выберите другой" : "Анализируем оформление…"}</span>
                 )}
               </span>
@@ -158,7 +157,6 @@ export function TemplateStart({ project, onSelectTemplate, onUploadTemplate, gre
         </Menu>
         )}
       </FileButton>
-      {project.template_id && <Text size="xs" c="dimmed">Теперь опишите задачу презентации или добавьте материалы.</Text>}
-    </Stack>
+    </div>
   );
 }

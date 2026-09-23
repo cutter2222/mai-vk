@@ -3,7 +3,7 @@
 import { useReducedMotion } from "@mantine/hooks";
 import { useEffect, useState } from "react";
 
-import type { ChatMessage } from "@/lib/state/projects";
+import { sameProject, type ChatMessage } from "@/lib/state/projects";
 
 const PAUSE = 450;
 const TICK = 35;
@@ -13,7 +13,8 @@ export function useAssistantTyping(projectId: string, messages: ChatMessage[], i
   const reducedMotion = useReducedMotion();
   const [state, setState] = useState(() => ({ projectId, through: initiallyDisplayed, elapsed: 0 }));
   if (state.projectId !== projectId) {
-    setState({ projectId, through: initiallyDisplayed, elapsed: 0 });
+    // Черновик записан на сервер — лента та же, печать не начинается заново.
+    setState(sameProject(state.projectId, projectId) ? { ...state, projectId } : { projectId, through: initiallyDisplayed, elapsed: 0 });
   } else if (reducedMotion && state.through !== messages.length) {
     setState({ projectId, through: messages.length, elapsed: 0 });
   }

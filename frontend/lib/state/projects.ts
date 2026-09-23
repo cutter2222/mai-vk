@@ -117,6 +117,11 @@ function canonical(id: string): string {
   return materialized.get(id) ?? id;
 }
 
+/** Один ли это проект: черновик после первой записи и его настоящий идентификатор — да. */
+export function sameProject(a: string, b: string): boolean {
+  return canonical(a) === canonical(b);
+}
+
 /** Черновик для экрана новой презентации: тот же, пока его не записали на сервер. */
 export function startDraft(): Project {
   const existing = draftId ? projects.get(draftId) : undefined;
@@ -157,8 +162,22 @@ async function serverId(id: string): Promise<string> {
     // Всё, что успели набрать в черновике, остаётся на экране: лента, файлы, бриф и настройки
     // уедут на сервер тем же патчем, что и вызвал запись.
     const created = normalize(doc);
-    const merged: Project = draft
-      ? { ...created, title: draft.title, brief: draft.brief, settings: draft.settings, files: draft.files, events: draft.events }
+    // Черновик берётся заново: пока шёл запрос, в нём мог появиться выбранный шаблон и
+    // карточка о нём, а снимок до запроса их затёр бы.
+    const latest = projects.get(id) ?? draft;
+    const merged: Project = latest
+      ? {
+          ...created,
+          title: latest.title,
+          brief: latest.brief,
+          settings: latest.settings,
+          files: latest.files,
+          events: latest.events,
+          template_id: latest.template_id,
+          package_id: latest.package_id,
+          job_id: latest.job_id,
+          chosen_variant: latest.chosen_variant,
+        }
       : created;
     materialized.set(id, merged.project_id);
     projects.delete(id);

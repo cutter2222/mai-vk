@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("first chat message selects an existing template or uploads a new one without a PPTX question", async ({ page }) => {
+test("template picker in the empty preview selects an existing template or uploads a new one without a PPTX question", async ({ page }) => {
   const project = { project_id: "template-start-test", title: "Новая презентация", files: [] as Record<string, unknown>[], events: [] as Record<string, unknown>[], brief: {}, settings: {}, template_id: null as string | null };
   let uploaded = false;
   let generations = 0;
@@ -35,10 +35,16 @@ test("first chat message selects an existing template or uploads a new one witho
   await page.route("**/api/generations", (r) => { generations += 1; return r.fulfill({ status: 500 }); });
 
   await page.goto("/project?id=template-start-test");
-  const first = page.getByTestId("chat-list").getByTestId("msg-assistant").first();
-  await expect(first).toContainText("Добавьте шаблон презентации или выберите уже ранее загруженный.");
+  // Выбор шаблона — в центре пустой правой панели, в чате остаётся только приветствие.
+  await expect(page.getByTestId("preview-empty")).toContainText("Выберите шаблон оформления");
+  await expect(page.getByTestId("chat-greeting")).toHaveText("Опишите, какая нужна презентация, или перетащите сюда материалы. Шаблон оформления выберите справа.");
+  await expect(page.getByTestId("chat-list").getByTestId("template-menu")).toHaveCount(0);
   await expect(page.locator(".editor-header").getByTestId("template-menu")).toHaveCount(0);
-  const trigger = first.getByTestId("template-menu");
+  // Лента прижата к низу: приветствие стоит у поля ввода, а не под шапкой.
+  const list = await page.getByTestId("chat-list").boundingBox();
+  const hello = await page.getByTestId("chat-list").getByTestId("msg-assistant").first().boundingBox();
+  expect(list && hello && list.y + list.height - (hello.y + hello.height)).toBeLessThan(40);
+  const trigger = page.getByTestId("preview-pane").getByTestId("template-menu");
   await trigger.click();
   await expect(page.getByRole("menuitem").first()).toContainText("Добавить свой");
   await page.keyboard.press("Escape");
@@ -67,6 +73,7 @@ test("first chat message selects an existing template or uploads a new one witho
   await page.keyboard.press("Enter");
   await expect(page.getByRole("menu")).not.toBeVisible();
   await expect(page.getByTestId("template-menu")).toContainText("Фирменный");
+  await expect(page.getByTestId("preview-empty")).toContainText("Здесь появится ваша презентация");
   await expect(page.getByText("Шаблон выбран. Опишите задачу презентации или добавьте материалы.")).toBeVisible();
   await expect.poll(() => project.template_id).toBe("tpl-existing");
   await page.reload();

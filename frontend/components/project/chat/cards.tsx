@@ -133,7 +133,7 @@ export function TemplateCard({ m, ctx }: { m: Msg<"template_card">; ctx: CardCon
   const name = detail.data?.name ?? m.template_id;
 
   if (gone) {
-    return <Say testId="template-card">Шаблон «{name}» удалён из библиотеки. Загрузите PPTX снова или выберите другой в первом сообщении чата.</Say>;
+    return <Say testId="template-card">Шаблон «{name}» удалён из библиотеки. Загрузите PPTX снова или выберите другой справа.</Say>;
   }
   if (!profile) {
     return (
@@ -156,7 +156,7 @@ export function TemplateCard({ m, ctx }: { m: Msg<"template_card">; ctx: CardCon
         ))}
       </Group>
       <Aside>
-        {current ? "Слайды соберу из этих композиций; сменить шаблон можно в первом сообщении чата." : "Сейчас собираю по другому шаблону."}{" "}
+        {current ? "Слайды соберу из этих композиций; сменить шаблон можно справа." : "Сейчас собираю по другому шаблону."}{" "}
         <Anchor href={`/templates?id=${encodeURIComponent(m.template_id)}`} target="_blank" rel="noreferrer" size="xs" data-testid="template-open-library">Что извлечено из шаблона</Anchor>
       </Aside>
     </Stack>
@@ -336,7 +336,7 @@ export function JobCard({ m, ctx }: { m: Msg<"job_card">; ctx: CardContext }) {
           {broken.length === 1
             ? `Вариант «${VARIANT_LABELS[broken[0].variant_id] ?? broken[0].variant_id}» не собрался`
             : `${broken.length} ${plural(broken.length, "вариант", "варианта", "вариантов")} не собрались`}
-          {" "}— остальные готовы, повторить сборку можно в первом сообщении чата.
+          {" "}— остальные готовы, повторить сборку можно кнопкой «Повторить» в шапке проекта.
         </Say>
       )}
       <Stack gap={2}>
