@@ -501,6 +501,18 @@
       "items": {
         "type": "object",
         "properties": {
+          "source_chart": {
+            "type": "object",
+            "description": "Validated raster chart transcription; original asset remains available",
+            "additionalProperties": false,
+            "properties": {
+              "type": {"enum": ["column", "bar", "line"]},
+              "asset_id": {"$ref": "common.schema.json#/$defs/id"},
+              "axis_minimum": {"type": "number"},
+              "axis_maximum": {"type": "number"}
+            },
+            "required": ["type", "asset_id"]
+          },
           "dataset_id": {
             "$ref": "common.schema.json#/$defs/id"
           },

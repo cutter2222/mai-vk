@@ -59,9 +59,25 @@ test("разделы анализа не загружают SDK; исходни�
   expect(sdkRequests).toBe(0);
   await page.getByTestId("template-open-source").click();
   await expect(page.getByTitle("Просмотр шаблона", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Слайды", exact: true })).toBeVisible();
   await expect(page.getByText("Открываем исходный PPTX…")).toHaveCount(0);
   expect(configs).toBe(1);
+  await expect(page.locator(".tpl-section-heading")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Слайды", exact: true })).toHaveCount(0);
+  await expect(page.getByText("Просмотр в ONLYOFFICE", { exact: false })).toHaveCount(0);
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    const content = await page.locator(".tpl-content").boundingBox();
+    const frame = await page.getByTitle("Просмотр шаблона", { exact: true }).boundingBox();
+    expect(content).not.toBeNull();
+    expect(frame).not.toBeNull();
+    expect(frame!.x).toBeCloseTo(content!.x, 0);
+    expect(frame!.y).toBeCloseTo(content!.y, 0);
+    expect(frame!.width).toBeCloseTo(content!.width, 0);
+    expect(frame!.height).toBeCloseTo(content!.height, 0);
+    expect(frame!.y + frame!.height).toBeCloseTo(viewport.height, 0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByRole("button", { name: "К стилю", exact: true }).click();
   await expect(page.getByTestId("section-style")).toHaveAttribute("aria-current", "page");
   await expect(page.locator("iframe")).toHaveCount(0);

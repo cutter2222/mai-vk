@@ -69,7 +69,7 @@ roles:
   vlm:
     provider: qwen-api
     model: qwen3.8-27b   # тот же checkpoint, изображения принимает (зонд 19.09.2026)
-    hf_url: https://huggingface.co/Qwen/Qwen3-VL-32B-Instruct
+    hf_url: https://huggingface.co/Qwen/Qwen3.8-27B
     license: Apache-2.0
     params_b: 27
     reasoning: { mode: "off", max_output_tokens: 6000 }

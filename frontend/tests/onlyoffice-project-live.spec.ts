@@ -37,7 +37,7 @@ test("synthetic project returns from real SDK save to current canvas and thumbna
   const original = await originalResponse.body();
   expect(digest(original)).toBe(process.env.ONLYOFFICE_SDK_SHA256);
 
-  await page.goto(`/project?id=${projectId}`);
+  await page.goto(`/project?id=${projectId}&officeView=preview`);
   await expect(page.getByText("Превью · v0", { exact: true })).toBeVisible({ timeout: 120_000 });
   await expect(page.getByTestId("slide-counter")).toHaveText("Слайд 1 из 1");
   const canvas = page.locator(".preview-stage img");
@@ -54,7 +54,10 @@ test("synthetic project returns from real SDK save to current canvas and thumbna
   await expect(page.locator("iframe")).toBeVisible({ timeout: 120_000 });
   await expect(page.getByText("Загружается редактор…")).toHaveCount(0, { timeout: 180_000 });
   await expect(page.getByText("Ошибка ONLYOFFICE.", { exact: false })).toHaveCount(0);
-  await page.frameLocator("iframe").locator("#id-toolbar-btn-add-slide").click();
+  const editor = page.frameLocator("iframe");
+  await editor.getByText("Главная", { exact: true }).click();
+  await editor.locator("#id-toolbar-btn-add-slide").click();
+  await expect(editor.locator("#status-label-pages")).toHaveText("Слайд 2 из 2");
   await page.getByRole("button", { name: "Завершить и сохранить", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/project\\?id=${projectId}&officeJob=`), { timeout: 120_000 });
   expect(await page.evaluate(() => Object.hasOwn(window, "sdkProjectNavigation"))).toBe(true);

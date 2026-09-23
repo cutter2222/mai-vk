@@ -234,7 +234,25 @@ class RealLayers(StubLayers):
     # ----- импорт содержания -----
 
     def import_version(self) -> str:
-        return import_version()
+        import hashlib
+        import json
+
+        # Package idempotency must not reuse pre-vision/disabled-vision results.
+        ci = self.settings.content_import
+        chart_skill = self.skill("chart_extractor")
+        payload = {
+            "enabled": ci.chart_image_model,
+            "limit": ci.chart_image_max_images,
+            "budget_s": ci.chart_image_budget_s,
+            "skill": chart_skill.ref if chart_skill else None,
+        }
+        client = self.llm_client()
+        if client is not None:
+            from presentation_designer.llm import skill_model_ref
+
+            payload["model"] = skill_model_ref(client, chart_skill, role="vlm")
+        digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:16]
+        return f"{import_version()}/{digest}"
 
     def import_content(self, inp: ImportInput) -> ImportOutput:
         files = [

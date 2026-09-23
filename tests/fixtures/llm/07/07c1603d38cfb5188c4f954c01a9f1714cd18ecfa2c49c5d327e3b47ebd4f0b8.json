@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-22T22:53:22Z",
+ "entry_version": 1,
+ "key": "07c1603d38cfb5188c4f954c01a9f1714cd18ecfa2c49c5d327e3b47ebd4f0b8",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3615,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 4583,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: balanced. Сбалансированная подача: один тезис на слайд, заголовок-вывод, короткое пояснение (одно-два предложения) и до четырёх пунктов или показателей. Ряды данных — диаграмма с подписями; т",
+  "prompt": [
+   "plan.slides",
+   "0.4.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.4.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4671,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\"t6\"],\n      \"title\": \"Открываемость выросла с 31% до 44%, а отписки снизились вдвое\",\n      \"visual\": \"comparison\"\n    },\n    {\n      \"theses\": [\"t7\"],\n      \"title\": \"Динамика метрик подтверждает устойчивый рост вовлеченности\",\n      \"visual\": \"chart\"\n    },\n    {\n      \"theses\": [\"t8\"],\n      \"title\": \"Экономия 12,5 млн ₽ при затратах 2,4 млн ₽ обосновывает масштабирование\",\n      \"visual\": \"table\"\n    },\n    {\n      \"theses\": [\"t9\"],\n      \"title\": \"«Впервые уведомления стали помогать, а не отвлекать»\",\n      \"visual\": \"quote\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 213,
+   "prompt_tokens": 2552,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

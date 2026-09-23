@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-22T22:53:57Z",
+ "entry_version": 1,
+ "key": "f2487d3446d621c3a04afa4ed18c58942867980e0e895cd3dda9f99405f8b5d6",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3615,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3517,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: balanced. Сбалансированная подача: один тезис на слайд, заголовок-вывод, короткое пояснение (одно-два предложения) и до четырёх пунктов или показателей. Ряды данных — диаграмма с подписями; т",
+  "prompt": [
+   "plan.slides",
+   "0.4.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.4.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 3104,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t2\"\n      ],\n      \"title\": \"Отсутствие приоритизации приводит к потере важных сообщений\",\n      \"visual\": \"number\"\n    },\n    {\n      \"theses\": [\n        \"t4\"\n      ],\n      \"title\": \"Единый центр уведомлений повышает релевантность\",\n      \"visual\": \"bullets\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 107,
+   "prompt_tokens": 2045,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

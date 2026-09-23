@@ -1,11 +1,10 @@
 # Манифест скилла по contracts/schemas/skill_manifest.schema.json
 schema_version: '1.1'
 name: variant_planner
-version: 0.3.0
+version: 0.4.0
 stage: plan
-description: 'Строит SlidePlan одного варианта из общего StoryPlan: модель получает тезисы пакета,
-  факты и данные, короткий список композиций с ёмкостью и правила оси плотности; выбирает
-  группировку, композиции и формулировки; слоты, измерение ёмкости и покрытие собирает код'
+description: 'Строит SlidePlan из StoryPlan: модель пишет структурированное содержание,
+  код выбирает композиции по числу блоков и доступным ресурсам, заполняет слоты и измеряет ёмкость'
 model_role: llm
 response_format: json_schema
 reasoning:
@@ -13,8 +12,8 @@ reasoning:
   max_output_tokens: 14000
 prompts:
 - id: plan.slides
-  path: prompts/plan.slides.v0.3.0.md
-  version: 0.3.0
+  path: prompts/plan.slides.v0.4.0.md
+  version: 0.4.0
 params:
   temperature: 0.2
   time_budget_s: 260     # пакеты варианта идут параллельно, но каждый ответ с рассуждением
@@ -22,6 +21,9 @@ params:
 input_schema: story_plan
 output_schema: slide_plan
 changelog:
+- version: 0.4.0
+  date: '2026-09-22'
+  note: 'Сначала содержание: модель не выбирает pattern; композиции подбираются кодом после проверки ресурсов'
 - version: 0.3.0
   date: '2026-09-17'
   note: 'плотность слайда: композиция по объёму содержания (не меньше N−1 пунктов на N

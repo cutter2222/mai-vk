@@ -581,6 +581,14 @@ def check_content_package(package: m.ContentPackage) -> list[Violation]:
                         Violation("derived_self_reference", "факт ссылается сам на себя", fpath)
                     )
     for d in package.datasets:
+        if d.source_chart is not None and _id(d.source_chart.asset_id) not in assets:
+            out.append(
+                Violation(
+                    "asset_missing",
+                    "исходное изображение диаграммы не найдено",
+                    f"datasets[{_id(d.dataset_id)}].source_chart",
+                )
+            )
         width = len(d.columns)
         for i, row in enumerate(d.rows):
             if len(row) != width:

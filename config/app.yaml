@@ -66,6 +66,9 @@ content_import:             # импорт содержания (parsing/content
   min_image_px: 64          # меньшие картинки (разделители, маркеры) в ресурсы не попадают
   fact_context_model: true  # неоднозначный контекст фактов уточняет модель (скилл content_importer)
   fact_context_budget_s: 20 # бюджет всех запросов модели внутри импорта (этап stage_story_s делится с планом)
+  chart_image_model: true   # только явно подписанные значения; исходная картинка сохраняется
+  chart_image_budget_s: 45  # общий бюджет VLM-извлечения графиков
+  chart_image_max_images: 8 # уникальных растров за импорт; остальные остаются картинками
 
 plan:                       # планы трёх вариантов (generation/variants)
   cache_dir: data/plan-cache  # готовые SlidePlan по ключу: StoryPlan, профиль и шрифты, настройки, версии скилла

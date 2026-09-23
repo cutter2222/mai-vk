@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("template-only project shows preview without an editor session", async ({ page }) => {
+test("template-only project stays empty without an editor session", async ({ page }) => {
   await page.route("**/api/projects/template-view-test", (r) => r.fulfill({ json: {
     project_id: "template-view-test", title: "Тест", template_id: "tpl-view", brief: {}, settings: {}, files: [], events: [],
   } }));
@@ -14,11 +14,12 @@ test("template-only project shows preview without an editor session", async ({ p
   let documents = 0;
   await page.route("**/api/office/documents", (r) => { documents++; return r.fulfill({ status: 500 }); });
   await page.goto("/project?id=template-view-test");
-  await expect(page.getByTestId("project-office")).toBeVisible();
-  await expect(page.getByTestId("slide-counter")).toHaveText("Слайд 1 из 1");
+  await expect(page.getByTestId("preview-empty")).toContainText("Макет выбран");
+  await expect(page.getByTestId("project-office")).toHaveCount(0);
+  await expect(page.getByTestId("slide-counter")).toHaveCount(0);
   await expect(page.locator("iframe")).toHaveCount(0);
   await expect(page.getByText("Открываем исходный PPTX…")).toHaveCount(0);
-  await expect(page.getByText("Рабочая копия шаблона", { exact: false })).toBeVisible();
+  await expect(page.getByText("Рабочая копия шаблона", { exact: false })).toHaveCount(0);
   expect(documents).toBe(0);
 });
 
@@ -87,12 +88,12 @@ test("first published variant opens while other variants generate, without reope
     }};
   ` }));
   await page.goto("/project?id=async-test");
-  await expect(page.getByTestId("slide-counter")).toHaveText("Слайд 1 из 1");
+  await expect(page.getByTestId("preview-pane").locator("iframe")).toBeVisible();
   await expect(page.getByText("Готовый вариант уже доступен.", { exact: false })).toBeVisible();
   finished = true;
   await expect(page.getByText("Готовый вариант уже доступен.", { exact: false })).toHaveCount(0, { timeout: 20000 });
-  await expect(page.getByTestId("slide-counter")).toHaveText("Слайд 1 из 1");
-  await expect(page.locator("iframe")).toHaveCount(0);
+  await expect(page.getByTestId("preview-pane").locator("iframe")).toBeVisible();
+  await expect(page.locator("iframe")).toHaveCount(1);
   expect(opens).toBe(1);
 });
 

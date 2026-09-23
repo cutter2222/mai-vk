@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from presentation_designer.llm.types import ProviderError
 from presentation_designer.parsing.content.datasets import build_dataset
 from presentation_designer.parsing.content.facts import (
@@ -38,6 +40,30 @@ def test_numbers_russian_formats() -> None:
     assert found["x2"].kind == "ratio"
     assert found["15 000 клиентов"].value == 15000 and found["15 000 клиентов"].unit == "клиентов"
     assert parse_number_text("12 500,5") == 12500.5 and parse_number_text("1,234") == 1.234
+
+
+@pytest.mark.parametrize(
+    "name", ["iPhone 18", "IPHONE 18 Pro", "Windows 11", "Android 16", "версия 2.5", "GPT-5"]
+)
+def test_product_identifiers_are_not_numeric_metrics(name: str) -> None:
+    text = f"{name}: продажи выросли на 25 %, выручка — 12 млн ₽."
+    facts = extract_text_facts([TextUnit("b1", "src_1", text)])
+    assert [f.raw for f in facts] == ["25 %", "12 млн ₽"]
+    assert [f.fact_id for f in facts] == ["f1", "f2"]
+    assert all(f.must_keep for f in facts)
+
+
+def test_product_title_alone_does_not_force_a_kpi_slide() -> None:
+    assert extract_text_facts([TextUnit("b1", "brief", "IPhone 18")]) == []
+
+
+@pytest.mark.parametrize(
+    "text", ["Продажи iPhone: 18", "iPhone 18 шт.", "Прибыль 18", "Глубина 18 м"]
+)
+def test_identifier_filter_preserves_actual_metrics(text: str) -> None:
+    facts = extract_text_facts([TextUnit("b1", "src_1", text)])
+    assert len(facts) == 1
+    assert facts[0].value == 18
 
 
 def test_area_and_volume_units_survive_extraction() -> None:

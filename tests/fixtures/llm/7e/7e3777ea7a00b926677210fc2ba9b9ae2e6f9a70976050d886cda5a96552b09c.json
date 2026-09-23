@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-22T22:54:17Z",
+ "entry_version": 1,
+ "key": "7e3777ea7a00b926677210fc2ba9b9ae2e6f9a70976050d886cda5a96552b09c",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3615,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 4613,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 627,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 1284,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: слайд «Рост открываемости подтверждает повышени» (pat_builtin_statement), слот title: текст не помещается — 63 символов / 2 строк при ёмкости 35 символов / 1 строк — сократи",
+  "prompt": [
+   "plan.slides",
+   "0.4.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.4.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 3199,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t6\"\n      ],\n      \"title\": \"Открываемость выросла, отписки снизились\",\n      \"visual\": \"comparison\"\n    },\n    {\n      \"theses\": [\n        \"t7\"\n      ],\n      \"title\": \"Устойчивый рост активных пользователей\",\n      \"visual\": \"table\"\n    },\n    {\n      \"theses\": [\n        \"t8\"\n      ],\n      \"title\": \"Пилот окупился и сэкономил бюджет\",\n      \"visual\": \"table\"\n    },\n    {\n      \"theses\": [\n        \"t9\"\n      ],\n      \"title\": \"Уведомления стали полезными\",\n      \"visual\": \"quote\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 194,
+   "prompt_tokens": 3171,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

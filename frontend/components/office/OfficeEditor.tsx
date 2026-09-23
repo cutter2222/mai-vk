@@ -84,7 +84,7 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
 
   useEffect(() => {
     // finish() clears pre-close state; only a fresh server acknowledgement allows return.
-    if (embedded || editing || !closed || !doc || doc.active_key || doc.error || pollError || !onSaved || returnedAfterSave.current) return;
+    if (editing || !closed || !doc || doc.active_key || doc.error || pollError || !onSaved || returnedAfterSave.current) return;
     returnedAfterSave.current = true;
     onSaved(doc);
   }, [embedded, editing, closed, doc, pollError, onSaved]);
@@ -242,6 +242,7 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
   if (!id) return <Alert color="red">Офисная копия не указана. Откройте её из проекта.</Alert>;
   const actions = (
         <Group gap="xs" wrap="nowrap">
+          {embedded && onSaved && <Button size="xs" variant="light" loading={closing} disabled={closed || !ready || editing} onClick={() => void finish()} data-testid="office-preview">Сохранить и превью</Button>}
           <Menu withinPortal position="bottom-end" width={180} shadow="md">
             <Menu.Target>
               <ActionIcon variant="subtle" color="gray" aria-label="Скачать презентацию" title="Скачать презентацию" loading={downloading} disabled={!doc || Boolean(pollError)} data-testid="download-menu">
@@ -303,7 +304,7 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
           </div>
         </>
       )}
-      {!embedded && !actionsTarget && <Group justify="flex-end" p="xs">{actions}</Group>}
+      {!actionsTarget && <Group justify="flex-end" p="xs">{actions}</Group>}
     </Stack>
   );
 }

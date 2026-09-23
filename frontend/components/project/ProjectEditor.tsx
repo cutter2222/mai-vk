@@ -12,9 +12,8 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { OfficeEditHandle } from "@/components/office/OfficeEditor";
 
-import { api, ApiError, type CapabilitiesResponse, type TemplateDetail, type OfficeSelection } from "@/lib/api/client";
+import { api, ApiError, type CapabilitiesResponse, type OfficeSelection } from "@/lib/api/client";
 import type { GenerationRequest } from "@/lib/api/types";
-import { usePolling } from "@/lib/api/usePolling";
 import { useGenerationSession } from "@/lib/hooks/useGenerationSession";
 import { setPanelOpen, usePanelOpen } from "@/lib/state/panel";
 import { appendMessage, updateProject, type Project } from "@/lib/state/projects";
@@ -27,13 +26,14 @@ import { FilesPanel } from "./files/FilesPanel";
 import { BriefFields } from "./panels/BriefFields";
 import { SettingsPanel, settingsError } from "./panels/SettingsPanel";
 import { PreviewPane } from "./preview/PreviewPane";
+import { GenerationProgress } from "./preview/GenerationProgress";
 import { ProjectHeader } from "./ProjectHeader";
 import { ProjectOffice } from "./office/ProjectOffice";
 
 /** Что показывает левая панель: всю ленту, ленту под меткой или файлы проекта. */
 type Tab = "all" | ChatTag | "files";
 
-/** Проект: слева чат/файлы, справа превью сохранённой офисной ревизии. */
+/** Проект: слева чат/файлы, справа редактор слайдов и сохранённое превью. */
 export function ProjectEditor({ project }: { project: Project }) {
   const [tab, setTab] = useState<Tab>("all");
   // Панель с чатом занимает 460 px. На правке слайда это место нужнее слайду, поэтому она
@@ -64,19 +64,11 @@ export function ProjectEditor({ project }: { project: Project }) {
     setPanelOpen(open);
   };
 
-  const template = usePolling<TemplateDetail>(
-    project.template_id ? () => api.templates.get(project.template_id as string) : null,
-    (d) => d.status === "succeeded" || d.status === "failed",
-    [project.template_id],
-  );
-
   const session = useGenerationSession(project.job_id, (jobId) => patch({ job_id: jobId }), { loadAudit: false });
 
   const officeAvailable = officeEnabled && Boolean(session.jobId && session.variant?.artifacts?.pptx);
   if (officeAvailable && !officeOpened) setOfficeOpened(true);
   const officePresent = officeEnabled && officeOpened;
-  const templateOffice = officeEnabled && !project.job_id && project.template_id && template.data?.previews?.some((path) => /(^|\/)slide-\d+\.png$/.test(path))
-    ? { id: project.template_id, detail: template.data } : undefined;
 
   const generate = useCallback(async (): Promise<boolean> => {
     if (!project.template_id || !project.package_id) return false;
@@ -120,7 +112,7 @@ export function ProjectEditor({ project }: { project: Project }) {
   // сообщение и ответ на него были бы не видны: «написал и ничего не произошло».
   const send: typeof chat.send = async (text, files, target) => {
     setTab("all");
-    if ((officePresent || templateOffice) && (officeSelection || /^\/edit\s+/i.test(text.trim()))) {
+    if (officePresent && (officeSelection || /^\/edit\s+/i.test(text.trim()))) {
       const label = officeSelection ? `Слайд ${officeSelection.slide} · ${officeSelection.label} · v${officeSelection.revision}\n` : "";
       appendMessage(project.project_id, { role: "user", kind: "message", text: label + text, file_ids: [] });
       try {
@@ -229,15 +221,15 @@ export function ProjectEditor({ project }: { project: Project }) {
         </aside>
 
         <section className="editor-preview" data-testid="preview-pane">
-          {(officePresent || templateOffice) && <div className="office-slot">
-            <ProjectOffice key={templateOffice?.id ?? "generated"} template={templateOffice} session={session} title={project.title} projectId={project.project_id} editRef={officeEdit} actionsTarget={officeActionsTarget} selection={officeSelection} onSelectionChange={selectOfficeObject} />
+          {officePresent && <div className="office-slot">
+            {(starting || (project.job_id && !session.terminal)) && <GenerationProgress session={session} compact starting={starting} />}
+            <ProjectOffice session={session} title={project.title} projectId={project.project_id} editRef={officeEdit} actionsTarget={officeActionsTarget} selection={officeSelection} onSelectionChange={selectOfficeObject} />
           </div>}
-          {!officePresent && !templateOffice && <PreviewPane
+          {!officePresent && <PreviewPane
             project={project}
             session={session}
             officeEnabled={officeEnabled}
-            templateDetail={template.data}
-            templateError={template.error}
+            starting={starting}
           />}
         </section>
       </div>

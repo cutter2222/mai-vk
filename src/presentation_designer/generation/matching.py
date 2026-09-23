@@ -6,8 +6,8 @@
 отбирает кандидатов для каждого тезиса: роль паттерна, поддерживаемая визуализация (таблица
 только при слоте таблицы, диаграмма — при слоте диаграммы или картинке диаграммы в образце
 роли chart), число элементов, ёмкость текста, уверенность анализа и предпочтения варианта.
-Титульный, разделители, содержание и финальный слайд подбираются по ролям. Модель получает
-короткий список кандидатов, а не весь профиль; геометрию и ёмкость определяет код.
+Титульный, разделители, содержание и финальный слайд подбираются по ролям. При генерации
+композиция выбирается после ответа модели; геометрию и ёмкость определяет код.
 """
 
 from __future__ import annotations
@@ -193,13 +193,17 @@ class PatternInfo:
         (заголовки карточек), которые титул, разделитель, оглавление и финал не заполняют."""
         return not any(s.required and s.group for s in self.slots.values())
 
-    def fillable(self, *, has_datasets: bool, has_code: bool = False) -> bool:
+    def fillable(
+        self, *, has_datasets: bool, has_code: bool = False, has_image: bool = False
+    ) -> bool:
         """Все обязательные одиночные слоты заполняются из тезиса: текстовые всегда, таблица и
         диаграмма — при наборе данных, код — при блоке кода; имя/должность/QR — нет."""
         for s in self.required_singles:
             if s.kind in FILLABLE_REQUIRED:
                 continue
             if s.kind in ("table", "chart") and has_datasets:
+                continue
+            if s.kind == "image" and (has_image or (self.role == "chart" and has_datasets)):
                 continue
             if s.kind == "code" and has_code:
                 continue
@@ -586,6 +590,12 @@ class Need:
 def score_pattern(p: PatternInfo, need: Need, variant_id: str) -> float:
     if p.role in FIXED_ROLES or p.role in SKIPPED_ROLES:
         return 0.0
+    if not need.has_image and p.role in ("image_full", "screenshot", "mockup"):
+        return 0.0
+    if not need.has_image and any(s.kind == "image" for s in p.required_singles):
+        # A chart image can be replaced with a native chart from the dataset.
+        if not (p.role == "chart" and need.has_dataset):
+            return 0.0
     affinity = ROLE_AFFINITY.get(need.visual, ROLE_AFFINITY["text"])
     base = affinity.get(p.role, 0.0)
     if p.role == "freeform":
@@ -671,7 +681,7 @@ def candidates_for(
     """
     scored: list[tuple[float, PatternInfo]] = []
     for p in patterns:
-        if not p.fillable(has_datasets=has_datasets):
+        if not p.fillable(has_datasets=has_datasets, has_image=need.has_image):
             continue
         if not has_datasets and (need.visual in ("chart", "table") or p.required_table_or_chart()):
             continue

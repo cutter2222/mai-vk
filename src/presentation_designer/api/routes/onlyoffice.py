@@ -192,7 +192,13 @@ def template_config(template_id: str, orch: Orch) -> dict[str, Any]:
                 f"{cfg.storage_url.rstrip('/')}/api/office/templates/{template_id}/source"
                 f"?{urlencode({'token': token})}"
             ),
-            "permissions": {"edit": False, "download": False, "print": True, "comment": False},
+            "permissions": {
+                "edit": False,
+                "download": False,
+                "print": True,
+                "comment": False,
+                "chat": False,
+            },
         },
         "editorConfig": {
             "mode": "view",
@@ -202,6 +208,14 @@ def template_config(template_id: str, orch: Orch) -> dict[str, Any]:
                 "anonymous": {"request": False},
                 "compactHeader": True,
                 "toolbarHideFileName": True,
+                "uiTheme": "theme-white",
+                "compactToolbar": True,
+                "hideRightMenu": True,
+                "hideRulers": True,
+                "hideNotes": True,
+                "comments": False,
+                "features": {"featuresTips": False},
+                "zoom": -1,
                 "plugins": False,
                 "macros": False,
                 "help": False,
@@ -274,7 +288,13 @@ def config(document_id: str, orch: Orch) -> dict[str, Any]:
             "key": doc["active_key"],
             "title": doc["title"],
             "url": f"{base}/source/{revision}?{urlencode({'token': token})}",
-            "permissions": {"edit": True, "download": False, "print": True},
+            "permissions": {
+                "edit": True,
+                "download": False,
+                "print": True,
+                "chat": False,
+                "comment": False,
+            },
         },
         "editorConfig": {
             "mode": "edit",
@@ -287,6 +307,16 @@ def config(document_id: str, orch: Orch) -> dict[str, Any]:
                 # The host project already shows the title; do not repeat a raw artifact ID.
                 "compactHeader": True,
                 "toolbarHideFileName": True,
+                # Standard customization only: no paid White Label layout overrides.
+                # Users can expand tools again via View; their saved preferences win.
+                "uiTheme": "theme-white",
+                "compactToolbar": True,
+                "hideRightMenu": True,
+                "hideRulers": True,
+                "hideNotes": True,
+                "comments": False,
+                "features": {"featuresTips": False},
+                "zoom": -1,
                 # AI is provided by the host; do not expose a second plugin workflow.
                 "plugins": False,
                 "macros": False,

@@ -385,10 +385,28 @@ def test_template_viewer_is_signed_read_only_and_does_not_change_source(client, 
     signed = verify(config["token"], SECRET)
     assert signed == {k: v for k, v in config.items() if k != "token"}
     assert config["editorConfig"]["mode"] == "view"
-    assert config["editorConfig"]["customization"]["anonymous"]["request"] is False
+    assert config["editorConfig"]["customization"] == {
+        "anonymous": {"request": False},
+        "compactHeader": True,
+        "toolbarHideFileName": True,
+        "uiTheme": "theme-white",
+        "compactToolbar": True,
+        "hideRightMenu": True,
+        "hideRulers": True,
+        "hideNotes": True,
+        "comments": False,
+        "features": {"featuresTips": False},
+        "zoom": -1,
+        "plugins": False,
+        "macros": False,
+        "help": False,
+        "feedback": {"visible": False},
+        "suggestFeature": False,
+    }
     assert config["editorConfig"]["user"]["name"] == "Просмотр шаблона"
     assert "callbackUrl" not in config["editorConfig"]
     assert config["document"]["permissions"]["edit"] is False
+    assert config["document"]["permissions"]["chat"] is False
     url = urlsplit(config["document"]["url"])
     assert client.get(url.path + "?" + url.query).content == pptx_bytes
     assert client.get(url.path, params={"token": "bad"}).status_code == 403
@@ -428,12 +446,22 @@ def test_config_simplifies_ui_without_disabling_editing_or_saving(client, office
         "edit": True,
         "download": False,
         "print": True,
+        "chat": False,
+        "comment": False,
     }
     assert editor["customization"] == {
         "forcesave": True,
         "autosave": True,
         "compactHeader": True,
         "toolbarHideFileName": True,
+        "uiTheme": "theme-white",
+        "compactToolbar": True,
+        "hideRightMenu": True,
+        "hideRulers": True,
+        "hideNotes": True,
+        "comments": False,
+        "features": {"featuresTips": False},
+        "zoom": -1,
         "plugins": False,
         "macros": False,
         "help": False,

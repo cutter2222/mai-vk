@@ -6,7 +6,8 @@ test("живой шаблон: стиль, сведения о файле, сл�
   const response = await request.get("/api/templates");
   expect(response.ok()).toBeTruthy();
   const items = await response.json();
-  const template = items.find((item: { status: string }) => item.status === "succeeded");
+  const template = items.find((item: { template_id: string; status: string }) => item.status === "succeeded"
+    && (!process.env.TEMPLATE_ID || item.template_id === process.env.TEMPLATE_ID));
   expect(template).toBeTruthy();
   const errors: string[] = [];
   const sdkURLs: string[] = [];
@@ -31,9 +32,19 @@ test("живой шаблон: стиль, сведения о файле, сл�
   await expect(page.locator("iframe")).toBeVisible();
   await expect(page.getByText("Открываем исходный PPTX…")).toHaveCount(0, { timeout: 90_000 });
   await expect(page.getByText("Просмотр недоступен", { exact: true })).toHaveCount(0);
-  expect(sdkURLs.some((url) => url.includes("_pd16v2"))).toBeTruthy();
+  await expect(page.locator(".tpl-section-heading")).toHaveCount(0);
+  const content = await page.locator(".tpl-content").boundingBox();
+  const frame = await page.locator("iframe").boundingBox();
+  expect(frame).not.toBeNull();
+  expect(content).not.toBeNull();
+  expect(frame!.y).toBeCloseTo(content!.y, 0);
+  expect(frame!.height).toBeCloseTo(content!.height, 0);
+  expect(frame!.width).toBeCloseTo(content!.width, 0);
+  expect(sdkURLs.length).toBeGreaterThan(0);
   const officeFrame = page.frameLocator("iframe");
   await expect(officeFrame.getByText("Введите имя, которое будет использоваться", { exact: false })).toHaveCount(0);
+  await expect(officeFrame.getByRole("button", { name: /^Чат(?:\s|$)/ })).toHaveCount(0);
+  await expect(officeFrame.getByRole("button", { name: "По размеру слайда", exact: true })).toHaveAttribute("aria-pressed", "true");
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/templates-onlyoffice.png`, fullPage: true });
   await page.setViewportSize({ width: 1024, height: 768 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

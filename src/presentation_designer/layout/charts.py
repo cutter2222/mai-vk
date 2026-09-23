@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -127,22 +128,37 @@ class ChartSpec:
     show_data_labels: bool
     number_format: str
     dataset_id: str
+    axis_minimum: float | None = None
+    axis_maximum: float | None = None
+    source_transcription: bool = False
 
 
 def _to_number(value: Any) -> float | None:
     if value is None or isinstance(value, bool):
         return None
     if isinstance(value, int | float):
-        return float(value)
+        return float(value) if math.isfinite(value) else None
     text = str(value).strip().replace(" ", "").replace(" ", "").replace(",", ".")
     text = text.rstrip("%")
     try:
-        return float(text)
+        number = float(text)
+        return number if math.isfinite(number) else None
     except ValueError:
         return None
 
 
 def chart_spec(block_chart: dict[str, Any], dataset: dict[str, Any]) -> ChartSpec:
+    source_chart = dataset.get("source_chart") or {}
+    if source_chart:
+        block_chart = {
+            **block_chart,
+            "type": source_chart["type"],
+            "category_column": dataset["columns"][0]["name"],
+            "series": [c["name"] for c in dataset["columns"][1:]],
+            "units": dataset["columns"][1].get("unit"),
+            "title": dataset.get("title"),
+            "show_data_labels": True,
+        }
     columns = [str(c.get("name", "")) for c in dataset.get("columns", [])]
     types = {str(c.get("name", "")): str(c.get("type", "")) for c in dataset.get("columns", [])}
     rows = dataset.get("rows") or []
@@ -156,7 +172,10 @@ def chart_spec(block_chart: dict[str, Any], dataset: dict[str, Any]) -> ChartSpe
     numeric = [
         c
         for c in columns
-        if c != category and any(_to_number(r[columns.index(c)]) is not None for r in rows)
+        if c != category
+        and any(
+            columns.index(c) < len(r) and _to_number(r[columns.index(c)]) is not None for r in rows
+        )
     ]
     wanted = [s for s in block_chart.get("series") or [] if s in columns and s != category]
     series_names = wanted or numeric[:5]
@@ -184,6 +203,9 @@ def chart_spec(block_chart: dict[str, Any], dataset: dict[str, Any]) -> ChartSpe
         show_data_labels=bool(block_chart.get("show_data_labels", len(rows) <= 8)),
         number_format="#,##0.0" if fractional else "#,##0",
         dataset_id=str(block_chart.get("dataset_id", "")),
+        axis_minimum=source_chart.get("axis_minimum"),
+        axis_maximum=source_chart.get("axis_maximum"),
+        source_transcription=bool(source_chart),
     )
 
 
@@ -303,6 +325,10 @@ def _style_axes(chart: Any, spec: ChartSpec, style: ChartStyle) -> None:
         value_axis.major_gridlines.format.line.color.rgb = _rgb("#E0E0E0")
     value_axis.tick_labels.number_format = "General"
     value_axis.tick_labels.number_format_is_linked = False
+    if spec.axis_minimum is not None:
+        value_axis.minimum_scale = spec.axis_minimum
+    if spec.axis_maximum is not None:
+        value_axis.maximum_scale = spec.axis_maximum
     if spec.units and spec.show_axis_labels:
         value_axis.has_title = True
         value_axis.axis_title.text_frame.text = spec.units
@@ -343,7 +369,11 @@ def replace_or_add_chart(
     """Диаграмма образца того же семейства получает новые данные (оформление образца
     остаётся); иначе строится новая на том же месте, образец удаляется.
     Возвращает graphicFrame и способ: replaced | rebuilt."""
-    if frame is not None and chart_family_of(frame.chart) == FAMILY[spec.chart_type]:
+    if (
+        frame is not None
+        and not spec.source_transcription
+        and chart_family_of(frame.chart) == FAMILY[spec.chart_type]
+    ):
         chart = frame.chart
         chart.replace_data(chart_data(spec))
         style_chart(chart, spec, style, restyle_series=False)

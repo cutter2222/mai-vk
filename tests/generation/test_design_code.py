@@ -164,7 +164,7 @@ def test_model_cannot_claim_thesis_coverage_while_omitting_its_facts() -> None:
     assert any("{fact:f1}" in b.get("text", "") for b in vr.fill_blocks(ctx, drafts[0]))
 
 
-def test_packet_includes_design_and_geometry_and_cache_tracks_it() -> None:
+def test_content_packet_omits_design_but_plan_cache_tracks_it() -> None:
     profile = {
         "patterns": [_pattern("cards", builtin=True)],
         "design_tokens": {
@@ -177,8 +177,10 @@ def test_packet_includes_design_and_geometry_and_cache_tracks_it() -> None:
     thesis = vr.Thesis("t1", 1, "claim", "Этапы", "", True, None, [], [], [], [], "cards")
     packet = vr.Packet(0, [thesis], 1, 1, 1, {"t1": ctx.patterns})
     digest = vr.packet_digest(ctx, structure, packet)
-    assert "Дизайн-код" in digest and "Play" in digest and "#0077FF" in digest
-    assert "библиотека в дизайн-коде" in digest and "x,y,w,h" in digest
+    assert "Дизайн-код" not in digest and "Play" not in digest and "#0077FF" not in digest
+    assert "библиотека в дизайн-коде" not in digest and "x,y,w,h" not in digest
     changed = copy.deepcopy(profile)
     changed["design_tokens"]["colors"]["theme"]["accent1"] = "#FF0077"
     assert vr.profile_digest(profile) != vr.profile_digest(changed)
+    changed_ctx = vr.build_context({}, changed, {}, "balanced", {}, get_settings(), 8)
+    assert vr.packet_digest(changed_ctx, vr.deck_structure(changed_ctx), packet) == digest

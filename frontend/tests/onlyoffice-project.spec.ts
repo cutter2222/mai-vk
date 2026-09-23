@@ -1,6 +1,63 @@
 import { expect, test, type Page } from "@playwright/test";
 
 // Isolated API and SDK fixtures: never edit a user's deck.
+test.beforeEach(async ({ page }) => {
+  // Existing preview/fullscreen regressions explicitly enter the secondary saved view.
+  await page.addInitScript(() => {
+    if (location.pathname === "/project" && !location.search.includes("officeView=")) {
+      history.replaceState(null, "", `${location.href}&officeView=preview`);
+    }
+  });
+});
+
+test("slides open the editor inline and wait for server save before preview", async ({ page }) => {
+  const state = await setup(page);
+  await page.goto("/project?id=office-ui-test&officeView=editor");
+  await expect(page.getByTestId("preview-pane").locator("iframe")).toBeVisible();
+  await expect(page.getByTestId("office-preview")).toBeEnabled();
+  await expect(page.getByTestId("slide-counter")).toHaveCount(0);
+  await expect(page.getByText(/Сохранённая версия · v/)).toHaveCount(0);
+  await expect(page.getByRole("combobox", { name: "Вариант презентации" })).toHaveCount(0);
+  const pane = await page.getByTestId("preview-pane").boundingBox();
+  const canvas = await page.locator(".office-canvas").boundingBox();
+  expect(pane).not.toBeNull();
+  expect(canvas).not.toBeNull();
+  expect(Math.abs(canvas!.y - pane!.y)).toBeLessThanOrEqual(1);
+  await page.getByTestId("panel-collapse").click();
+  await page.getByTestId("panel-expand").click();
+  expect(state.configs).toBe(1);
+  await page.getByTestId("office-preview").click();
+  await expect(page.locator("iframe")).toHaveCount(0);
+  await expect(page.getByTestId("slide-counter")).toHaveCount(0);
+  await expect(page.getByText("Ожидаем завершения сессии", { exact: false })).toBeVisible();
+  state.revision = 4;
+  state.active = false;
+  await expect(page.getByText("Превью · v4", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Сохранённая версия · v/)).toHaveCount(0);
+  await expect(page.getByRole("combobox", { name: "Вариант презентации" })).toBeVisible();
+  await expect(page).toHaveURL(/\/project\?/);
+  await page.getByTestId("edit-slides").click();
+  await expect(page.getByTestId("preview-pane").locator("iframe")).toBeVisible();
+  expect(state.configs).toBe(2);
+  expect(state.opened).toEqual(["compact/r1/deck.pptx"]);
+});
+
+test("inline AI saves the active editor, edits the same PPTX and reopens inline", async ({ page }) => {
+  const state = await setup(page);
+  await page.goto("/project?id=office-ui-test&officeView=editor");
+  await expect(page.getByTestId("office-preview")).toBeEnabled();
+  await page.getByTestId("chat-input").fill("/edit Измени заголовок");
+  await page.getByTestId("chat-send").click();
+  await expect(page.locator("iframe")).toHaveCount(0);
+  expect(state.edits).toBe(0);
+  state.active = false;
+  await expect(page.getByText(/Заголовок изменён/)).toBeVisible();
+  await expect(page.getByTestId("preview-pane").locator("iframe")).toBeVisible();
+  await expect(page).toHaveURL(/\/project\?/);
+  expect(state.edits).toBe(1);
+  expect(state.configs).toBe(2);
+});
+
 test("pages load independently and a failed page can be retried", async ({ page }) => {
   const state = await setup(page);
   await page.route(/\/preview-test\/preview\/3$/, (r) => r.fulfill({ json: {
@@ -291,7 +348,7 @@ test("manual page waits for callback and poll recovery, then returns to the same
   await expect(page).toHaveURL(/\/office\?/);
   await expect(page.getByText("Сохранено", { exact: true })).toHaveCount(0);
   state.failPoll = false;
-  await expect(page).toHaveURL(/\/project\?id=office-ui-test&officeJob=job_officeuitest&officeArtifact=balanced%2Fr1%2Fdeck.pptx$/);
+  await expect(page).toHaveURL(/\/project\?id=office-ui-test&officeJob=job_officeuitest&officeArtifact=balanced%2Fr1%2Fdeck.pptx&officeView=preview$/);
   const saved = page.getByText("Сохранено", { exact: true });
   await expect(saved).toHaveCount(1);
   await expect(saved).toBeVisible();

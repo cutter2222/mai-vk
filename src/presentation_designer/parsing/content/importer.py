@@ -41,7 +41,7 @@ log = logging.getLogger(__name__)
 JsonDict = dict[str, Any]
 
 IMPORTER_NAME = "content_importer"
-IMPORTER_VERSION = "0.1.1"
+IMPORTER_VERSION = "0.2.0"
 BRIEF_PARSER_VERSION = "0.1.0"
 PURPOSES = ("feature", "product", "project", "initiative", "report", "other")
 _EXT_BY_MIME = {
@@ -165,6 +165,9 @@ def import_key(files: list[MaterialFile], settings: Settings) -> str:
         "max_dataset_rows": settings.content_import.max_dataset_rows,
         "max_facts": settings.content_import.max_facts,
         "max_assets": settings.content_import.max_assets,
+        "chart_image_model": settings.content_import.chart_image_model,
+        "chart_image_max_images": settings.content_import.chart_image_max_images,
+        "chart_image_budget_s": settings.content_import.chart_image_budget_s,
     }
     digest = hashlib.sha256(
         json.dumps(material, sort_keys=True, ensure_ascii=False).encode("utf-8")
@@ -295,6 +298,22 @@ def import_content(
         parsed.append((material, doc, source))
     timings["parse_ms"] = int((time.perf_counter() - t0) * 1000)
 
+    # Vision enrichment is separate from the deterministic file cache.
+    from presentation_designer.parsing.content.chart_images import extract_charts, image_key
+
+    chart_results: dict[str, Any] = {}
+    chart_summary: JsonDict = {"calls": 0, "items": {}}
+    if ci.chart_image_model and use_model is not False and llm_client is not None:
+        t0 = time.perf_counter()
+        chart_results, chart_summary = extract_charts(
+            [image for _, doc, _ in parsed if doc for image in doc.images],
+            llm_client,
+            budget_s=ci.chart_image_budget_s,
+            max_images=ci.chart_image_max_images,
+        )
+        timings["chart_images_ms"] = int((time.perf_counter() - t0) * 1000)
+    chart_missing: list[JsonDict] = []
+
     # 2. Сквозные идентификаторы: источники, блоки, наборы данных, ресурсы.
     ids = _Ids()
     sources: list[JsonDict] = []
@@ -404,6 +423,37 @@ def import_content(
                     asset_by_sha[sha] = asset_id
                 block["asset_id"] = asset_id
                 block["importance"] = "should"
+                extraction = chart_results.get(image_key(image))
+                outcome = chart_summary["items"].get(image_key(image), {})
+                if extraction is not None:
+                    dataset = extraction.dataset(
+                        dataset_id=ids.next_dataset(),
+                        source_id=source_id,
+                        block_id=block_id,
+                        asset_id=asset_id,
+                        image=image,
+                    )
+                    # All-or-nothing: truncating a transcribed chart would change its meaning.
+                    if len(dataset.rows) <= ci.max_dataset_rows:
+                        datasets.append(dataset)
+                        block.update(kind="table", dataset_id=dataset.dataset_id, importance="must")
+                        block["tags"] = ["chart", "vision_transcription"]
+                        for asset in assets:
+                            if asset["asset_id"] == asset_id:
+                                asset["kind"] = "chart_image"
+                    else:
+                        outcome = {"status": "rejected", "reason": "превышен лимит строк графика"}
+                if outcome.get("status") in ("rejected", "skipped"):
+                    reason = outcome.get("reason") or "данные не прочитаны"
+                    warnings.append(
+                        {
+                            "code": "chart_image_retained",
+                            "message": f"{source_id}/{asset_id}: {reason}; картинка сохранена",
+                        }
+                    )
+                    chart_missing.append(
+                        {"what": f"Точные данные графика {asset_id}", "why_needed": str(reason)}
+                    )
             else:
                 ids.block -= 1
                 order -= 1
@@ -413,7 +463,7 @@ def import_content(
             if location:
                 block["source_location"] = location
             if pb.tags:
-                block["tags"] = list(pb.tags)
+                block["tags"] = list(dict.fromkeys([*block.get("tags", []), *pb.tags]))
             if "notes" in pb.tags:
                 block["importance"] = "could"
             blocks.append(block)
@@ -452,6 +502,11 @@ def import_content(
             }
         )
     fact_blocks = {f.block_id for f in facts if f.must_keep}
+    vision_blocks = {d.block_id for d in datasets if d.source_chart}
+    for fact in facts:
+        if fact.block_id in vision_blocks:
+            # Transcribed by a model, not confirmed by the deterministic table parser.
+            fact.uncertainty = {"level": "inferred", "extracted_by": "model"}
     for block in blocks:
         if block["block_id"] in fact_blocks and block["kind"] in (
             "paragraph",
@@ -476,6 +531,7 @@ def import_content(
 
     # 5. Недостающие данные.
     missing_data = find_missing_data(package_brief, blocks, facts, mode)
+    missing_data.extend(chart_missing)
 
     # 6. Метаданные и документ.
     import_meta: JsonDict = {
@@ -486,7 +542,7 @@ def import_content(
         },
         "import_key": import_key(files, settings),
         "cache": {"files_hit": hits, "files_missed": missed},
-        "model_calls": int(model_summary.get("calls", 0)),
+        "model_calls": int(model_summary.get("calls", 0)) + int(chart_summary["calls"]),
         "duration_ms": int((time.perf_counter() - started) * 1000),
         "created_at": now_iso(),
     }
@@ -501,6 +557,23 @@ def import_content(
             ref = skill_model_ref(llm_client, skill)
             import_meta["models"] = [ref] if ref else []
         except Exception:  # конфиг моделей недоступен — без ссылок
+            pass
+    if chart_summary["calls"]:
+        from presentation_designer.llm import skill_model_ref
+        from presentation_designer.llm.skills import get_skill
+
+        chart_skill = get_skill("chart_extractor")
+        import_meta.setdefault("skills", []).append(
+            {"name": chart_skill.name, "version": chart_skill.version}
+        )
+        import_meta.setdefault("prompts", []).extend(
+            {"name": p.id, "version": p.version} for p in chart_skill.prompts.values()
+        )
+        try:
+            ref = skill_model_ref(llm_client, chart_skill, role="vlm")
+            if ref and ref not in import_meta.get("models", []):
+                import_meta.setdefault("models", []).append(ref)
+        except Exception:
             pass
     package: JsonDict = {
         "schema_version": "1.3",
@@ -535,6 +608,7 @@ def import_content(
         },
         "cache": {"files_hit": hits, "files_missed": missed},
         "model": model_summary,
+        "chart_images": chart_summary,
         "warnings": warnings + [w for s in sources for w in s.get("warnings", [])],
         "total_ms": import_meta["duration_ms"],
     }

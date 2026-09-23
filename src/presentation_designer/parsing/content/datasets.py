@@ -68,6 +68,7 @@ class Dataset:
     truncated: bool
     # Значения по колонкам до усечения — для фактов и производных показателей.
     numeric_columns: dict[int, list[tuple[int, float]]] = field(default_factory=dict)
+    source_chart: JsonDict | None = None
 
     def as_dict(self) -> JsonDict:
         out: JsonDict = {
@@ -87,6 +88,8 @@ class Dataset:
         }
         if self.title:
             out["title"] = self.title
+        if self.source_chart:
+            out["source_chart"] = self.source_chart
         if self.block_id:
             out["block_id"] = self.block_id
         loc = {

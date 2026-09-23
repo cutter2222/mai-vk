@@ -24,10 +24,9 @@ const DONE = new Set(["succeeded", "failed"]);
 /** Карточка шаблона: что извлёк анализ, по вкладкам. Пока анализ идёт, страница опрашивает сервер. */
 type Section = "style" | "details" | "source";
 
-const SECTION_COPY: Record<Section, [string, string]> = {
+const SECTION_COPY: Record<Exclude<Section, "source">, [string, string]> = {
   style: ["Дизайн-система", "Цвета, типографика, геометрия и правила оформления из вашего файла. На их основе создаются новые слайды."],
   details: ["О файле", "Ресурсы, макеты и технические сведения о шаблоне. Здесь можно проверить результаты анализа и предупреждения."],
-  source: ["Слайды", "Просмотр в ONLYOFFICE · без изменения шаблона. Обновлённый файл загрузите в библиотеку заново, чтобы пересчитать профиль."],
 };
 
 export function TemplateDetail({ templateId }: { templateId: string }) {
@@ -147,11 +146,11 @@ export function TemplateDetail({ templateId }: { templateId: string }) {
           </nav>
 
           <main className="tpl-content" data-source={section === "source" || undefined}>
-            <div className="tpl-section-heading">
+            {section !== "source" && <div className="tpl-section-heading">
               <Text size="xs" fw={600} c="dimmed" tt="uppercase" mb={6}>Шаблон / {SECTIONS.find((item) => item.key === section)?.label}</Text>
               <Title order={2}>{SECTION_COPY[section][0]}</Title>
               <Text size="sm" c="dimmed" mt="xs" maw={760}>{SECTION_COPY[section][1]}</Text>
-            </div>
+            </div>}
             {section === "style" && (
               <Stack gap={28}>
                 <DesignCodeSection profile={profile} />

@@ -810,6 +810,23 @@ class Asset1(BaseModel):
     mime: str | None = None
 
 
+class SourceChart(BaseModel):
+    """
+    Validated raster chart transcription; original asset remains available
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    type: Literal["column", "bar", "line"]
+    asset_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    axis_minimum: float | None = None
+    axis_maximum: float | None = None
+
+
 class Column(BaseModel):
     name: str
     type: Literal["string", "number", "date", "percent", "money"]
@@ -827,6 +844,10 @@ class SourceLocation2(BaseModel):
 
 
 class Dataset(BaseModel):
+    source_chart: SourceChart | None = None
+    """
+    Validated raster chart transcription; original asset remains available
+    """
     dataset_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
     Стабильный идентификатор. Не содержит пробелов и путей.

@@ -2,10 +2,10 @@
 
 Порядок для одного варианта: структура колоды кодом (титульный, разделители, финальный слайд
 по ролям; содержательные тезисы делятся на пакеты по разделам; бюджет слайдов на пакет) →
-кандидаты-паттерны кодом (`matching`) → запросы модели по пакетам параллельно под общим
-deadline: модель получает весь смысловой план для связности, тезисы пакета с фактами и
-данными, короткий список композиций с ёмкостью и правила оси плотности; она выбирает подачу
-и формулировки, ссылаясь на факты через {fact:<id>} → сборка слотов и измерение ёмкости
+запросы модели по пакетам параллельно под общим deadline: модель получает смысловой план,
+тезисы пакета с фактами и данными и правила оси плотности; пишет структурированное
+содержание, ссылаясь на факты через {fact:<id>} → проверка ресурсов и выбор композиции
+по содержанию кодом (`matching`) → сборка слотов и измерение ёмкости
 кодом (`capacity`): негодный пакет повторяется с подсказкой, остальные не трогаются →
 сборка колоды: разделители, разделение больших таблиц и переполненных списков, точное число
 или диапазон слайдов, покрытие обязательных тезисов → проверка контракта и связей.
@@ -55,7 +55,7 @@ log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 
-PLAN_VERSION = "0.3.5"
+PLAN_VERSION = "0.4.0"
 PLAN_SCHEMA_VERSION = "1.3"
 # Версии плана, отличающиеся от текущей только добавленными необязательными полями: план
 # прежней ревизии (правки из чата и редактора читают его с диска) поднимается до текущей.
@@ -109,7 +109,7 @@ PLAN_MODEL_SCHEMA: JsonDict = {
             "type": "array",
             "items": {
                 "type": "object",
-                "required": ["theses", "pattern", "title", "visual"],
+                "required": ["theses", "title", "visual"],
                 "properties": {
                     "theses": {"type": "array", "items": {"type": "string"}},
                     "pattern": {"type": "string"},
@@ -714,21 +714,13 @@ def _fact_line(f: JsonDict) -> str:
 
 
 def packet_digest(ctx: Context, structure: Structure, packet: Packet) -> str:
-    from dataclasses import asdict
-
-    from presentation_designer.library.tokens import DesignCode
-
     story = ctx.story
     brief = story.get("effective_brief") or {}
     lines: list[str] = []
     lines.append(f"Вариант: {ctx.variant_id}. {VARIANT_RULES.get(ctx.variant_id, '')}")
     lines.append(
-        "Дизайн-код шаблона (обязателен для всех композиций; missing — значения по умолчанию): "
-        + json.dumps(asdict(DesignCode.from_profile(ctx.profile)), ensure_ascii=False)
-    )
-    lines.append(
-        "Выбирай разные композиции по смыслу: крупный показатель, сравнение, этапы, карточки. "
-        "Библиотечные композиции уже оформлены дизайн-кодом шаблона. Не меняй шрифты и палитру. "
+        "Выбирай подачу по смыслу: показатель, сравнение, этапы, смысловые блоки. "
+        "Оформление и композицию выбирает код после получения содержания. "
         "Разнообразие не оправдывает пустые блоки, выдуманные данные или потерю фактов. "
         "Номера шагов — не слоты для показателей."
     )
@@ -802,19 +794,10 @@ def packet_digest(ctx: Context, structure: Structure, packet: Packet) -> str:
             f"{asset.get('width_px', '?')}×{asset.get('height_px', '?')})"
             + (f" «{asset['caption']}»" if asset.get("caption") else "")
         )
-    lines.append("Композиции шаблона (идентификатор · роль · что вмещает, символов):")
-    seen: set[str] = set()
-    for t in packet.theses:
-        for c in packet.candidates.get(t.id, []):
-            if c.pattern_id not in seen:
-                seen.add(c.pattern_id)
-                lines.append(c.summary())
     lines.append(
-        "Подходят по тезисам: "
-        + "; ".join(
-            f"{t.id} → {', '.join(c.pattern_id for c in packet.candidates.get(t.id, []))}"
-            for t in packet.theses
-        )
+        "Сначала сформируй содержание слайдов: заголовок и смысловые блоки. "
+        "Композицию и слоты подберёт код после ответа по числу блоков и наличию ресурсов. "
+        "Не возвращай pattern, координаты, шрифты или цвета."
     )
     lines.append(
         f"Слайдов в этом пакете: цель {packet.target}, допустимо от {packet.lo} до {packet.hi}. "
@@ -831,7 +814,9 @@ def _clean(text: Any, limit: int = 600) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip()[:limit]
 
 
-def drafts_from_answer(ctx: Context, packet: Packet, answer: JsonDict) -> list[Draft]:
+def drafts_from_answer(
+    ctx: Context, packet: Packet, answer: JsonDict, *, content_first: bool = False
+) -> list[Draft]:
     slides = answer.get("slides")
     if not isinstance(slides, list) or not slides:
         raise ValueError("нужен непустой список slides")
@@ -854,7 +839,13 @@ def drafts_from_answer(ctx: Context, packet: Packet, answer: JsonDict) -> list[D
         cands = packet.candidates.get(theses[0], [])
         pattern = by_id.get(str(raw.get("pattern", "")))
         allowed = {c.pattern_id for t in theses for c in packet.candidates.get(t, [])}
-        if pattern is None or pattern.pattern_id not in allowed:
+        automatic = content_first or not raw.get("pattern")
+        if automatic:
+            # Temporary anchor only; the actual choice follows resource validation.
+            pattern = next(iter(cands or ctx.patterns), None)
+            if pattern is None:
+                raise ValueError("нет композиций для содержания")
+        elif pattern is None or pattern.pattern_id not in allowed:
             replacement = cands[0] if cands else None
             if replacement is None:
                 raise ValueError(
@@ -872,7 +863,9 @@ def drafts_from_answer(ctx: Context, packet: Packet, answer: JsonDict) -> list[D
                 if _clean(it.get("sub")):
                     item["sub"] = _clean(it.get("sub"), 300)
                 facts = [str(f) for f in (it.get("facts") or []) if str(f) in ctx.facts] + [
-                    f for f in FACT_REF.findall(item["text"]) if f in ctx.facts
+                    f
+                    for f in FACT_REF.findall(item["text"] + " " + item.get("sub", ""))
+                    if f in ctx.facts
                 ]
                 if facts:
                     item["fact_refs"] = list(dict.fromkeys(facts))
@@ -880,6 +873,8 @@ def drafts_from_answer(ctx: Context, packet: Packet, answer: JsonDict) -> list[D
             elif isinstance(it, str) and it.strip():
                 items.append({"text": _clean(it, 300)})
         facts = [str(f) for f in (raw.get("facts") or []) if str(f) in ctx.facts]
+        for item in items:
+            facts.extend(f for f in item.get("fact_refs", []) if f not in facts)
         text = _clean(raw.get("text"), 1200)
         for ref in FACT_REF.findall(text + " " + title):
             if ref in ctx.facts and ref not in facts:
@@ -904,6 +899,11 @@ def drafts_from_answer(ctx: Context, packet: Packet, answer: JsonDict) -> list[D
                 # Coverage is not just the thesis ID: retain its source quantities
                 # even when the model forgets the slide-level facts field.
                 facts.extend(f for f in t.fact_refs if f in ctx.facts and f not in facts)
+        if automatic:
+            visual, cands = content_patterns(
+                ctx, visual, items, text, facts, dataset=dataset, image=image
+            )
+            pattern = cands[0]
         drafts.append(
             Draft(
                 kind="content",
@@ -928,6 +928,67 @@ def drafts_from_answer(ctx: Context, packet: Packet, answer: JsonDict) -> list[D
     if not drafts:
         raise ValueError("нужен непустой список slides")
     return drafts
+
+
+def content_patterns(
+    ctx: Context,
+    visual: str,
+    items: list[JsonDict],
+    text: str,
+    facts: list[str],
+    *,
+    dataset: str | None,
+    image: str | None,
+) -> tuple[str, list[PatternInfo]]:
+    """Bind validated content to layouts, independently of model-proposed pattern IDs."""
+    if (
+        (visual in ("chart", "table") and not dataset)
+        or (visual == "image" and not image)
+        or (visual == "number" and not facts)
+    ):
+        visual = "bullets" if items else "text"
+    need = Need(
+        visual,
+        items=max(1, len(items)),
+        numbers=len(facts),
+        text_chars=len(text) + sum(len(i["text"]) + len(i.get("sub", "")) for i in items),
+        has_dataset=bool(dataset),
+        has_image=bool(image),
+    )
+    candidates = candidates_for(
+        ctx.patterns, need, ctx.variant_id, limit=len(ctx.patterns), has_datasets=bool(dataset)
+    )
+    if not candidates:
+        need.visual = "bullets" if items else "text"
+        candidates = candidates_for(
+            ctx.patterns, need, ctx.variant_id, limit=len(ctx.patterns), has_datasets=bool(dataset)
+        )
+    if not candidates:
+        raise ValueError("нет подходящей композиции для содержания и доступных ресурсов")
+    # Reorder only equivalent fixed grids. Do not promote a generic list over a
+    # comparison/chart, lose text capacity, or override the template/library ranking.
+    if items:
+        groups: dict[tuple[str, bool, bool, bool], list[int]] = {}
+        for index, p in enumerate(candidates):
+            if p.cards is not None and not p.list_columns:
+                key = (
+                    p.role,
+                    p.builtin,
+                    p.text_capacity >= need.text_chars,
+                    p.number_capacity >= need.numbers,
+                )
+                groups.setdefault(key, []).append(index)
+        for indices in groups.values():
+            ranked = sorted(
+                (candidates[i] for i in indices),
+                key=lambda p: (
+                    p.item_capacity < len(items),
+                    abs(p.item_capacity - len(items)),
+                ),
+            )
+            for index, p in zip(indices, ranked, strict=True):
+                candidates[index] = p
+    return need.visual, candidates[:12]
 
 
 def _match_columns(ctx: Context, dataset: str | None, names: list[str]) -> list[str]:
@@ -1058,7 +1119,11 @@ def _chart_block(ctx: Context, draft: Draft, slot: SlotInfo) -> JsonDict:
     series = [c for c in draft.columns if c in numeric] or numeric
     series = series[:MAX_SERIES] or [cols[-1]["name"]]
     units = {c["name"]: c.get("unit") for c in cols}
-    chart_type = draft.chart_type
+    source_chart = ds.get("source_chart") or {}
+    chart_type = source_chart.get("type") or draft.chart_type
+    if source_chart:
+        # A raster transcription preserves all series and their original order.
+        series = numeric
     if chart_type is None:
         date_like = any(c["type"] == "date" for c in cols)
         chart_type = "line" if date_like and len(ds["rows"]) >= 4 else "column"
@@ -1092,6 +1157,13 @@ def _table_block(ctx: Context, draft: Draft, slot: SlotInfo) -> JsonDict:
         "row_offset": draft.row_offset,
     }
     return {"slot_id": slot.slot_id, "kind": "table", "table": table}
+
+
+def _item_text(item: JsonDict) -> str:
+    """Keep a block heading when the layout has no separate heading slot."""
+    text = str(item["text"])
+    sub = str(item.get("sub") or "").strip()
+    return f"{sub}: {text}" if sub and sub != text.strip() else text
 
 
 def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
@@ -1215,13 +1287,12 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
                 {
                     "slot_id": bullets.slot_id,
                     "kind": "bullets",
-                    # Подпись карточки (sub) в списке не показывается: склейка «текст — подпись»
-                    # читается как обрывок; подпись живёт только в слоте заголовка карточки.
+                    # Без отдельного слота заголовок остаётся частью пункта.
                     "items": [
                         {
                             k: v
                             for k, v in {
-                                "text": it["text"],
+                                "text": _item_text(it),
                                 "fact_refs": it.get("fact_refs"),
                             }.items()
                             if v
@@ -1248,7 +1319,7 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
                             {
                                 k: v
                                 for k, v in {
-                                    "text": it["text"],
+                                    "text": _item_text(it),
                                     "fact_refs": it.get("fact_refs"),
                                 }.items()
                                 if v
@@ -1267,7 +1338,7 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
             items = unplaced + items[cards.count :]
         if items:
             # Не поместившиеся пункты — в текст.
-            extra = "\n".join(f"• {it['text']}" for it in items)
+            extra = "\n".join(f"• {_item_text(it)}" for it in items)
             text = f"{text}\n{extra}".strip() if text else extra
             items = []
     # Текст и подзаголовок.
@@ -1479,6 +1550,8 @@ def _fill_card(
     text = str(item["text"])
     sub = str(item.get("sub") or "")
     refs = item.get("fact_refs")
+    if heading is None or body is None:
+        text = _item_text(item)
     if heading is not None and body is not None:
         head_text = ""
         if sub:
@@ -2021,7 +2094,7 @@ def make_validator(ctx: Context, packet: Packet) -> Any:
     def validate(value: Any) -> Any:
         if not isinstance(value, dict):
             raise ValueError("ответ должен быть объектом")
-        drafts = drafts_from_answer(ctx, packet, value)
+        drafts = drafts_from_answer(ctx, packet, value, content_first=True)
         return {"drafts": drafts, "rationale": _clean(value.get("rationale"), 300)}
 
     return validate

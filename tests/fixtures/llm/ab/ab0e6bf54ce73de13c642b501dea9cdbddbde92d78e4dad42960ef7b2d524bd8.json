@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-22T22:52:54Z",
+ "entry_version": 1,
+ "key": "ab0e6bf54ce73de13c642b501dea9cdbddbde92d78e4dad42960ef7b2d524bd8",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 3615,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3591,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: compact. Компактная подача: слайдов ближе к нижней границе, один слайд может объединять два-три родственных тезиса одного раздела. Заголовок-вывод и два-три коротких пункта (до 8 слов) или по",
+  "prompt": [
+   "plan.slides",
+   "0.4.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.4.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4211,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"theses\": [\n        \"t11\"\n      ],\n      \"title\": \"Масштабирование: от новых продуктов к цели 60% открываемости\",\n      \"visual\": \"timeline\"\n    },\n    {\n      \"theses\": [\n        \"t13\"\n      ],\n      \"title\": \"Риски управляемы и не влияют на бизнес-цели\",\n      \"visual\": \"bullets\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 121,
+   "prompt_tokens": 2046,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

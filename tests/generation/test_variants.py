@@ -281,8 +281,8 @@ def test_list_columns_share_items_and_thin_patterns_are_right_sized(
     mini_profile: dict[str, Any], example_story: dict[str, Any], example_package: dict[str, Any]
 ) -> None:
     """Две колонки списков делят пункты между собой, а не по одному на колонку; композиция
-    на семь карточек под два пункта заменяется ближайшей по объёму; подпись карточки в
-    список не склеивается через тире."""
+    на семь карточек под два пункта заменяется ближайшей по объёму; заголовок блока в
+    списке сохраняется перед пояснением."""
     profile = _two_column_profile(mini_profile)
     patterns = {p.pattern_id: p for p in mt.profile_patterns(profile)}
     cols, seven = patterns["pat_cols"], patterns["pat_seven"]
@@ -297,8 +297,8 @@ def test_list_columns_share_items_and_thin_patterns_are_right_sized(
         b["slot_id"]: [it["text"] for it in b["items"]] for b in blocks if b["kind"] == "bullets"
     }
     assert bullets == {
-        "bullets_1": ["Пункт 1", "Пункт 2", "Пункт 3"],
-        "bullets_2": ["Пункт 4", "Пункт 5", "Пункт 6"],
+        "bullets_1": ["Подпись: Пункт 1", "Подпись: Пункт 2", "Подпись: Пункт 3"],
+        "bullets_2": ["Подпись: Пункт 4", "Подпись: Пункт 5", "Подпись: Пункт 6"],
     }
     assert all("—" not in t for texts in bullets.values() for t in texts)
     # Два пункта на две колонки — по одному в колонке, полупусто: композиция меняется на карточки.
@@ -570,8 +570,8 @@ def test_three_plans_on_replay_mini_template(
         assert plan["slides"][0]["role"] == "title" and plan["slides"][-1]["role"] == "thanks"
         assert plan["comparison"]["pattern_sequence"] == [s["pattern_id"] for s in plan["slides"]]
         meta = plan["generation_meta"]
-        assert meta["skills"] == [{"name": "variant_planner", "version": "0.3.0"}]
-        assert meta["prompts"] == [{"name": "plan.slides", "version": "0.3.0"}]
+        assert meta["skills"] == [{"name": "variant_planner", "version": "0.4.0"}]
+        assert meta["prompts"] == [{"name": "plan.slides", "version": "0.4.0"}]
         assert meta["models"][0]["reasoning_mode"] == "off" and meta["prompt_tokens"] > 1000
         _assert_overflow_reported(plan, result.report)
         # Факты — только ссылками или блоками number; значения не переписаны.

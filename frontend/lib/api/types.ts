@@ -1260,6 +1260,18 @@ export interface ContentPackage {
    */
   datasets: {
     /**
+     * Validated raster chart transcription; original asset remains available
+     */
+    source_chart?: {
+      type: "column" | "bar" | "line";
+      /**
+       * Стабильный идентификатор. Не содержит пробелов и путей.
+       */
+      asset_id: string;
+      axis_minimum?: number;
+      axis_maximum?: number;
+    };
+    /**
      * Стабильный идентификатор. Не содержит пробелов и путей.
      */
     dataset_id: string;

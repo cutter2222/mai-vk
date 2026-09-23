@@ -1184,12 +1184,16 @@ def task_import(package_id: str) -> None:
         out = o.layers.import_content(
             ImportInput(package_id, package["mode"], sources, package["brief"])
         )
-        if out.assets:
+        if out.assets or out.report:
             with o.artifacts.stage_dir(o.artifacts.package_dir(package_id)) as tmp:
                 for name, data in out.assets.items():
                     target = tmp / name
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(data)
+                if out.report:
+                    (tmp / "import-report.json").write_text(
+                        json.dumps(out.report, ensure_ascii=False, indent=2), encoding="utf-8"
+                    )
         o.state.update_package(package_id, status="succeeded", package=out.package)
         _record_llm(o, job_id)
         pk = out.package

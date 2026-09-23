@@ -1,0 +1,24 @@
+.content { width: min(100%, 440px); }
+.compact { padding: 16px 24px; border-bottom: 1px solid var(--mantine-color-gray-2); }
+.compact .content { width: 100%; }
+.magic {
+  display: grid;
+  place-items: center;
+  align-self: center;
+  width: 96px;
+  height: 96px;
+  border-radius: 28px;
+  color: var(--mantine-primary-color-filled);
+  background: var(--mantine-primary-color-light);
+  animation: float 3s ease-in-out infinite;
+}
+.phrase { animation: appear 400ms ease-out; }
+.track { height: 6px; overflow: hidden; border-radius: 8px; background: var(--mantine-color-gray-2); }
+.shimmer { width: 35%; height: 100%; border-radius: inherit; background: var(--mantine-primary-color-filled); animation: travel 1.8s ease-in-out infinite alternate; }
+@keyframes float { 50% { transform: translateY(-8px) rotate(5deg); } }
+@keyframes appear { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes travel { from { transform: translateX(0); } to { transform: translateX(185%); } }
+@media (prefers-reduced-motion: reduce) {
+  .magic, .phrase, .shimmer { animation: none; }
+  .content :global(*) { animation-duration: 0s !important; }
+}

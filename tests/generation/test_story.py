@@ -269,6 +269,7 @@ def test_pipeline_reuses_story_by_content_hash(
     settings.paths.runs_dir = tmp_path / "runs"
     settings.content_import.cache_dir = tmp_path / "import-cache"
     settings.content_import.fact_context_model = False
+    settings.content_import.chart_image_model = False  # isolate story cache from new vision calls
     settings.plan.cache_dir = tmp_path / "plan-cache"
     layers = RealLayers(settings)
     layers._llm = replay_client
@@ -302,6 +303,8 @@ def test_pipeline_reuses_story_by_content_hash(
             "/api/content", json={"file_ids": file_ids, "brief": brief}
         ).json()["package_id"]
         assert client.get(f"/api/content/{package_id}").json()["status"] == "succeeded"
+        report_path = settings.artifacts_dir / "packages" / package_id / "import-report.json"
+        assert json.loads(report_path.read_text())["counts"]["blocks"] > 0
 
         def generate(settings_doc: dict[str, Any], key: str) -> dict[str, Any]:
             job_id = client.post(

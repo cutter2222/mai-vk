@@ -341,6 +341,23 @@ class TextUnit:
 # ---------- факты из текста ----------
 
 
+# Номер модели/версии остаётся в исходном тексте, но не становится KPI.
+# Намеренно узкий словарь: произвольное «прибыль 18» нельзя считать названием.
+_IDENTIFIER_PREFIX = re.compile(
+    r"\b(?:iphone|ipad|ios|macos|windows|android|playstation|"
+    r"верси[яи]|version|модель|model|gpt)[\s-]*$",
+    re.IGNORECASE,
+)
+
+
+def _is_identifier(text: str, match: NumberMatch) -> bool:
+    return (
+        match.kind == "number"
+        and not match.unit
+        and bool(_IDENTIFIER_PREFIX.search(text[: match.start]))
+    )
+
+
 def extract_text_facts(
     units: list[TextUnit], *, start_index: int = 1, max_facts: int = 300
 ) -> list[Fact]:
@@ -355,6 +372,8 @@ def extract_text_facts(
         segment_start = 0
         last_in_sentence: Fact | None = None
         for m in matches:
+            if _is_identifier(unit.text, m):
+                continue
             if m.kind == "date" and not _date_is_fact(unit.text, m):
                 # Даты-периоды («в 2025 году») попадают в контекст соседних фактов, но сами
                 # фактом не считаются, если рядом нет показателя.

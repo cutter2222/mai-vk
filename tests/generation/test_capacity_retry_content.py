@@ -10,12 +10,25 @@ from typing import Any
 import pytest
 
 from presentation_designer.generation import variants as vr
+from presentation_designer.generation.matching import pattern_info
 from presentation_designer.llm.types import Request, Response
 from tests.generation.test_number_content import _context
 
 
 def _setup() -> tuple[vr.Context, vr.Packet, dict[str, Any]]:
     ctx = _context("balanced")
+    ctx.patterns.append(
+        pattern_info(
+            {
+                "pattern_id": "text",
+                "role": "text",
+                "slots": [
+                    {"slot_id": "title", "kind": "title"},
+                    {"slot_id": "body", "kind": "body", "capacity": {"max_chars": 1000}},
+                ],
+            }
+        )
+    )
     ctx.theses = [vr.Thesis("t1", 1, "content", "Пилот", "", True, None, [], [], [], [], None)]
     packet = vr.Packet(0, ctx.theses, 1, 1, 2, {"t1": ctx.patterns})
     answer = {
