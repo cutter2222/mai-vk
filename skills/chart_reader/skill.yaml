@@ -1,0 +1,16 @@
+schema_version: '1.1'
+name: chart_reader
+version: 0.1.0
+stage: analyze
+description: 'Устройство диаграммы на картинке из PPTX (тип, ряды, цвета, категории, подписи осей и значений); числа меряет код по пикселям'
+model_role: vlm
+response_format: json_schema
+reasoning:
+  mode: 'off'
+  max_output_tokens: 6000
+prompts:
+- id: rebuild.chart_image
+  path: prompts/rebuild.chart_image.v0.1.0.md
+  version: 0.1.0
+params:
+  temperature: 0.0

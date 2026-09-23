@@ -7,6 +7,7 @@ import sys
 
 from presentation_designer import __version__
 from presentation_designer.cli import analyze as analyze_cmd
+from presentation_designer.cli import charts as charts_cmd
 from presentation_designer.cli import compose as compose_cmd
 from presentation_designer.cli import edit as edit_cmd
 from presentation_designer.cli import import_content as import_cmd
@@ -41,6 +42,11 @@ def build_parser() -> argparse.ArgumentParser:
     patch_cmd.build_parser(
         sub.add_parser("patch-slides", help="ручные правки редактора (slide_patch) в план")
     )
+    charts_cmd.build_parser(
+        sub.add_parser(
+            "read-charts", help="диаграммы-картинки из PPTX: устройство, значения, оверлеи"
+        )
+    )
     for name in PLANNED:
         sub.add_parser(name, help="подключается на этапе реализации соответствующего слоя")
     return parser
@@ -56,6 +62,8 @@ def main(argv: list[str] | None = None) -> int:
         return analyze_cmd.run(args)
     if args.command == "import":
         return import_cmd.run(args)
+    if args.command == "read-charts":
+        return charts_cmd.run(args)
     if args.command == "story":
         return story_cmd.run(args)
     if args.command == "plan":
