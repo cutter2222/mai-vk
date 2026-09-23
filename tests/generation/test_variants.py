@@ -570,8 +570,8 @@ def test_three_plans_on_replay_mini_template(
         assert plan["slides"][0]["role"] == "title" and plan["slides"][-1]["role"] == "thanks"
         assert plan["comparison"]["pattern_sequence"] == [s["pattern_id"] for s in plan["slides"]]
         meta = plan["generation_meta"]
-        assert meta["skills"] == [{"name": "variant_planner", "version": "0.4.0"}]
-        assert meta["prompts"] == [{"name": "plan.slides", "version": "0.4.0"}]
+        assert meta["skills"] == [{"name": "variant_planner", "version": "0.4.1"}]
+        assert meta["prompts"] == [{"name": "plan.slides", "version": "0.4.1"}]
         assert meta["models"][0]["reasoning_mode"] == "off" and meta["prompt_tokens"] > 1000
         _assert_overflow_reported(plan, result.report)
         # Факты — только ссылками или блоками number; значения не переписаны.

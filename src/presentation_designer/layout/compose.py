@@ -400,7 +400,7 @@ def _apply_block(
     if kind == "icon":
         return _apply_icon(ctx, slide, slot, element, block, fill, slide_index)
     if kind == "diagram":
-        return _apply_diagram(ctx, slide, slot, element, block, fill)
+        return _apply_diagram(ctx, slide, slot, element, block, fill, slide_index)
     ctx.warn(
         "block_unsupported", f"блок {kind} в слоте {slot.slot_id} не поддерживается", slide_index
     )
@@ -662,11 +662,32 @@ def _apply_icon(
 
 
 def _apply_diagram(
-    ctx: _Context, slide: Any, slot: SlotInfo, element: Any, block: JsonDict, fill: SlotFill
+    ctx: _Context,
+    slide: Any,
+    slot: SlotInfo,
+    element: Any,
+    block: JsonDict,
+    fill: SlotFill,
+    slide_index: int,
 ) -> SlotFill | None:
     box = _slot_box(ctx, slot, element)
     remove_shape(slide, element)
-    result = diagrams.draw_diagram(slide, box, block.get("diagram") or {}, ctx.diagram_style)
+    diagram = dict(block.get("diagram") or {})
+    items = []
+    refs = list(block.get("fact_refs") or [])
+    for raw in diagram.get("items") or []:
+        item = dict(raw)
+        for key in ("text", "sub"):
+            if key not in item:
+                continue
+            item[key], used, missing = tx.substitute_facts(str(item[key]), ctx.facts)
+            refs.extend(used)
+            for fid in missing:
+                ctx.warn("fact_missing", f"ссылка на неизвестный факт {fid}", slide_index)
+        items.append(item)
+    diagram["items"] = items
+    fill.fact_refs = list(dict.fromkeys(refs))
+    result = diagrams.draw_diagram(slide, box, diagram, ctx.diagram_style)
     mapping = ctx.fresh_ids(shape_element(slide, result.group_id))
     fill.element_id = mapping[result.group_id]
     fill.source_object_id = None

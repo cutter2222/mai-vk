@@ -194,7 +194,12 @@ class PatternInfo:
         return not any(s.required and s.group for s in self.slots.values())
 
     def fillable(
-        self, *, has_datasets: bool, has_code: bool = False, has_image: bool = False
+        self,
+        *,
+        has_datasets: bool,
+        has_code: bool = False,
+        has_image: bool = False,
+        has_diagram: bool = False,
     ) -> bool:
         """Все обязательные одиночные слоты заполняются из тезиса: текстовые всегда, таблица и
         диаграмма — при наборе данных, код — при блоке кода; имя/должность/QR — нет."""
@@ -202,6 +207,8 @@ class PatternInfo:
             if s.kind in FILLABLE_REQUIRED:
                 continue
             if s.kind in ("table", "chart") and has_datasets:
+                continue
+            if s.kind == "diagram" and has_diagram:
                 continue
             if s.kind == "image" and (has_image or (self.role == "chart" and has_datasets)):
                 continue
@@ -273,6 +280,8 @@ class PatternInfo:
 
     def visuals(self) -> set[str]:
         out: set[str] = set()
+        if self.single("diagram"):
+            out.update({"diagram", "timeline"})
         if self.has_table:
             out.add("table")
         if self.has_chart:
@@ -585,9 +594,12 @@ class Need:
     text_chars: int = 0
     has_dataset: bool = False
     has_image: bool = False
+    has_diagram: bool = False
 
 
 def score_pattern(p: PatternInfo, need: Need, variant_id: str) -> float:
+    if p.single("diagram") and not need.has_diagram:
+        return 0.0
     if p.role in FIXED_ROLES or p.role in SKIPPED_ROLES:
         return 0.0
     if not need.has_image and p.role in ("image_full", "screenshot", "mockup"):
@@ -623,6 +635,9 @@ def score_pattern(p: PatternInfo, need: Need, variant_id: str) -> float:
     if need.visual == "image" and "image" not in visuals:
         return 0.0
     score = base
+    if p.single("diagram") and need.has_diagram:
+        # A native diagram expresses relationships, unlike a generic card grid.
+        score += 2.0
     if need.visual in visuals:
         score += 0.6
     # Вместимость: элементы, показатели, текст.
@@ -662,7 +677,7 @@ def score_pattern(p: PatternInfo, need: Need, variant_id: str) -> float:
         # уберёт, — поэтому медиа-композиция берётся только под медиа-содержание.
         if p.has_image_slot and not (need.has_image or need.visual == "image"):
             return 0.0
-        if "diagram" in p.supports and need.visual != "diagram":
+        if "diagram" in p.supports and need.visual not in ("diagram", "timeline"):
             return 0.0
         # Сначала шаблон автора, свои композиции — когда его не хватает. Множитель подобран
         # так, чтобы годный паттерн шаблона обходил свою композицию той же роли, а заметно
@@ -688,7 +703,9 @@ def candidates_for(
     """
     scored: list[tuple[float, PatternInfo]] = []
     for p in patterns:
-        if not p.fillable(has_datasets=has_datasets, has_image=need.has_image):
+        if not p.fillable(
+            has_datasets=has_datasets, has_image=need.has_image, has_diagram=need.has_diagram
+        ):
             continue
         if not has_datasets and (need.visual in ("chart", "table") or p.required_table_or_chart()):
             continue

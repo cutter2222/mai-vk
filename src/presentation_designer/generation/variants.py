@@ -55,6 +55,7 @@ from presentation_designer.generation.matching import (
     sequence_ok,
     siblings_of,
 )
+from presentation_designer.layout import diagrams
 from presentation_designer.shared import text_metrics
 from presentation_designer.shared.settings import Settings, get_settings
 
@@ -62,7 +63,7 @@ log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 
-PLAN_VERSION = "0.4.2"
+PLAN_VERSION = "0.4.3"
 PLAN_SCHEMA_VERSION = "1.3"
 # Версии плана, отличающиеся от текущей только добавленными необязательными полями: план
 # прежней ревизии (правки из чата и редактора читают его с диска) поднимается до текущей.
@@ -139,6 +140,7 @@ PLAN_MODEL_SCHEMA: JsonDict = {
                     "facts": {"type": "array", "items": {"type": "string"}},
                     "dataset": {"type": "string"},
                     "chart_type": {"type": "string", "enum": list(CHART_TYPES)},
+                    "diagram_kind": {"type": "string", "enum": list(diagrams.KINDS)},
                     "columns": {"type": "array", "items": {"type": "string"}},
                     "image": {"type": "string"},
                     "notes": {"type": "string"},
@@ -350,6 +352,7 @@ class Draft:
     facts: list[str] = field(default_factory=list)
     dataset: str | None = None
     chart_type: str | None = None
+    diagram_kind: str | None = None
     columns: list[str] = field(default_factory=list)
     image: str | None = None
     notes: str = ""
@@ -373,7 +376,7 @@ class Draft:
         return (
             self.kind == "content"
             and len(self.items) >= 2
-            and self.visual not in ("chart", "table")
+            and self.visual not in ("chart", "table", "diagram", "timeline")
         )
 
     @property
@@ -914,6 +917,14 @@ def drafts_from_answer(
             ctx.fix("asset_unknown", f"«{title[:40]}»: {image}")
             image = None
         chart_type = raw.get("chart_type") if raw.get("chart_type") in CHART_TYPES else None
+        diagram_kind = raw.get("diagram_kind")
+        if visual == "timeline":
+            diagram_kind = "timeline"
+        elif visual != "diagram" or diagram_kind not in diagrams.KINDS:
+            diagram_kind = None
+        if visual == "diagram" and not diagram_kind:
+            # An unordered list is not evidence of a process or a hierarchy.
+            visual = "bullets" if items else "text"
         columns = _match_columns(ctx, dataset, [str(c) for c in (raw.get("columns") or [])])
         source_refs: list[str] = []
         for tid in theses:
@@ -925,7 +936,14 @@ def drafts_from_answer(
                 facts.extend(f for f in t.fact_refs if f in ctx.facts and f not in facts)
         if automatic:
             visual, cands = content_patterns(
-                ctx, visual, items, text, facts, dataset=dataset, image=image
+                ctx,
+                visual,
+                items,
+                text,
+                facts,
+                dataset=dataset,
+                image=image,
+                diagram_kind=diagram_kind,
             )
             pattern = cands[0]
         drafts.append(
@@ -941,6 +959,7 @@ def drafts_from_answer(
                 facts=list(dict.fromkeys(facts)),
                 dataset=dataset,
                 chart_type=chart_type,
+                diagram_kind=diagram_kind,
                 columns=columns,
                 image=image,
                 notes=_clean(raw.get("notes"), 600),
@@ -963,6 +982,7 @@ def content_patterns(
     *,
     dataset: str | None,
     image: str | None,
+    diagram_kind: str | None = None,
 ) -> tuple[str, list[PatternInfo]]:
     """Bind validated content to layouts, independently of model-proposed pattern IDs."""
     if (
@@ -978,6 +998,7 @@ def content_patterns(
         text_chars=len(text) + sum(len(i["text"]) + len(i.get("sub", "")) for i in items),
         has_dataset=bool(dataset),
         has_image=bool(image),
+        has_diagram=diagram_kind in diagrams.KINDS and 2 <= len(items) <= 6,
     )
     candidates = candidates_for(
         ctx.patterns, need, ctx.variant_id, limit=len(ctx.patterns), has_datasets=bool(dataset)
@@ -1288,7 +1309,7 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
     # A fact reference in slide metadata is not visible content. Quantities which
     # did not fit a numeric slot must remain in prose, with their source labels.
     visible = " ".join(
-        [draft.title, text, *[it.get("text", "") for it in items]]
+        [draft.title, text, *[_item_text(it) for it in items]]
         + [str(b.get("text") or "") for b in blocks]
     )
     shown_ids = {b["number"]["fact_id"] for b in blocks if b.get("number")}
@@ -1297,7 +1318,49 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
             continue
         fact = ctx.facts[fid]
         label = str((fact.get("context") or {}).get("metric") or fact.get("label") or "")
+        if visual in ("diagram", "timeline"):
+            # A missing quantity is a note, not an invented process step/child node.
+            text = "\n".join(t for t in (text, f"{label}: {{fact:{fid}}}".lstrip(": ")) if t)
+            continue
         items.append({"text": f"{label}: {{fact:{fid}}}".lstrip(": "), "fact_refs": [fid]})
+    # Схема потребляет те же смысловые пункты, но только после проверки реальных узлов.
+    diagram_slot = free("diagram")
+    if diagram_slot is not None and visual in ("diagram", "timeline"):
+        kind = "timeline" if visual == "timeline" else draft.diagram_kind
+        payload = {
+            "kind": kind,
+            "direction": "vertical" if kind == "process" and len(items) > 3 else "horizontal",
+            "items": [
+                {
+                    "text": cap.substitute_facts(it.get("sub") or it["text"], ctx.facts),
+                    **(
+                        {"sub": cap.substitute_facts(it["text"], ctx.facts)}
+                        if it.get("sub")
+                        else {}
+                    ),
+                }
+                for it in items
+            ],
+        }
+        box = tuple(
+            int(v * (ctx.slide_w if i % 2 == 0 else ctx.slide_h))
+            for i, v in enumerate(diagram_slot.bbox)
+        )
+        if diagrams.content_fits(payload, box, diagrams.DiagramStyle.from_profile(ctx.profile)):
+            put(
+                {
+                    "slot_id": diagram_slot.slot_id,
+                    "kind": "diagram",
+                    "diagram": payload,
+                    "fact_refs": list(
+                        dict.fromkeys(f for it in items for f in it.get("fact_refs", []))
+                    ),
+                }
+            )
+            items = []
+        else:
+            # Keep the entire relation together; fit_draft will try a text layout.
+            draft.unplaced_text = "\n".join(_item_text(it) for it in items)
     # Пункты: слот списка, иначе карточки, иначе текстом.
     if items:
         bullets = free("bullets")
@@ -1477,7 +1540,7 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
                 if slot.kind == "table"
                 else _chart_block(ctx, draft, slot)
             )
-    draft.unplaced_text = text
+    draft.unplaced_text = "\n".join(t for t in (draft.unplaced_text, text) if t)
     return blocks
 
 
@@ -2098,6 +2161,11 @@ def fit_draft(ctx: Context, draft: Draft) -> Draft:
 def overflow_hint(drafts: list[Draft]) -> str | None:
     lines = []
     for d in drafts:
+        if d.unplaced_text:
+            lines.append(
+                f"слайд «{d.title[:40]}»: часть содержания не размещена; "
+                "выбери текстовую подачу или переразложи содержание без потери пунктов и связей"
+            )
         for o in d.overflow:
             if d.splittable and d.overflow_in_items and o["kind"] == "bullets":
                 continue
@@ -2449,7 +2517,12 @@ def merge_drafts(
         return None
     if a.section != b.section and not across_sections:
         return None
-    if a.visual in ("chart", "table") or b.visual in ("chart", "table"):
+    if a.visual in ("chart", "table", "diagram", "timeline") or b.visual in (
+        "chart",
+        "table",
+        "diagram",
+        "timeline",
+    ):
         return None
 
     def content_items(draft: Draft) -> list[JsonDict]:
@@ -3043,6 +3116,7 @@ def _need_of(draft: Draft) -> Need:
         items=max(len(draft.items), 1),
         numbers=sum(1 for b in draft.blocks if b.get("number")),
         text_chars=max(chars, 40),
+        has_diagram=bool(draft.diagram_kind) and 2 <= len(draft.items) <= 6,
     )
 
 
@@ -3208,6 +3282,12 @@ def slide_chars(ctx: Context, blocks: list[JsonDict]) -> int:
     """Объём текста слайда для сравнения вариантов."""
     total = 0
     for b in blocks:
+        if b.get("diagram"):
+            total += sum(
+                len(cap.substitute_facts(str(it.get(key) or ""), ctx.facts))
+                for it in b["diagram"].get("items", [])
+                for key in ("text", "sub")
+            )
         text = _block_text(ctx, b)
         if isinstance(text, list):
             total += sum(len(t) for t in text)

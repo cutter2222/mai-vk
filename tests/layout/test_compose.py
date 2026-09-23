@@ -94,6 +94,79 @@ def _plan_with(
 # ---------- roundtrip и сверка с файлом ----------
 
 
+@pytest.mark.parametrize("mode", ["mixed", "all_new", "template_only"])
+def test_generated_diagrams_roundtrip_in_allowed_compositions(
+    mode: str,
+    mini_profile: dict[str, Any],
+    example_package: dict[str, Any],
+    tmp_path: pathlib.Path,
+) -> None:
+    from presentation_designer.contracts import SlidePlan
+    from presentation_designer.generation import matching as mt
+    from presentation_designer.generation import variants as vr
+    from presentation_designer.generation.design_mode import profile_for_mode, validate_plan_mode
+    from tests.generation.test_diagram_content import _answer
+
+    profile = profile_for_mode(mini_profile, {"design_mode": mode})
+    slides = []
+    for i, kind in enumerate(diagrams.KINDS):
+        ctx, packet, answer = _answer(kind)
+        ctx.profile = profile
+        ctx.patterns = mt.profile_patterns(profile)
+        ctx.slide_w = Presentation(str(MINI_TEMPLATE)).slide_width
+        ctx.slide_h = Presentation(str(MINI_TEMPLATE)).slide_height
+        draft = vr.make_validator(ctx, packet)(answer)["drafts"][0]
+        vr.fit_draft(ctx, draft)
+        assert not draft.unplaced_text and not draft.overflow
+        slides.append(vr.slide_from_draft(ctx, draft, slide_id=f"s{i + 1}", order=i + 1))
+    plan = _plan_with(profile, slides)
+    SlidePlan.model_validate(plan)
+    validate_plan_mode(plan, profile, {"design_mode": mode})
+    result = _compose(plan, profile, MINI_TEMPLATE, example_package, tmp_path / f"{mode}.pptx")
+    prs = Presentation(str(result.pptx_path))
+    assert len(prs.slides) == len(diagrams.KINDS)
+    for slide in prs.slides:
+        text = "\n".join(_slide_texts(slide))
+        assert all(
+            word in text for word in ("Старт", "Согласие", "Пилот", "Проверка", "Итог", "Решение")
+        )
+    if mode != "template_only":
+        assert result.deck["stats"]["diagrams"] == len(diagrams.KINDS)
+    else:
+        assert result.deck["stats"]["diagrams"] == 0
+
+
+def test_diagram_fact_placeholders_are_substituted_during_compose(
+    mini_profile: dict[str, Any],
+    example_package: dict[str, Any],
+    tmp_path: pathlib.Path,
+) -> None:
+    pattern = next(
+        p for p in mini_profile["patterns"] if any(s["kind"] == "diagram" for s in p["slots"])
+    )
+    fact = example_package["facts"][0]
+    from presentation_designer.layout.text import fact_text
+
+    block = {
+        "slot_id": "diagram",
+        "kind": "diagram",
+        "diagram": {
+            "kind": "process",
+            "items": [
+                {"text": "Значение", "sub": "{fact:" + fact["fact_id"] + "}"},
+                {"text": "Проверка"},
+            ],
+        },
+    }
+    plan = _plan_with(
+        mini_profile, [{"pattern_id": pattern["pattern_id"], "title": "Факт", "blocks": [block]}]
+    )
+    result = _compose(plan, mini_profile, MINI_TEMPLATE, example_package, tmp_path / "facts.pptx")
+    text = "\n".join(_slide_texts(Presentation(str(result.pptx_path)).slides[0]))
+    assert "{fact:" not in text
+    assert fact_text(fact) in text
+
+
 @pytest.mark.parametrize("kind", ["subtitle", "body", "bullets"])
 @pytest.mark.parametrize("measured", [True, False])
 def test_measured_text_wraps_even_when_template_disables_wrapping(

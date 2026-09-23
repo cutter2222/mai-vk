@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from lxml import etree
+from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
@@ -22,6 +23,7 @@ from pptx.util import Emu, Pt
 
 from presentation_designer.layout.charts import DEFAULT_ACCENTS, luminance
 from presentation_designer.layout.ooxml import NS_A
+from presentation_designer.shared import text_metrics
 
 KINDS = ("process", "cycle", "pyramid", "hierarchy", "matrix", "funnel", "timeline", "venn")
 
@@ -63,8 +65,8 @@ class DiagramStyle:
         text = next((e["hex"] for e in palette if e.get("role") == "text"), None)
         return cls(
             font_family=family,
-            font_size_pt=min(size, 16.0),
-            sub_size_pt=max(min(size, 16.0) - 3, 10.0),
+            font_size_pt=max(18.0, min(size, 24.0)),
+            sub_size_pt=max(16.0, min(size, 24.0) - 3),
             text_color=text or theme.get("dk1") or "#000000",
             accents=accents or list(DEFAULT_ACCENTS),
         )
@@ -393,7 +395,7 @@ def _venn(
     elif n == 2:
         centers = [(x + cx // 2 - d // 4, y + cy // 2), (x + cx // 2 + d // 4, y + cy // 2)]
     else:
-        d = int(min(cy * 0.66, cx * 0.5))
+        d = int(min(cy * 0.60, cx * 0.5))
         centers = [
             (x + cx // 2 - d // 4, y + cy // 2 - d // 6),
             (x + cx // 2 + d // 4, y + cy // 2 - d // 6),
@@ -415,6 +417,60 @@ def _set_alpha(shape: Any, percent: int) -> None:
         return
     alpha = etree.SubElement(fill[0], f"{{{NS_A}}}alpha")
     alpha.set("val", str(percent * 1000))
+
+
+def content_fits(block: dict[str, Any], box: tuple[int, ...], style: DiagramStyle) -> bool:
+    """Conservative text fit against the renderer's actual node geometry.
+
+    Keep all nodes and readable type; the planner can choose a text composition instead.
+    In particular Venn only supports three sets, so never silently truncate a fourth.
+    """
+    items = block.get("items") or []
+    kind = block.get("kind")
+    if kind not in KINDS or not 2 <= len(items) <= (3 if kind == "venn" else 6):
+        return False
+    x, y, width, height = box
+    if width <= 0 or height <= 0:
+        return False
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    result = draw_diagram(slide, (x, y, width, height), block, style)
+    group = slide.shapes[-1]
+    nodes = [s for s in group.shapes if str(s.shape_id) in result.node_ids and s.has_text_frame]
+    for node in nodes:
+        if not node.text_frame.text:
+            continue  # timeline markers
+        if node.left < x or node.top < y or node.left + node.width > x + width + 1:
+            return False
+        if node.top + node.height > y + height + 1:
+            return False
+        # Inscribe text in curved/tapered nodes, not in their rectangular bounding box.
+        ratio = 0.68 if kind in ("cycle", "venn", "pyramid", "funnel") else 0.9
+        available_w = node.width / 12700 * ratio - 7.2
+        available_h = node.height / 12700 * ratio - 4.32
+        used_h = 0.0
+        for paragraph in node.text_frame.paragraphs:
+            run = paragraph.runs[0] if paragraph.runs else None
+            size = run.font.size.pt if run and run.font.size else style.font_size_pt
+            font = text_metrics.resolve_font(style.font_family)
+            lines = 0
+            for line in paragraph.text.split("\n"):
+                lines += 1
+                used_w = 0.0
+                for word in line.split():
+                    word_w = text_metrics.text_width_pt(word, font, size)
+                    if word_w > available_w:
+                        return False
+                    gap = text_metrics.text_width_pt(" ", font, size) if used_w else 0.0
+                    if used_w + gap + word_w > available_w:
+                        lines += 1
+                        used_w = word_w
+                    else:
+                        used_w += gap + word_w
+            used_h += lines * text_metrics.line_metrics(font, size).line_height_pt
+        if used_h > available_h:
+            return False
+    return True
 
 
 def draw_diagram(
