@@ -101,6 +101,25 @@ def test_product_image_layout_requires_provided_image(role: str) -> None:
     assert mt.score_pattern(pattern, mt.Need("image", has_image=True), "balanced") > 0
 
 
+@pytest.mark.parametrize("role", ["two_column", "comparison", "text"])
+def test_large_optional_photo_requires_an_image_regardless_of_role(role: str) -> None:
+    pattern = mt.pattern_info(
+        {
+            "pattern_id": "photo",
+            "role": role,
+            "slots": [
+                {
+                    "slot_id": "photo",
+                    "kind": "image",
+                    "required": False,
+                    "bbox": {"x": 0.5, "y": 0, "width": 0.5, "height": 1},
+                }
+            ],
+        }
+    )
+    assert mt.score_pattern(pattern, mt.Need("text"), "balanced") == 0
+
+
 def test_required_image_layout_is_available_with_a_real_image() -> None:
     pattern = mt.pattern_info(
         {

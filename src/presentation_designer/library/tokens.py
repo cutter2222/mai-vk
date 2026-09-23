@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from presentation_designer.layout.charts import luminance
+from presentation_designer.parsing.template.tone import relative_luminance
 
 JsonDict = dict[str, Any]
 
@@ -139,6 +140,11 @@ def _read_colors(code: DesignCode, colors: JsonDict) -> None:
     code.text_color = _first(by_role.get("text"), theme.get("dk1"), DEFAULT_TEXT)
     code.background = _first(by_role.get("background"), theme.get("lt1"), DEFAULT_BACKGROUND)
     code.muted_color = _first(by_role.get("muted"), by_role.get("neutral"), "#6B6B6B")
+    # A neutral swatch can be a pale fill, not a legible caption color.
+    bg = relative_luminance(code.background)
+    fg = relative_luminance(code.muted_color)
+    if (max(bg, fg) + 0.05) / (min(bg, fg) + 0.05) < 4.5:
+        code.muted_color = code.text_color
     # Акценты: сначала роли палитры, затем accentN темы; белёсые оттенки не годятся под заливку.
     accents = [
         hex_color

@@ -592,6 +592,13 @@ def score_pattern(p: PatternInfo, need: Need, variant_id: str) -> float:
         return 0.0
     if not need.has_image and p.role in ("image_full", "screenshot", "mockup"):
         return 0.0
+    if not need.has_image and any(
+        s.kind == "image" and s.bbox[2] * s.bbox[3] >= 0.18 for s in p.slots.values()
+    ):
+        # Optional photo slots still define the composition. Removing a half-slide
+        # photo leaves a mostly empty slide even when the classifier called it text.
+        if not (p.role == "chart" and need.has_dataset):
+            return 0.0
     if not need.has_image and any(s.kind == "image" for s in p.required_singles):
         # A chart image can be replaced with a native chart from the dataset.
         if not (p.role == "chart" and need.has_dataset):

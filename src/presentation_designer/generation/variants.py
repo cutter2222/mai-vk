@@ -35,6 +35,13 @@ from typing import Any
 from presentation_designer.contracts import ContentPackage, SlidePlan, StoryPlan, TemplateProfile
 from presentation_designer.contracts.validators import check_slide_plan
 from presentation_designer.generation import capacity as cap
+from presentation_designer.generation.grounding import (
+    CONCEPT_POLICY,
+    CONCEPT_WARNING,
+    concept_notice,
+    concept_title,
+    is_concept,
+)
 from presentation_designer.generation.matching import (
     CONTENT_VISUALS,
     Need,
@@ -507,9 +514,11 @@ def deck_structure(ctx: Context, *, use_agenda: bool | None = None) -> Structure
     title_pattern = _first_fitting(
         ctx,
         _service_order(title_pool, policy, tone, rank),
-        _clean(brief.get("title") or ctx.story.get("key_takeaway"), 160),
+        _cover_title(ctx.story),
         _clean(
-            (brief.get("audience") and f"Для: {brief['audience']}")
+            concept_notice(str(ctx.story.get("language", "ru")))
+            if is_concept(ctx.story)
+            else (brief.get("audience") and f"Для: {brief['audience']}")
             or ctx.story.get("key_takeaway"),
             200,
         ),
@@ -721,6 +730,18 @@ def packet_digest(ctx: Context, structure: Structure, packet: Packet) -> str:
     brief = story.get("effective_brief") or {}
     lines: list[str] = []
     lines.append(f"Вариант: {ctx.variant_id}. {VARIANT_RULES.get(ctx.variant_id, '')}")
+    if is_concept(story):
+        lines.append(CONCEPT_POLICY)
+        lines.append("Оговорка на слайдах: " + concept_notice(str(story.get("language", "ru"))))
+        lines.append(
+            "Каждый слайд пакета — конкретное авторское предложение. Заголовок до 55 знаков, "
+            "начинай с «Идея:», «Предлагаем» или «Гипотеза:». Не снимай условность при "
+            "сокращении. Дай 2–3 разных пункта: сценарий пользователя, проектное решение, "
+            "проверка или компромисс. В items используй text как короткий заголовок пункта "
+            "(до 35 знаков), sub как пояснение (до 110 знаков). Не заменяй пункты "
+            "перефразированием общего заголовка. Не используй сведения о распространённости "
+            "поведения пользователей как факты. Не создавай слайды с одним заголовком."
+        )
     lines.append(
         "Выбирай подачу по смыслу: показатель, сравнение, этапы, смысловые блоки. "
         "Оформление и композицию выбирает код после получения содержания. "
@@ -2224,11 +2245,19 @@ async def fit_packet(
 # ---------- сборка колоды ----------
 
 
+def _cover_title(story: JsonDict) -> str:
+    brief = story.get("effective_brief") or {}
+    title = str(brief.get("title") or story.get("key_takeaway") or "")
+    if is_concept(story):
+        title = concept_title(title, str(story.get("language", "ru")))
+    return _clean(title, 160)
+
+
 def _title_draft(ctx: Context, structure: Structure) -> Draft:
     brief = ctx.story.get("effective_brief") or {}
     p = structure.title_pattern
     assert p is not None
-    title = _clean(brief.get("title") or ctx.story.get("key_takeaway"), 160)
+    title = _cover_title(ctx.story)
     # Подпись обложки — о чём колода, а не для кого. В шаблоне ЛЦТ на этом
     # месте стоит «Разработчик корпоративного ПО»: жанр — описание, а не
     # адресат. «Для: инвесторы» читается как поле формы.
@@ -2236,6 +2265,8 @@ def _title_draft(ctx: Context, structure: Structure) -> Draft:
         ctx.story.get("key_takeaway") or (brief.get("audience") and f"Для: {brief['audience']}"),
         200,
     )
+    if is_concept(ctx.story):
+        subtitle = concept_notice(str(ctx.story.get("language", "ru")))
     d = Draft(
         kind="title",
         theses=list(structure.title_theses),
@@ -3241,9 +3272,16 @@ def build_document(
         },
         "generation_meta": generation_meta,
         "warnings": [
-            {"code": f["code"], "message": f["message"]}
-            for f in ctx.fixes
-            if f["code"] not in ("pattern_remapped", "dataset_unknown", "asset_unknown")
+            *[
+                {"code": w["code"], "message": w["message"]}
+                for w in ctx.story.get("warnings", [])
+                if w.get("code") == CONCEPT_WARNING
+            ],
+            *[
+                {"code": f["code"], "message": f["message"]}
+                for f in ctx.fixes
+                if f["code"] not in ("pattern_remapped", "dataset_unknown", "asset_unknown")
+            ],
         ],
     }
     return doc

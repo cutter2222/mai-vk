@@ -26,6 +26,7 @@ from typing import Any
 
 from presentation_designer.design.fit import _fits, content_slots
 from presentation_designer.design.guard import _norm
+from presentation_designer.generation.grounding import CONCEPT_POLICY, is_concept
 
 log = logging.getLogger(__name__)
 
@@ -448,8 +449,11 @@ def refill(
         for task in tasks:
             task["facts"] = facts
 
+    payload: JsonDict = {"slides": tasks}
+    if is_concept(story or {}) or is_concept(plan):
+        payload["grounding_policy"] = CONCEPT_POLICY
     try:
-        raw = ask(prompt, json.dumps({"slides": tasks}, ensure_ascii=False))
+        raw = ask(prompt, json.dumps(payload, ensure_ascii=False))
     except Exception as exc:  # сеть, квота, таймаут
         log.warning("дозапрос слотов не удался: %s", exc)
         return []

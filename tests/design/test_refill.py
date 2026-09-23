@@ -4,12 +4,33 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from presentation_designer.design.refill import (
     _capacity_chars,
     apply_answer,
     collect_gaps,
     refill,
 )
+from presentation_designer.generation.grounding import CONCEPT_POLICY, CONCEPT_WARNING
+
+
+@pytest.mark.parametrize("marker_on", ["story", "plan", "neither"])
+def test_refill_preserves_concept_policy(marker_on):
+    plan, story, captured = _plan(), {}, []
+    if marker_on != "neither":
+        target = story if marker_on == "story" else plan
+        target["warnings"] = [{"code": CONCEPT_WARNING}]
+
+    def ask(_system, user):
+        captured.append(json.loads(user))
+        return "{}"
+
+    refill(plan, PROFILE, ask, prompt="", story=story)
+    assert captured
+    assert captured[0].get("grounding_policy") == (
+        None if marker_on == "neither" else CONCEPT_POLICY
+    )
 
 
 def _slot(slot_id, kind, w, h, size_pt=12.0):

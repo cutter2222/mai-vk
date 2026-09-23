@@ -10,8 +10,32 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from presentation_designer import design
 from presentation_designer.design import feedback
+from presentation_designer.generation.grounding import CONCEPT_POLICY, CONCEPT_WARNING
+
+
+@pytest.mark.parametrize("marker_on", ["story", "plan", "neither"])
+def test_feedback_preserves_concept_policy(marker_on):
+    plan = _plan([("title_1", "Что проверить?")])
+    story, captured = {}, []
+    if marker_on != "neither":
+        target = story if marker_on == "story" else plan
+        target["warnings"] = [{"code": CONCEPT_WARNING}]
+
+    def ask(_system, user):
+        captured.append(json.loads(user))
+        return "{}"
+
+    facts = feedback.read(_deck(plan), plan, PROFILE)
+    feedback.ask_slots(plan, facts, PROFILE, story, ask, rounds=2)
+    assert len(captured) == 2
+    assert all(
+        p.get("grounding_policy") == (None if marker_on == "neither" else CONCEPT_POLICY)
+        for p in captured
+    )
 
 
 def _slot(slot_id, kind, w, h, size_pt=12.0, sample=None):

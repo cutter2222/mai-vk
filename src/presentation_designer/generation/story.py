@@ -22,13 +22,19 @@ from typing import Any
 
 from presentation_designer.contracts import StoryPlan
 from presentation_designer.contracts.validators import check_story_plan
+from presentation_designer.generation.grounding import (
+    CONCEPT_POLICY,
+    CONCEPT_WARNING,
+    concept_notice,
+    topic_only,
+)
 from presentation_designer.shared.settings import Settings, get_settings
 
 log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 
-STORY_VERSION = "0.1.1"
+STORY_VERSION = "0.1.3"
 STORY_SCHEMA_VERSION = "1.2"
 THESIS_KINDS = ("section", "claim", "evidence", "conclusion", "call_to_action", "context")
 VISUALS = (
@@ -231,6 +237,7 @@ def story_key(
         "story_version": STORY_VERSION,
         "schema": STORY_SCHEMA_VERSION,
         "package": normalize_package(package),
+        "topic_only": topic_only(package),
         "effective_brief": effective_brief(package, settings),
         "seed": settings.get("seed"),
         "skill": list(skill.ref) if skill is not None else None,
@@ -275,13 +282,16 @@ def story_digest(package: JsonDict, brief: JsonDict, *, max_chars: int = 14000) 
     if brief.get("avoid"):
         lines.append("Избегать: " + "; ".join(brief["avoid"]) + ".")
     mode = package.get("mode")
-    lines.append(
-        {
-            "brief": "Режим: только бриф — материалов нет; структуру и формулировки предложи сам, "
-            "без выдуманных цифр.",
-            "package": "Режим: материалы без брифа.",
-        }.get(str(mode), "Режим: бриф и материалы.")
-    )
+    if topic_only(package):
+        lines.append(CONCEPT_POLICY)
+    else:
+        lines.append(
+            {
+                "brief": "Режим: содержание предоставлено в брифе. Опирайся на него; "
+                "не добавляй неподтверждённые характеристики, результаты и прогнозы.",
+                "package": "Режим: материалы без брифа.",
+            }.get(str(mode), "Режим: бриф и материалы.")
+        )
     facts_by_block: dict[str, list[str]] = {}
     for f in package.get("facts", []):
         if f.get("block_id"):
@@ -629,6 +639,11 @@ def assemble_story(
         )
         if note not in assumptions:
             assumptions.append(note)
+    if topic_only(package):
+        notice = concept_notice(str(brief.get("language", "ru")))
+        if notice not in assumptions:
+            assumptions.append(notice)
+        fixes.append({"code": CONCEPT_WARNING, "message": notice})
     used_after: set[str] = set()
     for thesis in theses:
         used_after |= set(thesis.get("fact_refs", []))

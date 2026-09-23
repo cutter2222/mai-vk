@@ -46,6 +46,7 @@ from presentation_designer.design.measure import (
     slot_capacity,
 )
 from presentation_designer.design.rules import NOT_ENRICHABLE
+from presentation_designer.generation.grounding import CONCEPT_POLICY, is_concept
 
 log = logging.getLogger(__name__)
 
@@ -594,8 +595,11 @@ def ask_slots(
             len(tasks),
             sum(len(t["empty_slots"]) for t in tasks),
         )
+        payload: JsonDict = {"slides": tasks}
+        if is_concept(story) or is_concept(plan):
+            payload["grounding_policy"] = CONCEPT_POLICY
         try:
-            raw = ask("", json.dumps({"slides": tasks}, ensure_ascii=False))
+            raw = ask("", json.dumps(payload, ensure_ascii=False))
             answer = _extract_json(raw)
         except Exception as exc:  # сеть, квота, неразбираемый ответ
             log.warning("дозапрос по фактам не удался: %s", exc)
