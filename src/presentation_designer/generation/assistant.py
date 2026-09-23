@@ -47,6 +47,7 @@ class ProjectState:
     issues: int | None = None
     audit_status: str | None = None
     slides: int | None = None
+    design_mode: str | None = None
 
     def lines(self) -> list[str]:
         out = [
@@ -69,6 +70,7 @@ class ProjectState:
             out.append("Генерация: не запускалась")
         if self.slide_count:
             out.append(f"Просили слайдов: {self.slide_count}")
+        out.append(f"Режим композиций: {self.design_mode or 'не выбран (по умолчанию смешанный)'}")
         return out
 
 
@@ -139,6 +141,24 @@ def answer(
     deadline_s: float = 12.0,
 ) -> JsonDict:
     """Ответ модели с вариантами следующего шага; без модели — правила по состоянию проекта."""
+    if (
+        state.template
+        and (state.materials or state.brief.get("title"))
+        and not state.design_mode
+        and not state.job_status
+    ):
+        from presentation_designer.generation.design_mode import LABELS
+
+        return {
+            "reply": (
+                "Как оформить презентацию? По шаблону — только готовые макеты; "
+                "смешанный — макеты и новые композиции; все слайды новые — новые композиции "
+                "в стиле исходника, включая титул и финал. "
+                "Это не влияет на подробность содержания."
+            ),
+            "options": list(LABELS.values()),
+            "source": "rules",
+        }
     if client is None or skill is None:
         return answer_without_model(state, text)
     try:

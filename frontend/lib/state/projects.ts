@@ -386,7 +386,13 @@ export async function askAssistant(projectId: string, messageId: string) {
   const project = getProject(real);
   if (!project) throw new Error("Проект не загружен.");
   // Brief extraction may have just updated a debounced draft. Send it before reading context.
-  await api.projects.patch(real, { brief: project.brief, settings: project.settings });
+  // Drain the queued patch so its stale settings cannot overwrite a mode selected by chat.
+  const pending = pendingPatches.get(real);
+  if (pending) {
+    clearTimeout(pending.timer);
+    pendingPatches.delete(real);
+  }
+  await api.projects.patch(real, { ...pending?.patch, brief: project.brief, settings: project.settings });
   const result = await api.chat(real, eventId);
   updateProject(real, (p) => ({ events: p.events.some((e) => e.event_id === result.event.event_id)
     ? p.events : [...p.events, result.event as ChatMessage] }));

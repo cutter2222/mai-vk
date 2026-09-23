@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from presentation_designer.api.deps import Orch
 from presentation_designer.api.errors import ApiError
 from presentation_designer.generation import assistant
+from presentation_designer.generation.design_mode import DESCRIPTIONS, LABELS, parse_design_mode
 from presentation_designer.pipeline.real import RealLayers
 from presentation_designer.pipeline.results import result_or_none
 from presentation_designer.pipeline.state import NotFound
@@ -52,6 +53,11 @@ def chat(body: ChatRequest, orch: Orch) -> dict[str, Any]:
         materials=[f["name"] for f in project["files"] if f["kind"] == "material"],
     )
     settings = project["settings"]
+    selected_mode = parse_design_mode(text)
+    if selected_mode:
+        settings = {**settings, "design_mode": selected_mode}
+        orch.state.update_project(body.project_id, {"settings": settings})
+    state.design_mode = settings.get("design_mode")
     state.slide_count = (
         str(settings.get("exact"))
         if settings.get("mode") == "exact"
@@ -82,16 +88,28 @@ def chat(body: ChatRequest, orch: Orch) -> dict[str, Any]:
                 if audit.get("status") in {"done", "partial"}:
                     state.issues = audit.get("issues_total")
     client = skill = None
-    if isinstance(orch.layers, RealLayers) and orch.layers.modes.get("brief") == "real":
+    if (
+        not selected_mode
+        and isinstance(orch.layers, RealLayers)
+        and orch.layers.modes.get("brief") == "real"
+    ):
         client = orch.layers.llm_client()
         skill = orch.layers.skill("project_assistant")
-    answer = assistant.answer(
-        state,
-        text,
-        events[:index],
-        client=client,
-        skill=skill,
-        deadline_s=orch.settings.timeouts.brief_s,
+    answer = (
+        {
+            "reply": f"Режим «{LABELS[selected_mode]}» сохранён. {DESCRIPTIONS[selected_mode]}",
+            "options": ["Собрать презентацию"],
+            "source": "rules",
+        }
+        if selected_mode
+        else assistant.answer(
+            state,
+            text,
+            events[:index],
+            client=client,
+            skill=skill,
+            deadline_s=orch.settings.timeouts.brief_s,
+        )
     )
     event = orch.state.append_event(
         body.project_id,

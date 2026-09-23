@@ -6,6 +6,7 @@ import { useState } from "react";
 import type { CapabilitiesResponse } from "@/lib/api/client";
 import { VARIANT_LABELS } from "@/lib/format";
 import type { SettingsDraft } from "@/lib/state/projects";
+import { DESIGN_MODES } from "@/lib/designMode";
 
 interface Props {
   settings: SettingsDraft;
@@ -29,6 +30,11 @@ export function SettingsPanel({ settings, onChange, caps }: Props) {
 
   return (
     <Stack gap="lg">
+      <div>
+        <Text size="sm" fw={500} mb={6}>Режим оформления</Text>
+        <SegmentedControl fullWidth size="xs" value={settings.design_mode ?? ""} onChange={(value) => set("design_mode", value as SettingsDraft["design_mode"])} data={DESIGN_MODES.map((mode) => ({ ...mode }))} />
+        <Text size="xs" c="dimmed" mt={6}>Независимо от подробности содержания. Новые композиции сохраняют стиль исходника, включая титул и финал.</Text>
+      </div>
       <div>
         <Text size="sm" fw={500} mb={6}>Варианты вёрстки</Text>
         <Checkbox.Group value={settings.variants} onChange={(v) => set("variants", v)}>

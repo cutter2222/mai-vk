@@ -168,6 +168,10 @@
       ],
       "additionalProperties": false,
       "properties": {
+        "design_mode": {
+          "enum": ["template_only", "mixed", "all_new"],
+          "description": "Выбранный режим композиций. Без выбора генерация совместима со смешанным режимом."
+        },
         "mode": {
           "enum": [
             "range",

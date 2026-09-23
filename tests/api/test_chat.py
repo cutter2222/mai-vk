@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from presentation_designer.generation import assistant
+from presentation_designer.generation.design_mode import LABELS
 from presentation_designer.llm.skills import get_skill
 from presentation_designer.pipeline.jobs import Orchestrator
 
@@ -56,6 +57,31 @@ def test_chat_persists_reply_without_starting_generation(client: TestClient) -> 
         ).status_code
         == 404
     )
+
+
+@pytest.mark.parametrize("mode,label", LABELS.items())
+def test_chat_design_mode_persists_without_changing_density(
+    client: TestClient, mode: str, label: str
+) -> None:
+    project = client.post("/api/projects", json={}).json()["project_id"]
+    before = client.get(f"/api/projects/{project}").json()["settings"]
+    event = message(client, project, label)
+    result = client.post("/api/chat", json={"project_id": project, "event_id": event})
+    assert result.status_code == 200, result.text
+    saved = client.get(f"/api/projects/{project}").json()
+    assert saved["settings"] == {**before, "design_mode": mode}
+    assert not saved.get("job_id")
+    assert label in result.json()["reply"]
+
+
+def test_assistant_requests_design_mode_only_before_first_generation() -> None:
+    state = assistant.ProjectState(template="Template", materials=["Report"])
+    assert assistant.answer(state, "Что дальше?")["options"] == list(LABELS.values())
+    state.design_mode = "mixed"
+    assert assistant.answer(state, "Что дальше?")["options"] != list(LABELS.values())
+    state.design_mode = None
+    state.job_status = "succeeded"
+    assert assistant.answer(state, "Что дальше?")["options"] != list(LABELS.values())
 
 
 def test_chat_uses_server_context_and_history(

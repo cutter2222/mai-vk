@@ -499,6 +499,10 @@ class RealLayers(StubLayers):
             )
         pptx_artifact = f"{inp.staging.prefix}deck.pptx"
         plan = self.polish_plan(inp)
+        if inp.variant_id != ORIGINAL_VARIANT:
+            from presentation_designer.generation.design_mode import validate_plan_mode
+
+            validate_plan_mode(plan, inp.template_profile, inp.settings)
         try:
             result = compose_deck(
                 plan,
@@ -526,6 +530,29 @@ class RealLayers(StubLayers):
         inp.staging.write_json("plan.json", plan)
         inp.staging.write_json("story.json", inp.story)
         self.last_compose_report = result.report
+        warnings: list[JsonDict] = []
+        if (
+            inp.variant_id != ORIGINAL_VARIANT
+            and inp.settings.get("design_mode") == "template_only"
+        ):
+            from presentation_designer.design.feedback import read
+
+            if any(
+                fact.kind in {"overflow", "shrunk", "spill"}
+                for fact in read(result.deck, plan, inp.template_profile).items
+            ):
+                # No implicit new composition or weakened audit on fit failure.
+                warnings.append(
+                    {
+                        "code": "template_fit_review",
+                        "message": (
+                            "По шаблону: проверьте вместимость. "
+                            "Разделите слайд или сократите текст."
+                        ),
+                    }
+                )
+                plan.setdefault("warnings", []).extend(warnings)
+                inp.staging.write_json("plan.json", plan)
         log.info(
             "сборка %s/%s: %d слайдов, объектов %s, удалено %s, %d КБ, %d мс, предупреждений %d",
             inp.job_id,
@@ -541,6 +568,7 @@ class RealLayers(StubLayers):
             slide_count=len(result.slide_titles),
             slide_titles=result.slide_titles,
             composed_deck=result.deck,
+            warnings=warnings,
         )
 
     def polish_plan(self, inp: ComposeInput) -> JsonDict:

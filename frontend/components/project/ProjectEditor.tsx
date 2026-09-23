@@ -72,6 +72,10 @@ export function ProjectEditor({ project }: { project: Project }) {
 
   const generate = useCallback(async (): Promise<boolean> => {
     if (!project.template_id || !project.package_id) return false;
+    if (!project.settings.design_mode && !project.job_id) {
+      notifications.show({ title: "Выберите режим оформления", message: "Ответьте в чате: «По шаблону», «Смешанный» или «Все слайды новые»." });
+      return false;
+    }
     const error = settingsError(project.settings);
     if (error) {
       notifications.show({ color: "red", title: "Проверьте параметры", message: error });
@@ -85,6 +89,7 @@ export function ProjectEditor({ project }: { project: Project }) {
       package_id: project.package_id,
       idempotency_key: `ui-${project.project_id}-${Date.now().toString(36)}`,
       settings: {
+        design_mode: s.design_mode ?? "mixed",
         slide_count: s.mode === "exact" ? { exact: s.exact } : { min: s.min, max: s.max },
         language: project.brief.language || "ru",
         variants: s.variants as NonNullable<GenerationRequest["settings"]>["variants"],
@@ -104,7 +109,7 @@ export function ProjectEditor({ project }: { project: Project }) {
     } finally {
       setStarting(false);
     }
-  }, [project.template_id, project.package_id, project.settings, project.brief.language, project.project_id, patch]);
+  }, [project.template_id, project.package_id, project.settings, project.brief.language, project.project_id, project.job_id, patch]);
 
   const chat = useChat(project, session, generate);
 

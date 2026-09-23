@@ -1365,6 +1365,10 @@ export interface GenerationRequest {
   package_id: string;
   settings?: {
     /**
+     * Композиции: только шаблон, шаблон и новые, либо только новые в стиле шаблона. Независимо от плотности содержания.
+     */
+    design_mode?: "template_only" | "mixed" | "all_new";
+    /**
      * точное число или диапазон; при обоих заданных exact имеет приоритет; min <= max проверяется валидатором
      */
     slide_count?: {
@@ -1873,6 +1877,10 @@ export interface BriefDraft {
  * Настройки генерации в интерфейсе; в GenerationRequest переводятся при запуске
  */
 export interface SettingsDraft {
+  /**
+   * Выбранный режим композиций. Без выбора генерация совместима со смешанным режимом.
+   */
+  design_mode?: "template_only" | "mixed" | "all_new";
   mode: "range" | "exact";
   min: number;
   max: number;

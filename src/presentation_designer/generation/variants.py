@@ -55,7 +55,7 @@ log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 
-PLAN_VERSION = "0.4.0"
+PLAN_VERSION = "0.4.2"
 PLAN_SCHEMA_VERSION = "1.3"
 # Версии плана, отличающиеся от текущей только добавленными необязательными полями: план
 # прежней ревизии (правки из чата и редактора читают его с диска) поднимается до текущей.
@@ -277,6 +277,9 @@ def build_context(
     app: Settings,
     slide_count: int | None,
 ) -> Context:
+    from presentation_designer.generation.design_mode import profile_for_mode
+
+    profile = profile_for_mode(profile, settings)
     ctx = Context(
         story=story,
         profile=profile,
@@ -3339,6 +3342,7 @@ def plan_key(
         "profile": profile_digest(profile),
         "fonts": text_metrics.fonts_manifest(),
         "variant": variant_id,
+        "design_mode": settings.get("design_mode") or "mixed",
         "slide_count": spec.as_dict(),
         "language": settings.get("language"),
         "seed": settings.get("seed"),
@@ -3632,6 +3636,12 @@ def build_variant_plan(
         for d in deck
         if d.overflow
     ]
+    if unresolved and settings.get("design_mode") == "template_only":
+        raise PlanError(
+            "template_capacity_exceeded",
+            "Текст не помещается в макеты шаблона. "
+            "Увеличьте число слайдов, разделите содержание или сократите текст.",
+        )
     # Переполнение после лестницы ёмкости остаётся в плане структурированно и уходит в аудит —
     # и при диапазоне, и при точном числе слайдов: колода с подсвеченной строкой лучше отказа
     # от варианта (18.09: в шаблоне со строчными слотами на 52–112 символов не выдался ни один).

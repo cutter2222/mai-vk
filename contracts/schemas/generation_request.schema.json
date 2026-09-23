@@ -19,6 +19,11 @@
     "settings": {
       "type": "object",
       "properties": {
+        "design_mode": {
+          "enum": ["template_only", "mixed", "all_new"],
+          "default": "mixed",
+          "description": "Композиции: только шаблон, шаблон и новые, либо только новые в стиле шаблона. Независимо от плотности содержания."
+        },
         "slide_count": {
           "type": "object",
           "description": "точное число или диапазон; при обоих заданных exact имеет приоритет; min <= max проверяется валидатором",

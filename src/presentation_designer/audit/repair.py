@@ -58,6 +58,8 @@ def build_repair(
     deck: JsonDict,
     profile: JsonDict,
     plan: JsonDict | None = None,
+    *,
+    settings: JsonDict | None = None,
 ) -> RepairPlan:
     """Патч, исправляющий выбранные находки, и отчёт по каждой из них."""
     wanted = list(dict.fromkeys(issue_ids))
@@ -92,6 +94,21 @@ def build_repair(
             out.fixes.append(Fix(issue_id, check_id, False, "находка не указывает на объект"))
             continue
         override = fixer(issue, obj, slide, ctx)
+        if (
+            override
+            and override.get("op") == "geometry"
+            and (settings or {}).get("design_mode") == "template_only"
+        ):
+            out.fixes.append(
+                Fix(
+                    issue_id,
+                    check_id,
+                    False,
+                    "По шаблону: расположение блоков сохранено. "
+                    "Разделите слайд или сократите текст.",
+                )
+            )
+            continue
         if override is None:
             out.fixes.append(Fix(issue_id, check_id, False, "нечего менять: значение уже верное"))
             continue

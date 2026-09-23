@@ -978,6 +978,10 @@ class Settings(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
+    design_mode: Literal["template_only", "mixed", "all_new"] | None = "mixed"
+    """
+    Композиции: только шаблон, шаблон и новые, либо только новые в стиле шаблона. Независимо от плотности содержания.
+    """
     slide_count: SlideCount2 | None = None
     """
     точное число или диапазон; при обоих заданных exact имеет приоритет; min <= max проверяется валидатором
@@ -1873,6 +1877,10 @@ class SettingsDraft(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
+    design_mode: Literal["template_only", "mixed", "all_new"] | None = None
+    """
+    Выбранный режим композиций. Без выбора генерация совместима со смешанным режимом.
+    """
     mode: Literal["range", "exact"]
     min: int = Field(..., ge=1, le=60)
     max: int = Field(..., ge=1, le=60)

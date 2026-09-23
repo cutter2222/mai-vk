@@ -631,6 +631,44 @@ def test_plan_without_model_is_marked_and_valid(
         assert result.plan["coverage"]["missing"] == []
 
 
+@pytest.mark.parametrize("mode", ["template_only", "mixed", "all_new"])
+def test_fallback_plans_respect_design_mode(
+    example_story: dict[str, Any],
+    mini_profile: dict[str, Any],
+    example_package: dict[str, Any],
+    mode: str,
+) -> None:
+    from presentation_designer.generation.design_mode import validate_plan_mode
+
+    if mode == "template_only":
+        # This fixture's source layouts cannot hold the supplied text. No builtin escape.
+        with pytest.raises(vr.PlanError) as exc:
+            vr.build_variant_plan(
+                example_story,
+                mini_profile,
+                example_package,
+                "balanced",
+                {"design_mode": mode, "slide_count": {"min": 3, "max": 30}},
+                use_model=False,
+            )
+        assert exc.value.code == "template_capacity_exceeded"
+        return
+    result = vr.build_variant_plan(
+        example_story,
+        mini_profile,
+        example_package,
+        "balanced",
+        {"design_mode": mode, "slide_count": {"min": 3, "max": 30}},
+        use_model=False,
+    )
+    validate_plan_mode(result.plan, mini_profile, {"design_mode": mode})
+    if mode == "all_new":
+        patterns = {p["pattern_id"]: p for p in mini_profile["patterns"]}
+        slides = result.plan["slides"]
+        assert patterns[slides[0]["pattern_id"]]["source"]["kind"] == "builtin"
+        assert patterns[slides[-1]["pattern_id"]]["source"]["kind"] == "builtin"
+
+
 def test_plan_cache_hit_rebinds_ids(
     example_story: dict[str, Any],
     mini_profile: dict[str, Any],

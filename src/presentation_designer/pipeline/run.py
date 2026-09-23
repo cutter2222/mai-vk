@@ -15,6 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from presentation_designer.generation.design_mode import profile_for_mode, validate_plan_mode
 from presentation_designer.pipeline.artifacts import Staging
 from presentation_designer.pipeline.state import now_iso
 
@@ -141,6 +142,7 @@ class ComposeInput:
     # ручными правками (и перечисленные здесь) полировка не трогает.
     polish: bool = True
     locked_slide_ids: frozenset[str] = frozenset()
+    settings: JsonDict = field(default_factory=dict)
 
 
 @dataclass
@@ -148,6 +150,7 @@ class ComposeOutput:
     slide_count: int
     slide_titles: list[str]
     composed_deck: JsonDict
+    warnings: list[JsonDict] = field(default_factory=list)
 
 
 @dataclass
@@ -403,6 +406,8 @@ def run_variant(layers: Layers, ctx: VariantContext, emit: Emit) -> VariantOutco
     stage = "plan"
     try:
         _check_canceled(ctx, stage)
+        if ctx.variant_id != "original":
+            ctx.template_profile = profile_for_mode(ctx.template_profile, ctx.settings)
         timer = _Timer(emit, "plan", ctx.variant_id)
         plan = layers.plan(
             PlanInput(
@@ -426,6 +431,8 @@ def run_variant(layers: Layers, ctx: VariantContext, emit: Emit) -> VariantOutco
 
         stage = "compose"
         _check_canceled(ctx, stage)
+        if ctx.variant_id != "original":
+            validate_plan_mode(plan, ctx.template_profile, ctx.settings)
         timer = _Timer(emit, "compose", ctx.variant_id)
         composed = layers.compose(
             ComposeInput(
@@ -439,10 +446,12 @@ def run_variant(layers: Layers, ctx: VariantContext, emit: Emit) -> VariantOutco
                 ctx.story,
                 ctx.staging,
                 package_dir=ctx.package_dir,
+                settings=ctx.settings,
             )
         )
         outcome.slide_count = composed.slide_count
         outcome.slide_titles = composed.slide_titles
+        outcome.warnings.extend(composed.warnings)
         outcome.deck_title = ctx.package.get("brief", {}).get("title") or "Презентация"
         outcome.stages.append(timer.done())
 
@@ -496,7 +505,9 @@ def run_variant(layers: Layers, ctx: VariantContext, emit: Emit) -> VariantOutco
         outcome.stages.append(timer.done())
         outcome.status = (
             "needs_review"
-            if outcome.audit["issues_total"] > 0 or not outcome.audit["coverage_complete"]
+            if outcome.audit["issues_total"] > 0
+            or not outcome.audit["coverage_complete"]
+            or any(w.get("code") == "template_fit_review" for w in outcome.warnings)
             else "ready"
         )
         return outcome
@@ -578,6 +589,8 @@ def run_edit(layers: Layers, ctx: EditContext, emit: Emit) -> EditOutcome:
     stage = "plan"
     is_patch = ctx.patch is not None
     try:
+        if ctx.variant_id != "original":
+            ctx.template_profile = profile_for_mode(ctx.template_profile, ctx.settings)
         timer = _Timer(emit, "plan", ctx.variant_id)
         edited = layers.edit(
             EditInput(
@@ -609,6 +622,8 @@ def run_edit(layers: Layers, ctx: EditContext, emit: Emit) -> EditOutcome:
             outcome.reason = edited.reason
             return outcome
         outcome.change_note = edited.change_note
+        if ctx.variant_id != "original":
+            validate_plan_mode(edited.plan, ctx.template_profile, ctx.settings)
 
         stage = "compose"
         timer = _Timer(emit, "compose", ctx.variant_id)
@@ -626,6 +641,7 @@ def run_edit(layers: Layers, ctx: EditContext, emit: Emit) -> EditOutcome:
                 package_dir=ctx.package_dir,
                 extra_assets=dict(ctx.extra_assets),
                 polish=not is_patch,
+                settings=ctx.settings,
             )
         )
         outcome.slide_count = composed.slide_count

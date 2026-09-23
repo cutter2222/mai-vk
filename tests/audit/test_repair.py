@@ -91,6 +91,20 @@ def test_text_in_the_margin_moves_inside() -> None:
     assert bbox["x"] == 0.05, "объект вернулся в поле шаблона"
 
 
+def test_template_only_repair_preserves_geometry() -> None:
+    deck = _deck([_obj("10", (0.92, 0.3, 0.2, 0.1))])
+    result = build_repair(
+        _report(_issue("iss_1", "layout.out_of_bounds", "10")),
+        ["iss_1"],
+        deck,
+        _profile(),
+        settings={"design_mode": "template_only"},
+    )
+    assert result.applied == []
+    assert "Разделите слайд" in result.fixes[0].note
+    assert deck["slides"][0]["objects"][0]["bbox"]["x"] == 0.92
+
+
 def test_size_snaps_to_the_template_scale() -> None:
     deck = _deck([_obj("12", (0.1, 0.1, 0.5, 0.2), font={"size_pt": 31, "family": "Montserrat"})])
     issue = _issue(

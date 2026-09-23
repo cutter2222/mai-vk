@@ -22,6 +22,7 @@ import {
   type SettingsDraft,
 } from "@/lib/state/projects";
 import type { GenerationRequest } from "@/lib/api/types";
+import { DESIGN_MODES, DESIGN_MODE_QUESTION, isDesignModeReply } from "@/lib/designMode";
 
 const GENERATE_RE = /сгенерир|запусти|собер[иа]|сдела[йт]|сделаем|построй|начина|давай/i;
 const EDIT_RE = /поменя[йть]|перестав|местами|удали|убери|добавь слайд|переимен/i;
@@ -55,7 +56,6 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     try {
       const response = await askAssistant(id, messageId);
       setSuggestions(response.options);
-      if (response.source === "rules") notifications.show({ title: "Ответ без модели", message: "ИИ недоступен: показана подсказка по состоянию проекта.", color: "yellow" });
     } catch (e) {
       say(`Не удалось получить ответ: ${e instanceof Error ? e.message : "ошибка сервера"}`);
     }
@@ -115,7 +115,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
       return;
     }
     offerGeneration();
-    if (!p.job_id) await generate();
+    if (!p.job_id && p.settings.design_mode) await generate();
   }, [current, say, offerGeneration, generate]);
 
   /** Сообщение, адресованное слайду: событие с адресом, запрос правки, карточка хода и результата. */
@@ -145,7 +145,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
       await editSlide(trimmed, target);
       if (files.length === 0) return;
     }
-    const rest = targeted ? "" : trimmed;
+    let rest = targeted ? "" : trimmed;
 
     // 1. Файлы попадают на сервер сразу: проверка и дедупликация там, в проекте остаются записи.
     let rows: ProjectFile[] = [];
@@ -158,6 +158,12 @@ export function useChat(project: Project, session: GenerationSession, generate: 
       }
     }
     const message = appendMessage(id, { role: "user", kind: "message", text: rest, file_ids: rows.map((r) => r.file_id) });
+    if (isDesignModeReply(rest)) {
+      await respond(message.event_id);
+      await refreshProject(id);
+      if (!files.length) return;
+      rest = ""; // Выбор режима не становится темой брифа при отправке с вложениями.
+    }
     // A conversation about an existing deck must not become a new brief or an office edit.
     if (rest && !files.length && current().job_id) {
       await respond(message.event_id);
@@ -233,7 +239,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
       offerGeneration(understood, understood.length ? briefSource : undefined);
     }
     const ready = current().template_id && current().package_id && current().brief.purpose;
-    if (wantsGeneration && ready && !current().job_id) {
+    if (wantsGeneration && ready && current().settings.design_mode && !current().job_id) {
       await generate();
     }
   }, [id, importMaterials, afterMaterials, offerGeneration, say, generate, current, editSlide, respond]);
@@ -392,9 +398,14 @@ export function useChat(project: Project, session: GenerationSession, generate: 
   }, [id, project.job_id, project.events]);
 
 
+  const needsDesignMode = Boolean(project.template_id && (project.package_id || project.brief.title) && !project.settings.design_mode && !project.job_id);
+  useEffect(() => {
+    if (needsDesignMode && !current().events.some((event) => event.kind === "text" && event.text === DESIGN_MODE_QUESTION)) say(DESIGN_MODE_QUESTION);
+  }, [needsDesignMode, project.events, say, current]);
+
   const notifyError = (title: string, e: unknown) => notifications.show({ color: "red", title, message: e instanceof ApiError ? e.message : "Неизвестная ошибка" });
 
-  return { send, suggestions, attach, staged, answerStaged, resolveTemplateQuestion, setPurpose, removeFile, importMaterials, selectTemplate, addTemplate, notifyError };
+  return { send, suggestions: needsDesignMode ? DESIGN_MODES.map((mode) => mode.label) : suggestions, attach, staged, answerStaged, resolveTemplateQuestion, setPurpose, removeFile, importMaterials, selectTemplate, addTemplate, notifyError };
 }
 
 export type Chat = ReturnType<typeof useChat>;

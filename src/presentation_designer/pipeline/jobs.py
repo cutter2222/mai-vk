@@ -1681,9 +1681,14 @@ def _repair_overrides(
     if not profile:
         return None
     from presentation_designer.audit.repair import build_repair
+    from presentation_designer.generation.design_mode import profile_for_mode
 
+    settings = gen["request"].get("settings") or {}
+    if (plan.get("variant") or {}).get("variant_id") == "original":
+        settings = {**settings, "design_mode": "mixed"}
+    profile = profile_for_mode(profile, settings)
     deck = json.loads(deck_path.read_text(encoding="utf-8"))
-    return build_repair(base_report, list(issue_ids), deck, profile, plan)
+    return build_repair(base_report, list(issue_ids), deck, profile, plan, settings=settings)
 
 
 def _finish_repair_unchanged(o: Orchestrator, repair_job_id: str, job_id: str, fix: Any) -> None:
