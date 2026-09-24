@@ -158,10 +158,12 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
       : "Напишите, что изменить, или добавьте файлы…";
 
   return (
+    // Зона перетаскивания Mantine выключает выделение текста (user-select: none) у себя и у
+    // вложенного — без возврата сообщения ленты нельзя было выделить и скопировать.
     <Dropzone
       onDrop={addFiles}
       activateOnClick={false}
-      styles={{ root: { border: 0, padding: 0, background: "transparent", borderRadius: 0, display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }, inner: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0, pointerEvents: "auto" } }}
+      styles={{ root: { border: 0, padding: 0, background: "transparent", borderRadius: 0, display: "flex", flexDirection: "column", flex: 1, minHeight: 0, userSelect: "text" }, inner: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0, pointerEvents: "auto", userSelect: "text" } }}
       data-testid="chat-dropzone"
     >
       <div className="chat-list" ref={listRef} data-testid="chat-list" onScroll={(e) => {

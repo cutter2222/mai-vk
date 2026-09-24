@@ -141,3 +141,18 @@ test("a pending request shows only the busy send button, and the failed request 
   await expect(replies(page)).toHaveText(reply);
   await expect(page.getByTestId("assistant-typing")).toHaveCount(0);
 });
+test("сообщение ленты выделяется мышью и копируется", async ({ page }) => {
+  await setup(page, true);
+  const message = replies(page).first();
+  await expect(message).toHaveText(reply);
+  // Зона перетаскивания файлов вокруг ленты не должна выключать выделение текста.
+  expect(await message.evaluate((el) => getComputedStyle(el).userSelect)).not.toBe("none");
+  const box = (await message.boundingBox())!;
+  await page.mouse.move(box.x + 2, box.y + 6);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width - 2, box.y + box.height - 4, { steps: 8 });
+  await page.mouse.up();
+  const selected = await page.evaluate(() => String(window.getSelection()));
+  expect(selected.length).toBeGreaterThan(40);
+  expect(reply).toContain(selected.trim().slice(0, 30));
+});
