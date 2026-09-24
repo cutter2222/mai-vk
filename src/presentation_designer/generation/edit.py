@@ -195,6 +195,41 @@ def columns(p: PatternInfo) -> int:
     return p.cards.count if p.cards is not None else 0
 
 
+GRID_TEXT_KINDS = ("body", "bullets", "label", "caption", "number", "subtitle")
+
+
+def grid_rank(p: PatternInfo, count: int) -> tuple[int, int]:
+    """Насколько композиция — сетка ровно на `count` мест: 0 — чистая (весь текст слайда в
+    карточках, «Два столбца текста»), 1 — с отдельными текстами рядом (у «Трёх карточек с
+    иконками» VK Education анализатор видит две карточки и два отдельных текста: по названию
+    модель ждёт трёх), 2 — другое число мест."""
+    cards = p.cards
+    if cards is None or cards.count != count:
+        return (2, abs(columns(p) - count))
+    inside = sum(len(v) for k, v in cards.by_kind.items() if k in GRID_TEXT_KINDS)
+    total = sum(
+        1 for slot in p.slots.values() if slot is not p.title and slot.kind in GRID_TEXT_KINDS
+    )
+    outside = total - inside
+    return (0 if outside <= 1 else 1, outside)
+
+
+def count_candidates(
+    ctx: Context, count: int, *, has_dataset: bool, has_image: bool
+) -> list[PatternInfo]:
+    """Композиции под названное число мест: чистые сетки ровно на столько мест, потом прочие."""
+    pool: dict[str, PatternInfo] = {}
+    for visual in ("cards", "bullets", "comparison"):
+        need = Need(visual, items=count, has_dataset=has_dataset, has_image=has_image)
+        for c in candidates_for(
+            ctx.patterns, need, ctx.variant_id, limit=12, has_datasets=has_dataset
+        ):
+            pool.setdefault(c.pattern_id, c)
+    ranked = sorted(pool.values(), key=lambda p: grid_rank(p, count))
+    clean = [p for p in ranked if grid_rank(p, count)[0] == 0]
+    return clean[:4] or ranked[:3]
+
+
 def slide_theses(ctx: Context, slide: JsonDict) -> list[Thesis]:
     out: list[Thesis] = []
     for tid in slide.get("thesis_refs") or []:
@@ -226,13 +261,13 @@ def edit_candidates(
     if count and not is_service(slide) and theses:
         # Названное число — главное в просьбе: композиции ровно на столько колонок идут сразу
         # за текущей, иначе их отрезал бы предел числа кандидатов.
-        has_ds = any(d in ctx.datasets for t in theses for d in t.dataset_refs)
-        has_image = any(a in ctx.assets for t in theses for a in t.asset_refs)
-        for visual in ("cards", "bullets"):
-            need = Need(visual, items=count, has_dataset=has_ds, has_image=has_image)
-            pool = candidates_for(ctx.patterns, need, ctx.variant_id, limit=8, has_datasets=has_ds)
-            for c in sorted(pool, key=lambda p: columns(p) != count)[:3]:
-                out.setdefault(c.pattern_id, c)
+        for c in count_candidates(
+            ctx,
+            count,
+            has_dataset=any(d in ctx.datasets for t in theses for d in t.dataset_refs),
+            has_image=any(a in ctx.assets for t in theses for a in t.asset_refs),
+        ):
+            out.setdefault(c.pattern_id, c)
     if is_service(slide) or not theses:
         role = current.role if current is not None else str(slide.get("role", "title"))
         for p in fixed_pattern_pool(ctx.patterns, role, has_datasets=ctx.has_datasets):
@@ -337,10 +372,16 @@ def edit_digest(
     lines.append(f"Просьба пользователя: «{_clean(instruction, MAX_INSTRUCTION_CHARS)}»")
     count = requested_count(instruction)
     if count:
+        fit = [c.pattern_id for c in candidates if grid_rank(c, count)[0] == 0]
         lines.append(
-            f"Названо число элементов: {count}. Выбери композицию, где карточек или колонок "
-            f"ровно {count} (смотри «N карточек» в описании), и разложи содержание на {count} "
-            f"пункта; если такой композиции в списке нет — unchanged с причиной."
+            f"Названо число элементов: {count}. "
+            + (
+                f"Подходят композиции ровно на {count} места: {', '.join(fit)} — выбери одну "
+                f"из них и разложи содержание на {count} пункта."
+                if fit
+                else f"Композиции ровно на {count} места в списке нет — ответь unchanged с "
+                "причиной."
+            )
         )
     lines.append(f"Вариант: {ctx.variant_id}. {VARIANT_RULES.get(ctx.variant_id, '')}")
     lines.append(
