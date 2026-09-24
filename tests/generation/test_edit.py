@@ -440,34 +440,118 @@ def test_count_request_brings_grids_with_that_many_columns(
     assert f"Названо число элементов: {want}" in digest
 
 
-def test_count_request_finds_library_grid_behind_many_template_cards(
+def test_count_request_stays_in_template_design(
     base_plan: dict[str, Any],
     example_story: dict[str, Any],  # noqa: F811
     mini_profile: dict[str, Any],  # noqa: F811
     example_package: dict[str, Any],  # noqa: F811
 ) -> None:
-    """У VK Tech больше десятка своих карточных образцов, и встроенные сетки на два места идут в
-    оценке после них: подбор под названное число всё равно их находит."""
-    crowded = json.loads(json.dumps(mini_profile))
-    own = next(p for p in crowded["patterns"] if p["pattern_id"] == "pat_s2")
-    crowded["patterns"] += [
-        {**json.loads(json.dumps(own)), "pattern_id": f"pat_s2_copy{i}"} for i in range(12)
-    ]
-    ctx = vr.build_context(
-        example_story, crowded, example_package, "balanced", {}, vr.get_settings(), None
-    )
-    top = mt.candidates_for(ctx.patterns, mt.Need("cards", items=2), "balanced", limit=12)
-    assert not any(ed.grid_rank(p, 2)[0] == 0 for p in top), "первые 12 — образцы шаблона"
+    """Смешанный режим: правка берёт композиции шаблона, а из встроенных — только ту, на которой
+    слайд уже стоит. «Колонки не три, а две» сокращает сетку шаблона на три карточки до двух
+    широких (слайд 6 колоды «Футбол», VK Tech), а не приносит встроенную сетку чужого вида.
+    В режиме «Все слайды новые» встроенные сетки остаются."""
     slide = ed.ordered_slides(base_plan)[_content_index(base_plan)]
-    theses = ed.slide_theses(ctx, slide)
     instruction = "колонки сделаем не три а две"
+    ctx = vr.build_context(
+        example_story, mini_profile, example_package, "balanced", {}, vr.get_settings(), None
+    )
+    theses = ed.slide_theses(ctx, slide)
+    three = next(p for p in ctx.patterns if p.pattern_id == "pat_s2")
+    ctx.patterns = ed.edit_pool(ctx, slide, 2)
+    assert all(not p.builtin or p.pattern_id == slide["pattern_id"] for p in ctx.patterns)
+    two = next(p for p in ctx.patterns if p.pattern_id == "pat_s2")
+    assert ed.columns(two) == 2 and ed.grid_rank(two, 2) == (0, 0) and "label_3" not in two.slots
+    # Ёмкость по раскладке сборки: две карточки шире трёх.
+    assert two.slots["label_1"].bbox[2] > 1.4 * three.slots["label_1"].bbox[2]
+    assert two.slots["label_1"].max_chars > three.slots["label_1"].max_chars
     candidates = ed.edit_candidates(ctx, slide, theses, instruction)
-    assert candidates[1].builtin and ed.grid_rank(candidates[1], 2)[0] == 0
     digest = ed.edit_digest(ctx, base_plan, slide, theses, candidates, instruction)
-    assert f"Подходят композиции ровно на 2 места: {candidates[1].pattern_id}" in digest
+    fits = next(line for line in digest.splitlines() if line.startswith("Названо число"))
+    assert "pat_s2" in fits and "pat_builtin" not in fits
+    assert "заголовок меняй, только если о нём просили" in fits
+    everything_new = vr.build_context(
+        example_story,
+        mini_profile,
+        example_package,
+        "balanced",
+        {"design_mode": "all_new"},
+        vr.get_settings(),
+        None,
+    )
+    pool = ed.edit_pool(everything_new, slide, 2)
+    assert any(p.builtin and ed.grid_rank(p, 2)[0] == 0 for p in pool)
 
 
-def test_named_count_puts_the_slide_on_a_grid_with_that_many_places(
+def test_builtin_slide_returns_to_template_design(
+    base_plan: dict[str, Any],
+    example_story: dict[str, Any],  # noqa: F811
+    mini_profile: dict[str, Any],  # noqa: F811
+    example_package: dict[str, Any],  # noqa: F811
+) -> None:
+    """Слайд уже стоит на встроенной композиции (ревизия со встроенными карточками): просьба о
+    колонках или о дизайне шаблона выбирает только композиции шаблона, просьба о тексте
+    оставляет слайд на его композиции."""
+    ctx = vr.build_context(
+        example_story, mini_profile, example_package, "balanced", {}, vr.get_settings(), None
+    )
+    slide = dict(ed.ordered_slides(base_plan)[_content_index(base_plan)])
+    slide["pattern_id"] = "pat_builtin_cards_grid_cols2_numberedFalse_rows1"
+    for count, instruction in (
+        (2, "сделай две колонки"),
+        (None, "дизайн не меняй, оставляй как был"),
+    ):
+        pool = ed.edit_pool(ctx, slide, count, instruction)
+        assert not any(p.builtin for p in pool) and any(p.pattern_id == "pat_s2" for p in pool)
+    pool = ed.edit_pool(ctx, slide, None, "сократи заголовок")
+    assert [p.pattern_id for p in pool if p.builtin] == [slide["pattern_id"]]
+
+
+def test_builtin_grid_goes_back_to_template_grid(
+    base_plan: dict[str, Any],
+    example_story: dict[str, Any],  # noqa: F811
+    mini_profile: dict[str, Any],  # noqa: F811
+    example_package: dict[str, Any],  # noqa: F811
+    make_client: Any,
+    stub: Any,
+) -> None:
+    """Слайд на встроенных «Карточках: 2 карточки» (ревизия после прежней правки колонок):
+    «дизайн не меняй, оставляй как был» возвращает его в сетку шаблона на два места, отказ
+    «менять нечего» не принимается."""
+    plan = json.loads(json.dumps(base_plan))
+    index = _content_index(plan)
+    slide = ed.ordered_slides(plan)[index]
+    slide["pattern_id"] = "pat_builtin_cards_grid_cols2_numberedFalse_rows1"
+    slide["blocks"] = [
+        {"slot_id": "title", "kind": "title", "text": slide["title"]},
+        {"slot_id": "card_1_title", "kind": "label", "text": "Тактика"},
+        {"slot_id": "card_1_body", "kind": "caption", "text": "Проверяем схемы давления"},
+        {"slot_id": "card_2_title", "kind": "label", "text": "Аналитика"},
+        {"slot_id": "card_2_body", "kind": "caption", "text": "Связываем решения с данными"},
+    ]
+    stub.answer(
+        {"unchanged": True, "reason": "Менять нечего", "change_note": "", "slides": []}, times=1
+    )
+    items = [{"text": "Тактика: проверяем схемы"}, {"text": "Аналитика: решения и данные"}]
+    stub.answer(_answer(slide, pattern="pat_s2", visual="cards", items=items))
+    result = _edit(
+        plan,
+        index,
+        "дизайн не меняй, оставляй как был",
+        make_client(stub, max_retries=2),
+        story=example_story,
+        profile=mini_profile,
+        package=example_package,
+    )
+    assert result.changed and result.plan is not None and len(stub.calls) == 2
+    assert "встроенной композицией" in stub.calls[0].messages[-1].text
+    new = ed.ordered_slides(result.plan)[index]
+    assert new["pattern_id"] == "pat_s2"
+    filled = [b["slot_id"] for b in new["blocks"] if str(b.get("slot_id")).startswith("label_")]
+    assert filled == ["label_1", "label_2"]
+    _valid(result.plan, mini_profile, example_package, example_story)
+
+
+def test_named_count_puts_the_slide_on_the_template_grid(
     base_plan: dict[str, Any],
     example_story: dict[str, Any],  # noqa: F811
     mini_profile: dict[str, Any],  # noqa: F811
@@ -477,19 +561,62 @@ def test_named_count_puts_the_slide_on_a_grid_with_that_many_places(
 ) -> None:
     index = _content_index(base_plan)
     slide = ed.ordered_slides(base_plan)[index]
-    ctx = vr.build_context(
-        example_story, mini_profile, example_package, "balanced", {}, vr.get_settings(), None
-    )
-    instruction = "сделай в две колонки"
-    candidates = ed.edit_candidates(ctx, slide, ed.slide_theses(ctx, slide), instruction)
-    fits = [c.pattern_id for c in candidates if ed.grid_rank(c, 2)[0] == 0]
-    if not fits or slide["pattern_id"] in fits:
-        pytest.skip("в мини-шаблоне нет другой чистой сетки на два места")
-    # Модель оставила прежнюю композицию и дала два пункта — сетка на два места ставится кодом.
+    assert slide["pattern_id"] != "pat_s2"
+    # Модель оставила прежнюю композицию и дала два пункта — код ставит слайд на сетку шаблона,
+    # сокращённую до двух мест.
     items = [{"text": "Первая колонка"}, {"text": "Вторая колонка"}]
-    stub.answer(_answer(slide, pattern=slide["pattern_id"], items=items))
+    stub.answer(_answer(slide, pattern=slide["pattern_id"], visual="cards", items=items))
     result = _edit(
         base_plan,
+        index,
+        "сделай в две колонки",
+        make_client(stub),
+        story=example_story,
+        profile=mini_profile,
+        package=example_package,
+    )
+    assert result.changed and result.plan is not None
+    new = ed.ordered_slides(result.plan)[index]
+    assert new["pattern_id"] == "pat_s2"
+    filled = {b["slot_id"] for b in new["blocks"] if b.get("text")}
+    assert {"label_1", "label_2"} <= filled and "label_3" not in filled
+    _valid(result.plan, mini_profile, example_package, example_story)
+
+
+@pytest.mark.parametrize(
+    ("instruction", "kept"),
+    [
+        ("колонки сделаем не три а две", True),
+        ("сделай две колонки и сократи текст", False),
+    ],
+)
+def test_count_request_keeps_the_slide_text(
+    instruction: str,
+    kept: bool,
+    base_plan: dict[str, Any],
+    example_story: dict[str, Any],  # noqa: F811
+    mini_profile: dict[str, Any],  # noqa: F811
+    example_package: dict[str, Any],  # noqa: F811
+    make_client: Any,
+    stub: Any,
+) -> None:
+    """Три карточки в две (колода «Футбол», слайд 6): модель потеряла третий пункт и сменила
+    заголовок, о котором не просили. Просили только колонки — код возвращает прежний заголовок
+    и прежние пункты дословно, склеив соседние; просили сократить текст — пункты модели."""
+    plan = json.loads(json.dumps(base_plan))
+    index = _content_index(plan)
+    slide = ed.ordered_slides(plan)[index]
+    texts = ["Тактика как гипотеза", "Аналитика как инструмент", "Статус концепции"]
+    slide["pattern_id"] = "pat_s2"
+    slide["blocks"] = [{"slot_id": "title_1", "kind": "title", "text": slide["title"]}] + [
+        {"slot_id": f"label_{i + 1}", "kind": "label", "text": t} for i, t in enumerate(texts)
+    ]
+    short = [{"text": "Тактика"}, {"text": "Аналитика как инструмент"}]
+    stub.answer(
+        _answer(slide, pattern="pat_s2", visual="cards", title="Другой заголовок", items=short)
+    )
+    result = _edit(
+        plan,
         index,
         instruction,
         make_client(stub),
@@ -499,9 +626,35 @@ def test_named_count_puts_the_slide_on_a_grid_with_that_many_places(
     )
     assert result.changed and result.plan is not None
     new = ed.ordered_slides(result.plan)[index]
-    # Подгонка выбирает среди сеток на два места ту, куда содержание встаёт лучше.
-    assert new["pattern_id"] in fits
-    _valid(result.plan, mini_profile, example_package, example_story)
+    assert new["pattern_id"] == "pat_s2" and new["title"] == slide["title"]
+    labels = [b["text"] for b in new["blocks"] if str(b.get("slot_id")).startswith("label_")]
+    fixes = {f["code"] for f in result.report["fixes"]}
+    if kept:
+        assert labels == ["Тактика как гипотеза", "Аналитика как инструмент. Статус концепции"]
+        assert {"edit_items_kept", "edit_title_kept"} <= fixes
+    else:
+        assert labels == ["Тактика", "Аналитика как инструмент"]
+        assert "edit_items_kept" not in fixes
+
+
+def test_regroup_keeps_model_grouping_and_old_wording() -> None:
+    old = ["Тактика как гипотеза", "Аналитика как инструмент", "Статус концепции: основа"]
+    answer = [
+        {"sub": "Тактика и аналитика", "text": "Тактика как гипотеза. Аналитика как инструмент"},
+        {"sub": "Статус концепции", "text": "Статус концепции: основа"},
+    ]
+    assert ed.regroup_items(old, answer, 2) == [
+        "Тактика как гипотеза. Аналитика как инструмент",
+        "Статус концепции: основа",
+    ]
+    # Потерян пункт или пункты переставлены — группировке модели не доверяем.
+    assert ed.regroup_items(old, answer[:1], 2) is None
+    assert ed.regroup_items(old, list(reversed(answer)), 2) is None
+    # Без группировки модели склеивается самая короткая соседняя пара.
+    assert ed.merge_items(old, 2) == [
+        "Тактика как гипотеза. Аналитика как инструмент",
+        "Статус концепции: основа",
+    ]
 
 
 def test_violations_of_other_slides_do_not_block_the_edit(

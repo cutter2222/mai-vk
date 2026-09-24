@@ -653,6 +653,54 @@ def test_unfilled_cards_removed_and_logo_kept(
     assert icon_obj["content_source"] == "sample" and icon_obj["picture"]["fit"] == "as_is"
 
 
+def test_remaining_cards_spread_over_the_row(
+    mini_profile: dict[str, Any],
+    example_package: dict[str, Any],
+    tmp_path: Any,
+) -> None:
+    """Сетка шаблона на три карточки с двумя заполненными («не три колонки, а две»): третья
+    убрана, две оставшиеся расходятся на всю ширину ряда с прежним промежутком; режим «По
+    шаблону» (`reflow_cards=False`) блоки не двигает."""
+    labels = [_slot(mini_profile, "pat_s2", f"label_{i}")["bbox"] for i in (1, 2, 3)]
+    left, right = labels[0]["x"], labels[2]["x"] + labels[2]["width"]
+    gap = labels[1]["x"] - (labels[0]["x"] + labels[0]["width"])
+    width = (right - left - gap) / 2
+    blocks = [
+        {"slot_id": "title_1", "kind": "title", "text": "Две колонки"},
+        {"slot_id": "label_1", "kind": "label", "text": "Первая колонка"},
+        {"slot_id": "label_2", "kind": "label", "text": "Вторая колонка"},
+    ]
+    plan = _plan_with(
+        mini_profile, [{"pattern_id": "pat_s2", "title": "Две колонки", "blocks": blocks}]
+    )
+    for reflow in (True, False):
+        result = _compose(
+            plan,
+            mini_profile,
+            MINI_TEMPLATE,
+            example_package,
+            tmp_path / f"cards-{reflow}.pptx",
+            reflow_cards=reflow,
+        )
+        objects = {
+            o["slot_id"]: o["bbox"] for o in result.deck["slides"][0]["objects"] if o.get("slot_id")
+        }
+        assert "label_3" not in objects
+        first, second = objects["label_1"], objects["label_2"]
+        if reflow:
+            assert first["x"] == pytest.approx(left, abs=0.002)
+            assert first["width"] == pytest.approx(width, abs=0.003)
+            assert second["x"] - (first["x"] + first["width"]) == pytest.approx(gap, abs=0.003)
+            assert second["x"] + second["width"] == pytest.approx(right, abs=0.003)
+            # Под текстом в карточке ничего нет — высота прежняя.
+            assert first["height"] == pytest.approx(labels[0]["height"], abs=0.002)
+            assert result.report["counts"]["cards_reflowed"] == 1
+        else:
+            assert first["width"] == pytest.approx(labels[0]["width"], abs=0.002)
+            assert second["x"] == pytest.approx(labels[1]["x"], abs=0.002)
+            assert "cards_reflowed" not in result.report["counts"]
+
+
 def _pattern_with_slot(profile: dict[str, Any], slot_id: str, sample: str | None) -> dict[str, Any]:
     return next(
         p

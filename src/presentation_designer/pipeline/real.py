@@ -610,6 +610,7 @@ class RealLayers(StubLayers):
                 media_dir=inp.staging.path("media"),
                 media_prefix=inp.staging.prefix,
                 chart_readings=chart_readings,
+                reflow_cards=inp.settings.get("design_mode") != "template_only",
             )
         except ComposeError as e:
             raise StageError(e.code, str(e), retryable=e.retryable, stage="compose") from e
@@ -746,6 +747,7 @@ class RealLayers(StubLayers):
                 fit_min_ratio=float(self.settings.plan.min_font_ratio),
                 fit_min_body_pt=float(self.settings.plan.min_body_pt),
                 fit_min_title_pt=float(self.settings.plan.min_title_pt),
+                reflow_cards=inp.settings.get("design_mode") != "template_only",
             ).deck
 
         ask = None

@@ -334,3 +334,61 @@ def test_vktech_drawn_chart_and_logo_removal(
     assert dropped.deck["template_logo"] == "drop"
     assert dropped.report["counts"].get("logos_removed", 0) > 0
     assert logo_shapes(tmp_path / "drop.pptx") == 0, "знак снят со всех макетов"
+
+
+def test_vk_tech_two_of_three_text_blocks_take_the_whole_row(
+    organizer_dir: pathlib.Path, tmp_path: pathlib.Path
+) -> None:
+    """VK Tech «Три текстовых блока» с двумя заполненными («не три колонки, а две», колода
+    «Футбол», слайд 6): третья карточка убрана, две оставшиеся — те же белые подложки с точкой и
+    иконкой — расходятся на всю ширину ряда; подложки всего ряда стоят где стояли."""
+    path = organizer_dir / "VK Tech шаблон.pptx"
+    profile = analyze_template(
+        path,
+        template_id="tpl_org",
+        name=path.name,
+        size_bytes=path.stat().st_size,
+        render=False,
+        use_vlm=False,
+    ).profile
+    pattern = next(p for p in profile["patterns"] if p["source"].get("slide_index") == 24)
+    bodies = [s for s in pattern["slots"] if s["kind"] == "body"]
+    texts = ["Тактика как гипотеза", "Аналитика как инструмент. Статус концепции"]
+    blocks = [{"slot_id": "title_1", "kind": "title", "text": "Две колонки"}] + [
+        {"slot_id": slot["slot_id"], "kind": "body", "text": text}
+        for slot, text in zip(bodies, texts, strict=False)
+    ]
+    plan = {
+        "schema_version": "1.3",
+        "plan_id": "plan_manual",
+        "template_id": "tpl_org",
+        "package_id": "pkg_manual",
+        "story_id": "story_manual",
+        "language": "ru",
+        "variant": {"variant_id": "compact", "axis": "density", "value": "compact"},
+        "slide_count": {"exact": 1},
+        "slides": [
+            {"slide_id": "s1", "order": 1, "pattern_id": pattern["pattern_id"], "blocks": blocks}
+        ],
+        "coverage": {"required_thesis_ids": [], "covered": []},
+        "generation_meta": {"skills": [], "models": []},
+    }
+    package = {"package_id": "pkg_manual", "facts": [], "datasets": [], "assets": [], "blocks": []}
+    result = compose_deck(plan, profile, path, package, out_pptx=tmp_path / "vk.pptx")
+    boxes = {o["object_id"]: o["bbox"] for o in result.deck["slides"][0]["objects"]}
+    assert "1027" not in boxes and bodies[2]["element_ref"] not in boxes
+    first, second = boxes["1031"], boxes["1029"]
+    assert first["x"] == pytest.approx(0.031, abs=0.002)
+    assert second["x"] + second["width"] == pytest.approx(0.969, abs=0.002)
+    assert first["width"] == pytest.approx(second["width"], abs=0.002) and first["width"] > 0.45
+    icon = boxes["1030"]
+    for body, frame in zip(bodies, (first, second), strict=False):
+        text = boxes[body["element_ref"]]
+        assert frame["x"] < text["x"] and text["x"] + text["width"] <= frame["x"] + frame["width"]
+        # Текст растёт вниз до иконки своей карточки: два прежних пункта в три строки не входят.
+        assert text["y"] + text["height"] == pytest.approx(icon["y"] - 0.02, abs=0.003)
+    # Иконка второй карточки держится правого края своей подложки, как в образце.
+    assert second["x"] + second["width"] - (icon["x"] + icon["width"]) == pytest.approx(
+        0.021, abs=0.003
+    )
+    assert boxes["1033"]["width"] == pytest.approx(0.938, abs=0.002)

@@ -40,6 +40,7 @@ from typing import Any
 
 from pptx import Presentation
 
+from presentation_designer.generation import reflow
 from presentation_designer.generation.matching import SlotInfo, pattern_info
 from presentation_designer.generation.original import original_profile, unchanged_slide
 from presentation_designer.layout import chart_images, charts, diagrams, icons, images, tables
@@ -67,6 +68,7 @@ from presentation_designer.layout.shapes import (
     part_by_name,
     remove_shape,
     set_element_box,
+    set_element_box_absolute,
     shape_element,
     shape_map,
 )
@@ -81,7 +83,7 @@ log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 COMPOSER_NAME = "layout_composer"
-COMPOSER_VERSION = "0.3.1"
+COMPOSER_VERSION = "0.3.2"
 TEXT_KINDS = (
     "title",
     "subtitle",
@@ -107,6 +109,9 @@ DECOR_GAP = 0.012
 # Конец соединителя «упирается» в объект, если лежит внутри его рамки с этим запасом.
 CONNECTOR_TOUCH = 0.02
 TINY_DECOR_AREA = 0.002
+# Запас при раскладке карточек: объект относится к карточке, если его середина в её колонке
+# с половиной этого запаса, и не выходит за колонку больше чем на весь запас.
+REFLOW_SLACK = 0.02
 
 
 class ComposeError(RuntimeError):
@@ -166,6 +171,9 @@ class _Context:
     fit_min_title_pt: float = 20.0
     # Дизайн-код шаблона: нужен только собственным композициям, поэтому считается лениво.
     design_code: DesignCode | None = None
+    # Оставшиеся карточки однорядной сетки расходятся на всю ширину ряда (`_reflow_cards`);
+    # режим «По шаблону» обещает не двигать блоки и выключает это.
+    reflow_cards: bool = True
 
     def fresh_ids(self, element: Any) -> dict[str, str]:
         """Перенумеровывает cNvPr новых объектов (python-pptx заполняет пропуски id)."""
@@ -1379,9 +1387,135 @@ def _cleanup(
                 _overlaps(frame, b) for b in kept_boxes
             ):
                 drop(oid)
+    # 5. Оставшиеся карточки однорядной сетки — на всю ширину ряда, без дыры на месте убранных.
+    if ctx.reflow_cards and pattern_raw["source"].get("kind") == "sample_slide":
+        _reflow_cards(
+            ctx, slide, pattern_raw, pinfo, refs, filled_index, infos_before, record, drop
+        )
     if removed:
         ctx.count("removed_objects", len(removed))
     return list(dict.fromkeys(removed))
+
+
+def _reflow_cards(
+    ctx: _Context,
+    slide: Any,
+    pattern_raw: JsonDict,
+    pinfo: Any,
+    refs: dict[str, str],
+    filled_index: set[tuple[int, int]],
+    infos_before: dict[str, Any],
+    record: SlideRecord,
+    drop: Any,
+) -> None:
+    """Карточки однорядной сетки, оставшиеся после уборки пустых, расходятся на всю ширину
+    ряда (`generation/reflow.py`): три текстовых блока VK Tech с двумя заполненными дают две
+    широкие карточки того же вида, а не две узкие и дыру справа. Колонки — подложки карточек
+    (самая большая фигура без текста вокруг текста карточки, не шире шага ряда), без подложек —
+    сами тексты. Двигается только ряд из отдельных фигур: группа, соединитель, объект между
+    карточками или выходящий за свою карточку оставляют слайд как был."""
+    group = pinfo.cards
+    if group is None or pattern_raw.get("role") != "cards":
+        return
+    kept = [i for i in range(group.count) if (group.count, i) in filled_index]
+    if len(kept) < 2 or len(kept) == group.count:
+        return
+    raw_slots = {str(s["slot_id"]): s for s in pattern_raw.get("slots") or []}
+    if any(raw_slots.get(sid, {}).get("group_path") for sid in pinfo.slots):
+        return
+    texts: list[tuple[float, float, float, float]] = []
+    for i in range(group.count):
+        boxes = [s.bbox for s in group.card(i).values() if s.is_text]
+        if not boxes:
+            return
+        texts.append(_union(boxes))
+    if not reflow.single_row(texts):
+        return
+    pitch = min(texts[i + 1][0] - texts[i][0] for i in range(len(texts) - 1))
+    frames: list[tuple[float, float, float, float] | None] = []
+    for box in texts:
+        # Подложка VK Tech — roundRect с пустым текстовым блоком: вид у неё text, а не shape.
+        around = [
+            (i.x, i.y, i.width, i.height)
+            for i in infos_before.values()
+            if i.kind in ("shape", "text")
+            and not i.text.strip()
+            and i.width <= pitch
+            and _contains((i.x, i.y, i.width, i.height), box)
+        ]
+        frames.append(max(around, key=lambda b: b[2] * b[3]) if around else None)
+    columns = [f for f in frames if f is not None]
+    if len(columns) != len(texts):
+        columns = texts
+    placed = reflow.row_columns(columns, kept)
+    if placed is None:
+        return
+    # Полоса ряда — по колонкам и всем слотам карточек: иконки и точки над и под текстом
+    # двигаются вместе с ним, даже когда подложек нет.
+    card_boxes = [s.bbox for g in pinfo.groups for v in g.by_kind.values() for s in v]
+    top = min(b[1] for b in [*columns, *card_boxes])
+    bottom = max(b[1] + b[3] for b in [*columns, *card_boxes])
+    span = columns[-1][0] + columns[-1][2] - columns[0][0]
+    fixed = {
+        str(f.get("element_ref"))
+        for f in ctx.profile.get("fixed_elements") or []
+        if str(f.get("source_part")) == record.source_slide_part
+    }
+    title_ref = refs.get(pinfo.title.slot_id, "") if pinfo.title is not None else ""
+    moves: list[tuple[Any, int]] = []
+    leftovers: list[str] = []
+    for info in walk_shapes(slide, slide.part, ctx.slide_w, ctx.slide_h):
+        if info.element_id in fixed or info.element_id == title_ref:
+            continue
+        if not top <= info.y + info.height / 2 <= bottom or info.width >= 0.9 * span:
+            continue  # вне ряда или подложка всего ряда
+        if info.kind in ("group", "connector") or info.group_path:
+            return
+        cx = info.x + info.width / 2
+        col = next(
+            (
+                i
+                for i, c in enumerate(columns)
+                if c[0] - REFLOW_SLACK / 2 <= cx <= c[0] + c[2] + REFLOW_SLACK / 2
+            ),
+            None,
+        )
+        if col is None:
+            return  # объект между карточками
+        if col not in placed:
+            if info.text.strip():
+                return
+            leftovers.append(info.element_id)  # декор убранной карточки, не снятый уборкой
+            continue
+        c = columns[col]
+        if info.x < c[0] - REFLOW_SLACK or info.x + info.width > c[0] + c[2] + REFLOW_SLACK:
+            return
+        moves.append((info, col))
+    for oid in leftovers:
+        drop(oid)
+    new_boxes = {
+        info.element_id: reflow.move_box(
+            (info.x, info.y, info.width, info.height),
+            (columns[col][0], columns[col][2]),
+            placed[col],
+        )
+        for info, col in moves
+    }
+    texts_of_cards = {
+        refs.get(s.slot_id, "") for i in kept for s in group.card(i).values() if s.is_text
+    }
+    for info, col in moves:
+        box = new_boxes[info.element_id]
+        if info.element_id in texts_of_cards and info.anchor in (None, "t"):
+            # Как в подборе (generation/edit.py: reduced_view): текст растёт вниз до иконки.
+            below = [new_boxes[i.element_id] for i, c in moves if c == col and i is not info]
+            box = reflow.grow_down(box, below)
+        height = info.height_emu if box[3] == info.height else round(box[3] * ctx.slide_h)
+        set_element_box_absolute(
+            info.element,
+            (round(box[0] * ctx.slide_w), info.top_emu, round(box[2] * ctx.slide_w), height),
+        )
+    ctx.count("cards_reflowed")
 
 
 def _beside(info: Any, box: tuple[float, float, float, float]) -> bool:
@@ -1686,6 +1820,7 @@ def compose_deck(
     media_dir: pathlib.Path | None = None,
     media_prefix: str = "",
     chart_readings: Mapping[str, Any] | None = None,
+    reflow_cards: bool = True,
 ) -> ComposeResult:
     """Собирает PPTX по плану и возвращает ComposedDeck, заголовки и отчёт.
 
@@ -1694,7 +1829,8 @@ def compose_deck(
     `media_dir` — куда выложить медиа колоды для интерфейса (имена артефактов получают
     `media_prefix`, как `<variant>/r<N>/`). `chart_readings` — чтения диаграмм-картинок по
     sha256 картинки (ChartReading или его JSON): в варианте original такие картинки
-    заменяются нативными диаграммами."""
+    заменяются нативными диаграммами. `reflow_cards` — оставшиеся карточки однорядной сетки
+    расходятся на всю ширину ряда; режим «По шаблону» передаёт False."""
     started = time.perf_counter()
     template_path = pathlib.Path(template_path)
     if not template_path.is_file():
@@ -1735,6 +1871,7 @@ def compose_deck(
         fit_min_body_pt=fit_min_body_pt,
         fit_min_title_pt=fit_min_title_pt,
         preserve=str((plan.get("variant") or {}).get("variant_id")) == "original",
+        reflow_cards=reflow_cards,
     )
     samples = list(prs.slides)
     if not samples:

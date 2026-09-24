@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import logging
+import math
 import re
 import time
 from dataclasses import dataclass, field
@@ -30,7 +31,9 @@ from presentation_designer.generation.matching import (
     PatternInfo,
     candidates_for,
     fixed_pattern_pool,
+    pattern_info,
 )
+from presentation_designer.generation.reflow import Box, grow_down, move_box, row_columns
 from presentation_designer.generation.variants import (
     FACT_REF,
     PLAN_MODEL_SCHEMA,
@@ -59,7 +62,7 @@ log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 
-EDIT_VERSION = "0.1.3"
+EDIT_VERSION = "0.1.4"
 
 EDIT_MODEL_SCHEMA: JsonDict = {
     "type": "object",
@@ -116,6 +119,16 @@ _BUT_NOT = re.compile(rf"\b{_NUM}{_AFTER}\s*,?\s*а\s+не\s+{_NUM}\b")
 _INSTEAD = re.compile(rf"\b(?:из|вместо)\s+{_NUM}{_AFTER}\D{{0,40}}?\b{_NUM}\b")
 _COUNT = re.compile(rf"(?<!из\s)(?<!не\s)(?<!вместо\s)\b{_NUM}\s+{_UNITS}")
 MAX_REQUESTED_COUNT = 8
+# Просьба переписать текст: тогда пункты при раскладке по местам модель вправе сокращать.
+_REWRITE = re.compile(
+    r"сократ|короч|перепиш|перефраз|упрост|лаконичн|сжат|другими словами|"
+    r"текст\w* поменьше|поменьше текст|меньше текст|измени\w* текст|поменя\w* текст",
+    re.I,
+)
+_TITLE = re.compile(r"заголов|назван", re.I)
+# Просьба про дизайн шаблона («дизайн не меняй, оставляй как был», «в стиле шаблона»): слайд на
+# встроенной композиции возвращается в композиции шаблона.
+_TEMPLATE_DESIGN = re.compile(r"шаблон|дизайн|стил", re.I)
 
 SERVICE_KINDS = {
     "title": "title",
@@ -244,6 +257,104 @@ def count_candidates(
     return clean[:4] or ranked[:3]
 
 
+def reduced_view(raw: JsonDict, count: int) -> PatternInfo | None:
+    """Сетка шаблона на больше мест, сокращённая до `count`, — для подбора: тот же образец,
+    слоты убранных карточек сняты, оставшиеся расширены так, как их разложит сборка
+    (`generation/reflow.py`), поэтому ёмкость считается по широким карточкам и текст не
+    приходится резать. None — так не сократить: встроенная композиция, не карточки, не один
+    ряд, карточки собраны в группы фигур (их сборка не двигает) или шаблон не допускает
+    столько пунктов."""
+    info = pattern_info(raw)
+    group = info.cards
+    if info.builtin or info.role != "cards" or group is None or not 2 <= count < group.count:
+        return None
+    limits = raw.get("constraints") or {}
+    if not int(limits.get("min_items") or 1) <= count <= int(limits.get("max_items") or count):
+        return None
+    if any(s.get("group_path") for s in raw.get("slots") or []):
+        return None
+    texts: list[Box] = []
+    for i in range(group.count):
+        boxes = [s.bbox for s in group.card(i).values() if s.is_text]
+        if not boxes:
+            return None
+        left, top = min(b[0] for b in boxes), min(b[1] for b in boxes)
+        right, bottom = max(b[0] + b[2] for b in boxes), max(b[1] + b[3] for b in boxes)
+        texts.append((left, top, right - left, bottom - top))
+    placed = row_columns(texts, list(range(count)))
+    if placed is None:
+        return None
+    card_of = {s.slot_id: i for i in range(group.count) for s in group.card(i).values()}
+    centers = [(b[0] + b[2] / 2, b[1] + b[3] / 2) for b in texts]
+    for s in info.slots.values():
+        if s.group and s.slot_id not in card_of:
+            # Иконки и подписи других групп — к ближайшему тексту карточки.
+            center = (s.bbox[0] + s.bbox[2] / 2, s.bbox[1] + s.bbox[3] / 2)
+            distances = [math.dist(center, c) for c in centers]
+            card_of[s.slot_id] = distances.index(min(distances))
+    moved: dict[str, Box] = {}
+    for sid, index in card_of.items():
+        if index in placed:
+            moved[sid] = move_box(
+                info.slots[sid].bbox, (texts[index][0], texts[index][2]), placed[index]
+            )
+    doc = copy.deepcopy(raw)
+    slots: list[JsonDict] = []
+    for slot in doc.get("slots") or []:
+        sid = str(slot["slot_id"])
+        card = card_of.get(sid)
+        if card is not None and card not in placed:
+            continue
+        if card is not None:
+            b = slot.get("bbox") or {}
+            old_box = (float(b["x"]), float(b["y"]), float(b["width"]), float(b["height"]))
+            box = moved[sid]
+            if info.slots[sid].is_text and slot.get("valign") in (None, "top"):
+                # Как в сборке: текст растёт вниз до иконки своей карточки.
+                box = grow_down(
+                    box, [v for o, v in moved.items() if o != sid and card_of[o] == card]
+                )
+            slot["bbox"] = {**b, "x": box[0], "width": box[2], "height": box[3]}
+            if box[2] > old_box[2] and slot.get("clear_width"):
+                slot["clear_width"] = float(slot["clear_width"]) + box[2] - old_box[2]
+            if box[3] > old_box[3] and slot.get("clear_height"):
+                slot["clear_height"] = float(slot["clear_height"]) + box[3] - old_box[3]
+            capacity = slot.get("capacity") or {}
+            area = box[2] * box[3] / (old_box[2] * old_box[3]) if old_box[2] * old_box[3] else 1
+            if area > 1 and capacity.get("max_chars"):
+                capacity["max_chars"] = round(int(capacity["max_chars"]) * area)
+            if box[3] > old_box[3] and capacity.get("max_lines") and old_box[3]:
+                capacity["max_lines"] = int(int(capacity["max_lines"]) * box[3] / old_box[3])
+        slots.append(slot)
+    doc["slots"] = slots
+    cards = _plural(count, "карточка", "карточки", "карточек")
+    name = raw.get("name") or raw["pattern_id"]
+    doc["name"] = f"{count} {cards} во всю ширину — сетка «{name}» без лишних"
+    return pattern_info(doc)
+
+
+def edit_pool(
+    ctx: Context, slide: JsonDict, count: int | None, instruction: str = ""
+) -> list[PatternInfo]:
+    """Композиции, из которых выбирает правка. В смешанном режиме — только композиции шаблона
+    (встроенная — лишь та, на которой слайд уже стоит): просьба из чата меняет слайд в дизайне
+    выбранного шаблона, а не приносит чужие элементы. Просят другую сетку или прямо дизайн
+    шаблона — уходит и текущая встроенная: так слайд, собранный встроенной композицией,
+    возвращается в дизайн шаблона. Названо число мест — сетки шаблона на больше мест приходят
+    сокращёнными до него (`reduced_view`); в режиме «По шаблону» и у исходной презентации
+    блоки не двигаются, и сокращения нет."""
+    mode = str(ctx.settings.get("design_mode") or "mixed")
+    current = "" if count or _TEMPLATE_DESIGN.search(instruction) else str(slide.get("pattern_id"))
+    pool = [p for p in ctx.patterns if mode != "mixed" or not p.builtin or p.pattern_id == current]
+    if count and mode != "template_only" and ctx.variant_id != "original":
+        raws = {str(p.get("pattern_id")): p for p in ctx.profile.get("patterns") or []}
+        pool = [
+            (reduced_view(raws[p.pattern_id], count) if p.pattern_id in raws else None) or p
+            for p in pool
+        ]
+    return pool
+
+
 def slide_theses(ctx: Context, slide: JsonDict) -> list[Thesis]:
     out: list[Thesis] = []
     for tid in slide.get("thesis_refs") or []:
@@ -262,16 +373,22 @@ def _slide_items(slide: JsonDict) -> int:
 
 
 def edit_candidates(
-    ctx: Context, slide: JsonDict, theses: list[Thesis], instruction: str
+    ctx: Context,
+    slide: JsonDict,
+    theses: list[Thesis],
+    instruction: str,
+    count: int | None = None,
 ) -> list[PatternInfo]:
     """Композиции для правки: текущая первой, кандидаты по тезисам слайда, пул подачи, которую
-    просит инструкция; у служебных слайдов — пул роли."""
+    просит инструкция; у служебных слайдов — пул роли. `count` — число мест, если оно не
+    названо в просьбе, а следует из слайда (встроенная сетка возвращается в сетку шаблона)."""
     by_id = {p.pattern_id: p for p in ctx.patterns}
     out: dict[str, PatternInfo] = {}
     current = by_id.get(str(slide.get("pattern_id")))
     if current is not None:
         out[current.pattern_id] = current
-    count = requested_count(instruction)
+    if count is None:
+        count = requested_count(instruction)
     if count and not is_service(slide) and theses:
         # Названное число — главное в просьбе: композиции ровно на столько колонок идут сразу
         # за текущей, иначе их отрезал бы предел числа кандидатов.
@@ -377,24 +494,61 @@ def edit_digest(
     theses: list[Thesis],
     candidates: list[PatternInfo],
     instruction: str,
+    current_pattern: PatternInfo | None = None,
+    count: int | None = None,
+    back_to_template: bool = False,
 ) -> str:
+    """Выдержка для модели. `current_pattern` — композиция слайда как она есть: в кандидатах
+    та же композиция может стоять сокращённой до названного числа мест (`reduced_view`).
+    `back_to_template` — слайд на встроенной композиции возвращается в композицию шаблона,
+    `count` — число мест, если оно следует из слайда, а не из просьбы."""
     story = ctx.story
     brief = story.get("effective_brief") or {}
     slides = ordered_slides(plan)
     index = next((i for i, s in enumerate(slides) if s["slide_id"] == slide["slide_id"]), 0)
+    current = current_pattern or next(
+        (c for c in candidates if c.pattern_id == slide.get("pattern_id")), None
+    )
     lines: list[str] = []
     lines.append(f"Просьба пользователя: «{_clean(instruction, MAX_INSTRUCTION_CHARS)}»")
-    count = requested_count(instruction)
+    named = requested_count(instruction)
+    if count is None:
+        count = named
+    back = (
+        f"Слайд собран встроенной композицией {current.pattern_id}, в дизайне шаблона её нет — "
+        "верни слайд в композицию шаблона. "
+        if back_to_template and current is not None
+        else ""
+    )
+    if back and not count:
+        lines.append(back + "Выбери композицию из списка ниже и перенеси в неё содержание слайда.")
     if count:
-        fit = [c.pattern_id for c in candidates if grid_rank(c, count)[0] == 0]
+        places = f"{count} {_plural(count, 'место', 'места', 'мест')}"
+        fit = [
+            f"{c.pattern_id} (текущая сетка шаблона, сокращённая до {places}: лишние карточки "
+            "уберутся, оставшиеся станут шире)"
+            if current is not None
+            and c.pattern_id == current.pattern_id
+            and columns(c) != columns(current)
+            else c.pattern_id
+            for c in candidates
+            if grid_rank(c, count)[0] == 0
+        ]
+        items = len(slide_items(slide, current))
+        spread = (
+            "перенеси в них все прежние пункты слайда дословно: соседние объединяй в одну "
+            "карточку, ничего не теряй"
+            if items > count
+            else "разложи по ним прежнее содержание слайда, ничего не выдумывая"
+        )
         lines.append(
-            f"Названо число элементов: {count}. "
+            back
+            + (f"Названо число элементов: {count}. " if named else f"Мест на слайде: {count}. ")
             + (
-                f"Подходят композиции ровно на {count} места: {', '.join(fit)} — выбери одну "
-                f"из них и разложи содержание на {count} пункта."
+                f"Подходят композиции ровно на {places}: {', '.join(fit)} — выбери одну из них "
+                f"и {spread}; заголовок меняй, только если о нём просили."
                 if fit
-                else f"Композиции ровно на {count} места в списке нет — ответь unchanged с "
-                "причиной."
+                else f"Композиции ровно на {places} в шаблоне нет — ответь unchanged с причиной."
             )
         )
     lines.append(f"Вариант: {ctx.variant_id}. {VARIANT_RULES.get(ctx.variant_id, '')}")
@@ -413,7 +567,6 @@ def edit_digest(
         )
         + "."
     )
-    current = next((c for c in candidates if c.pattern_id == slide.get("pattern_id")), None)
     fact_ids = list(slide.get("fact_refs") or [])
     lines.append(
         f"Слайд {index + 1} из {len(slides)}, роль {slide.get('role')}, композиция "
@@ -481,6 +634,73 @@ def edit_digest(
     return "\n".join(lines)
 
 
+def _plural(n: int, one: str, few: str, many: str) -> str:
+    if n % 10 == 1 and n % 100 != 11:
+        return one
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return few
+    return many
+
+
+def _plain(text: Any) -> str:
+    """Слова текста без регистра и пунктуации: для сверки, не потерян ли пункт."""
+    return " ".join(re.findall(r"\w+", str(text or "").lower().replace("ё", "е")))
+
+
+def slide_items(slide: JsonDict, pattern: PatternInfo | None) -> list[str]:
+    """Пункты слайда по порядку: тексты карточек сетки (подпись и описание карточки — одним
+    пунктом) или пункты списка."""
+    blocks = {str(b.get("slot_id")): b for b in slide.get("blocks") or []}
+    group = pattern.cards if pattern is not None else None
+    if group is not None:
+        out: list[str] = []
+        for i in range(group.count):
+            parts = [
+                _clean(blocks[s.slot_id].get("text"))
+                for s in group.card(i).values()
+                if s.slot_id in blocks and _clean(blocks[s.slot_id].get("text"))
+            ]
+            if parts:
+                out.append(". ".join(parts))
+        if out:
+            return out
+    for b in slide.get("blocks") or []:
+        if b.get("items"):
+            return [_clean(it.get("text")) for it in b["items"] if _clean(it.get("text"))]
+    return []
+
+
+def regroup_items(old: list[str], answer: list[Any], count: int) -> list[str] | None:
+    """Группировка пунктов по местам, которую выбрала модель, с прежними текстами: каждый
+    новый пункт — прежние пункты, которые в нём узнаются, дословно и по порядку, без
+    придуманных моделью названий карточек. None — модель потеряла, повторила или переставила
+    пункты."""
+    plains = [_plain(t) for t in old]
+    groups: list[list[int]] = []
+    for item in answer:
+        if isinstance(item, dict):
+            said = _plain(item.get("sub")) + " " + _plain(item.get("text"))
+        else:
+            said = _plain(item)
+        groups.append([i for i, p in enumerate(plains) if p and p in said])
+    order = [i for g in groups for i in g]
+    if len(groups) != count or any(not g for g in groups) or order != list(range(len(old))):
+        return None
+    return [merge_items([old[i] for i in g], 1)[0] for g in groups]
+
+
+def merge_items(items: list[str], count: int) -> list[str]:
+    """Пункты, склеенные до `count` дословно: каждый раз — соседняя пара с наименьшей общей
+    длиной, чтобы карточки вышли ровнее."""
+    out = list(items)
+    while len(out) > max(count, 1):
+        i = min(range(len(out) - 1), key=lambda j: len(out[j]) + len(out[j + 1]))
+        first = out[i].rstrip()
+        joint = " " if first.endswith((".", "!", "?", "…")) else ". "
+        out[i : i + 2] = [first + joint + out[i + 1].lstrip()]
+    return out
+
+
 # ---------- ответ модели → черновик ----------
 
 
@@ -546,19 +766,46 @@ def make_edit_validator(
     packet: Packet | None,
     candidates: list[PatternInfo],
     count: int | None = None,
+    *,
+    current_pattern: PatternInfo | None = None,
+    instruction: str = "",
+    back_to_template: bool = False,
 ) -> Any:
     """Структура ответа: отказ с причиной или ровно один слайд с композицией из списка.
     Детерминирована, поэтому совместима с кэшем и replay; ёмкость проверяется отдельно.
+    `back_to_template` — слайд на встроенной композиции возвращается в дизайн шаблона: отказ
+    «менять нечего» не принимается, пока в шаблоне есть куда переложить слайд.
 
     Названо число мест («не 4 колонки, а 2») и в списке есть сетки ровно на столько — ответ
     с другой композицией получает первую из них: прежняя сетка на четыре места с двумя пунктами
-    оставила бы обязательные места пустыми, и план не прошёл бы проверку."""
+    оставила бы обязательные места пустыми, и план не прошёл бы проверку. Просили только
+    переложить по местам — текст остаётся прежним: какие пункты куда, решает модель, а тексты
+    карточек собираются из прежних пунктов дословно (`regroup_items`, без придуманных названий
+    карточек); потеряла пункт — прежние пункты склеиваются по соседству (`merge_items`).
+    Заголовок, о котором не просили, — прежний (колода «Футбол», слайд 6: из трёх карточек
+    пропал «Статус концепции», заголовок сократился)."""
     fit = [c.pattern_id for c in candidates if count and grid_rank(c, count)[0] == 0]
+    old_items = slide_items(slide, current_pattern) if count else []
+    old_cards = current_pattern.cards if current_pattern is not None else None
+    # Карточка с подписью и описанием в одну строку не складывается: там решает модель.
+    single = old_cards is None or len(old_cards.text_kinds) <= 1
+    keep_items = bool(fit) and count is not None and len(old_items) > count and single
+    keep_items = keep_items and not _REWRITE.search(instruction)
+    old_title = _unsubstitute(
+        _clean(slide.get("title"), 300), ctx, list(slide.get("fact_refs") or [])
+    )
+    keep_title = bool(count) and bool(old_title) and not _TITLE.search(instruction)
+    must_move = back_to_template and packet is not None and (bool(fit) or not count)
 
     def validate(value: Any) -> Any:
         if not isinstance(value, dict):
             raise ValueError("ответ должен быть объектом")
         if value.get("unchanged"):
+            if must_move:
+                raise ValueError(
+                    "слайд собран встроенной композицией, её нет в дизайне шаблона: переложи его "
+                    "на композицию шаблона из списка, unchanged не подходит"
+                )
             reason = _clean(value.get("reason"), 300)
             if not reason:
                 raise ValueError("при unchanged нужна причина в reason")
@@ -573,6 +820,15 @@ def make_edit_validator(
             if fit and raw.get("pattern") not in fit:
                 ctx.fix("edit_count_pattern", f"{raw.get('pattern')} → {fit[0]}: просили {count}")
                 raw["pattern"] = fit[0]
+            if keep_title and _clean(raw.get("title"), 300) != old_title:
+                ctx.fix("edit_title_kept", "заголовок не просили менять")
+                raw["title"] = old_title
+            if keep_items and count is not None:
+                kept = regroup_items(old_items, list(raw.get("items") or []), count)
+                if kept is None:
+                    ctx.fix("edit_items_kept", f"прежние пункты: {len(old_items)} → {count}")
+                    kept = merge_items(old_items, count)
+                raw["items"] = [{"text": t} for t in kept]
             draft = drafts_from_answer(ctx, packet, {"slides": [raw]})[0]
         else:
             draft = service_draft(ctx, slide, slides[0], candidates)
@@ -615,10 +871,21 @@ def apply_slide(
     *,
     change_note: str,
     meta_update: JsonDict | None = None,
+    keep_icons: bool = False,
 ) -> JsonDict:
     """Новый план с заменённым слайдом: slide_id и order прежние, заметки сохраняются, если
-    правка их не касалась; покрытие и сравнение пересчитываются."""
+    правка их не касалась; покрытие и сравнение пересчитываются. `keep_icons` — иконки
+    прежнего слайда переходят в те же слоты новой композиции."""
     new_slide = slide_from_draft(ctx, draft, slide_id=slide["slide_id"], order=int(slide["order"]))
+    if keep_icons:
+        taken = {str(b.get("slot_id")) for b in new_slide.get("blocks") or []}
+        new_slide["blocks"] = list(new_slide.get("blocks") or []) + [
+            copy.deepcopy(b)
+            for b in slide.get("blocks") or []
+            if b.get("kind") == "icon"
+            and str(b.get("slot_id")) in draft.pattern.slots
+            and str(b.get("slot_id")) not in taken
+        ]
     # Тезисы-разделы модели не показываются (в пакете слайда только содержательные), и ссылки
     # на них переходят к новому слайду как были: обязательный раздел, который держится только на
     # этом слайде, иначе остался бы непокрытым, и проверка отклонила бы любую правку слайда.
@@ -797,13 +1064,46 @@ def edit_slide(
     slide = slide_at(plan, slide_index)
     theses = slide_theses(ctx, slide)
     content = not is_service(slide) and bool(theses)
-    candidates = edit_candidates(ctx, slide, theses, instruction)
+    count = requested_count(instruction)
+    current_pattern = next(
+        (p for p in ctx.patterns if p.pattern_id == str(slide.get("pattern_id"))), None
+    )
+    ctx.patterns = edit_pool(ctx, slide, count if content else None, instruction)
+    # Слайд на встроенной композиции, которую выбор не оставил (просят колонки или дизайн
+    # шаблона), возвращается в дизайн шаблона; встроенная сетка — в сетку шаблона на столько же
+    # мест (ревизия, где «Карточки: 2 карточки» встали вместо «Трёх текстовых блоков»).
+    back_to_template = (
+        content
+        and current_pattern is not None
+        and current_pattern.builtin
+        and all(p.pattern_id != current_pattern.pattern_id for p in ctx.patterns)
+    )
+    if back_to_template and not count and current_pattern is not None:
+        count = columns(current_pattern) if columns(current_pattern) >= 2 else None
+        if count:
+            ctx.patterns = edit_pool(ctx, slide, count, instruction)
+    # Просят только переложить по местам: иконки карточек остаются прежними, а не подбираются
+    # заново по смыслу текста, который после раскладки встал к ним ближе.
+    keep_icons = bool(count) and content and not _REWRITE.search(instruction)
+    if keep_icons:
+        ctx.icons = {}
+    candidates = edit_candidates(ctx, slide, theses, instruction, count)
     if not candidates:
         raise EditError("edit_no_patterns", "В шаблоне нет композиций для этого слайда")
     packet: Packet | None = None
     if content:
         packet = Packet(0, theses, 1, 1, 1, candidates={t.id: list(candidates) for t in theses})
-    digest = edit_digest(ctx, plan, slide, theses, candidates, instruction)
+    digest = edit_digest(
+        ctx,
+        plan,
+        slide,
+        theses,
+        candidates,
+        instruction,
+        current_pattern,
+        count=count,
+        back_to_template=back_to_template,
+    )
     params = skill.manifest.params or {}
     budget = float(deadline_s if deadline_s is not None else params.get("time_budget_s", 60))
     req = skill.request("edit.slide", digest, schema=EDIT_MODEL_SCHEMA, stage="plan")
@@ -815,9 +1115,17 @@ def edit_slide(
         req.seed = int((settings or {})["seed"])
     if nonce:
         req.regenerate_nonce = nonce
-    count = requested_count(instruction)
     places = [c for c in candidates if count and grid_rank(c, count)[0] == 0]
-    validator = make_edit_validator(ctx, slide, packet, candidates, count)
+    validator = make_edit_validator(
+        ctx,
+        slide,
+        packet,
+        candidates,
+        count,
+        current_pattern=current_pattern,
+        instruction=instruction,
+        back_to_template=back_to_template,
+    )
     report: JsonDict = {
         "slide_id": slide["slide_id"],
         "slide_index": slide_index,
@@ -883,7 +1191,15 @@ def edit_slide(
         "prompt_tokens": report["llm"]["prompt_tokens"],
         "completion_tokens": report["llm"]["completion_tokens"],
     }
-    doc = apply_slide(ctx, plan, slide, draft, change_note=change_note, meta_update=meta_update)
+    doc = apply_slide(
+        ctx,
+        plan,
+        slide,
+        draft,
+        change_note=change_note,
+        meta_update=meta_update,
+        keep_icons=keep_icons,
+    )
     validate_plan(doc, profile, package, story, before=plan)
     report["pattern_after"] = draft.pattern.pattern_id
     report["actions"] = list(draft.actions)
