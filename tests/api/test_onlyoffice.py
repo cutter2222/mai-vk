@@ -864,3 +864,105 @@ def test_insert_image_signs_command_for_project_file_and_template_asset(client, 
         404,
         "asset_not_found",
     )
+
+
+def _saved(store, doc_id, deck) -> bytes:
+    """Сохранение из ONLYOFFICE: колбэк открытой сессии кладёт следующую ревизию."""
+    output = io.BytesIO()
+    deck.save(output)
+    opened = store.open(doc_id)
+    store.callback(doc_id, opened["active_key"], 2, output.getvalue())
+    return output.getvalue()
+
+
+def test_live_selection_edit_finds_the_object_by_name_and_position(client, office, monkeypatch):
+    from pptx.util import Mm
+
+    from presentation_designer.generation.office_object_edit import ObjectEditPlan, Position
+
+    store, doc_id = office
+    deck = Presentation()
+    slide = deck.slides.add_slide(deck.slide_layouts[6])
+    for x, text in [(20, "Левая"), (120, "Правая")]:
+        box = slide.shapes.add_textbox(Mm(x), Mm(30), Mm(60), Mm(20))
+        box.text = text
+        box.name = "Карточка"  # у клонов образца имена часто совпадают
+    data = _saved(store, doc_id, deck)
+    objects = client.get(f"/api/office/documents/{doc_id}/objects/1").json()["objects"]
+    right = next(o for o in objects if o["label"] == "Правая")
+    assert right["name"] == "Карточка"
+
+    async def propose(original, instruction, settings, selected):
+        assert original == data
+        assert selected.model_dump() == {"slide": 1, "shape_id": right["shape_id"]}
+        return ObjectEditPlan(
+            explanation="Сдвинул", patches=[], position=Position(x=0.5, y=right["bbox"]["y"])
+        )
+
+    monkeypatch.setattr(onlyoffice.office_object_edit, "propose", propose)
+    base = f"/api/office/documents/{doc_id}/edit"
+    live = {
+        "slide": 1,
+        "name": "Карточка",
+        "box": {"x": 119.5, "y": 30.2, "width": 60, "height": 20},
+    }
+    response = client.post(base, json={"revision": 1, "instruction": "правее", "live_target": live})
+    assert response.status_code == 200, response.text
+    assert response.json()["document"]["revision"] == 2
+    missing = client.post(
+        base,
+        json={"revision": 2, "instruction": "правее", "live_target": live | {"name": "Нет такой"}},
+    )
+    assert (
+        missing.status_code == 422 and "выделите его заново" in missing.json()["error"]["message"]
+    )
+    both = client.post(
+        base,
+        json={
+            "revision": 2,
+            "instruction": "x",
+            "live_target": live,
+            "target": {"slide": 1, "shape_id": "2"},
+        },
+    )
+    assert both.status_code == 422
+
+
+def test_apply_slide_puts_the_rebuilt_slide_into_the_edited_copy(
+    client, office, orchestrator, monkeypatch, pptx_bytes, tmp_path
+):
+    store, doc_id = office
+    edited = Presentation(io.BytesIO(pptx_bytes))
+    edited.slides[0].shapes.title.text = "Ручная правка"
+    _saved(store, doc_id, edited)
+    rebuilt = Presentation(io.BytesIO(pptx_bytes))
+    rebuilt.slides[1].shapes[0].text_frame.text = "Пересобранный слайд"
+    artifact = tmp_path / "deck.pptx"
+    rebuilt.save(artifact)
+    monkeypatch.setattr(
+        onlyoffice,
+        "build_generation_result",
+        lambda state, job: {"artifacts_manifest": {"balanced/r2/deck.pptx": {}}},
+    )
+    monkeypatch.setattr(orchestrator.artifacts, "resolve", lambda job, name: artifact)
+    url = f"/api/office/documents/{doc_id}/apply-slide"
+    body = {
+        "revision": 1,
+        "job_id": "job_test",
+        "variant_id": "balanced",
+        "artifact_revision": 2,
+        "slide": 2,
+        "source_slide": 2,
+    }
+    response = client.post(url, json=body)
+    assert response.status_code == 200, response.text
+    assert response.json()["document"]["revision"] == 2
+    saved = Presentation(io.BytesIO(store.read(doc_id, 2)))
+    assert saved.slides[0].shapes.title.text == "Ручная правка"
+    assert saved.slides[1].shapes[0].text_frame.text == "Пересобранный слайд"
+    assert len(saved.slides) == len(rebuilt.slides)
+    assert client.post(url, json=body).status_code == 409  # ревизия копии уже 2
+    assert client.post(url, json=body | {"revision": 2, "job_id": "job_other"}).status_code == 409
+    assert client.post(url, json=body | {"revision": 2, "artifact_revision": 3}).status_code == 404
+    assert client.post(url, json=body | {"revision": 2, "slide": 9}).status_code == 422
+    assert store.get(doc_id)["active_key"] is None

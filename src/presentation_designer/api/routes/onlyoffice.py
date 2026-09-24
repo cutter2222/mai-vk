@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import tempfile
 import time
@@ -23,7 +24,13 @@ from presentation_designer.export.office_preview import cache_path, preview_page
 from presentation_designer.export.office_source import saved_url, source_path
 from presentation_designer.export.pdf import ConversionError, RendererUnavailableError
 from presentation_designer.generation import office_edit, office_logo, office_object_edit
-from presentation_designer.generation.office_objects import ObjectTarget, objects
+from presentation_designer.generation.office_objects import (
+    LiveTarget,
+    ObjectTarget,
+    objects,
+    resolve_live,
+)
+from presentation_designer.layout.merge import MergeError, replace_slide
 from presentation_designer.llm.types import LlmError
 from presentation_designer.parsing.template.embedded_fonts import prepare_fonts
 from presentation_designer.pipeline.artifacts import content_type_for
@@ -52,12 +59,18 @@ class EditRequest(BaseModel):
     instruction: str = Field(min_length=1, max_length=4000)
     target: ObjectTarget | None = None
     targets: list[ObjectTarget] | None = Field(default=None, min_length=1, max_length=100)
+    # Объект, выделенный в живом редакторе: сервер находит его в сохранённой копии сам.
+    live_target: LiveTarget | None = None
     logo: LogoRequest | None = None
 
     @model_validator(mode="after")
     def validate_targets(self) -> EditRequest:
         if self.logo is not None and (self.target is not None or self.targets is not None):
             raise ValueError("Логотип меняется на всех слайдах: объекты не передаются")
+        if self.live_target is not None and (
+            self.logo is not None or self.target is not None or self.targets is not None
+        ):
+            raise ValueError("Выделение живого редактора передаётся без других объектов")
         if self.targets is not None:
             if self.target is not None:
                 raise ValueError("Передайте target или targets, не оба поля")
@@ -160,11 +173,12 @@ async def edit(document_id: str, body: EditRequest, orch: Orch) -> dict[str, Any
             )
             updated = office_object_edit.patch_objects(original, body.targets, multi_plan)
             explanation = multi_plan.explanation
-        elif body.target is not None:
+        elif body.target is not None or body.live_target is not None:
+            target = body.target or resolve_live(original, body.live_target)  # type: ignore[arg-type]
             object_plan = await office_object_edit.propose(
-                original, body.instruction, orch.settings, body.target
+                original, body.instruction, orch.settings, target
             )
-            updated = office_object_edit.patch_object(original, body.target, object_plan)
+            updated = office_object_edit.patch_object(original, target, object_plan)
             explanation = object_plan.explanation
         else:
             plan = await office_edit.propose(original, body.instruction, orch.settings)
@@ -180,6 +194,58 @@ async def edit(document_id: str, body: EditRequest, orch: Orch) -> dict[str, Any
         raise ApiError(422, "office_edit_failed", "Правка не применена: " + str(exc)) from exc
     finally:
         office.end_edit(document_id, token)
+
+
+class ApplySlideRequest(BaseModel):
+    """Слайд новой ревизии варианта — на место слайда офисной копии."""
+
+    revision: int = Field(ge=0)
+    job_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    variant_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    artifact_revision: int = Field(ge=1)
+    # Номера слайдов с единицы: в офисной копии и в ревизии варианта.
+    slide: int = Field(ge=1)
+    source_slide: int = Field(ge=1)
+
+
+@router.post("/documents/{document_id}/apply-slide")
+def apply_slide(document_id: str, body: ApplySlideRequest, orch: Orch) -> dict[str, Any]:
+    """Правка слайда из чата пересобирает слайд в новой ревизии варианта; человек тем временем
+    правит офисную копию руками. Сюда переносится только этот слайд — ручные правки остальных
+    слайдов остаются, правки самого слайда заменяются пересобранным."""
+    office = store(orch)
+    document = office.get(document_id)
+    if not str(document.get("source") or "").startswith(f"{body.job_id}/{body.variant_id}/"):
+        raise ApiError(409, "office_source_mismatch", "Офисная копия открыта из другой сборки")
+    artifact = f"{body.variant_id}/r{body.artifact_revision}/deck.pptx"
+    result = build_generation_result(orch.state, body.job_id)
+    if artifact not in result["artifacts_manifest"]:
+        raise ApiError(404, "artifact_not_found", "PPTX новой ревизии не найден в манифесте")
+    source_path = orch.artifacts.resolve(body.job_id, artifact)
+    token = office.begin_edit(document_id, body.revision)
+    try:
+        original = office.read(document_id, body.revision)
+        updated = _replace_slide(original, body.slide, source_path.read_bytes(), body.source_slide)
+        office.commit_edit(document_id, token, body.revision, updated)
+        return {
+            "document": office.get(document_id),
+            "changed": original != updated,
+            "message": f"Слайд {body.slide} обновлён.",
+        }
+    except (MergeError, ValueError) as exc:
+        raise ApiError(422, "office_apply_failed", "Слайд не перенесён: " + str(exc)) from exc
+    finally:
+        office.end_edit(document_id, token)
+
+
+def _replace_slide(original: bytes, slide: int, source: bytes, source_slide: int) -> bytes:
+    from pptx import Presentation
+
+    base = Presentation(io.BytesIO(original))
+    replace_slide(base, slide - 1, Presentation(io.BytesIO(source)), source_slide - 1)
+    out = io.BytesIO()
+    base.save(out)
+    return out.getvalue()
 
 
 def _document_template(orch: Orch, source: str) -> str | None:

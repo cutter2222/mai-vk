@@ -30,6 +30,8 @@ class Bounds(BaseModel):
 
 class SlideObject(ObjectTarget):
     label: str
+    # Имя фигуры (`cNvPr name`): по нему живой редактор ONLYOFFICE сообщает, что выделено.
+    name: str = ""
     kind: str
     bbox: Bounds
     z: int
@@ -90,6 +92,7 @@ def objects(data: bytes) -> list[SlideObject]:
                         slide=slide,
                         shape_id=identity.attrib["id"],
                         label=(text or identity.get("name") or "Объект")[:160],
+                        name=identity.get("name") or "",
                         kind=kind,
                         bbox=Bounds(x=x / width, y=y / height, width=w / width, height=h / height),
                         z=z,
@@ -113,3 +116,54 @@ def selected(data: bytes, target: ObjectTarget) -> SlideObject:
             "Объект не найден или не поддерживает адресную правку; выберите его заново"
         )
     return matches[0]
+
+
+EMU_PER_MM = 36000
+
+
+class LiveBox(BaseModel):
+    """Положение и размер фигуры в миллиметрах, как их отдаёт ONLYOFFICE."""
+
+    model_config = ConfigDict(extra="forbid")
+    x: float
+    y: float
+    width: float = Field(ge=0)
+    height: float = Field(ge=0)
+
+
+class LiveTarget(BaseModel):
+    """Объект, выделенный в живом редакторе: номер его фигуры ONLYOFFICE наружу не отдаёт,
+    поэтому он опознаётся по слайду, имени и положению в сохранённой копии."""
+
+    model_config = ConfigDict(extra="forbid")
+    slide: int = Field(ge=1)
+    name: str = Field(min_length=1, max_length=255)
+    box: LiveBox | None = None
+
+
+def resolve_live(data: bytes, live: LiveTarget) -> ObjectTarget:
+    """Фигура сохранённой копии по выделению живого редактора: с тем же именем на том же
+    слайде; при нескольких — ближайшая по положению."""
+    found = [obj for obj in objects(data) if obj.slide == live.slide and obj.name == live.name]
+    if not found:
+        raise ValueError(
+            "выбранный объект не найден в сохранённой презентации или не поддерживает "
+            "адресную правку — выделите его заново"
+        )
+    if len(found) > 1 and live.box is not None:
+        with ZipFile(io.BytesIO(data)) as archive:
+            size = xml(archive.read("ppt/presentation.xml")).find("p:sldSz", NS)
+        if size is None:
+            return ObjectTarget(slide=found[0].slide, shape_id=found[0].shape_id)
+        width = int(size.attrib["cx"]) / EMU_PER_MM
+        height = int(size.attrib["cy"]) / EMU_PER_MM
+        box = live.box
+        found.sort(
+            key=lambda obj: (
+                abs(obj.bbox.x * width - box.x)
+                + abs(obj.bbox.y * height - box.y)
+                + abs(obj.bbox.width * width - box.width)
+                + abs(obj.bbox.height * height - box.height)
+            )
+        )
+    return ObjectTarget(slide=found[0].slide, shape_id=found[0].shape_id)

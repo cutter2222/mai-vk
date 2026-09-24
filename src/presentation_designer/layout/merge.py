@@ -238,3 +238,77 @@ def _attach_slide(base: Any, slide_part: Any) -> None:
     """Добавляет перенесённый слайд в конец колоды сводного пакета."""
     rid = base.part.relate_to(slide_part, RT.SLIDE)
     base.slides._sldIdLst.add_sldId(rid)
+
+
+def replace_slide(base: Any, index: int, source: Any, source_index: int) -> MergeResult:
+    """Ставит слайд `source_index` из `source` на место слайда `index` в `base`.
+
+    Зачем. Правка слайда из чата пересобирает его в новой ревизии варианта, а человек тем
+    временем правит открытую офисную копию руками. Копия целиком не подменяется: из новой
+    ревизии переносится один слайд, ручные правки остальных слайдов остаются.
+
+    Как. Слайд создаётся заново из XML источника, связи переносятся, как при слиянии (картинки
+    с дедупликацией по sha256, диаграммы вместе с книгами). Макет — свой: с тем же именем у
+    мастера с тем же именем (оба файла из одного шаблона); нет такого в копии — макет
+    переносится с мастером. Заметки и переходы на другие слайды не переносятся: ссылка
+    перехода теряет цель, текст остаётся. Запись в `sldIdLst` остаётся той же (с тем же `id`)
+    и указывает на новый слайд; старый слайд уходит из пакета при сохранении.
+    """
+    slides = list(base.slides)
+    if not 0 <= index < len(slides):
+        raise MergeError("slide_missing", f"в презентации нет слайда {index + 1}")
+    if not 0 <= source_index < len(source.slides):
+        raise MergeError("slide_missing", f"в новой версии нет слайда {source_index + 1}")
+    src = source.slides[source_index]
+    ctx = _Ctx(package=base.part.package)
+    _index_media(ctx, base)
+    layout = _same_layout(base, src.slide_layout)
+    if layout is None:
+        master = _import_part(ctx, src.slide_layout.slide_master.part)
+        _attach_master(base, master)
+        ctx.result.masters += 1
+        layout = ctx.imported[str(src.slide_layout.part.partname)]
+        ctx.result.warnings.append(f"макет «{src.slide_layout.name}» перенесён вместе с мастером")
+    else:
+        layout = layout.part
+
+    new_part = PartFactory(
+        _reserve_partname(ctx, _PARTNAME_TEMPLATES[CT.PML_SLIDE]),
+        src.part.content_type,
+        ctx.package,
+        src.part.blob,
+    )
+    mapping: dict[str, str] = {}
+    for rid, rel in src.part.rels.items():
+        if rel.is_external:
+            mapping[rid] = new_part.rels.get_or_add_ext_rel(rel.reltype, rel.target_ref)
+        elif rel.reltype == RT.SLIDE_LAYOUT:
+            mapping[rid] = new_part.relate_to(layout, rel.reltype)
+        elif rel.reltype in (RT.NOTES_SLIDE, RT.SLIDE):
+            mapping[rid] = ""
+        else:
+            mapping[rid] = new_part.relate_to(_import_part(ctx, rel.target_part), rel.reltype)
+    element = getattr(new_part, "_element", None)
+    if element is not None:
+        _remap_rel_ids(element, mapping)
+
+    entry = list(base.slides._sldIdLst.sldId_lst)[index]
+    old_rid = entry.rId
+    entry.rId = base.part.relate_to(new_part, RT.SLIDE)
+    base.part.drop_rel(old_rid)
+    ctx.result.slides = 1
+    return ctx.result
+
+
+def _same_layout(base: Any, layout: Any) -> Any | None:
+    """Макет копии с тем же именем; при нескольких мастерах — у мастера с тем же именем."""
+    master_name = layout.slide_master.name
+    found = None
+    for master in base.slide_masters:
+        for candidate in master.slide_layouts:
+            if candidate.name != layout.name:
+                continue
+            if master.name == master_name:
+                return candidate
+            found = found or candidate
+    return found

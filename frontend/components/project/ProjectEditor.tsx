@@ -16,7 +16,8 @@ import { api, ApiError, type CapabilitiesResponse, type OfficeLogoAction, type O
 import type { GenerationRequest } from "@/lib/api/types";
 import { useGenerationSession } from "@/lib/hooks/useGenerationSession";
 import { setPanelOpen, usePanelOpen } from "@/lib/state/panel";
-import { plural } from "@/lib/format";
+import { plural, VARIANT_LABELS } from "@/lib/format";
+import type { LiveSelection } from "@/lib/editor/officeLive";
 import { slideRequest } from "@/lib/slideRequest";
 import { addProjectFiles, appendMessage, getProject, patchProjectFile, slideCountAsked, updateProject, type Project } from "@/lib/state/projects";
 
@@ -54,6 +55,10 @@ export function ProjectEditor({ project }: { project: Project }) {
     setOfficeSelection(value);
     if (value) { setPanelOpen(true); setTab("chat"); }
   }, []);
+  // Слайд и объект, выбранные в живом редакторе ONLYOFFICE: адресат сообщения в чате.
+  const [liveSelection, setLiveSelection] = useState<LiveSelection | null>(null);
+  // Крестик на плашке снимает адресацию до следующего выбора в редакторе.
+  const [liveDismissed, setLiveDismissed] = useState<string | null>(null);
   const [officeActionsTarget, setOfficeActionsTarget] = useState<HTMLDivElement | null>(null);
   const [starting, setStarting] = useState(false);
   const [briefModal, setBriefModal] = useState(false);
@@ -153,6 +158,19 @@ export function ProjectEditor({ project }: { project: Project }) {
   };
   const pendingSlides = session.variant?.slide_count ?? 0;
 
+  // Адресат из живого редактора: выделенный объект (одна фигура с именем) или слайд. Правка
+  // слайда пересобирает его моделью по плану варианта, поэтому плашка слайда — только у
+  // собранной презентации; объект правится в самой копии.
+  const liveKey = liveSelection ? JSON.stringify(liveSelection) : null;
+  const liveObject = liveSelection?.objects.length === 1 && liveSelection.objects[0].name ? liveSelection.objects[0] : null;
+  const editVariant = session.variant;
+  const slideEditable = Boolean(session.jobId && editVariant?.artifacts?.pptx && editVariant.status !== "failed");
+  const liveTarget = officePresent && liveSelection && liveKey !== liveDismissed && !officeSelection && (liveObject || slideEditable)
+    ? liveObject
+      ? { kind: "object" as const, slide: liveSelection.slide, label: liveObject.label ? `«${liveObject.label.length > 48 ? `${liveObject.label.slice(0, 47)}…` : liveObject.label}»` : OBJECT_KINDS[liveObject.kind] }
+      : { kind: "slide" as const, slide: liveSelection.slide, label: VARIANT_LABELS[editVariant?.variant_id ?? ""] ?? editVariant?.variant_id ?? "" }
+    : null;
+
   // Человек написал в чат — панель возвращается к разговору: из «Файлов» его же сообщение и
   // ответ на него были бы не видны.
   const send: typeof chat.send = async (text, files, target) => {
@@ -162,16 +180,36 @@ export function ProjectEditor({ project }: { project: Project }) {
       await changeLogo(logo, text, files);
       return;
     }
-    // В редакторе слайд для чата не выделить: номер берётся из фразы («на слайде 3 …»), и
-    // правка идёт в задание ревизии, как с выбранным слайдом. Пока презентация разбирается в
-    // фоне, сервер ставит правку за разбором и говорит, когда применит.
-    const slide = officePresent && !officeSelection && !target && !files.length && !/^\/edit\s+/i.test(text.trim()) ? slideRequest(text) : null;
+    // Выделенный в редакторе объект: правка только его, в самой копии (сервер находит фигуру
+    // по имени и положению после сохранения).
+    if (liveTarget?.kind === "object" && liveObject && liveSelection && !files.length && !/^\/edit\s+/i.test(text.trim())) {
+      appendMessage(project.project_id, { role: "user", kind: "message", text: `Слайд ${liveTarget.slide} · ${liveTarget.label}\n${text}`, file_ids: [] });
+      try {
+        if (!officeEdit.current) throw new Error("Дождитесь открытия презентации.");
+        const message = await officeEdit.current.edit(text.trim(), { slide: liveSelection.slide, name: liveObject.name, ...(liveObject.box ? { box: liveObject.box } : {}) });
+        appendMessage(project.project_id, { role: "assistant", kind: "text", text: message });
+      } catch (e) {
+        appendMessage(project.project_id, { role: "assistant", kind: "text", text: e instanceof Error ? e.message : "Правка не применена." });
+      }
+      return;
+    }
+    // Номер слайда — из плашки выбранного в редакторе слайда или из фразы («на слайде 3 …»);
+    // правка идёт в задание ревизии, и пересобранный слайд встаёт в открытую копию. Пока
+    // презентация разбирается в фоне, сервер ставит правку за разбором и говорит, когда применит.
+    const phrase = officePresent && !officeSelection && !target && !files.length && !/^\/edit\s+/i.test(text.trim()) ? slideRequest(text) : null;
+    const slide = phrase ?? (liveTarget?.kind === "slide" && !target && !files.length ? liveTarget.slide : null);
     const variant = session.variant;
     if (slide && session.jobId && variant?.artifacts?.pptx && variant.status !== "failed") {
       const count = variant.slide_count ?? 0;
       if (count && slide > count) {
         appendMessage(project.project_id, { role: "user", kind: "message", text, file_ids: [] });
         appendMessage(project.project_id, { role: "assistant", kind: "text", text: `В презентации ${count} ${plural(count, "слайд", "слайда", "слайдов")}, слайда ${slide} нет.` });
+        return;
+      }
+      // Слайды в редакторе добавлены или удалены руками: номер в ленте не совпадает с планом.
+      if (!phrase && liveSelection && count && liveSelection.count !== count) {
+        appendMessage(project.project_id, { role: "user", kind: "message", text, file_ids: [] });
+        appendMessage(project.project_id, { role: "assistant", kind: "text", text: "Слайды в редакторе добавлены или удалены вручную, поэтому пересобрать слайд из чата не получится. Выделите объект на слайде и напишите, что с ним сделать." });
         return;
       }
       await chat.send(text, files, { jobId: session.jobId, variantId: variant.variant_id, revision: variant.revision, slideIndex: slide - 1 });
@@ -316,7 +354,7 @@ export function ProjectEditor({ project }: { project: Project }) {
               </Tooltip>
             </div>
             {tab === "chat" ? (
-              <ChatPanel ctx={ctx} onSend={send} officeSelection={officeSelection} onDismissOfficeSelection={() => setOfficeSelection(null)} suggestions={chat.suggestions} onAttach={attach} staged={chat.staged} onAnswerStaged={chat.answerStaged} speech={Boolean(caps?.features.speech)} />
+              <ChatPanel ctx={ctx} onSend={send} officeSelection={officeSelection} onDismissOfficeSelection={() => setOfficeSelection(null)} liveTarget={liveTarget} onDismissLiveTarget={() => setLiveDismissed(liveKey)} suggestions={chat.suggestions} onAttach={attach} staged={chat.staged} onAnswerStaged={chat.answerStaged} speech={Boolean(caps?.features.speech)} />
             ) : (
               <FilesPanel project={project} onAdd={(files) => { const rest = attach(files); if (rest.length) void chat.send("", rest); }} onRemove={(fid) => void chat.removeFile(fid)} onSelectTemplate={chat.selectTemplate} />
             )}
@@ -327,7 +365,7 @@ export function ProjectEditor({ project }: { project: Project }) {
           {editorSlot && <div className="office-slot">
             {jobRunning && !deckJob && <GenerationProgress session={session} compact starting={starting} />}
             {officePresent
-              ? <ProjectOffice session={session} title={project.title} projectId={project.project_id} editRef={officeEdit} actionsTarget={officeActionsTarget} selection={officeSelection} onSelectionChange={selectOfficeObject} onEditorReady={onEditorReady} />
+              ? <ProjectOffice session={session} title={project.title} projectId={project.project_id} editRef={officeEdit} actionsTarget={officeActionsTarget} selection={officeSelection} onSelectionChange={selectOfficeObject} onEditorReady={onEditorReady} onLiveSelection={setLiveSelection} />
               : <div className="office-pending" data-testid="office-pending">
                 {/* Место под каждый слайд, пока файл готовится: число страниц сервер знает сразу. */}
                 {pendingSlides > 0 && <div className="slide-skeletons" data-testid="slide-skeletons" aria-hidden>
@@ -380,3 +418,11 @@ function logoRequest(text: string): OfficeLogoAction["action"] | null {
   if (/(замен|помен|постав|вставь|обнови|сделай|наш|свой|друг)/.test(t)) return "replace";
   return null;
 }
+
+/** Подпись выделенного объекта без текста. */
+const OBJECT_KINDS: Record<LiveSelection["objects"][number]["kind"], string> = {
+  shape: "фигура",
+  image: "картинка",
+  chart: "диаграмма",
+  table: "таблица",
+};

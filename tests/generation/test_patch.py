@@ -463,7 +463,7 @@ def test_chat_edit_drops_manual_overrides(
     assert by_id[neighbour["slide_id"]]["overrides"] == [bg]
     dropped = [w for w in result.plan["warnings"] if w["code"] == "overrides_dropped"]
     assert len(dropped) == 1 and "1 ручных правок" in dropped[0]["message"]
-    assert ed.EDIT_VERSION == "0.1.1"
+    assert ed.EDIT_VERSION == "0.1.2"
 
 
 def test_old_plan_schema_is_upgraded(

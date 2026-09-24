@@ -59,7 +59,7 @@ log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 
-EDIT_VERSION = "0.1.1"
+EDIT_VERSION = "0.1.2"
 
 EDIT_MODEL_SCHEMA: JsonDict = {
     "type": "object",
@@ -85,6 +85,32 @@ VISUAL_HINTS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"таймлайн|хронолог|этап", re.I), "timeline"),
     (re.compile(r"цитат", re.I), "quote"),
 )
+# Число элементов, которое просят: «не 4 колонки, а 2», «в две колонки», «оставь три карточки»,
+# «вместо 4 столбцов сделай 2». Без этого модель видит только ёмкость композиций и меняет
+# сетку, лишь если нужная случайно попала в кандидаты.
+_COUNT_WORDS = {
+    "один": 1,
+    "одна": 1,
+    "одну": 1,
+    "два": 2,
+    "две": 2,
+    "двух": 2,
+    "три": 3,
+    "трех": 3,
+    "четыре": 4,
+    "четырех": 4,
+    "пять": 5,
+    "пяти": 5,
+    "шесть": 6,
+    "шести": 6,
+}
+_NUM = r"(\d{1,2}|" + "|".join(sorted(_COUNT_WORDS, key=len, reverse=True)) + r")"
+_UNITS = r"(?:колон\w*|столб\w*|карточ\w*|пункт\w*|блок\w*|част\w*|элемент\w*|шаг\w*)"
+_NOT_BUT = re.compile(rf"\bне\s+{_NUM}\s+{_UNITS}\s*,?\s*а\s+{_NUM}\b")
+_INSTEAD = re.compile(rf"\b(?:из|вместо)\s+{_NUM}\s+{_UNITS}\D{{0,40}}?\b{_NUM}\b")
+_COUNT = re.compile(rf"(?<!из\s)(?<!не\s)(?<!вместо\s)\b{_NUM}\s+{_UNITS}")
+MAX_REQUESTED_COUNT = 8
+
 SERVICE_KINDS = {
     "title": "title",
     "section_divider": "divider",
@@ -150,6 +176,25 @@ def requested_visuals(instruction: str) -> list[str]:
     return [visual for rx, visual in VISUAL_HINTS if rx.search(instruction)]
 
 
+def requested_count(instruction: str) -> int | None:
+    """Сколько колонок, карточек или пунктов просят; None — число не названо."""
+    text = instruction.lower().replace("ё", "е")
+    found = _NOT_BUT.search(text) or _INSTEAD.search(text)
+    raw = found.group(2) if found else None
+    if raw is None:
+        plain = _COUNT.search(text)
+        raw = plain.group(1) if plain else None
+    if raw is None:
+        return None
+    value = int(raw) if raw.isdigit() else _COUNT_WORDS[raw]
+    return value if 1 <= value <= MAX_REQUESTED_COUNT else None
+
+
+def columns(p: PatternInfo) -> int:
+    """Сколько колонок или карточек в сетке композиции; 0 — сетки нет."""
+    return p.cards.count if p.cards is not None else 0
+
+
 def slide_theses(ctx: Context, slide: JsonDict) -> list[Thesis]:
     out: list[Thesis] = []
     for tid in slide.get("thesis_refs") or []:
@@ -177,6 +222,17 @@ def edit_candidates(
     current = by_id.get(str(slide.get("pattern_id")))
     if current is not None:
         out[current.pattern_id] = current
+    count = requested_count(instruction)
+    if count and not is_service(slide) and theses:
+        # Названное число — главное в просьбе: композиции ровно на столько колонок идут сразу
+        # за текущей, иначе их отрезал бы предел числа кандидатов.
+        has_ds = any(d in ctx.datasets for t in theses for d in t.dataset_refs)
+        has_image = any(a in ctx.assets for t in theses for a in t.asset_refs)
+        for visual in ("cards", "bullets"):
+            need = Need(visual, items=count, has_dataset=has_ds, has_image=has_image)
+            pool = candidates_for(ctx.patterns, need, ctx.variant_id, limit=8, has_datasets=has_ds)
+            for c in sorted(pool, key=lambda p: columns(p) != count)[:3]:
+                out.setdefault(c.pattern_id, c)
     if is_service(slide) or not theses:
         role = current.role if current is not None else str(slide.get("role", "title"))
         for p in fixed_pattern_pool(ctx.patterns, role, has_datasets=ctx.has_datasets):
@@ -279,6 +335,13 @@ def edit_digest(
     index = next((i for i, s in enumerate(slides) if s["slide_id"] == slide["slide_id"]), 0)
     lines: list[str] = []
     lines.append(f"Просьба пользователя: «{_clean(instruction, MAX_INSTRUCTION_CHARS)}»")
+    count = requested_count(instruction)
+    if count:
+        lines.append(
+            f"Названо число элементов: {count}. Выбери композицию, где карточек или колонок "
+            f"ровно {count} (смотри «N карточек» в описании), и разложи содержание на {count} "
+            f"пункта; если такой композиции в списке нет — unchanged с причиной."
+        )
     lines.append(f"Вариант: {ctx.variant_id}. {VARIANT_RULES.get(ctx.variant_id, '')}")
     lines.append(
         "Бриф: "

@@ -52,10 +52,26 @@ export interface OfficeImageCommand {
 }
 export interface OfficeObject extends OfficeObjectTarget {
   label: string;
+  /** Имя фигуры в PPTX — по нему живой редактор сообщает, что выделено. */
+  name?: string;
   kind: string;
   bbox: { x: number; y: number; width: number; height: number };
   z: number;
   hollow: boolean;
+}
+/** Объект, выделенный в живом редакторе: слайд, имя фигуры и её рамка в миллиметрах. */
+export interface OfficeLiveTarget {
+  slide: number;
+  name: string;
+  box?: { x: number; y: number; width: number; height: number };
+}
+/** Слайд новой ревизии варианта — на место слайда офисной копии (номера с единицы). */
+export interface OfficeApplySlide {
+  job_id: string;
+  variant_id: string;
+  artifact_revision: number;
+  slide: number;
+  source_slide: number;
 }
 export interface OfficeSelection extends OfficeObjectTarget {
   documentId: string;
@@ -208,7 +224,9 @@ export const api = {
     preview: (id: string, revision: number) => request<OfficePreview>(`/office/documents/${encodeURIComponent(id)}/preview/${revision}`),
     objects: (id: string, revision: number) => request<{ revision: number; objects: OfficeObject[] }>(`/office/documents/${encodeURIComponent(id)}/objects/${revision}`),
     previewUrl: (id: string, revision: number, name: string) => `${API_BASE}/office/documents/${encodeURIComponent(id)}/preview/${revision}/${encodeURIComponent(name)}`,
-    edit: (id: string, revision: number, instruction: string, target?: OfficeObjectTarget | OfficeObjectTarget[], logo?: OfficeLogoAction) => request<{ document: OfficeDocument; changed: boolean; message: string }>(`/office/documents/${encodeURIComponent(id)}/edit`, json({ revision, instruction, ...(logo ? { logo } : Array.isArray(target) ? { targets: target } : target ? { target } : {}) })),
+    edit: (id: string, revision: number, instruction: string, target?: OfficeObjectTarget | OfficeObjectTarget[] | OfficeLiveTarget, logo?: OfficeLogoAction) => request<{ document: OfficeDocument; changed: boolean; message: string }>(`/office/documents/${encodeURIComponent(id)}/edit`, json({ revision, instruction, ...(logo ? { logo } : Array.isArray(target) ? { targets: target } : target && "name" in target ? { live_target: target } : target ? { target } : {}) })),
+    /** Слайд, пересобранный правкой из чата, встаёт в офисную копию; остальные слайды не меняются. */
+    applySlide: (id: string, revision: number, body: OfficeApplySlide) => request<{ document: OfficeDocument; changed: boolean; message: string }>(`/office/documents/${encodeURIComponent(id)}/apply-slide`, json({ revision, ...body })),
     config: (id: string) => request<{ script_url: string; config: Record<string, unknown> }>(`/office/documents/${encodeURIComponent(id)}/config`, json({})),
     /** Команда вставки картинки на текущий слайд: сервер проверяет источник и подписывает ссылку. */
     imageCommand: (id: string, source: OfficeImageSource) => request<OfficeImageCommand>(`/office/documents/${encodeURIComponent(id)}/images`, json(

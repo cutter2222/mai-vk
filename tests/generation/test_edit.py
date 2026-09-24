@@ -387,3 +387,47 @@ def test_errors(
             package=example_package,
         )
     assert far.value.code == "slide_index_out_of_range"
+
+
+@pytest.mark.parametrize(
+    ("instruction", "count"),
+    [
+        ("сделай не 4 колонки, а 2", 2),
+        ("в две колонки", 2),
+        ("оставь три карточки", 3),
+        ("вместо 4 столбцов сделай 2", 2),
+        ("из четырёх колонок сделай две", 2),
+        ("сократи заголовок", None),
+        ("сделай 10 слайдов", None),
+        ("сделай 12 колонок", None),
+    ],
+)
+def test_requested_count(instruction: str, count: int | None) -> None:
+    assert ed.requested_count(instruction) == count
+
+
+def test_count_request_brings_grids_with_that_many_columns(
+    base_plan: dict[str, Any],
+    example_story: dict[str, Any],  # noqa: F811
+    mini_profile: dict[str, Any],  # noqa: F811
+    example_package: dict[str, Any],  # noqa: F811
+) -> None:
+    ctx = vr.build_context(
+        example_story, mini_profile, example_package, "balanced", {}, vr.get_settings(), None
+    )
+    slides = ed.ordered_slides(base_plan)
+    slide = slides[_content_index(base_plan)]
+    theses = ed.slide_theses(ctx, slide)
+    current = next(p for p in ctx.patterns if p.pattern_id == slide["pattern_id"])
+    grids = sorted(
+        {ed.columns(p) for p in ctx.patterns if ed.columns(p) >= 2} - {ed.columns(current)}
+    )
+    assert grids, "в мини-шаблоне есть сетки карточек"
+    want = grids[0]
+    words = {2: "две", 3: "три", 4: "четыре"}
+    instruction = f"сделай не {ed.columns(current) or 5} колонки, а {words.get(want, want)}"
+    candidates = ed.edit_candidates(ctx, slide, theses, instruction)
+    assert candidates[0].pattern_id == slide["pattern_id"]
+    assert ed.columns(candidates[1]) == want
+    digest = ed.edit_digest(ctx, base_plan, slide, theses, candidates, instruction)
+    assert f"Названо число элементов: {want}" in digest
