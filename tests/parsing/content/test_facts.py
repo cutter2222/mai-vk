@@ -138,7 +138,7 @@ def test_dataset_types_units_and_cell_facts() -> None:
     assert change.derived == {"formula": "44 - 31", "inputs": ["f10", "f11"]}
     assert change.context["comparison"] == "Май → Июль"
     unsub_change = facts[5]
-    assert unsub_change.value == -1.4 and unsub_change.raw == "−1.4 п. п."
+    assert unsub_change.value == -1.4 and unsub_change.raw == "−1,4 п. п."
 
 
 def test_dataset_from_text_cells_with_units() -> None:

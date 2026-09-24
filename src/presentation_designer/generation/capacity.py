@@ -144,6 +144,11 @@ def slot_box_emu(
 ) -> tuple[int, int, tuple[int, int, int, int]]:
     """Ширина и высота слота в EMU и внутренние поля."""
     _, _, w, h = slot.bbox
+    # Место до соседа и до препятствия в полосе (анализ шаблона), если оно меньше рамки.
+    if slot.clear_width:
+        w = min(w, slot.clear_width)
+    if slot.clear_height:
+        h = min(h, slot.clear_height)
     width = round(w * slide_w_emu)
     height = round(h * slide_h_emu)
     insets = DEFAULT_INSETS_EMU

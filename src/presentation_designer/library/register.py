@@ -66,19 +66,44 @@ def _base_layout(profile: JsonDict) -> str:
     """Макет, на котором строятся собственные композиции.
 
     Берётся самый пустой макет шаблона: у него меньше чужих рамок и декора, а фон, логотип и
-    колонтитул наследуются. Если разметки нет вовсе — первый доступный.
+    колонтитул наследуются. Если разметки нет вовсе — первый доступный. Макеты обложки,
+    разделителя и финала не годятся, даже когда плейсхолдеров у всех поровну (VK WorkSpace:
+    у каждого макета один заголовок, и первым шёл титульный с крупным декором сверху и
+    снизу — текст композиций ложился на него): отсекаются макеты, на которых автор ставил
+    только служебные слайды, и макеты с заголовком посередине высоты.
     """
     layouts = profile.get("layouts") or []
     if not layouts:
         return ""
+    roles: dict[str, set[str]] = {}
+    for pattern in profile.get("patterns") or []:
+        source = pattern.get("source") or {}
+        if source.get("kind") == "sample_slide":
+            roles.setdefault(str(source.get("layout_id")), set()).add(str(pattern.get("role")))
+
+    def service_only(item: JsonDict) -> int:
+        used = roles.get(str(item.get("layout_id")))
+        return 1 if used and used <= SERVICE_ROLES else 0
+
+    def centered_title(item: JsonDict) -> int:
+        titles = [
+            p for p in item.get("placeholders") or [] if p.get("type") in ("title", "ctrTitle")
+        ]
+        return 1 if titles and float((titles[0].get("bbox") or {}).get("y") or 0) > 0.2 else 0
+
     ranked = sorted(
         layouts,
         key=lambda item: (
+            service_only(item),
+            centered_title(item),
             len(item.get("placeholders") or []),
             0 if "blank" in str(item.get("name") or "").lower() else 1,
         ),
     )
     return str(ranked[0].get("layout_id") or "")
+
+
+SERVICE_ROLES = {"title", "thanks", "section_divider", "qr", "agenda", "speaker"}
 
 
 def pattern_id_for(composition_id: str) -> str:

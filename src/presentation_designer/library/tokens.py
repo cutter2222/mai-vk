@@ -41,6 +41,9 @@ class DesignCode:
     muted_color: str = "#6B6B6B"
     background: str = DEFAULT_BACKGROUND
     accents: list[str] = field(default_factory=lambda: [DEFAULT_ACCENT])
+    # Бледные акценты палитры: под заливку не годятся, но читаются текстом на тёмном фоне.
+    light_accents: list[str] = field(default_factory=list)
+    theme: dict[str, str] = field(default_factory=dict)
     card_geometry: str = "rect"
     corner_ratio: float = 0.0
     stroke_pt: float = 0.0
@@ -80,10 +83,70 @@ class DesignCode:
         tokens = profile.get("design_tokens") or {}
         code = cls()
         _read_typography(code, tokens.get("typography") or {})
+        _read_content_sizes(code, profile)
         _read_colors(code, tokens.get("colors") or {})
         _read_spacing(code, tokens.get("spacing") or {})
         _read_shape(code, tokens.get("shape") or {})
         return code
+
+
+# Кегли на дюйм ширины слайда: нижняя граница читаемости основного текста и подписей и
+# коридор заголовка содержательного слайда. На широком слайде 13,33″ это 14 pt текста,
+# 11 pt подписи и заголовок 21–40 pt; на 10″ — 10,5 pt, 8 pt и 16–30 pt.
+BODY_PT_PER_INCH = 1.05
+CAPTION_PT_PER_INCH = 0.8
+TITLE_PT_PER_INCH = (1.6, 3.0)
+SERVICE_ROLES = ("title", "section_divider", "thanks", "qr", "agenda")
+
+
+def _read_content_sizes(code: DesignCode, profile: JsonDict) -> None:
+    """Кегли содержательных слайдов — медианы по слотам образцов шаблона, а не крайние ступени
+    шкалы: у шкалы наибольший «заголовок» — это кегль обложки (66 pt у VK WorkSpace), а
+    наименьший «текст» — сноски (8 pt у VK Tech). В своей композиции первый не помещает
+    заголовок-вывод, второй не читается."""
+    width_in = float((profile.get("slide_size") or {}).get("width_emu") or 12192000) / 914400
+    sizes: dict[str, list[float]] = {}
+    for pattern in profile.get("patterns") or []:
+        if (pattern.get("source") or {}).get("kind") == "builtin":
+            continue
+        if pattern.get("role") in SERVICE_ROLES:
+            continue
+        for slot in pattern.get("slots") or []:
+            size = (slot.get("font") or {}).get("size_pt")
+            if size:
+                sizes.setdefault(str(slot.get("kind")), []).append(float(size))
+
+    def median(kind: str) -> float | None:
+        values = sorted(sizes.get(kind) or [])
+        return values[len(values) // 2] if values else None
+
+    scale = sorted(
+        {
+            float(step["size_pt"])
+            for step in ((profile.get("design_tokens") or {}).get("typography") or {}).get("scale")
+            or []
+            if step.get("size_pt")
+        }
+    )
+
+    def snap(value: float, floor: float = 0.0, ceiling: float = 1000.0) -> float:
+        """Ближайшая ступень шкалы шаблона в коридоре; без подходящей — само значение."""
+        steps = [s for s in scale if floor - 0.05 <= s <= ceiling + 0.05]
+        return min(steps, key=lambda s: abs(s - value)) if steps else round(value, 1)
+
+    low, high = (k * width_in for k in TITLE_PT_PER_INCH)
+    title = min(max(median("title") or code.title_pt, low), high)
+    code.title_pt = snap(title, low, high)
+    body_floor = BODY_PT_PER_INCH * width_in
+    body = max(median("body") or median("bullets") or code.body_pt, body_floor)
+    code.body_pt = snap(body, body_floor, max(body, body_floor) * 1.3)
+    caption_floor = CAPTION_PT_PER_INCH * width_in
+    code.caption_pt = snap(
+        max(min(code.caption_pt, code.body_pt), caption_floor), caption_floor, code.body_pt
+    )
+    subtitle = min(max(code.subtitle_pt, code.body_pt * 1.2), code.title_pt * 0.8)
+    code.subtitle_pt = snap(subtitle, code.body_pt, code.title_pt)
+    code.number_pt = snap(max(code.number_pt, code.title_pt * 1.4), code.title_pt * 1.2)
 
 
 def _read_typography(code: DesignCode, typography: JsonDict) -> None:
@@ -156,6 +219,14 @@ def _read_colors(code: DesignCode, colors: JsonDict) -> None:
         if value and value not in accents and luminance(value) < 0.88:
             accents.append(str(value))
     code.accents = accents or [DEFAULT_ACCENT]
+    code.light_accents = [
+        str(hex_color)
+        for hex_color in (by_role.get("primary") or [])
+        + (by_role.get("accent") or [])
+        + [str(theme[k]) for k in sorted(theme) if k.startswith("accent") and theme.get(k)]
+        if luminance(hex_color) >= 0.88
+    ]
+    code.theme = {str(k): str(v) for k, v in theme.items() if isinstance(v, str)}
 
 
 def _first(*values: Any) -> str:

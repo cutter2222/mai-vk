@@ -18,9 +18,10 @@ from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Emu, Pt
 
-from presentation_designer.layout.ooxml import NS_A, NS_P
+from presentation_designer.layout.ooxml import NS_A, NS_P, NS_R
 from presentation_designer.library.spec import CardSpec, Composition, CompositionSlot
 from presentation_designer.library.tokens import DesignCode
+from presentation_designer.parsing.template.tone import relative_luminance
 
 JsonDict = dict[str, Any]
 
@@ -52,6 +53,10 @@ def build_slide(
     slide = prs.slides.add_slide(layout)
     _drop_placeholders(slide)
     width, height = int(prs.slide_width or 0), int(prs.slide_height or 0)
+    # Цвет текста считается от того, на чём текст лежит на самом деле: фон макета может
+    # не совпадать с фоном дизайн-кода (у ЛЦТ все макеты фиолетовые, а белые слайды
+    # образцов получают фон на самом слайде) — тёмный текст палитры там не читается.
+    backdrop = layout_background(layout, code, width, height) or code.background
     cards = {card.index: card for card in composition.cards}
     card_ids: list[str] = []
     for card in composition.cards:
@@ -67,7 +72,9 @@ def build_slide(
             shape = _add_anchor(slide, slot, code, width, height)
             anchor_ids.append(str(shape.shape_id))
         else:
-            shape = _add_text_box(slide, slot, code, width, height, cards.get(slot.card_index))
+            shape = _add_text_box(
+                slide, slot, code, width, height, cards.get(slot.card_index), backdrop
+            )
         refs[slot.slot_id] = str(shape.shape_id)
     # Незаполненный якорь убирается вместе с пустой карточкой, как и текстовые рамки.
     return slide, refs, card_ids + anchor_ids
@@ -212,6 +219,7 @@ def _add_text_box(
     width: int,
     height: int,
     card: CardSpec | None,
+    backdrop: str | None = None,
 ) -> Any:
     left, top, box_w, box_h = _emu_box(slot.bbox, width, height)
     shape = slide.shapes.add_textbox(Emu(left), Emu(top), Emu(box_w), Emu(box_h))
@@ -228,12 +236,131 @@ def _add_text_box(
         font.name = family
     font.size = Pt(code.size_for(slot.text_role))
     font.bold = slot.bold
-    font.color.rgb = _rgb(_color_for(slot, code, card))
+    font.color.rgb = _rgb(_color_for(slot, code, card, backdrop))
     return shape
 
 
-def _color_for(slot: CompositionSlot, code: DesignCode, card: CardSpec | None) -> str:
+# Минимальный контраст текста к подложке (WCAG): крупному тексту хватает 3:1.
+LARGE_ROLES = ("title", "subtitle", "number")
+
+
+def _color_for(
+    slot: CompositionSlot,
+    code: DesignCode,
+    card: CardSpec | None,
+    backdrop: str | None = None,
+) -> str:
     if slot.on_card and card is not None and card.fill == "accent":
         # Текст лежит на залитой плашке: цвет считается от заливки, а не от фона слайда.
         return code.on_accent(code.accent_at(card.accent_index))
-    return {"accent": code.accent, "muted": code.muted_color}.get(slot.color_role, code.text_color)
+    wanted = {"accent": code.accent, "muted": code.muted_color}.get(
+        slot.color_role, code.text_color
+    )
+    if slot.on_card and card is not None and card.fill == "surface":
+        surface = _tint(code.accent_at(card.accent_index), code.background)
+    else:
+        surface = backdrop or code.background
+    need = 3.0 if slot.text_role in LARGE_ROLES else 4.5
+    return legible(wanted, surface, code, need, accent=slot.color_role == "accent")
+
+
+def contrast(a: str, b: str) -> float:
+    la, lb = relative_luminance(a), relative_luminance(b)
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
+def legible(wanted: str, surface: str, code: DesignCode, need: float, *, accent: bool) -> str:
+    """Цвет роли, если он читается на подложке; иначе ближайший по роли читаемый цвет
+    дизайн-кода: для акцента — другой акцент палитры, для текста — текст или белый."""
+    if contrast(wanted, surface) >= need:
+        return wanted
+    pool = [*code.accents, *code.light_accents] if accent else []
+    pool += [code.text_color, "#FFFFFF", "#111111"]
+    for color in pool:
+        if contrast(color, surface) >= need:
+            return color
+    return max(pool, key=lambda c: contrast(c, surface))
+
+
+def layout_background(layout: Any, code: DesignCode, width: int, height: int) -> str | None:
+    """Средний цвет фона, который макет даёт слайду: фон макета, закрывающая его картинка,
+    фон мастера — в порядке наследования PowerPoint. None — определить не удалось."""
+    master = getattr(layout, "slide_master", None)
+    for owner in (layout, master):
+        if owner is None:
+            continue
+        found = _own_background(owner, code)
+        if found is None:
+            found = _covering_picture(owner, width, height)
+        if found is not None:
+            return found
+    return code.theme.get("lt1")
+
+
+def _own_background(owner: Any, code: DesignCode) -> str | None:
+    bg = owner._element.find(f"{{{NS_P}}}cSld/{{{NS_P}}}bg")
+    if bg is None:
+        return None
+    blip = bg.find(f".//{{{NS_A}}}blip")
+    if blip is not None:
+        rid = blip.get(f"{{{NS_R}}}embed")
+        try:
+            return _image_mean(owner.part.related_part(rid).blob) if rid else None
+        except (KeyError, AttributeError):
+            return None
+    found = bg.iter(f"{{{NS_A}}}srgbClr", f"{{{NS_A}}}schemeClr")
+    colors = [c for c in (_scheme_or_rgb(el, code) for el in found) if c]
+    if not colors:
+        return None
+    return _mean_hex(colors)
+
+
+def _covering_picture(owner: Any, width: int, height: int) -> str | None:
+    if not width or not height:
+        return None
+    for shape in reversed(list(owner.shapes)):
+        if getattr(shape, "shape_type", None) != 13:  # MSO_SHAPE_TYPE.PICTURE
+            continue
+        if (shape.width or 0) * (shape.height or 0) < 0.85 * width * height:
+            continue
+        try:
+            return _image_mean(shape.image.blob)
+        except Exception:
+            return None
+    return None
+
+
+_SCHEME = {"bg1": "lt1", "bg2": "lt2", "tx1": "dk1", "tx2": "dk2"}
+
+
+def _scheme_or_rgb(element: Any, code: DesignCode) -> str | None:
+    value = str(element.get("val") or "")
+    if element.tag.endswith("srgbClr"):
+        return f"#{value.upper()}" if len(value) == 6 else None
+    return code.theme.get(_SCHEME.get(value, value))
+
+
+def _mean_hex(colors: list[str]) -> str:
+    rgb = [tuple(int(c.lstrip("#")[i : i + 2], 16) for i in (0, 2, 4)) for c in colors]
+    return "#{:02X}{:02X}{:02X}".format(
+        *(round(sum(ch) / len(rgb)) for ch in zip(*rgb, strict=True))
+    )
+
+
+def _image_mean(blob: bytes) -> str | None:
+    import io
+
+    from PIL import Image
+
+    try:
+        with Image.open(io.BytesIO(blob)) as img:
+            small = img.convert("RGB")
+            small.thumbnail((32, 32))
+            pixels = list(small.getdata())
+    except Exception:
+        return None
+    if not pixels:
+        return None
+    return "#{:02X}{:02X}{:02X}".format(
+        *(round(sum(p[i] for p in pixels) / len(pixels)) for i in range(3))
+    )

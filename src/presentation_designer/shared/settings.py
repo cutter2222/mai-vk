@@ -88,7 +88,7 @@ class ContentImport(BaseModel):
     max_assets: int = 40
     min_image_px: int = 64
     fact_context_model: bool = True
-    fact_context_budget_s: int = 20
+    fact_context_budget_s: int = 60
     chart_image_model: bool = True
     chart_image_budget_s: int = Field(default=45, ge=1, le=300)
     chart_image_max_images: int = Field(default=8, ge=0, le=40)

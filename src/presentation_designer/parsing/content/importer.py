@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import logging
 import pathlib
@@ -41,7 +42,7 @@ log = logging.getLogger(__name__)
 JsonDict = dict[str, Any]
 
 IMPORTER_NAME = "content_importer"
-IMPORTER_VERSION = "0.2.0"
+IMPORTER_VERSION = "0.3.2"
 BRIEF_PARSER_VERSION = "0.1.0"
 PURPOSES = ("feature", "product", "project", "initiative", "report", "other")
 _EXT_BY_MIME = {
@@ -151,6 +152,25 @@ def parse_params(settings: Settings) -> JsonDict:
         "max_block_chars": ci.max_block_chars,
         "min_image_px": ci.min_image_px,
     }
+
+
+def _blank_image(data: bytes, *, spread: float = 6.0, inked: float = 0.01) -> bool:
+    """Почти однотонная картинка: разброс яркости мал и «чернил» меньше процента площади."""
+    try:
+        from PIL import Image, ImageStat
+
+        with Image.open(io.BytesIO(data)) as img:
+            gray = img.convert("L")
+            gray.thumbnail((256, 256))
+            stat = ImageStat.Stat(gray)
+            if stat.stddev[0] >= spread:
+                return False
+            mean = stat.mean[0]
+            histogram = gray.histogram()
+            far = sum(n for level, n in enumerate(histogram) if abs(level - mean) > 40)
+            return far / max(sum(histogram), 1) < inked
+    except Exception:
+        return False
 
 
 def import_key(files: list[MaterialFile], settings: Settings) -> str:
@@ -384,6 +404,18 @@ def import_content(
                 pb.kind == "figure" and pb.image_ref is not None and pb.image_ref < len(doc.images)
             ):
                 image = doc.images[pb.image_ref]
+                if _blank_image(image.data):
+                    # Однотонная заготовка (светлый фон и пара символов) на слайде выглядит
+                    # пустой рамкой, а не иллюстрацией.
+                    warnings.append(
+                        {
+                            "code": "image_blank",
+                            "message": f"{source_id}: изображение почти однотонное, не включено",
+                        }
+                    )
+                    ids.block -= 1
+                    order -= 1
+                    continue
                 sha = hashlib.sha256(image.data).hexdigest()
                 asset_id = asset_by_sha.get(sha)
                 if asset_id is None:
@@ -524,8 +556,14 @@ def import_content(
     enable_model = ci.fact_context_model if use_model is None else use_model
     if enable_model and llm_client is not None and skill is not None:
         t0 = time.perf_counter()
+        params = getattr(skill, "params", None) or {}
         model_summary = facts_mod.refine_facts_with_model(
-            facts, llm_client, skill, budget_s=float(ci.fact_context_budget_s)
+            facts,
+            llm_client,
+            skill,
+            batch=int(params.get("batch") or 8),
+            budget_s=float(ci.fact_context_budget_s),
+            min_confidence=float(params.get("min_confidence") or 0.6),
         )
         timings["model_ms"] = int((time.perf_counter() - t0) * 1000)
 

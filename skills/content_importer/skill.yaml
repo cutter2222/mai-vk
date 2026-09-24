@@ -1,7 +1,7 @@
 # Манифест скилла по contracts/schemas/skill_manifest.schema.json
 schema_version: '1.1'
 name: content_importer
-version: 0.1.0
+version: 0.2.0
 stage: import
 description: 'Уточняет контекст неоднозначных фактов (показатель, период, субъект, сравнение)
   по фрагменту источника; значения фактов не меняет, подписи принимаются только если их слова
@@ -13,15 +13,20 @@ reasoning:
   max_output_tokens: 6000
 prompts:
 - id: import.fact_context
-  path: prompts/import.fact_context.v0.1.0.md
-  version: 0.1.0
+  path: prompts/import.fact_context.v0.2.0.md
+  version: 0.2.0
 params:
   temperature: 0.0
-  batch: 25              # фактов в одном запросе
+  batch: 8               # фактов в одном запросе: пачки идут параллельно, ответ на 25 фактов
+                         # не укладывался в бюджет импорта
   min_confidence: 0.6    # ниже — подпись модели не принимается
 input_schema: content_package
 output_schema: content_package
 changelog:
+- version: 0.2.0
+  date: '2026-09-24'
+  note: 'подпись сверяется у всех фактов из текста, а не только у неоднозначных; модель видит
+    предложение целиком и предварительную подпись; запрет подписей-единиц и служебных слов'
 - version: 0.1.0
   date: '2026-09-16'
   note: 'этап 6: контекст неоднозначных фактов по фрагменту источника, рассуждение выключено'

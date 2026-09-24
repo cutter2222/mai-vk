@@ -209,6 +209,34 @@ def make_png(
     return buf.getvalue()
 
 
+def make_mockup_png(width: int, height: int) -> bytes:
+    """Схематичный экран «центра уведомлений»: шапка и строки с метками приоритета. Картинка
+    с содержанием, а не однотонная заготовка: импорт отсеивает почти пустые изображения."""
+    img = Image.new("RGB", (width, height), (244, 247, 252))
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([0, 0, width, 96], fill=(0, 119, 255))
+    draw.rounded_rectangle([40, 28, 360, 68], radius=12, fill=(255, 255, 255))
+    colors = [(255, 72, 72), (255, 170, 0), (0, 119, 255), (160, 170, 185), (160, 170, 185)]
+    for i, color in enumerate(colors):
+        top = 140 + i * 124
+        draw.rounded_rectangle(
+            [40, top, width - 40, top + 100],
+            radius=16,
+            fill=(255, 255, 255),
+            outline=(220, 226, 235),
+        )
+        draw.ellipse([64, top + 30, 104, top + 70], fill=color)
+        draw.rounded_rectangle(
+            [130, top + 28, 130 + 420 - i * 40, top + 46], radius=8, fill=(40, 44, 52)
+        )
+        draw.rounded_rectangle(
+            [130, top + 58, 130 + 640 - i * 60, top + 72], radius=7, fill=(190, 198, 210)
+        )
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
+
 def make_logo(size: int) -> bytes:
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -290,9 +318,7 @@ def make_examples() -> list[pathlib.Path]:
     ):
         doc.add_paragraph(item, style="List Number")
     doc.add_paragraph("Рисунок 1. Центр уведомлений", style="Caption")
-    doc.add_picture(
-        io.BytesIO(make_png(1280, 800, "Центр уведомлений", (250, 250, 250))), width=Inches(5)
-    )
+    doc.add_picture(io.BytesIO(make_mockup_png(1280, 800)), width=Inches(5))
     p = EXAMPLES_DIR / "overview.docx"
     doc.save(p)
     outs.append(p)

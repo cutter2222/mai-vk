@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import collections
+import dataclasses
 import logging
 import re
 import statistics
@@ -84,6 +85,13 @@ class Slot:
     # Слот шире своего объекта: у нарисованной диаграммы это вся область ряда, а `shape` —
     # только один столбик, с которого вёрстка начинает замену.
     bbox_override: dict[str, float] | None = None
+    # Плашка под строкой (ЛЦТ: розовая «пилюля» заголовка): вёрстка растягивает её под
+    # текст не шире `max_width` (доли слайда) — до первого препятствия в полосе.
+    backing: dict[str, Any] | None = None
+    # Место под текст меньше рамки: до соседнего слота снизу и до препятствия справа
+    # (доли слайда). Замер и вёрстка считают строки по нему, а не по рамке образца.
+    clear_height: float | None = None
+    clear_width: float | None = None
 
     def as_dict(self, slide_w: int, slide_h: int) -> dict[str, Any]:
         s = self.shape
@@ -136,6 +144,12 @@ class Slot:
                 out["paragraph_params"] = params
         if self.capacity:
             out["capacity"] = self.capacity
+        if self.backing:
+            out["backing"] = self.backing
+        if self.clear_height is not None:
+            out["clear_height"] = round(self.clear_height, 4)
+        if self.clear_width is not None:
+            out["clear_width"] = round(self.clear_width, 4)
         if s.crop and any(c > 0 for c in s.crop):
             out["crop"] = {
                 "left": s.crop[0],
@@ -388,6 +402,115 @@ def _capacity(slot: Slot, pkg: TemplatePackage, margin_ratio: float) -> dict[str
     return out
 
 
+_CLEARANCE_KINDS = ("title", "subtitle", "body", "bullets", "label", "caption", "number")
+
+
+def _limit_by_neighbours(slots: list[Slot], pkg: TemplatePackage, margin_ratio: float) -> None:
+    """Ёмкость рамки, в которую снизу заходит соседний слот, считается до его верха.
+
+    Дизайнер рисует рамку заголовка на две строки, а подзаголовок ставит сразу под первой
+    (VK WorkSpace «Три колонки»): образец в одну строку выглядит верно, а заголовок-вывод в
+    две строки ложится на подзаголовок. Высота рамки тут не мера места — мера места до соседа.
+    """
+    for slot in slots:
+        if slot.capacity is None or slot.kind not in _CLEARANCE_KINDS:
+            continue
+        shape = slot.shape
+        if shape.anchor == "b" or shape.autofit == "resize_shape":
+            continue
+        bottom = shape.y + shape.height
+        limit = bottom
+        for other in slots:
+            o = other.shape
+            if other is slot or other.kind not in _CLEARANCE_KINDS or o.y <= shape.y + 0.005:
+                continue
+            if o.y >= bottom - 0.005:
+                continue
+            overlap = min(shape.x + shape.width, o.x + o.width) - max(shape.x, o.x)
+            if overlap < 0.3 * min(shape.width, o.width):
+                continue
+            limit = min(limit, o.y)
+        if limit >= bottom - 0.005:
+            continue
+        ratio = (limit - shape.y) / shape.height if shape.height else 1.0
+        reduced = dataclasses.replace(
+            shape,
+            height=limit - shape.y,
+            height_emu=max(1, int(shape.height_emu * ratio)),
+        )
+        capped = _capacity(dataclasses.replace(slot, shape=reduced), pkg, margin_ratio)
+        if capped is None:
+            continue
+        if capped["max_lines"] < slot.capacity["max_lines"]:
+            slot.capacity = capped
+            slot.clear_height = limit - shape.y
+
+
+_BAND_KINDS = ("title", "subtitle", "label")
+
+
+def _limit_by_obstacles(
+    slots: list[Slot], obstacles: list[ShapeInfo], pkg: TemplatePackage, margin_ratio: float
+) -> None:
+    """Ширина строки заголовка — до первого препятствия справа, а не до края рамки.
+
+    ЛЦТ: рамка заголовка на 81 % ширины, но текст стоит на розовой плашке в 31 % и в той же
+    полосе справа — логотипы макета. Образец «ВВОДНЫЕ» помещается, заголовок-вывод
+    вылезает с плашки под логотипы. Препятствие — плашка, на которой текст начинается (её
+    правый край), или объект, стоящий в полосе рамки правее начала текста.
+    """
+    for slot in slots:
+        if slot.capacity is None or slot.kind not in _BAND_KINDS or slot.repeat_group:
+            continue
+        shape = slot.shape
+        if shape.width <= 0 or shape.height <= 0:
+            continue
+        right = shape.x + shape.width
+        limit = right
+        middle = shape.y + shape.height / 2
+        backing: ShapeInfo | None = None
+        for o in obstacles:
+            if o.element_id == shape.element_id:
+                continue
+            o_right = o.x + o.width
+            if (
+                o.kind in ("shape", "text")
+                and o.fill_kind in ("solid", "gradient")
+                and not o.text.strip()
+                and o.x <= shape.x + 0.02
+                and o_right > shape.x + 0.05
+                and o.y <= middle <= o.y + o.height
+                and o_right < right - 0.02
+                and o.area < 0.1
+            ):
+                backing = o
+                continue
+            overlap = min(shape.y + shape.height, o.y + o.height) - max(shape.y, o.y)
+            if overlap < 0.4 * min(shape.height, o.height) or o.height <= 0:
+                continue
+            if shape.x + 0.15 * shape.width < o.x < limit:
+                limit = min(limit, o.x - 0.005)
+        if backing is not None:
+            # Плашка растягивается под текст (layout/compose), поэтому строка ограничена не
+            # её краем, а препятствием в полосе; поле справа как у плашки образца.
+            slot.backing = {
+                "element_ref": backing.element_id,
+                "max_width": round(limit - backing.x, 4),
+                "min_width": round(backing.width, 4),
+                "pad": round(max(shape.x - backing.x, 0.01), 4),
+            }
+        if limit >= right - 0.01:
+            continue
+        ratio = (limit - shape.x) / shape.width
+        reduced = dataclasses.replace(
+            shape, width=limit - shape.x, width_emu=max(1, int(shape.width_emu * ratio))
+        )
+        capped = _capacity(dataclasses.replace(slot, shape=reduced), pkg, margin_ratio)
+        if capped is not None and capped["max_chars"] < slot.capacity["max_chars"]:
+            slot.capacity = capped
+            slot.clear_width = limit - shape.x
+
+
 def _repeat_groups(shapes: list[ShapeInfo]) -> dict[str, str]:
     """Объекты одинакового размера и вида, стоящие в ряд/колонку, — одна группа; группы с равным
     числом членов, соседствующие покомпонентно, объединяются в карточки."""
@@ -600,6 +723,18 @@ def build_pattern(
             "qr",
         ):
             slot.capacity = _capacity(slot, pkg, margin_ratio)
+    _limit_by_neighbours(slots, pkg, margin_ratio)
+    slot_ids = {sl.shape.element_id for sl in slots}
+    master = pkg.master(layout.master_id) if layout is not None else None
+    obstacles = [sh for sh in shapes if sh.element_id not in slot_ids and sh.area < 0.25] + [
+        sh
+        for sh in [
+            *(layout.shapes if layout is not None else []),
+            *(master.shapes if master is not None else []),
+        ]
+        if not sh.is_placeholder and sh.kind in ("picture", "text", "shape") and sh.area < 0.1
+    ]
+    _limit_by_obstacles(slots, obstacles, pkg, margin_ratio)
 
     role, source, conf, notes = heuristic_role(
         slide, slots, repeat_counts, layout.name if layout else ""

@@ -424,7 +424,7 @@ def extract_text_facts(
                 },
                 ambiguous=not context.get("metric")
                 or "_inherited" in context
-                or _weak_metric(context.get("metric", "")),
+                or _weak_metric(context.get("metric", ""), m.unit),
                 sentence=sentence,
             )
             fact.context.pop("_inherited", None)
@@ -600,6 +600,25 @@ def _verb_like(word: str) -> bool:
 
 
 def _metric_before(before: str) -> str:
+    metric = _metric_phrase(before)
+    if metric:
+        return metric
+    # «Глубина погружений — до 3000 м»: после тире остался только предлог, показатель стоит
+    # перед тире или двоеточием.
+    tail = before.rstrip()
+    cut = max(tail.rfind("—"), tail.rfind(":"), tail.rfind("–"))
+    if (cut > 0 and not _WORD.findall(tail[cut + 1 :].strip())) or (
+        cut > 0
+        and all(
+            w.lower() in _TRAILING_STOP or w.lower() in _LEADING_STOP
+            for w in _WORD.findall(tail[cut + 1 :])
+        )
+    ):
+        return _metric_phrase(tail[:cut])
+    return ""
+
+
+def _metric_phrase(before: str) -> str:
     tail = before.rstrip().rstrip(" —–-:")
     # Показатель — конец фразы до числа: после последнего знака препинания.
     boundary = max(
@@ -626,12 +645,60 @@ def _metric_before(before: str) -> str:
     return metric if len(metric) >= 3 else ""
 
 
-def _weak_metric(metric: str) -> bool:
-    """Одно слово с заглавной буквы — скорее подлежащее предложения, чем показатель."""
+def _weak_metric(metric: str, unit: str | None = None) -> bool:
+    """Подпись, которая не называет измеряемое: одно слово с заглавной буквы (скорее
+    подлежащее), сама единица («5 дней» → «дней», «3000 м» → «м») или одно слово-связка
+    («даёт», «все»). Такие факты уточняет модель по фрагменту источника."""
     words = metric.split()
-    return (
-        len(words) == 1 and words[0][:1].isupper() and words[0].isalpha() and not words[0].isupper()
-    )
+    if not words:
+        return True
+    if len(words) == 1 and words[0][:1].isupper() and words[0].isalpha() and not words[0].isupper():
+        return True
+    low = metric.lower().strip()
+    if unit and (low == unit.lower() or low[:4] == unit.lower()[:4]):
+        return True
+    if len(words) > 1:
+        return False
+    if low in _UNIT_WORDS or any(low.startswith(u) for u in _UNIT_STEMS):
+        return True
+    return len(low) <= 4 or _verb_like(low) or low in _WEAK_WORDS
+
+
+# Единицы-существительные, которые эвристика «после числа» принимает за показатель.
+_UNIT_STEMS = (
+    "дня",
+    "дней",
+    "день",
+    "недел",
+    "месяц",
+    "лет",
+    "год",
+    "час",
+    "минут",
+    "секунд",
+    "человек",
+    "раз",
+    "штук",
+    "единиц",
+    "процент",
+)
+_UNIT_WORDS = {
+    "м",
+    "км",
+    "км²",
+    "м²",
+    "кг",
+    "т",
+    "мм",
+    "см",
+    "л",
+    "шт",
+    "руб",
+    "млн",
+    "млрд",
+    "тыс",
+}
+_WEAK_WORDS = {"все", "всего", "даёт", "дает", "около", "более", "менее", "плюс-минус", "итого"}
 
 
 def _metric_after(after: str, m: NumberMatch) -> str:
@@ -693,6 +760,28 @@ def _is_from_to_pair(text: str, m1: NumberMatch, m2: NumberMatch) -> bool:
     return between in ("до", "к", "→", "->") and bool(re.search(r"\b(с|со|от)\s*$", before))
 
 
+def display_number(value: Any) -> str:
+    """Число для слайда по-русски: «4,1», «120 500», «−1,4». Значение факта остаётся числом;
+    это только его запись, как её набрал бы автор презентации."""
+    if not isinstance(value, int | float) or isinstance(value, bool):
+        return str(value)
+    number = format_value(value)
+    if isinstance(number, float):
+        text = f"{number:.6f}".rstrip("0").rstrip(".")
+    else:
+        text = str(number)
+    whole, _, frac = text.partition(".")
+    sign = "−" if whole.startswith("-") else ""
+    whole = whole.lstrip("-")
+    if len(whole) > 4:
+        groups: list[str] = []
+        while whole:
+            groups.insert(0, whole[-3:])
+            whole = whole[:-3]
+        whole = "\u00a0".join(groups)
+    return f"{sign}{whole}{',' + frac if frac else ''}"
+
+
 def derived_change(
     fact_id: str, f1: Fact, f2: Fact, source_id: str, block_id: str | None
 ) -> Fact | None:
@@ -701,10 +790,11 @@ def derived_change(
     delta = round(float(f2.value) - float(f1.value), 6)
     unit = "п. п." if f1.kind == "percent" else f1.unit
     metric = f1.context.get("metric") or f2.context.get("metric") or ""
+    sign = "+" if delta >= 0 else "−"
     fact = Fact(
         fact_id=fact_id,
         source_id=source_id,
-        raw=f"{'+' if delta >= 0 else '−'}{format_value(abs(delta))}{(' ' + unit) if unit else ''}",
+        raw=f"{sign}{display_number(abs(delta))}{(' ' + unit) if unit else ''}",
         kind="percent" if f1.kind == "percent" and unit == "%" else "number",
         value=delta,
         unit=unit,
@@ -740,6 +830,17 @@ def extract_dataset_facts(
         (i for i, c in enumerate(dataset.columns) if c.type in ("string", "date")), None
     )
     period = dataset.title if dataset.title and len(dataset.title) <= 60 else None
+    labels = (
+        [str(row[label_col]) for row in dataset.rows if row[label_col] is not None]
+        if label_col is not None
+        else []
+    )
+    # Разница первой и последней строки — изменение, только если строки идут во времени
+    # (годы, кварталы, месяцы, даты). У категорий («Северный», «Речной», «Заводской») это
+    # бессмысленное «изменение: −700 пассажиров», а подпись строки — субъект, не период.
+    temporal = label_col is not None and (
+        dataset.columns[label_col].type == "date" or _temporal_labels(labels)
+    )
     for col_index, values in list(dataset.numeric_columns.items())[:max_columns]:
         if len(values) < 1:
             continue
@@ -771,7 +872,7 @@ def extract_dataset_facts(
             fact = Fact(
                 fact_id=f"f{index}",
                 source_id=dataset.source_id,
-                raw=f"{format_value(value)}{(' ' + unit) if unit else ''}",
+                raw=f"{display_number(value)}{(' ' + unit) if unit else ''}",
                 kind=column.type if column.type in ("percent", "money") else "number",
                 value=value,
                 unit=unit,
@@ -779,10 +880,12 @@ def extract_dataset_facts(
                 must_keep=False,
                 context={
                     "metric": column.name,
-                    "period": row_label if label_col is not None else (period or ""),
+                    "period": row_label if temporal else (period or ""),
                     **(
                         {"subject": dataset.title}
-                        if dataset.title and label_col is not None and dataset.title != row_label
+                        if dataset.title and temporal and dataset.title != row_label
+                        else {"subject": row_label}
+                        if label_col is not None and not temporal
                         else {}
                     ),
                     **({"unit": unit} if unit else {}),
@@ -796,7 +899,7 @@ def extract_dataset_facts(
             index += 1
             if len(facts) >= max_facts:
                 return facts
-        if len(made) == 2:
+        if len(made) == 2 and (temporal or label_col is None):
             derived = derived_change(
                 f"f{index}", made[0], made[1], dataset.source_id, dataset.block_id
             )
@@ -856,7 +959,15 @@ def refine_facts_with_model(
     from presentation_designer.llm.types import Deadline, LlmError
 
     summary: JsonDict = {"asked": 0, "accepted": 0, "rejected": 0, "calls": 0, "errors": []}
-    candidates = [f for f in facts if f.ambiguous and f.derived is None]
+    # Регулярное выражение находит число надёжно, а подпись к нему — нет («62 %» → «придёт
+    # автобус», «14 млн руб.» → «даёт»): подпись каждого факта из текста сверяется моделью.
+    # Её ответ принимается, только если слова есть во фрагменте, иначе остаётся эвристика.
+    candidates = [
+        f
+        for f in facts
+        if f.derived is None
+        and (f.ambiguous or (f.uncertainty or {}).get("extracted_by") == "regex")
+    ]
     if not candidates or client is None or skill is None:
         return summary
     chunks = [candidates[i : i + batch] for i in range(0, len(candidates), batch)]
@@ -864,13 +975,13 @@ def refine_facts_with_model(
 
     def make_request(chunk: list[Fact]) -> Any:
         lines = [
-            f"{f.fact_id}: «{f.raw}» — фрагмент: "
-            f"«{f.source_location.get('fragment', f.sentence)[:300]}»"
+            f"{f.fact_id}: «{f.raw}» — предложение: «{_source_text(f)[:400]}»"
+            f" — подпись эвристики: «{f.context.get('metric', '')}»"
             for f in chunk
         ]
         req = skill.request(
             "import.fact_context",
-            "Факты и фрагменты источника:\n" + "\n".join(lines),
+            "Факты и предложения источника:\n" + "\n".join(lines),
             schema=FACT_CONTEXT_SCHEMA,
             stage="import",
         )
@@ -903,7 +1014,7 @@ def refine_facts_with_model(
             except (TypeError, ValueError):
                 continue
             metric = str(item.get("metric", "")).strip()
-            fragment = (fact.source_location.get("fragment") or fact.sentence or "").lower()
+            fragment = _source_text(fact).lower()
             if confidence < min_confidence or not metric or not _grounded(metric, fragment):
                 summary["rejected"] += 1
                 continue
@@ -923,6 +1034,39 @@ def refine_facts_with_model(
     return summary
 
 
+_TEMPORAL_LABEL = re.compile(
+    r"^\s*(?:(?:19|20)\d{2}(?:\s*(?:г\.?|год[а-я]*))?"
+    r"|[IVX]{1,4}\s*(?:кв|квартал)[а-я.]*(?:\s*(?:19|20)\d{2})?"
+    r"|[1-4]\s*(?:кв|квартал|q)[а-я.]*(?:\s*(?:19|20)\d{2})?"
+    r"|q[1-4](?:\s*(?:19|20)\d{2})?"
+    r"|(?:янв|фев|мар|апр|ма[йя]|июн|июл|авг|сен|окт|ноя|дек|jan|feb|mar|apr|may|jun|jul|aug"
+    r"|sep|oct|nov|dec)[а-яa-z.]*(?:\s*(?:19|20)?\d{2})?"
+    r"|\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?"
+    r"|(?:неделя|месяц|день|week|month|day)\s*\d+|\d+\s*(?:неделя|месяц|день))\s*$",
+    re.IGNORECASE,
+)
+
+
+def _temporal_labels(labels: list[str]) -> bool:
+    """Подписи строк — моменты или периоды времени (все, кроме пустых и «итого»)."""
+    meaningful = [
+        x
+        for x in labels
+        if x.strip() and not x.strip().lower().startswith(("итог", "всего", "total"))
+    ]
+    return len(meaningful) >= 2 and all(_TEMPORAL_LABEL.match(x) for x in meaningful)
+
+
+def _source_text(fact: Fact) -> str:
+    """Предложение с фактом и окно вокруг числа: предложение может оборваться на
+    сокращении, окно — на середине показателя."""
+    fragment = str(fact.source_location.get("fragment") or "")
+    sentence = fact.sentence.strip()
+    if sentence and fragment and fragment.rstrip("…") not in sentence:
+        return f"{sentence} … {fragment}"
+    return sentence or fragment
+
+
 def _grounded(phrase: str, fragment: str) -> bool:
     """Не меньше половины значимых слов подписи есть во фрагменте (по основе из 5 символов):
     модель может переформулировать («доля пропущенных уведомлений»), но не придумывать."""
@@ -933,6 +1077,8 @@ def _grounded(phrase: str, fragment: str) -> bool:
     return hits >= max(1, (len(words) + 1) // 2)
 
 
+weak_metric = _weak_metric
+
 __all__ = [
     "FACT_CONTEXT_SCHEMA",
     "Fact",
@@ -942,4 +1088,5 @@ __all__ = [
     "extract_text_facts",
     "fact_context",
     "refine_facts_with_model",
+    "weak_metric",
 ]
