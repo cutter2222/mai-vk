@@ -13,7 +13,7 @@ import { api, ApiError } from "@/lib/api/client";
  *
  * Чтобы текст шёл за речью, а не появлялся целиком после паузы, недоговорённая фраза уходит
  * на распознавание черновиком (`?partial=1`) — с начала, раз в 0,7 с новой речи, не больше
- * одного запроса за раз и только пока фраза короче 12 с. Черновик без последнего, ещё не
+ * одного запроса за раз, только пока фраза короче 12 с и не во время паузы. Черновик без последнего, ещё не
  * договорённого слова виден в поле сразу (`interim`), итог фразы его заменяет.
  */
 
@@ -28,6 +28,8 @@ const MIN_THRESHOLD = 0.004;
 const PARTIAL_MIN_SPEECH_FRAMES = 20; // 400 мс речи до первого черновика
 const PARTIAL_EVERY_FRAMES = 35; // 700 мс новой записи между черновиками
 const PARTIAL_MAX_FRAMES = 600; // 12 с: дальше черновик дорог, ждём конца фразы
+// После 200 мс тишины фраза, скорее всего, кончается: черновик занял бы сервис, и итог ждал бы его.
+const PARTIAL_PAUSE_FRAMES = 10;
 const TICK_MS = 120;
 
 export type DictationState = "idle" | "starting" | "recording" | "stopping";
@@ -176,9 +178,9 @@ export class PhraseDetector {
   }
 
   /** Недоговорённая фраза целиком — для черновика; `null`, пока человек молчит. */
-  snapshot(): { samples: Float32Array; frames: number; speech: number } | null {
+  snapshot(): { samples: Float32Array; frames: number; speech: number; silence: number } | null {
     if (!this.speaking) return null;
-    return { samples: join(this.phrase), frames: this.phrase.length, speech: this.speechFrames };
+    return { samples: join(this.phrase), frames: this.phrase.length, speech: this.speechFrames, silence: this.silentTail };
   }
 
   /** Громкость с прошлого вызова, 0–1: пик кадров в децибелах от −55 до −15 дБ. */
@@ -377,7 +379,7 @@ export function useDictation({ onText, onError, onLevel }: Options) {
     const seq = current.current;
     if (seq === null || partialBusy.current) return;
     const snap = d.snapshot();
-    if (!snap || snap.speech < PARTIAL_MIN_SPEECH_FRAMES || snap.frames > PARTIAL_MAX_FRAMES) return;
+    if (!snap || snap.speech < PARTIAL_MIN_SPEECH_FRAMES || snap.frames > PARTIAL_MAX_FRAMES || snap.silence >= PARTIAL_PAUSE_FRAMES) return;
     if (snap.frames - partialFrames.current < PARTIAL_EVERY_FRAMES) return;
     partialFrames.current = snap.frames;
     partialBusy.current = true;
