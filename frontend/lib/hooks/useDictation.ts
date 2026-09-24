@@ -13,8 +13,8 @@ import { api, ApiError } from "@/lib/api/client";
  *
  * Чтобы текст шёл за речью, а не появлялся целиком после паузы, недоговорённая фраза уходит
  * на распознавание черновиком (`?partial=1`) — с начала, раз в 0,7 с новой речи, не больше
- * одного запроса за раз и только пока фраза короче 12 с. Черновик виден в поле сразу
- * (`interim`), итог фразы его заменяет.
+ * одного запроса за раз и только пока фраза короче 12 с. Черновик без последнего, ещё не
+ * договорённого слова виден в поле сразу (`interim`), итог фразы его заменяет.
  */
 
 const RATE = 16000;
@@ -31,6 +31,16 @@ const PARTIAL_MAX_FRAMES = 600; // 12 с: дальше черновик доро
 const TICK_MS = 120;
 
 export type DictationState = "idle" | "starting" | "recording" | "stopping";
+
+/**
+ * Черновик без хвоста: запись обрывается посреди слова, и последнее слово черновика часто
+ * недоговорено («укра», «деваст»), а точку в конце модель ставит, считая фразу законченной.
+ * Последнее слово и конечная точка ждут следующего черновика или итога.
+ */
+export function stableDraft(text: string): string {
+  const words = text.trim().replace(/[.…]+$/, "").split(/\s+/).filter(Boolean);
+  return (words.length > 1 ? words.slice(0, -1) : words).join(" ").replace(/[,;:—-]+$/, "");
+}
 
 export function dictationSupported(): boolean {
   return typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia) && typeof window !== "undefined" && "AudioContext" in window;
@@ -378,7 +388,7 @@ export function useDictation({ onText, onError, onLevel }: Options) {
       .then((r) => {
         // Итог фразы важнее черновика: запоздавший черновик его не затирает.
         if (session.current !== mine || seq < nextEmit.current || ready.current.has(seq)) return;
-        partials.current.set(seq, r.text);
+        partials.current.set(seq, stableDraft(r.text));
         refreshInterim();
       })
       // Черновик не обязателен: итог фразы придёт своим запросом.

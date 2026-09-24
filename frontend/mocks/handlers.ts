@@ -103,7 +103,8 @@ export const handlers = [
 
   // ---------- голосовой ввод ----------
   // Модели в заглушке нет: каждая фраза «распознаётся» очередной строкой из списка, черновик
-  // недоговорённой фразы (?partial=1) — её первой половиной, очередь фраз он не двигает.
+  // недоговорённой фразы (?partial=1) — её первой половиной с оборванным следующим словом,
+  // как у настоящей модели; очередь фраз черновик не двигает.
   http.post(base("/speech/transcribe"), async ({ request }) => {
     await delay(SPEECH_MS);
     // Прогрев модели при включении микрофона — полсекунды тишины: фразой не считается.
@@ -112,7 +113,9 @@ export const handlers = [
     const phrase = SPEECH_PHRASES[speechCalls % SPEECH_PHRASES.length];
     if (new URL(request.url).searchParams.get("partial")) {
       const words = phrase.split(" ");
-      return HttpResponse.json({ text: words.slice(0, Math.ceil(words.length / 2)).join(" "), duration_ms: 800, infer_ms: SPEECH_MS, model: "stub" });
+      const half = Math.ceil(words.length / 2);
+      const cut = words[half] ? ` ${words[half].slice(0, 3)}.` : ".";
+      return HttpResponse.json({ text: words.slice(0, half).join(" ") + cut, duration_ms: 800, infer_ms: SPEECH_MS, model: "stub" });
     }
     speechCalls += 1;
     return HttpResponse.json({ text: phrase, duration_ms: 1500, infer_ms: SPEECH_MS, model: "stub" });
