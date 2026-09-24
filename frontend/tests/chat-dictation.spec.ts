@@ -109,6 +109,8 @@ test("Esc выключает запись, а без голосового вво
   const mic = page.getByTestId("chat-mic");
   await mic.click();
   await expect(mic).toHaveAttribute("data-recording", "true");
+  // Мышь осталась над кнопкой: открытая подсказка не должна забирать Esc у записи.
+  await expect(page.getByRole("tooltip")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(mic).not.toHaveAttribute("data-recording");
 
@@ -116,4 +118,24 @@ test("Esc выключает запись, а без голосового вво
   await page.reload();
   await expect(page.getByTestId("chat-input")).toBeVisible();
   await expect(page.getByTestId("chat-mic")).toHaveCount(0);
+});
+
+test("поле ввода одной высоты с подсказкой, во время записи и со строкой текста; подсказки про Enter нет", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "фальшивый микрофон — только в Chromium");
+  await createProject(page);
+  const input = page.getByTestId("chat-input");
+  const mic = page.getByTestId("chat-mic");
+  await expect(mic).toBeVisible();
+  const height = async () => (await input.boundingBox())!.height;
+  const idle = await height();
+  // Две строки сразу: 20 px строка + отступы.
+  expect(idle).toBeGreaterThanOrEqual(50);
+  await mic.click();
+  await expect(input).toHaveAttribute("placeholder", "Говорите — текст появится здесь…");
+  expect(await height()).toBe(idle);
+  await page.keyboard.press("Escape");
+  await expect(mic).not.toHaveAttribute("data-recording");
+  await input.fill("Коротко");
+  expect(await height()).toBe(idle);
+  await expect(page.getByText("Shift+Enter")).toHaveCount(0);
 });

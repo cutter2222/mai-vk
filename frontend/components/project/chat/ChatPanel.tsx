@@ -110,8 +110,9 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
   useEffect(() => {
     if (!dictation.recording) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") void dictation.stop(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    // На погружении: открытая подсказка над кнопкой сама забирает Esc и дальше его не пускает.
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [dictation]);
   const dispatch = async (t: string, f: File[], to: SlideTarget | null) => {
     setSending(t.trim() ? "text" : "files");
@@ -222,7 +223,8 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
             variant="unstyled"
             placeholder={placeholder}
             autosize
-            minRows={1}
+            // Две строки сразу: высота поля не прыгает, когда подсказка в нём короче или длиннее.
+            minRows={2}
             maxRows={6}
             value={shownText}
             readOnly={Boolean(dictation.interim)}
@@ -259,11 +261,7 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
           )}
           <ActionIcon variant="filled" size="lg" onClick={submit} loading={Boolean(sending)} disabled={blocked || (!shownText.trim() && pending.length === 0)} aria-label="Отправить" data-testid="chat-send"><IconArrowUp size={18} /></ActionIcon>
         </div>
-        {blocked ? (
-          <Text size="xs" c="orange" mt={6} data-testid="chat-draft-hint">Сначала примените или отмените правки на слайде: черновик редактора ждёт решения.</Text>
-        ) : (
-          <Text size="xs" c="dimmed" mt={6}>Enter — отправить, Shift+Enter — перенос строки{project.job_id ? ". ИИ-правка PPTX: /edit инструкция" : ""}</Text>
-        )}
+        {blocked && <Text size="xs" c="orange" mt={6} data-testid="chat-draft-hint">Сначала примените или отмените правки на слайде: черновик редактора ждёт решения.</Text>}
       </div>
     </Dropzone>
   );
