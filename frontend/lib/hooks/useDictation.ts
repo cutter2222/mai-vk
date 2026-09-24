@@ -10,6 +10,11 @@ import { api, ApiError } from "@/lib/api/client";
  * 300 мс, конец фразы — 700 мс тишины, не длиннее 20 с, меньше 300 мс речи — не фраза) → WAV
  * PCM16 → `POST /api/speech/transcribe`. Ответы дописываются в поле ввода в порядке фраз, пока
  * запись идёт. Остановка дожидается последних фраз; отмена (отправка сообщения) их отбрасывает.
+ *
+ * Чтобы текст шёл за речью, а не появлялся целиком после паузы, недоговорённая фраза уходит
+ * на распознавание черновиком (`?partial=1`) — с начала, раз в 0,7 с новой речи, не больше
+ * одного запроса за раз и только пока фраза короче 12 с. Черновик виден в поле сразу
+ * (`interim`), итог фразы его заменяет.
  */
 
 const RATE = 16000;
@@ -20,6 +25,10 @@ const MIN_SPEECH_FRAMES = 15; // 300 мс
 const PRE_ROLL_FRAMES = 10; // 200 мс до начала речи
 const MAX_PHRASE_FRAMES = 1000; // 20 с
 const MIN_THRESHOLD = 0.004;
+const PARTIAL_MIN_SPEECH_FRAMES = 20; // 400 мс речи до первого черновика
+const PARTIAL_EVERY_FRAMES = 35; // 700 мс новой записи между черновиками
+const PARTIAL_MAX_FRAMES = 600; // 12 с: дальше черновик дорог, ждём конца фразы
+const TICK_MS = 120;
 
 export type DictationState = "idle" | "starting" | "recording" | "stopping";
 
@@ -88,7 +97,10 @@ class Resampler {
   }
 }
 
-/** Детектор фраз по энергии кадров 20 мс; отдаёт готовые фразы через `onPhrase`. */
+/**
+ * Детектор фраз по энергии кадров 20 мс. `onStart` — человек заговорил; `onEnd` — фраза
+ * закончилась: запись фразы или `null`, если речи в ней меньше 300 мс.
+ */
 export class PhraseDetector {
   private buffer: number[] = [];
   private noise: number[] = [];
@@ -98,8 +110,12 @@ export class PhraseDetector {
   private speechFrames = 0;
   private silentTail = 0;
   private speaking = false;
+  private peak = 0;
 
-  constructor(private readonly onPhrase: (samples: Float32Array) => void) {}
+  constructor(
+    private readonly onEnd: (samples: Float32Array | null) => void,
+    private readonly onStart: () => void = () => undefined,
+  ) {}
 
   push(samples: Float32Array): void {
     for (const s of samples) this.buffer.push(s);
@@ -113,6 +129,7 @@ export class PhraseDetector {
     let sum = 0;
     for (const s of frame) sum += s * s;
     const rms = Math.sqrt(sum / frame.length);
+    this.peak = Math.max(this.peak, rms);
     if (this.noise.length < CALIBRATION_FRAMES) {
       this.noise.push(rms);
       const mean = this.noise.reduce((a, b) => a + b, 0) / this.noise.length;
@@ -131,6 +148,7 @@ export class PhraseDetector {
       this.preRoll = [];
       this.speechFrames = 0;
       this.silentTail = 0;
+      this.onStart();
     }
     this.phrase.push(frame);
     if (loud) {
@@ -147,6 +165,19 @@ export class PhraseDetector {
     if (this.preRoll.length > PRE_ROLL_FRAMES) this.preRoll.shift();
   }
 
+  /** Недоговорённая фраза целиком — для черновика; `null`, пока человек молчит. */
+  snapshot(): { samples: Float32Array; frames: number; speech: number } | null {
+    if (!this.speaking) return null;
+    return { samples: join(this.phrase), frames: this.phrase.length, speech: this.speechFrames };
+  }
+
+  /** Громкость с прошлого вызова, 0–1: пик кадров в децибелах от −55 до −15 дБ. */
+  takeLevel(): number {
+    const db = 20 * Math.log10(Math.max(this.peak, 1e-5));
+    this.peak = 0;
+    return Math.min(1, Math.max(0, (db + 55) / 40));
+  }
+
   /** Закончить текущую фразу (тишина, предел длины или остановка записи). */
   finish(): void {
     if (!this.speaking) return;
@@ -158,12 +189,14 @@ export class PhraseDetector {
     this.phrase = [];
     this.speechFrames = 0;
     this.silentTail = 0;
-    if (speech < MIN_SPEECH_FRAMES) return;
-    const kept = frames.slice(0, frames.length - trim);
-    const out = new Float32Array(kept.length * FRAME);
-    kept.forEach((f, i) => out.set(f, i * FRAME));
-    this.onPhrase(out);
+    this.onEnd(speech < MIN_SPEECH_FRAMES ? null : join(frames.slice(0, frames.length - trim)));
   }
+}
+
+function join(frames: Float32Array[]): Float32Array {
+  const out = new Float32Array(frames.length * FRAME);
+  frames.forEach((f, i) => out.set(f, i * FRAME));
+  return out;
 }
 
 const TAP_WORKLET = `
@@ -204,23 +237,46 @@ async function openContext(stream: MediaStream): Promise<{ context: AudioContext
   return { context, source: context.createMediaStreamSource(stream) };
 }
 
-export function useDictation({ onText, onError }: { onText: (text: string) => void; onError: (message: string) => void }) {
+interface Options {
+  /** Итог фразы: дописывается в поле, дальше это обычный текст. */
+  onText: (text: string) => void;
+  onError: (message: string) => void;
+  /** Громкость голоса 0–1 несколько раз в секунду, пока идёт запись (0 — после остановки). */
+  onLevel?: (level: number) => void;
+}
+
+export function useDictation({ onText, onError, onLevel }: Options) {
   const [state, setState] = useState<DictationState>("idle");
   const [pending, setPending] = useState(0);
+  // Человек говорит: фраза ещё не закончилась.
+  const [speaking, setSpeaking] = useState(false);
+  // Черновики и ещё не выведенные итоги фраз по порядку — то, что поле показывает после текста.
+  const [interim, setInterim] = useState("");
   const capture = useRef<Capture | null>(null);
   const detector = useRef<PhraseDetector | null>(null);
+  const ticker = useRef<number | null>(null);
   // Номер сеанса записи: ответы прошлого сеанса после отмены в поле не попадают.
   const session = useRef(0);
   const nextSeq = useRef(0);
   const nextEmit = useRef(0);
+  const current = useRef<number | null>(null);
   const ready = useRef(new Map<number, string>());
+  const partials = useRef(new Map<number, string>());
+  const partialBusy = useRef(false);
+  const partialFrames = useRef(0);
+  const level = useRef(0);
   const inflight = useRef(new Set<Promise<void>>());
   const aborts = useRef(new Set<AbortController>());
   const textRef = useRef(onText);
   const errorRef = useRef(onError);
-  useEffect(() => { textRef.current = onText; errorRef.current = onError; }, [onText, onError]);
+  const levelRef = useRef(onLevel);
+  useEffect(() => { textRef.current = onText; errorRef.current = onError; levelRef.current = onLevel; }, [onText, onError, onLevel]);
 
   const release = useCallback(() => {
+    if (ticker.current !== null) window.clearInterval(ticker.current);
+    ticker.current = null;
+    level.current = 0;
+    levelRef.current?.(0);
     const c = capture.current;
     capture.current = null;
     if (!c) return;
@@ -229,18 +285,29 @@ export function useDictation({ onText, onError }: { onText: (text: string) => vo
     void c.context.close().catch(() => undefined);
   }, []);
 
+  const refreshInterim = useCallback(() => {
+    const parts: string[] = [];
+    for (let seq = nextEmit.current; seq < nextSeq.current; seq++) {
+      const text = ready.current.get(seq) ?? partials.current.get(seq) ?? "";
+      if (text.trim()) parts.push(text.trim());
+    }
+    setInterim(parts.join(" "));
+  }, []);
+
   const emitReady = useCallback(() => {
     while (ready.current.has(nextEmit.current)) {
       const text = ready.current.get(nextEmit.current) ?? "";
       ready.current.delete(nextEmit.current);
+      partials.current.delete(nextEmit.current);
       nextEmit.current += 1;
       if (text.trim()) textRef.current(text.trim());
     }
-  }, []);
+    refreshInterim();
+  }, [refreshInterim]);
 
-  const send = useCallback((samples: Float32Array) => {
+  /** Итог фразы: пропавший запрос выключает запись, набранное остаётся в поле. */
+  const sendFinal = useCallback((seq: number, samples: Float32Array) => {
     const mine = session.current;
-    const seq = nextSeq.current++;
     const controller = new AbortController();
     aborts.current.add(controller);
     setPending((n) => n + 1);
@@ -258,6 +325,8 @@ export function useDictation({ onText, onError }: { onText: (text: string) => vo
         session.current += 1;
         release();
         detector.current = null;
+        current.current = null;
+        setSpeaking(false);
         setState("idle");
         errorRef.current(e instanceof ApiError ? e.message : "Распознавание речи сейчас недоступно, наберите текст");
       })
@@ -269,13 +338,68 @@ export function useDictation({ onText, onError }: { onText: (text: string) => vo
     inflight.current.add(job);
   }, [emitReady, release]);
 
+  const phraseStarted = useCallback(() => {
+    current.current = nextSeq.current++;
+    partialFrames.current = 0;
+    setSpeaking(true);
+  }, []);
+
+  const phraseEnded = useCallback((samples: Float32Array | null) => {
+    const seq = current.current;
+    current.current = null;
+    setSpeaking(false);
+    if (seq === null) return;
+    if (samples) {
+      sendFinal(seq, samples);
+      return;
+    }
+    // Короткий звук — не фраза: черновик убирается, очередь фраз идёт дальше.
+    ready.current.set(seq, "");
+    emitReady();
+  }, [emitReady, sendFinal]);
+
+  /** Громкость для кнопки и черновик недоговорённой фразы. */
+  const tick = useCallback(() => {
+    const d = detector.current;
+    if (!d) return;
+    level.current = Math.max(d.takeLevel(), level.current * 0.6);
+    levelRef.current?.(level.current);
+    const seq = current.current;
+    if (seq === null || partialBusy.current) return;
+    const snap = d.snapshot();
+    if (!snap || snap.speech < PARTIAL_MIN_SPEECH_FRAMES || snap.frames > PARTIAL_MAX_FRAMES) return;
+    if (snap.frames - partialFrames.current < PARTIAL_EVERY_FRAMES) return;
+    partialFrames.current = snap.frames;
+    partialBusy.current = true;
+    const mine = session.current;
+    const controller = new AbortController();
+    aborts.current.add(controller);
+    api.speech.transcribe(encodeWav(snap.samples), controller.signal, { partial: true })
+      .then((r) => {
+        // Итог фразы важнее черновика: запоздавший черновик его не затирает.
+        if (session.current !== mine || seq < nextEmit.current || ready.current.has(seq)) return;
+        partials.current.set(seq, r.text);
+        refreshInterim();
+      })
+      // Черновик не обязателен: итог фразы придёт своим запросом.
+      .catch(() => undefined)
+      .finally(() => {
+        aborts.current.delete(controller);
+        partialBusy.current = false;
+      });
+  }, [refreshInterim]);
+
   const start = useCallback(async () => {
     if (capture.current || !dictationSupported()) return;
     setState("starting");
     session.current += 1;
     nextSeq.current = 0;
     nextEmit.current = 0;
+    current.current = null;
     ready.current.clear();
+    partials.current.clear();
+    partialBusy.current = false;
+    setInterim("");
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
@@ -288,7 +412,7 @@ export function useDictation({ onText, onError }: { onText: (text: string) => vo
     try {
       const { context, source } = await openContext(stream);
       const resampler = new Resampler(context.sampleRate);
-      const phrases = new PhraseDetector(send);
+      const phrases = new PhraseDetector(phraseEnded, phraseStarted);
       detector.current = phrases;
       const feed = (chunk: Float32Array) => { if (detector.current === phrases) phrases.push(resampler.push(chunk)); };
       // Узел должен быть в графе, иначе браузер его не вызывает; звук наружу не идёт.
@@ -314,6 +438,7 @@ export function useDictation({ onText, onError }: { onText: (text: string) => vo
       source.connect(tap);
       tap.connect(mute);
       capture.current = { stream, context, nodes: [source, tap, mute] };
+      ticker.current = window.setInterval(tick, TICK_MS);
       setState("recording");
       // Прогрев: после простоя сервис выгружает модель, и её загрузка (2–3 с) легла бы на первую
       // фразу. Полсекунды тишины будят модель, пока человек только начинает говорить.
@@ -324,7 +449,7 @@ export function useDictation({ onText, onError }: { onText: (text: string) => vo
       setState("idle");
       errorRef.current("Не удалось включить запись в этом браузере");
     }
-  }, [send]);
+  }, [phraseEnded, phraseStarted, tick]);
 
   /** Выключить запись: последняя фраза уходит на распознавание, ответы дописываются. */
   const stop = useCallback(async () => {
@@ -341,17 +466,22 @@ export function useDictation({ onText, onError }: { onText: (text: string) => vo
   const cancel = useCallback(() => {
     session.current += 1;
     detector.current = null;
+    current.current = null;
     aborts.current.forEach((c) => c.abort());
     aborts.current.clear();
     ready.current.clear();
+    partials.current.clear();
     release();
     setPending(0);
+    setSpeaking(false);
+    setInterim("");
     setState("idle");
   }, [release]);
 
   useEffect(() => () => {
     session.current += 1;
     aborts.current.forEach((c) => c.abort());
+    if (ticker.current !== null) window.clearInterval(ticker.current);
     const c = capture.current;
     capture.current = null;
     if (c) {
@@ -360,5 +490,5 @@ export function useDictation({ onText, onError }: { onText: (text: string) => vo
     }
   }, []);
 
-  return { state, pending, start, stop, cancel, recording: state === "recording" };
+  return { state, pending, speaking, interim, start, stop, cancel, recording: state === "recording" };
 }

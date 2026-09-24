@@ -2,7 +2,8 @@
 
 API проверяет запись и пересылает её во внутренний сервис `asr` (GigaAM), на диск аудио не
 пишет, в журнал — только длительности. В режиме заглушек сервис не нужен: ответ — фиксированная
-фраза, чтобы интерфейс и сквозные тесты работали без модели."""
+фраза, чтобы интерфейс и сквозные тесты работали без модели. `?partial=1` — черновик
+недоговорённой фразы: распознаётся так же, в журнале отмечен отдельно."""
 
 from __future__ import annotations
 
@@ -52,7 +53,7 @@ def speech_available(orch: Any) -> bool:
 
 
 @router.post("/speech/transcribe")
-async def transcribe(request: Request, orch: Orch) -> dict[str, Any]:
+async def transcribe(request: Request, orch: Orch, partial: bool = False) -> dict[str, Any]:
     cfg = orch.settings.speech
     declared = int(request.headers.get("content-length") or 0)
     if declared > cfg.max_bytes + MULTIPART_OVERHEAD:
@@ -100,7 +101,8 @@ async def transcribe(request: Request, orch: Orch) -> dict[str, Any]:
         )
     body = r.json()
     log.info(
-        "фраза %d мс: распознавание %d мс, всего %d мс",
+        "%s %d мс: распознавание %d мс, всего %d мс",
+        "черновик фразы" if partial else "фраза",
         duration_ms,
         int(body.get("infer_ms") or 0),
         int((time.perf_counter() - started) * 1000),

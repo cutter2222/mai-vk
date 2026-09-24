@@ -102,15 +102,20 @@ export const handlers = [
   ),
 
   // ---------- голосовой ввод ----------
-  // Модели в заглушке нет: каждая фраза «распознаётся» очередной строкой из списка.
+  // Модели в заглушке нет: каждая фраза «распознаётся» очередной строкой из списка, черновик
+  // недоговорённой фразы (?partial=1) — её первой половиной, очередь фраз он не двигает.
   http.post(base("/speech/transcribe"), async ({ request }) => {
     await delay(SPEECH_MS);
     // Прогрев модели при включении микрофона — полсекунды тишины: фразой не считается.
     const audio = (await request.formData()).get("audio");
     if (audio instanceof File && audio.size < 20000) return HttpResponse.json({ text: "", duration_ms: 500, infer_ms: SPEECH_MS, model: "stub" });
-    const text = SPEECH_PHRASES[speechCalls % SPEECH_PHRASES.length];
+    const phrase = SPEECH_PHRASES[speechCalls % SPEECH_PHRASES.length];
+    if (new URL(request.url).searchParams.get("partial")) {
+      const words = phrase.split(" ");
+      return HttpResponse.json({ text: words.slice(0, Math.ceil(words.length / 2)).join(" "), duration_ms: 800, infer_ms: SPEECH_MS, model: "stub" });
+    }
     speechCalls += 1;
-    return HttpResponse.json({ text, duration_ms: 1500, infer_ms: SPEECH_MS, model: "stub" });
+    return HttpResponse.json({ text: phrase, duration_ms: 1500, infer_ms: SPEECH_MS, model: "stub" });
   }),
 
   // ---------- проекты ----------

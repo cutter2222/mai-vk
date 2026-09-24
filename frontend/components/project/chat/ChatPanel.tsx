@@ -17,7 +17,6 @@ import { BriefCard, ContentCard, EditCard, JobCard, PptxQuestion, TemplateCard, 
 import { deckJobHasNews, isVisibleProjectMessage } from "./feed";
 import type { StagedPptx } from "./useChat";
 import { MessageTime } from "./MessageTime";
-import { AssistantTyping } from "./AssistantTyping";
 import { useAssistantTyping } from "./useAssistantTyping";
 
 interface Props {
@@ -78,22 +77,29 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
     const presented = typing.present(m, index);
     return presented ? [{ message: presented, index }] : [];
   });
-  const showTyping = typing.activeIndex > 0 || (typing.activeIndex < 0 && sending === "text");
   const settledEdits = session.result?.edits?.length ?? 0;
   useEffect(() => {
     const el = listRef.current;
     if (el && followRef.current) el.scrollTop = el.scrollHeight;
-  }, [count, session.result?.status, settledEdits, typing.progress, typing.activeIndex, showTyping]);
+  }, [count, session.result?.status, settledEdits, typing.progress, typing.activeIndex]);
 
   const blocked = session.editorDirty;
   // Надиктованная фраза дописывается в конец поля через пробел: дальше это обычный текст.
   const appendDictated = useCallback((phrase: string) => {
-    setText((current) => (current.trim() ? `${current.replace(/\s+$/, "")} ${phrase}` : phrase));
+    setText((current) => joinText(current, phrase));
   }, []);
   const dictationError = useCallback((message: string) => {
     notifications.show({ color: "red", title: "Голосовой ввод", message });
   }, []);
-  const dictation = useDictation({ onText: appendDictated, onError: dictationError });
+  // Громкость голоса — кольцо вокруг кнопки: видно, что микрофон слышит, ещё до первых слов.
+  const micRef = useRef<HTMLButtonElement | null>(null);
+  const showLevel = useCallback((level: number) => {
+    micRef.current?.style.setProperty("--mic-level", level.toFixed(2));
+  }, []);
+  const dictation = useDictation({ onText: appendDictated, onError: dictationError, onLevel: showLevel });
+  // Пока фраза недоговорена, поле показывает её черновик после набранного; итог его заменит.
+  // Черновик — не текст поля, поэтому правка поля ждёт итога (обычно меньше секунды).
+  const shownText = dictation.interim ? joinText(text, dictation.interim) : text;
   // Кнопка — только если сервис распознавания есть и браузер даёт микрофон (HTTPS или localhost).
   const micAvailable = useSyncExternalStore(noSubscription, dictationSupported, () => false);
   const showMic = speech && micAvailable;
@@ -116,10 +122,11 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
     }
   };
   const submit = async () => {
-    if (sending || blocked || (!text.trim() && pending.length === 0)) return;
-    // Отправка выключает запись: уходит то, что в поле, недослушанное не дописывается.
+    if (sending || blocked || (!shownText.trim() && pending.length === 0)) return;
+    // Отправка выключает запись: уходит то, что видно в поле (с черновиком недоговорённой
+    // фразы), недослушанное не дописывается.
     if (dictation.state !== "idle") dictation.cancel();
-    const t = text;
+    const t = shownText;
     const f = pending;
     const to = t.trim() ? target : null;
     setText("");
@@ -133,7 +140,7 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
     if (sending || blocked) return;
     void dispatch(option, [], null);
   };
-  const placeholder = officeSelection ? (officeSelection.objects.length > 1 ? "Что изменить в выбранных объектах или куда их переместить?" : "Что изменить в объекте или куда его переместить?") : target
+  const placeholder = dictation.recording ? "Говорите — текст появится здесь…" : officeSelection ? (officeSelection.objects.length > 1 ? "Что изменить в выбранных объектах или куда их переместить?" : "Что изменить в объекте или куда его переместить?") : target
     ? `Что изменить на слайде ${target.slideIndex + 1}?`
     : count === 0
       ? "Опишите задачу или перетащите файлы…"
@@ -155,7 +162,6 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
             <Text size="sm" className="chat-assistant-text" data-testid="chat-greeting" aria-busy={typing.activeIndex === 0} data-typing={typing.activeIndex === 0 || undefined}>
               {presentedGreeting?.kind === "text" ? presentedGreeting.text : ""}
             </Text>
-            {typing.activeIndex === 0 && <AssistantTyping />}
           </Stack>
           <MessageTime at={project.created_at} />
         </div>
@@ -171,7 +177,6 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
             <PptxQuestion name={s.name} resolved={s.answer} uploading onAnswer={(answer) => onAnswerStaged(s.local_id, answer)} testId={`template-question-${s.local_id}`} />
           </div>
         ))}
-        {showTyping && <AssistantTyping />}
       </div>
       <div className="chat-composer">
         {officeSelection && <Group gap={6} mb={8} data-testid="office-object-target">
@@ -219,7 +224,8 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
             autosize
             minRows={1}
             maxRows={6}
-            value={text}
+            value={shownText}
+            readOnly={Boolean(dictation.interim)}
             onChange={(e) => setText(e.currentTarget.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -230,10 +236,11 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
             style={{ flex: 1 }}
             data-testid="chat-input"
           />
-          {dictation.pending > 0 && <Text size="sm" c="dimmed" className="chat-mic-pending" aria-label="Распознаю фразу" data-testid="chat-mic-pending">…</Text>}
+          {(dictation.pending > 0 || dictation.speaking) && <Text size="sm" c="dimmed" className="chat-mic-pending" aria-label={dictation.speaking ? "Слушаю" : "Распознаю фразу"} data-testid="chat-mic-pending">…</Text>}
           {showMic && (
             <Tooltip label={dictation.recording ? "Остановить запись" : "Надиктовать (русский)"}>
               <ActionIcon
+                ref={micRef}
                 variant={dictation.recording ? "filled" : "subtle"}
                 color={dictation.recording ? "red" : "gray"}
                 size="lg"
@@ -250,7 +257,7 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
               </ActionIcon>
             </Tooltip>
           )}
-          <ActionIcon variant="filled" size="lg" onClick={submit} loading={Boolean(sending)} disabled={blocked || (!text.trim() && pending.length === 0)} aria-label="Отправить" data-testid="chat-send"><IconArrowUp size={18} /></ActionIcon>
+          <ActionIcon variant="filled" size="lg" onClick={submit} loading={Boolean(sending)} disabled={blocked || (!shownText.trim() && pending.length === 0)} aria-label="Отправить" data-testid="chat-send"><IconArrowUp size={18} /></ActionIcon>
         </div>
         {blocked ? (
           <Text size="xs" c="orange" mt={6} data-testid="chat-draft-hint">Сначала примените или отмените правки на слайде: черновик редактора ждёт решения.</Text>
@@ -260,6 +267,11 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
       </div>
     </Dropzone>
   );
+}
+
+/** Надиктованное дописывается через пробел. */
+function joinText(current: string, phrase: string): string {
+  return current.trim() ? `${current.replace(/\s+$/, "")} ${phrase}` : phrase;
 }
 
 function renderMessage(m: ChatMessage, ctx: CardContext) {

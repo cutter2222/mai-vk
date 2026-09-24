@@ -90,6 +90,12 @@ def test_phrase_goes_to_the_asr_service(
         body = r.json()
         assert body["text"] == "а" and body["duration_ms"] == 3000 and body["model"] == "fake"
         assert session.calls == 1 and model.status()["state"] == "loaded"
+        # Черновик недоговорённой фразы распознаётся тем же путём.
+        draft = client.post(
+            f"{URL}?partial=1", files={"audio": ("phrase.wav", wav_bytes(1.5), "audio/wav")}
+        )
+        assert draft.status_code == 200 and draft.json()["duration_ms"] == 1500
+        assert session.calls == 2
     finally:
         server.shutdown()
         server.server_close()

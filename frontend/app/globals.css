@@ -1141,17 +1141,14 @@ body {
 
 /* Голосовой ввод: пока идёт запись, кнопка красная и мягко пульсирует; «…» — фраза ещё
    распознаётся и допишется в поле. */
+/* Кольцо вокруг кнопки растёт с громкостью голоса (--mic-level 0–1 ставит useDictation). */
 .chat-mic[data-recording] {
-  animation: chat-mic-pulse 1.4s ease-in-out infinite;
-}
-
-@keyframes chat-mic-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(224, 49, 49, 0.45); }
-  50% { box-shadow: 0 0 0 6px rgba(224, 49, 49, 0); }
+  box-shadow: 0 0 0 calc(2px + var(--mic-level, 0) * 9px) rgba(224, 49, 49, 0.28);
+  transition: box-shadow 90ms linear;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .chat-mic[data-recording] { animation: none; }
+  .chat-mic[data-recording] { transition: none; }
 }
 
 .chat-mic-pending {

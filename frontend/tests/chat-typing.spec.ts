@@ -48,7 +48,8 @@ test("assistant types replies sequentially, survives saved IDs and restores hist
   const project = await setup(page);
   await send(page);
   await expect.poll(() => project.events.length).toBe(2);
-  await expect(page.getByTestId("assistant-typing")).toBeVisible();
+  // Надписи «Ассистент печатает…» нет: ответ сам появляется по буквам.
+  await expect(page.getByTestId("assistant-typing")).toHaveCount(0);
   await expect(replies(page)).toHaveCount(0);
   await page.clock.runFor(800);
   const first = replies(page).first();
@@ -120,7 +121,7 @@ test("greeting types before replies without blocking template controls", async (
   await expect(page.getByTestId("message-time").first()).toHaveAttribute("datetime", "2026-09-21T12:00:00Z");
 });
 
-test("typing indicator covers a pending request and disappears after a failed request reply", async ({ page }) => {
+test("a pending request shows only the busy send button, and the failed request reply is typed", async ({ page }) => {
   await setup(page);
   let release!: () => void;
   const pending = new Promise<void>((resolve) => { release = resolve; });
@@ -130,7 +131,8 @@ test("typing indicator covers a pending request and disappears after a failed re
   });
   await send(page);
   await page.clock.runFor(3000);
-  await expect(page.getByTestId("assistant-typing")).toBeVisible();
+  await expect(page.getByTestId("chat-send")).toHaveAttribute("data-loading", "true");
+  await expect(page.getByTestId("assistant-typing")).toHaveCount(0);
   await expect(replies(page)).toHaveCount(0);
   release();
   await expect(page.getByTestId("chat-input")).toHaveValue("");

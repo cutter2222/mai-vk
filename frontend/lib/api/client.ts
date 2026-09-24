@@ -219,12 +219,15 @@ export const api = {
   health: () => request<HealthResponse>("/health"),
   capabilities: () => request<CapabilitiesResponse>("/capabilities"),
 
-  /** Голосовой ввод: фраза (WAV PCM16 моно 16 кГц, до 25 с) → текст; аудио сервер не хранит. */
+  /**
+   * Голосовой ввод: фраза (WAV PCM16 моно 16 кГц, до 25 с) → текст; аудио сервер не хранит.
+   * `partial` — черновик недоговорённой фразы: тот же ответ, в журнале сервера отмечен отдельно.
+   */
   speech: {
-    transcribe: (wav: Blob, signal?: AbortSignal) => {
+    transcribe: (wav: Blob, signal?: AbortSignal, options: { partial?: boolean } = {}) => {
       const form = new FormData();
       form.append("audio", wav, "phrase.wav");
-      return request<SpeechTranscript>("/speech/transcribe", { method: "POST", body: form, signal });
+      return request<SpeechTranscript>(`/speech/transcribe${options.partial ? "?partial=1" : ""}`, { method: "POST", body: form, signal });
     },
   },
 
