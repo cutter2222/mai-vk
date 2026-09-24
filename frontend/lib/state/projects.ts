@@ -444,6 +444,13 @@ export async function addProjectFiles(projectId: string, files: File[]): Promise
   return rows;
 }
 
+/** Текст сообщения с содержанием — материал проекта («Текст из чата.md»), как загруженный документ. */
+export async function addProjectText(projectId: string, text: string): Promise<ProjectFile> {
+  const row = await api.projects.addText(await serverId(projectId), text);
+  updateProject(projectId, (p) => ({ files: [...p.files.filter((f) => f.file_id !== row.file_id), row] }));
+  return row;
+}
+
 export function patchProjectFile(projectId: string, fileId: string, patch: Partial<ProjectFile>): void {
   updateProject(projectId, (p) => ({ files: p.files.map((f) => (f.file_id === fileId ? { ...f, ...patch } : f)) }));
   const serverPatch: Partial<Pick<ProjectFile, "kind" | "template_id" | "package_id">> = {};

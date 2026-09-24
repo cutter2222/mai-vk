@@ -243,6 +243,61 @@ def keep_only_slides(prs: Any, keep: list[Any]) -> int:
     return removed
 
 
+def retarget_slide_links(prs: Any, origin: dict[Any, Any] | None = None) -> int:
+    """Переходы между слайдами после отбора колоды: ссылка на образец, чья копия осталась
+    в колоде (`origin`: часть образца → часть копии), ведёт на копию; ссылка на слайд вне
+    колоды снимается вместе с действием перехода. Иначе убранный слайд шаблона
+    («Back to overview page» на оглавление) остаётся в файле достижимым лишним слайдом.
+    Кнопка перехода — фигура, весь текст которой был этой ссылкой, — убирается целиком:
+    надпись «вернуться к оглавлению» без оглавления бессмысленна. Возвращает число снятых
+    ссылок."""
+    origin = origin or {}
+    deck = {slide.part for slide in prs.slides}
+    dropped = 0
+    for slide in prs.slides:
+        part = slide.part
+        mapping: dict[str, str] = {}
+        for rid, rel in list(part.rels.items()):
+            if rel.reltype != RT.SLIDE or rel.is_external or rel.target_part in deck:
+                continue
+            target = origin.get(rel.target_part)
+            mapping[rid] = part.relate_to(target, RT.SLIDE) if target in deck else ""
+        if not mapping:
+            continue
+        dead = [
+            node
+            for node in part._element.iter(f"{{{NS_A}}}hlinkClick", f"{{{NS_A}}}hlinkHover")
+            if mapping.get(node.get(f"{{{NS_R}}}id") or "") == ""
+            and node.get(f"{{{NS_R}}}id") in mapping
+        ]
+        gone = {rid for rid, new in mapping.items() if new == ""}
+        buttons = {id(sp): sp for node in dead if (sp := _nav_button(node, gone)) is not None}
+        for node in dead:
+            node.getparent().remove(node)
+            dropped += 1
+        for sp in buttons.values():
+            sp.getparent().remove(sp)
+        _remap_rel_ids(part._element, mapping)
+        for rid in mapping:
+            part.drop_rel(rid)
+    return dropped
+
+
+def _nav_button(link: Any, gone: set[str]) -> Any | None:
+    """Фигура-кнопка перехода: ссылка стоит на фрагменте текста, и каждый непустой фрагмент
+    этой фигуры ведёт на снятый слайд (`gone` — идентификаторы связей). Картинка со ссылкой
+    и абзац с одним словом-ссылкой — нет."""
+    if etree.QName(link.getparent()).localname != "rPr":
+        return None
+    sp = next((a for a in link.iterancestors(f"{{{NS_P}}}sp")), None)
+    if sp is None:
+        return None
+    runs = [r for r in sp.iter(f"{{{NS_A}}}r") if "".join(r.itertext()).strip()]
+    links = [r.find(f"{{{NS_A}}}rPr/{{{NS_A}}}hlinkClick") for r in runs]
+    linked = [h for h in links if h is not None and h.get(f"{{{NS_R}}}id") in gone]
+    return sp if runs and len(linked) == len(runs) else None
+
+
 def part_is_xml(part: Any) -> bool:
     return isinstance(part, XmlPart)
 

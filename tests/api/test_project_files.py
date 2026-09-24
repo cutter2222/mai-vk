@@ -124,3 +124,22 @@ def test_unsafe_or_unknown_files(client: TestClient) -> None:
     assert foreign.status_code == 404
     assert foreign.json()["error"]["code"] == "file_not_found"
     assert client.get(f"/api/projects/{pid}/files/file_missing/thumbnail").status_code == 404
+
+
+def test_chat_text_becomes_markdown_material(client: TestClient) -> None:
+    """Сообщение с раскладкой по слайдам сохраняется материалом «Текст из чата.md»:
+    строки восстановлены, «Слайд N» — заголовки; второе сообщение — отдельный файл."""
+    pid = _project(client)
+    text = (FIXTURES / "content" / "chat_outline_flat.txt").read_text(encoding="utf-8")
+    r = client.post(f"/api/projects/{pid}/files/text", json={"text": text})
+    assert r.status_code == 201, r.text
+    row = r.json()
+    assert row["name"] == "Текст из чата.md" and row["kind"] == "material"
+    assert row["check"]["status"] == "ok"
+    body = client.get(f"/api/projects/{pid}/files/{row['file_id']}/content").content.decode()
+    assert body.count("\n## Слайд ") == 10
+    second = client.post(f"/api/projects/{pid}/files/text", json={"text": "Слайд 1: А\nСлайд 2: Б"})
+    assert second.json()["name"] == "Текст из чата 2.md"
+    assert client.post(f"/api/projects/{pid}/files/text", json={"text": ""}).status_code == 422
+    missing = client.post("/api/projects/prj_missing/files/text", json={"text": "x"})
+    assert missing.status_code == 404

@@ -172,6 +172,55 @@ def test_clone_keeps_references_when_skipped_rel_precedes_others(tmp_path: pathl
     assert ooxml.check_package(out).ok
 
 
+def _link_to(slide: object, target: object, text: str) -> None:
+    """Фигура с переходом на другой слайд, как кнопка «Back to overview page»."""
+    from pptx.opc.constants import RELATIONSHIP_TYPE as RT
+
+    box = slide.shapes.add_textbox(0, 0, Pt(100), Pt(20))  # type: ignore[attr-defined]
+    run = box.text_frame.paragraphs[0].add_run()
+    run.text = text
+    rid = slide.part.relate_to(target.part, RT.SLIDE)  # type: ignore[attr-defined]
+    rpr = run._r.get_or_add_rPr()
+    link = rpr.makeelement(f"{{{ooxml.NS_A}}}hlinkClick", {})
+    link.set(f"{{{ooxml.NS_R}}}id", rid)
+    link.set("action", "ppaction://hlinksldjump")
+    rpr.append(link)
+
+
+def test_links_to_dropped_slides_do_not_keep_them(tmp_path: pathlib.Path) -> None:
+    """Колода из копий образцов: переход на образец, чья копия есть в колоде, ведёт на
+    копию; переход на оглавление, которого в колоде нет, снимается — иначе оглавление
+    остаётся в файле лишним слайдом («в файле 6 слайдов, по плану 5»). Кнопка, весь текст
+    которой — такой переход, убирается целиком; слово-ссылка в обычном тексте остаётся."""
+    prs = Presentation()
+    blank = prs.slide_layouts[6]
+    cover, overview, content = (prs.slides.add_slide(blank) for _ in range(3))
+    _link_to(content, overview, "Back to overview page")
+    _link_to(content, cover, "На обложку")
+    _link_to(content, overview, "см. оглавление")
+    para = content.shapes[-1].text_frame.paragraphs[0]
+    lead = para.add_run()
+    lead.text = "Подробности: "
+    para.runs[0]._r.addprevious(lead._r)
+    cover_copy = ooxml.clone_slide(prs, cover)
+    content_copy = ooxml.clone_slide(prs, content)
+    ooxml.keep_only_slides(prs, [cover_copy, content_copy])
+    origin = {cover.part: cover_copy.part, content.part: content_copy.part}
+    assert ooxml.retarget_slide_links(prs, origin) == 2
+    out = _save(prs, tmp_path / "links.pptx")
+    report = ooxml.check_package(out)
+    assert report.ok, report.errors
+    assert report.slides == 2 and report.unreachable_parts == []
+    saved = Presentation(str(out))
+    runs = [
+        r for p in saved.slides[1].shapes for para in p.text_frame.paragraphs for r in para.runs
+    ]
+    assert [r.text for r in runs] == ["На обложку", "Подробности: ", "см. оглавление"]
+    assert runs[2]._r.find(f".//{{{ooxml.NS_A}}}hlinkClick") is None
+    target = runs[0]._r.find(f".//{{{ooxml.NS_A}}}hlinkClick").get(f"{{{ooxml.NS_R}}}id")
+    assert saved.slides[1].part.related_part(target) is saved.slides[0].part
+
+
 def test_drop_template_logos_removes_marked_shapes() -> None:
     """Знак шаблона снимается с макета по профилю: объект уходит, остальное на месте.
 

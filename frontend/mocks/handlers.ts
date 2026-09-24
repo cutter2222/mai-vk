@@ -188,6 +188,15 @@ export const handlers = [
     return rows.length ? HttpResponse.json(rows, { status: 201 }) : err(404, "project_not_found", "Проект не найден");
   }),
 
+  http.post(base("/projects/:id/files/text"), async ({ params, request }) => {
+    const { text } = (await request.json()) as { text?: string };
+    if (!text?.trim()) return err(422, "invalid_request", "Пустой текст");
+    const taken = projects.getProject(String(params.id))?.files.map((f) => f.name) ?? [];
+    const name = ["Текст из чата.md", ...Array.from({ length: taken.length }, (_, i) => `Текст из чата ${i + 2}.md`)].find((n) => !taken.includes(n))!;
+    const row = projects.addFile(String(params.id), name, new Blob([text]).size);
+    return row ? HttpResponse.json(row, { status: 201 }) : err(404, "project_not_found", "Проект не найден");
+  }),
+
   http.patch(base("/projects/:id/files/:fileId"), async ({ params, request }) => {
     const patch = (await request.json()) as Partial<ProjectFile>;
     const file = projects.patchFile(String(params.id), String(params.fileId), patch);

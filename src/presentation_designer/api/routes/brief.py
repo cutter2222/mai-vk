@@ -19,7 +19,9 @@ router = APIRouter(tags=["brief"])
 
 
 class BriefRequest(BaseModel):
-    text: str = Field(..., max_length=4000)
+    # Длинное сообщение с содержанием разрешено: модели уходит выдержка (brief.model_text),
+    # а сам текст — материалом «Текст из чата».
+    text: str = Field(..., max_length=100_000)
     brief: dict[str, Any] | None = None
     settings: dict[str, Any] | None = None
 

@@ -56,6 +56,7 @@ from presentation_designer.generation.matching import (
     sequence_ok,
     siblings_of,
 )
+from presentation_designer.generation.outline import OutlineSlide, slide_of, user_outline
 from presentation_designer.layout import diagrams
 from presentation_designer.parsing.content.facts import weak_metric
 from presentation_designer.shared import text_metrics
@@ -454,6 +455,8 @@ class Packet:
     lo: int
     hi: int
     candidates: dict[str, list[PatternInfo]] = field(default_factory=dict)
+    # Раздел раскладки пользователя «Слайд N», из которого этот слайд.
+    outline: OutlineSlide | None = None
 
 
 @dataclass
@@ -475,6 +478,9 @@ class Structure:
     divider_pool: list[PatternInfo] = field(default_factory=list)
     final_pool: list[PatternInfo] = field(default_factory=list)
     agenda_pool: list[PatternInfo] = field(default_factory=list)
+    # Обложка по титульному разделу раскладки пользователя: «Заголовок: …», «Подзаголовок: …».
+    cover_title: str = ""
+    cover_subtitle: str = ""
 
     def service_styles(self) -> JsonDict:
         """Стили служебных слайдов колоды для отчёта: паттерн и его style_key по ролям."""
@@ -597,6 +603,33 @@ def deck_structure(ctx: Context, *, use_agenda: bool | None = None) -> Structure
             "В профиле шаблона нет паттерна с заголовком для титульного слайда",
             details={"template_id": ctx.profile.get("template_id")},
         )
+    outline = user_outline(ctx.package)
+    if outline:
+        n = len(outline) + (0 if outline[0].cover else 1)
+        if not ctx.spec.explicit or ctx.spec.lo <= n <= ctx.spec.hi:
+            return _outline_structure(
+                ctx,
+                outline,
+                Structure(
+                    title_pattern=title_pattern,
+                    divider_pattern=divider_pattern,
+                    final_pattern=None,
+                    agenda_pattern=None,
+                    title_theses=[],
+                    final_thesis=None,
+                    content=[],
+                    sections=[],
+                    dividers=[],
+                    dropped=[],
+                    packets=[],
+                    content_budget=0,
+                    title_pool=title_pool,
+                    divider_pool=divider_pool,
+                    final_pool=final_pool,
+                    agenda_pool=agenda_pool,
+                ),
+            )
+        ctx.fix("user_outline_ignored", f"раскладка на {n} слайдов, просили {ctx.spec.as_dict()}")
     theses = ctx.theses
     title_theses: list[str] = []
     if theses and theses[0].kind in ("section", "context") and theses[0].order == 1:
@@ -665,6 +698,47 @@ def deck_structure(ctx: Context, *, use_agenda: bool | None = None) -> Structure
         final_pool=final_pool,
         agenda_pool=agenda_pool,
     )
+
+
+def _outline_structure(ctx: Context, outline: list[OutlineSlide], base: Structure) -> Structure:
+    """Колода по раскладке пользователя «Слайд N»: обложка — титульный раздел, дальше по
+    слайду на раздел в его порядке. Тезис относится к разделу по своим блокам и блокам своих
+    фактов, без ссылок — к разделу предыдущего тезиса. Разделителей, оглавления и финала
+    «Спасибо» нет: их пользователь не раскладывал, и они вытесняли его слайды."""
+    cover = outline[0] if outline[0].cover else None
+    slides = outline[1:] if cover else outline
+    first = 1 if cover else 0
+    groups: list[list[Thesis]] = [[] for _ in slides]
+    last: int | None = None
+    for t in ctx.theses:
+        if t.kind == "section":
+            continue
+        where = slide_of(outline, _thesis_sources(ctx, t, limit=10))
+        where = where if where is not None else (last if last is not None else first)
+        last = where
+        if cover is not None and where == 0:
+            base.title_theses.append(t.id)
+        else:
+            groups[where - first].append(t)
+    # Порядок колоды — порядок раскладки, а не порядок тезисов сюжета.
+    for i, group in enumerate(groups):
+        for n, t in enumerate(group):
+            t.order = 1000 * (i + 1) + n
+    ctx.theses.sort(key=lambda t: t.order)
+    kept = [(s, g) for s, g in zip(slides, groups, strict=True) if g]
+    for s, g in zip(slides, groups, strict=True):
+        if not g:
+            ctx.fix("outline_slide_missing", f"«{s.title[:60]}»: в сюжете нет тезиса раздела")
+    base.packets = [Packet(i, g, 1, 1, 1, outline=s) for i, (s, g) in enumerate(kept)]
+    base.content = [t for _, g in kept for t in g]
+    base.content_budget = len(base.packets)
+    if cover is not None:
+        base.cover_title = cover.fields.get("заголовок", "")
+        base.cover_subtitle = cover.fields.get("подзаголовок", "")
+    n = len(base.packets) + 1
+    ctx.spec = SlideSpec(n, n, n, n, True)
+    ctx.fix("user_outline", f"раскладка пользователя: {len(outline)} слайдов «Слайд N»")
+    return base
 
 
 def make_packets(ctx: Context, content: list[Thesis], budget: int) -> list[Packet]:
@@ -838,6 +912,13 @@ def packet_digest(ctx: Context, structure: Structure, packet: Packet) -> str:
         mark = " ← этот пакет" if t.id in packet_ids else ""
         flag = "обяз." if t.required else "необяз."
         lines.append(f"{t.id} [{t.kind}, {flag}] {t.statement[:140]}{mark}")
+    if packet.outline is not None:
+        slide = packet.outline
+        lines.append(
+            f"Это слайд {slide.number} из раскладки пользователя «{slide.title}»: "
+            "ровно один слайд; заголовок — по заголовку раздела (без слов «Слайд N»), "
+            "содержание — пункты и цифры раздела, ничего не выдумывай и не теряй."
+        )
     lines.append(
         "Тезисы пакета (идентификатор · вид · обязательный · формулировка · пояснение · "
         "факты · данные · изображения · предлагаемая подача · допустимые сокращения):"
@@ -845,6 +926,7 @@ def packet_digest(ctx: Context, structure: Structure, packet: Packet) -> str:
     fact_ids: list[str] = []
     ds_ids: list[str] = []
     asset_ids: list[str] = []
+    shown: list[str] = []
     for t in packet.theses:
         reds = ", ".join(r["reduction"] for r in ctx.reductions.get(t.id, [])) or "—"
         need = thesis_need(ctx, t)
@@ -857,17 +939,15 @@ def packet_digest(ctx: Context, structure: Structure, packet: Packet) -> str:
         fact_ids.extend(f for f in t.fact_refs if f in ctx.facts and f not in fact_ids)
         ds_ids.extend(d for d in t.dataset_refs if d in ctx.datasets and d not in ds_ids)
         asset_ids.extend(a for a in t.asset_refs if a in ctx.assets and a not in asset_ids)
+        shown.extend(b for b in _thesis_sources(ctx, t) if b not in shown)
         for b in _thesis_sources(ctx, t):
-            block = ctx.blocks.get(b)
-            if block is None:
-                continue
-            if block.get("kind") == "bullets" and block.get("items"):
-                items = " | ".join(str(i)[:120] for i in block["items"][:8])
-                lines.append(f"  список из источника {b}: {items}")
-            elif block.get("kind") in ("paragraph", "quote", "kpi", "code") and block.get("text"):
-                # Формулировка тезиса — вывод, а раскрывают его подробности источника:
-                # без них модель пересказывает заголовок одной фразой.
-                lines.append(f"  текст источника {b}: {_clean(block['text'], 500)}")
+            lines.extend(_source_lines(ctx, b))
+    if packet.outline is not None:
+        # Раздел пользователя целиком: его пункты и цифры — содержание этого слайда.
+        for b in packet.outline.block_ids[1:]:
+            if b not in shown:
+                shown.append(b)
+                lines.extend(_source_lines(ctx, b))
     if fact_ids:
         lines.append("Факты (только ссылками {fact:id}; значение подставит код):")
         lines.extend(_fact_line(ctx.facts[f]) for f in fact_ids)
@@ -907,6 +987,21 @@ def packet_digest(ctx: Context, structure: Structure, packet: Packet) -> str:
         f"{structure.content_budget}."
     )
     return "\n".join(lines)
+
+
+def _source_lines(ctx: Context, block_id: str) -> list[str]:
+    """Блок источника строкой выдержки: список пунктами, абзац текстом."""
+    block = ctx.blocks.get(block_id)
+    if block is None:
+        return []
+    if block.get("kind") == "bullets" and block.get("items"):
+        items = " | ".join(str(i)[:120] for i in block["items"][:8])
+        return [f"  список из источника {block_id}: {items}"]
+    if block.get("kind") in ("paragraph", "quote", "kpi", "code") and block.get("text"):
+        # Формулировка тезиса — вывод, а раскрывают его подробности источника:
+        # без них модель пересказывает заголовок одной фразой.
+        return [f"  текст источника {block_id}: {_clean(block['text'], 500)}"]
+    return []
 
 
 def _thesis_sources(ctx: Context, t: Thesis, limit: int = 4) -> list[str]:
@@ -2885,12 +2980,14 @@ def _title_draft(ctx: Context, structure: Structure) -> Draft:
     brief = ctx.story.get("effective_brief") or {}
     p = structure.title_pattern
     assert p is not None
-    title = _cover_title(ctx.story)
+    title = _clean(structure.cover_title, 160) or _cover_title(ctx.story)
     # Подпись обложки — о чём колода, а не для кого. В шаблоне ЛЦТ на этом
     # месте стоит «Разработчик корпоративного ПО»: жанр — описание, а не
     # адресат. «Для: инвесторы» читается как поле формы.
     subtitle = _clean(
-        ctx.story.get("key_takeaway") or (brief.get("audience") and f"Для: {brief['audience']}"),
+        structure.cover_subtitle
+        or ctx.story.get("key_takeaway")
+        or (brief.get("audience") and f"Для: {brief['audience']}"),
         200,
     )
     if is_concept(ctx.story):

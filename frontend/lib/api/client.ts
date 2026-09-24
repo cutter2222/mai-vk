@@ -273,6 +273,8 @@ export const api = {
       files.forEach((f) => form.append("files", f));
       return request<ProjectFile[]>(`/projects/${encodeURIComponent(id)}/files`, { method: "POST", body: form, headers: mockFilesHeader(files) });
     },
+    /** Сообщение с содержанием — материалом «Текст из чата.md»: сервер восстанавливает строки и разделы «Слайд N». */
+    addText: (id: string, text: string) => request<ProjectFile>(`/projects/${encodeURIComponent(id)}/files/text`, json({ text })),
     patchFile: (id: string, fileId: string, patch: Partial<Pick<ProjectFile, "kind" | "template_id" | "package_id">>) =>
       request<ProjectFile>(`/projects/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}`, json(patch, "PATCH")),
     deleteFile: (id: string, fileId: string) => request<void>(`/projects/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}`, { method: "DELETE" }),

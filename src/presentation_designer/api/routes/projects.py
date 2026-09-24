@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from presentation_designer.api.deps import Orch
 from presentation_designer.api.errors import ApiError
 from presentation_designer.contracts import models as m
+from presentation_designer.parsing.content import chat_text
 from presentation_designer.pipeline.files import MIME_BY_FORMAT, default_kind, format_for, safe_name
 from presentation_designer.pipeline.results import result_or_none
 from presentation_designer.pipeline.state import NotFound
@@ -275,6 +276,57 @@ def upload_files(project_id: str, files: list[UploadFile], orch: Orch) -> list[d
         )
         out.append(m.ProjectFile.model_validate(row).model_dump(mode="json", exclude_none=True))
     return out
+
+
+class TextMaterial(BaseModel):
+    text: str = Field(..., min_length=1, max_length=100_000)
+
+
+CHAT_TEXT_NAME = "Текст из чата"
+
+
+@router.post("/projects/{project_id}/files/text", status_code=201)
+def upload_text(project_id: str, body: TextMaterial, orch: Orch) -> dict[str, Any]:
+    """Сообщение чата с содержанием (раскладка «Слайд N», тезисы, цифры) — материал проекта:
+    Markdown с восстановленными строками разбирается импортом, как документ, и его факты
+    доходят до слайдов, а не теряются в брифе."""
+    try:
+        project = orch.state.get_project(project_id)
+    except NotFound as e:
+        raise ApiError(404, "project_not_found", "Проект не найден") from e
+    limits = orch.settings.limits
+    count, total = orch.state.project_usage(project_id)
+    if count + 1 > limits.max_project_files:
+        raise ApiError(
+            413, "project_files_quota", f"В проекте не больше {limits.max_project_files} файлов"
+        )
+    taken = {f["name"] for f in project["files"]}
+    name = next(
+        n
+        for n in (f"{CHAT_TEXT_NAME}{f' {i}' if i > 1 else ''}.md" for i in range(1, count + 2))
+        if n not in taken
+    )
+    stored = orch.files.store_bytes(chat_text.to_markdown(body.text).encode("utf-8"), name)
+    if (
+        total + stored.size_bytes > limits.max_project_mb * 1024 * 1024
+        and not orch.state.blob_references(stored.sha256)
+    ):
+        orch.files.remove(stored.sha256)
+        raise ApiError(
+            413,
+            "project_size_quota",
+            f"Суммарный объём файлов проекта не больше {limits.max_project_mb} МБ",
+        )
+    row = orch.state.add_file(
+        project_id,
+        sha256=stored.sha256,
+        name=name,
+        size_bytes=stored.size_bytes,
+        mime=MIME_BY_FORMAT.get("markdown", "text/markdown"),
+        kind="material",
+        check=stored.check,
+    )
+    return m.ProjectFile.model_validate(row).model_dump(mode="json", exclude_none=True)
 
 
 @router.patch("/projects/{project_id}/files/{file_id}")

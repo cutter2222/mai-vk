@@ -14,6 +14,8 @@ import logging
 import re
 from typing import Any
 
+from presentation_designer.parsing.content import chat_text
+
 log = logging.getLogger(__name__)
 
 BRIEF_LAYER_VERSION = "0.1.0"
@@ -200,7 +202,52 @@ def extract_brief(text: str, current_brief: dict[str, Any] | None = None) -> dic
         out["slide_count"] = slide_count
     if variants:
         out["variants"] = variants
+    return with_outline(out, text)
+
+
+# ---------- раскладка по слайдам ----------
+
+# «на 7 слайдов», «10–12 слайдов» — число, названное словами, а не номер маркера «Слайд N:».
+_COUNT_RE = re.compile(r"(?i)\d{1,2}\s*(?:[-–—]\s*\d{1,2}\s*)?слайд")
+_MARKER_ITEM = re.compile(r"(?i)^(?:слайд|slide)\s*№?\s*\d{1,2}\b")
+
+
+def with_outline(out: dict[str, Any], text: str) -> dict[str, Any]:
+    """Сообщение с раскладкой «Слайд 1: …, Слайд 2: …» задаёт число слайдов, если оно не
+    названо словами; пункты «Слайд N: …» — не обязательные тезисы брифа, а разделы
+    материала (их содержание приходит файлом «Текст из чата»)."""
+    brief = out.get("brief") or {}
+    items = brief.get("must_include")
+    if isinstance(items, list):
+        kept = [i for i in items if not _MARKER_ITEM.match(str(i).strip())]
+        if len(kept) != len(items):
+            if kept:
+                brief["must_include"] = kept
+            else:
+                brief.pop("must_include", None)
+                out["understood"] = [u for u in out.get("understood", []) if u != "must_include"]
+    marks = chat_text.slide_marks(text or "")
+    if marks and not _COUNT_RE.search(chat_text.SLIDE_MARK.sub(" ", text)):
+        out["slide_count"] = {"exact": len(marks)}
+        if "slide_count" not in out.get("understood", []):
+            out.setdefault("understood", []).append("slide_count")
     return out
+
+
+def model_text(text: str, limit: int = 4000) -> str:
+    """Выдержка длинного сообщения для модели брифа: начало (тема, аудитория, цель обычно
+    там) и названия разделов; остальное — содержание, его разбирает импорт материалов."""
+    cleaned = re.sub(r"\s+", " ", text or "").strip()
+    if len(cleaned) <= limit:
+        return cleaned
+    headings = [
+        line[3:].strip()
+        for line in chat_text.to_markdown(text).splitlines()
+        if line.startswith("## ")
+    ]
+    outline = ("\nРазделы: " + "; ".join(h[:100] for h in headings)) if headings else ""
+    head = cleaned[: max(500, limit - len(outline) - 20)].rsplit(" ", 1)[0]
+    return f"{head} …{outline}"
 
 
 # ---------- модель ----------
@@ -328,7 +375,7 @@ async def extract_brief_with_model(
         return extract_brief(text, current_brief)
     params = skill.manifest.params or {}
     budget = float(deadline_s if deadline_s is not None else params.get("deadline_s", 8))
-    req = skill.request("brief.extract", cleaned, schema=BRIEF_MODEL_SCHEMA, stage="brief")
+    req = skill.request("brief.extract", model_text(text), schema=BRIEF_MODEL_SCHEMA, stage="brief")
     req.schema_name = "brief_extract"
     req.deadline = Deadline.after(budget)
     try:
@@ -337,7 +384,7 @@ async def extract_brief_with_model(
         log.warning("бриф моделью не извлечён (%s): эвристика", f"{type(e).__name__}: {e}"[:200])
         return extract_brief(text, current_brief)
     answer = resp.parsed if isinstance(resp.parsed, dict) else {}
-    out = validate_model_answer(answer, cleaned)
+    out = with_outline(validate_model_answer(answer, cleaned), text)
     ref = _model_ref(client, skill)
     if ref:
         out["model"] = ref

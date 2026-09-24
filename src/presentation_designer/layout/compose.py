@@ -56,7 +56,14 @@ from presentation_designer.layout import text as tx
 from presentation_designer.layout.composed import SlideRecord, SlotFill, build_composed_deck
 from presentation_designer.layout.integrity import IntegrityReport, check_deck
 from presentation_designer.layout.media import export_media
-from presentation_designer.layout.ooxml import NS_A, NS_P, NS_R, clone_slide, keep_only_slides
+from presentation_designer.layout.ooxml import (
+    NS_A,
+    NS_P,
+    NS_R,
+    clone_slide,
+    keep_only_slides,
+    retarget_slide_links,
+)
 from presentation_designer.layout.overrides import apply_overrides
 from presentation_designer.layout.package import (
     drop_template_logos,
@@ -2092,6 +2099,8 @@ def compose_deck(
         for s in ordered_slides
     ]
     preserved_slides: dict[int, Any] = {}
+    # Образец → его первая копия в колоде: по ней перенаправляются переходы между слайдами.
+    origin: dict[Any, Any] = {}
     if preserve:
         seen: set[int] = set()
         # Clone only extra occurrences, before any original is edited. Keeping the first
@@ -2134,6 +2143,7 @@ def compose_deck(
         unchanged = unchanged and keep and sample_index == index + 1
         # Reuse original parts: cloning rewrites relationships, slide IDs and notes.
         clone = preserved_slides[index] if preserve else clone_slide(prs, samples[sample_index - 1])
+        origin.setdefault(samples[sample_index - 1].part, clone.part)
         new_slides.append(clone)
         if keep:
             records.append(
@@ -2198,6 +2208,8 @@ def compose_deck(
         ids = {prs.part.related_part(item.rId): item for item in prs.slides._sldIdLst}
         for slide in new_slides:
             prs.slides._sldIdLst.append(ids[slide.part])
+    if retarget_slide_links(prs, origin):
+        unchanged = False
     # Знак шаблона снимается после отбора слайдов: он лежит на макетах, а не на слайдах, и
     # правкой слайда его не убрать (план: template_logo).
     drop_logos = str(plan.get("template_logo") or "keep") == "drop"

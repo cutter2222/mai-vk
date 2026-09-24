@@ -7,7 +7,7 @@
 | Модуль | Что делает |
 | --- | --- |
 | `compose.py` | оркестрация: `compose_deck()` — клон образца на каждый слайд плана, заполнение слотов по `element_ref`, правила незаполненных слотов и карточек, удаление образцов, номера слайдов, сохранение, проверка, ComposedDeck; `ComposeError` с кодами `compose_template_missing/mismatch/unreadable`, `compose_pattern_unknown`, `compose_sample_missing`, `compose_integrity` |
-| `ooxml.py` | операции этапа 0A: `clone_slide()` (связи переписываются одной картой, диаграммы с книгами копируются), `replace_paragraph_text()`, `set_run_texts()`, `delete_slide()`, `keep_only_slides()`, `check_package()`, `compare_packages()` |
+| `ooxml.py` | операции этапа 0A: `clone_slide()` (связи переписываются одной картой, диаграммы с книгами копируются), `replace_paragraph_text()`, `set_run_texts()`, `delete_slide()`, `keep_only_slides()`, `retarget_slide_links()` (переходы на слайд вне колоды снимаются, на образец — ведут на его копию; иначе убранное оглавление остаётся в файле лишним слайдом), `check_package()`, `compare_packages()` |
 | `shapes.py` | объект по `p:cNvPr@id` внутри групп, обход с прокси python-pptx, удаление с чисткой опустевших групп и осиротевших связей, свободные id, EMU ↔ доли слайда |
 | `package.py` | макеты по идентификатору профиля, плейсхолдеры для паттернов из макета, номера слайдов (`a:fld slidenum`), удаление неиспользуемых макетов (настройка `layout.prune_unused_layouts`) |
 | `text.py` | текст с сохранением `a:pPr` и `a:rPr` первого фрагмента, явный `sz` из `fit.size_pt`, строки → абзацы образца или `a:br`, списки по маркированному абзацу, факты `{fact:id}`, `wrap="none"` для чисел в крошечных слотах, снятие `fontScale` автоподбора |

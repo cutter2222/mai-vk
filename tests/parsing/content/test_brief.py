@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import pathlib
 from typing import Any
 
 import pytest
@@ -169,6 +170,49 @@ def test_model_answer_grounding_drops_invented_fields() -> None:
         {"purpose": "sales", "slide_count": {"exact": 99}, "intent": "x"}, "99 слайдов"
     )
     assert bad == {"brief": {}, "understood": [], "intent": "none", "source": "model"}
+
+
+FLAT_OUTLINE = (
+    pathlib.Path(__file__).resolve().parents[2] / "fixtures" / "content" / "chat_outline_flat.txt"
+)
+
+
+def test_outline_message_sets_slide_count_and_keeps_markers_out_of_must_include(
+    make_client: Any, stub: Any
+) -> None:
+    """Сообщение 25.09 (5964 знака, «Слайд 1…10» одной строкой): модель получает выдержку
+    с началом и разделами, число слайдов — по раскладке, «Слайд N: …» не обязательные
+    пункты брифа (их содержание приходит материалом)."""
+    text = FLAT_OUTLINE.read_text(encoding="utf-8")
+    stub.answer(
+        {
+            "purpose": None,
+            "title": "Будущее Flutter в 2026 году: от кроссплатформы к автономным интерфейсам",
+            "audience": None,
+            "goal": None,
+            "tone": None,
+            "language": None,
+            "must_include": ["Слайд 1: Титульный", "Слайд 2: Индустрия в цифрах", "Impeller"],
+            "avoid": None,
+            "slide_count": {"exact": 5, "min": None, "max": None},
+            "variants": None,
+            "intent": "generate",
+        }
+    )
+    client = make_client(stub)
+    doc = asyncio.run(
+        extract_brief_with_model(text, None, client=client, skill=get_skill("brief_extractor"))
+    )
+    assert doc["source"] == "model"
+    assert doc["slide_count"] == {"exact": 10}
+    assert doc["brief"]["must_include"] == ["Impeller"]
+    sent = "\n".join(m.text for m in stub.calls[0].messages)
+    assert "Слайд 10: Резюме" in sent and "Финальный посыл" not in sent
+    heuristic = extract_brief(text)
+    assert heuristic["slide_count"] == {"exact": 10} and "slide_count" in heuristic["understood"]
+    # Число, названное словами, важнее раскладки.
+    named = extract_brief("Сделай на 7 слайдов. Слайд 1: Проблема. Слайд 2: Решение.")
+    assert named["slide_count"] == {"exact": 7}
 
 
 def test_model_failure_falls_back_to_heuristic(make_client: Any, stub: Any) -> None:

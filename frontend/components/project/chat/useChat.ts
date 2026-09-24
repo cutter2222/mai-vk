@@ -7,6 +7,7 @@ import { api, ApiError } from "@/lib/api/client";
 import type { GenerationSession, SlideTarget } from "@/lib/hooks/useGenerationSession";
 import {
   addProjectFiles,
+  addProjectText,
   askAssistant,
   appendMessage,
   getProject,
@@ -26,6 +27,17 @@ import { isDesignModeReply } from "@/lib/designMode";
 
 const GENERATE_RE = /сгенерир|запусти|собер[иа]|сдела[йт]|сделаем|построй|начина|давай/i;
 const EDIT_RE = /поменя[йть]|перестав|местами|удали|убери|добавь слайд|переимен/i;
+
+/**
+ * Сообщение несёт содержание презентации, а не только задачу: раскладка «Слайд 1: …, Слайд 2: …»
+ * или объём, который в бриф не помещается. Такое сообщение становится ещё и материалом
+ * («Текст из чата.md»): тезисы и цифры доходят до слайдов. То же правило — `chat_text.is_content_text`.
+ */
+function isContentText(text: string): boolean {
+  const marks = [...text.matchAll(/(?:^|[\s.!?…:;)»\]])(?:слайд|slide)\s*№?\s*(\d{1,2})\s*[:.)—–-]/gi)].map((m) => Number(m[1]));
+  const outline = marks.length >= 2 && marks[0] === 1 && marks.every((n, i) => i === 0 || n > marks[i - 1]);
+  return outline || text.trim().length >= 1200;
+}
 
 const isPptx = (f: ProjectFile) => f.check.format === "pptx";
 const isMaterial = (f: ProjectFile) => f.kind === "material";
@@ -163,7 +175,8 @@ export function useChat(project: Project, session: GenerationSession, generate: 
       if (lead) say(lead.trim());
       return;
     }
-    if (p.job_id) {
+    // Упавшая целиком сборка презентацией не считается: новое содержание собирается сразу.
+    if (p.job_id && session.result?.status !== "failed") {
       if (lead) say(lead.trim());
       offerGeneration();
       return;
@@ -175,7 +188,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     const n = p.settings.variants.length;
     say(`${lead}${n > 1 ? `Собираю презентацию: сначала один вариант, ${n === 2 ? "второй" : `ещё ${n - 1}`} — следом.` : "Собираю презентацию."}`);
     await generate();
-  }, [current, say, offerGeneration, generate]);
+  }, [current, say, offerGeneration, generate, session.result?.status]);
 
   /**
    * Материалы импортированы без задачи в тексте: без шаблона — просьба выбрать его, с шаблоном —
@@ -243,7 +256,9 @@ export function useChat(project: Project, session: GenerationSession, generate: 
       rest = ""; // Выбор режима не становится темой брифа при отправке с вложениями.
     }
     // A conversation about an existing deck must not become a new brief or an office edit.
-    if (message && !files.length && current().job_id) {
+    // Сборка, у которой не вышло ни одного варианта, колодой не считается: новое содержание — новая задача.
+    const noDeck = session.result?.status === "failed" && isContentText(rest);
+    if (message && !files.length && current().job_id && !noDeck) {
       await respond(message.event_id);
       return;
     }
@@ -269,6 +284,18 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     let understood: string[] = [];
     // Намерение собрать презентацию: сервер (модель или правила) либо явная команда в тексте.
     let wantsGeneration = Boolean(rest) && GENERATE_RE.test(rest);
+    // Сообщение с содержанием — ещё и материал: бриф берёт из него тему и число слайдов,
+    // а тезисы, цифры и раскладку по слайдам импорт разбирает как документ.
+    let contentText = false;
+    if (rest && isContentText(rest)) {
+      try {
+        await addProjectText(id, rest);
+        contentText = true;
+        wantsGeneration = true;
+      } catch (e) {
+        say(`Не удалось сохранить текст как материал: ${e instanceof ApiError ? e.message : "ошибка сервера"}. Приложите его файлом .txt или .md.`);
+      }
+    }
     if (rest) {
       if (EDIT_RE.test(rest) && current().job_id) {
         say("Чтобы изменить слайд, выберите его в ленте справа: в поле ввода появится метка слайда, и просьба применится к нему новой ревизией. Перестановка и удаление слайдов пока недоступны.");
@@ -301,6 +328,9 @@ export function useChat(project: Project, session: GenerationSession, generate: 
       }
     }
 
+    // Текст из чата уже среди материалов: пакет собирается заново вместе с брифом.
+    if (contentText && !imported) imported = Boolean(await importMaterials({ quiet: true }));
+
     // 6. Бриф без файлов тоже содержание: пакет из одного брифа.
     const p = current();
     if (!p.package_id && p.brief.title.trim() && !imported) {
@@ -312,7 +342,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     if (understood.length || wantsGeneration || imported) {
       await proceed(understood.length ? understoodLine(current().brief) : "");
     }
-  }, [id, importMaterials, afterMaterials, proceed, say, current, editSlide, respond]);
+  }, [id, importMaterials, afterMaterials, proceed, say, current, editSlide, respond, session.result?.status]);
 
   /**
    * Выбор уже разобранного шаблона (из библиотеки, из «Файлов», повторный бросок того же PPTX):

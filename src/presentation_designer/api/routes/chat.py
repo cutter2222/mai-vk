@@ -56,9 +56,11 @@ def chat(body: ChatRequest, orch: Orch) -> dict[str, Any]:
         or not events[index].get("text", "").strip()
     ):
         raise ApiError(422, "chat_message_invalid", "Нужно сохранённое сообщение пользователя")
+    # Длинное сообщение (содержание целой презентации) ассистенту нужно началом: сам текст
+    # уходит материалом, а отказ «длиннее 4000 символов» оставлял пользователя без ответа.
     text = events[index]["text"]
     if len(text) > 4000:
-        raise ApiError(422, "chat_message_too_long", "Сообщение длиннее 4000 символов")
+        text = text[:4000].rsplit(" ", 1)[0] + " …"
     state = assistant.ProjectState(
         brief=project["brief"],
         materials=[f["name"] for f in project["files"] if f["kind"] == "material"],

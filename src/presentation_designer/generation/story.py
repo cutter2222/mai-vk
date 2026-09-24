@@ -28,6 +28,12 @@ from presentation_designer.generation.grounding import (
     concept_notice,
     topic_only,
 )
+from presentation_designer.generation.outline import (
+    outline_policy,
+    outline_thesis,
+    thesis_slides,
+    user_outline,
+)
 from presentation_designer.shared.settings import Settings, get_settings
 
 log = logging.getLogger(__name__)
@@ -331,6 +337,9 @@ def story_digest(package: JsonDict, brief: JsonDict, *, max_chars: int = 14000) 
                 "package": "Режим: материалы без брифа.",
             }.get(str(mode), "Режим: бриф и материалы.")
         )
+    outline = user_outline(package)
+    if outline:
+        lines.append(outline_policy(outline))
     facts_by_block: dict[str, list[str]] = {}
     for f in package.get("facts", []):
         if f.get("block_id"):
@@ -650,6 +659,7 @@ def assemble_story(
             fixes.append({"code": "must_include_added", "message": item})
         coverage_items.append({"item": item, "thesis": matched})
     moved: dict[int, JsonDict] = {}
+    theses = _follow_outline(theses, package, facts, fixes, moved)
     theses = _ensure_sections(theses, package, fixes, moved)
     present = {id(t) for t in theses}
     for c in coverage_items:
@@ -748,6 +758,64 @@ def assemble_story(
         if fix["code"] != "ref_unknown"
     ]
     return story, fixes
+
+
+def _follow_outline(
+    theses: list[JsonDict],
+    package: JsonDict,
+    facts: JsonDict,
+    fixes: list[JsonDict],
+    moved: dict[int, JsonDict],
+) -> list[JsonDict]:
+    """Раскладка пользователя «Слайд N»: у каждого раздела, кроме обложки, ровно один тезис.
+    Недостающий строится из самого раздела и встаёт после тезисов предыдущих разделов;
+    лишние (второй тезис модели, «Ключевые показатели» покрытия фактов, вывод без ссылок —
+    к разделу перед ним) вливаются в тезис раздела: иначе раздел даёт два слайда, а подгонка
+    к числу слайдов сливает чужие. moved — влитый тезис → принявший."""
+    slides = user_outline(package)
+    if not slides:
+        return theses
+    for i, slide in enumerate(slides):
+        where = [thesis_slides(slides, t, facts) for t in theses]
+        if slide.cover or i in where:
+            continue
+        before = [pos for pos, w in enumerate(where) if w is not None and w < i]
+        after = [pos for pos, w in enumerate(where) if w is not None and w > i]
+        at = before[-1] + 1 if before else (after[0] if after else len(theses))
+        theses.insert(at, outline_thesis(slide, package))
+        fixes.append({"code": "outline_slide_added", "message": slide.title[:80]})
+    hosts: dict[int, JsonDict] = {}
+    out: list[JsonDict] = []
+    last: int | None = None
+    for thesis in theses:
+        where = thesis_slides(slides, thesis, facts)
+        where = where if where is not None else last
+        if thesis["kind"] == "section" or where is None or slides[where].cover:
+            out.append(thesis)
+            continue
+        last = where
+        host = hosts.setdefault(where, thesis)
+        if host is thesis:
+            out.append(thesis)
+            continue
+        extra = thesis["statement"]
+        host["explanation"] = " ".join(
+            p
+            for p in (host.get("explanation", ""), extra if extra.endswith(".") else extra + ".")
+            if p
+        )[:800]
+        for key in _REF_KEYS:
+            if thesis.get(key):
+                host[key] = list(dict.fromkeys([*host.get(key, []), *thesis[key]]))
+        host["required"] = bool(host.get("required", True) or thesis.get("required", True))
+        moved[id(thesis)] = host
+        fixes.append(
+            {
+                "code": "outline_thesis_merged",
+                "message": f"«{extra[:60]}» → слайд «{slides[where].title[:40]}»",
+            }
+        )
+    return out
 
 
 def _content_sections(theses: list[JsonDict]) -> int:
