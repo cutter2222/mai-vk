@@ -59,7 +59,7 @@ log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 
-EDIT_VERSION = "0.1.2"
+EDIT_VERSION = "0.1.3"
 
 EDIT_MODEL_SCHEMA: JsonDict = {
     "type": "object",
@@ -86,8 +86,9 @@ VISUAL_HINTS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"цитат", re.I), "quote"),
 )
 # Число элементов, которое просят: «не 4 колонки, а 2», «в две колонки», «оставь три карточки»,
-# «вместо 4 столбцов сделай 2». Без этого модель видит только ёмкость композиций и меняет
-# сетку, лишь если нужная случайно попала в кандидаты.
+# «вместо 4 столбцов сделай 2», «колонки сделаем не три а две», «не три варианта, а два»,
+# «колонки две, а не три». Без этого модель видит только ёмкость композиций и меняет сетку,
+# лишь если нужная случайно попала в кандидаты.
 _COUNT_WORDS = {
     "один": 1,
     "одна": 1,
@@ -106,8 +107,13 @@ _COUNT_WORDS = {
 }
 _NUM = r"(\d{1,2}|" + "|".join(sorted(_COUNT_WORDS, key=len, reverse=True)) + r")"
 _UNITS = r"(?:колон\w*|столб\w*|карточ\w*|пункт\w*|блок\w*|част\w*|элемент\w*|шаг\w*)"
-_NOT_BUT = re.compile(rf"\bне\s+{_NUM}\s+{_UNITS}\s*,?\s*а\s+{_NUM}\b")
-_INSTEAD = re.compile(rf"\b(?:из|вместо)\s+{_NUM}\s+{_UNITS}\D{{0,40}}?\b{_NUM}\b")
+# В паре чисел слово после первого любое или его нет: единицу называют где угодно («колонки
+# сделаем не три а две»), а то и путают («не три варианта, а два»). Слайды не в счёт: число
+# слайдов колоды правка одного слайда не меняет.
+_AFTER = r"\b(?!\s+(?:слайд|страниц))(?:\s+[а-я]+){0,2}"
+_NOT_BUT = re.compile(rf"\bне\s+{_NUM}{_AFTER}\s*,?\s*а\s+{_NUM}\b")
+_BUT_NOT = re.compile(rf"\b{_NUM}{_AFTER}\s*,?\s*а\s+не\s+{_NUM}\b")
+_INSTEAD = re.compile(rf"\b(?:из|вместо)\s+{_NUM}{_AFTER}\D{{0,40}}?\b{_NUM}\b")
 _COUNT = re.compile(rf"(?<!из\s)(?<!не\s)(?<!вместо\s)\b{_NUM}\s+{_UNITS}")
 MAX_REQUESTED_COUNT = 8
 
@@ -182,7 +188,7 @@ def requested_count(instruction: str) -> int | None:
     found = _NOT_BUT.search(text) or _INSTEAD.search(text)
     raw = found.group(2) if found else None
     if raw is None:
-        plain = _COUNT.search(text)
+        plain = _BUT_NOT.search(text) or _COUNT.search(text)
         raw = plain.group(1) if plain else None
     if raw is None:
         return None
@@ -217,15 +223,23 @@ def grid_rank(p: PatternInfo, count: int) -> tuple[int, int]:
 def count_candidates(
     ctx: Context, count: int, *, has_dataset: bool, has_image: bool
 ) -> list[PatternInfo]:
-    """Композиции под названное число мест: чистые сетки ровно на столько мест, потом прочие."""
+    """Композиции под названное число мест: чистые сетки ровно на столько мест (свои образцы
+    шаблона раньше встроенных), потом прочие. Смотрятся все композиции, а не первые по оценке:
+    у VK Tech больше десятка своих карточных образцов, и встроенные «Карточки: 2 карточки» и
+    «Список: 2 колонки», которые идут после них, иначе не попадали в список."""
     pool: dict[str, PatternInfo] = {}
     for visual in ("cards", "bullets", "comparison"):
         need = Need(visual, items=count, has_dataset=has_dataset, has_image=has_image)
         for c in candidates_for(
-            ctx.patterns, need, ctx.variant_id, limit=12, has_datasets=has_dataset
+            ctx.patterns, need, ctx.variant_id, limit=len(ctx.patterns), has_datasets=has_dataset
         ):
             pool.setdefault(c.pattern_id, c)
-    ranked = sorted(pool.values(), key=lambda p: grid_rank(p, count))
+
+    def key(p: PatternInfo) -> tuple[int, bool, int]:
+        rank, outside = grid_rank(p, count)
+        return (rank, p.builtin, outside)
+
+    ranked = sorted(pool.values(), key=key)
     clean = [p for p in ranked if grid_rank(p, count)[0] == 0]
     return clean[:4] or ranked[:3]
 
@@ -605,6 +619,15 @@ def apply_slide(
     """Новый план с заменённым слайдом: slide_id и order прежние, заметки сохраняются, если
     правка их не касалась; покрытие и сравнение пересчитываются."""
     new_slide = slide_from_draft(ctx, draft, slide_id=slide["slide_id"], order=int(slide["order"]))
+    # Тезисы-разделы модели не показываются (в пакете слайда только содержательные), и ссылки
+    # на них переходят к новому слайду как были: обязательный раздел, который держится только на
+    # этом слайде, иначе остался бы непокрытым, и проверка отклонила бы любую правку слайда.
+    refs = list(new_slide.get("thesis_refs") or [])
+    for tid in slide.get("thesis_refs") or []:
+        thesis = ctx.thesis(str(tid))
+        if thesis is not None and thesis.kind == "section" and tid not in refs:
+            refs.append(tid)
+    new_slide["thesis_refs"] = refs
     if not draft.notes and slide.get("notes"):
         new_slide["notes"] = slide["notes"]
     if change_note:

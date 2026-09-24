@@ -397,8 +397,15 @@ def test_errors(
         ("оставь три карточки", 3),
         ("вместо 4 столбцов сделай 2", 2),
         ("из четырёх колонок сделай две", 2),
+        # Просьбы из чата «Футбол» (VK Tech, слайд 6), которые правка не поняла.
+        ("давай в текущий слайдеры поправим колонки сделаем не три а две", 2),
+        ("сделаем не три варианда, а два варианта, потому что слишком много элементов", 2),
+        ("не три, а две колонки", 2),
+        ("колонки две, а не три", 2),
+        ("вместо трёх две", 2),
         ("сократи заголовок", None),
         ("сделай 10 слайдов", None),
+        ("не 10 слайдов, а 8", None),
         ("сделай 12 колонок", None),
     ],
 )
@@ -431,6 +438,33 @@ def test_count_request_brings_grids_with_that_many_columns(
     assert ed.columns(candidates[1]) == want
     digest = ed.edit_digest(ctx, base_plan, slide, theses, candidates, instruction)
     assert f"Названо число элементов: {want}" in digest
+
+
+def test_count_request_finds_library_grid_behind_many_template_cards(
+    base_plan: dict[str, Any],
+    example_story: dict[str, Any],  # noqa: F811
+    mini_profile: dict[str, Any],  # noqa: F811
+    example_package: dict[str, Any],  # noqa: F811
+) -> None:
+    """У VK Tech больше десятка своих карточных образцов, и встроенные сетки на два места идут в
+    оценке после них: подбор под названное число всё равно их находит."""
+    crowded = json.loads(json.dumps(mini_profile))
+    own = next(p for p in crowded["patterns"] if p["pattern_id"] == "pat_s2")
+    crowded["patterns"] += [
+        {**json.loads(json.dumps(own)), "pattern_id": f"pat_s2_copy{i}"} for i in range(12)
+    ]
+    ctx = vr.build_context(
+        example_story, crowded, example_package, "balanced", {}, vr.get_settings(), None
+    )
+    top = mt.candidates_for(ctx.patterns, mt.Need("cards", items=2), "balanced", limit=12)
+    assert not any(ed.grid_rank(p, 2)[0] == 0 for p in top), "первые 12 — образцы шаблона"
+    slide = ed.ordered_slides(base_plan)[_content_index(base_plan)]
+    theses = ed.slide_theses(ctx, slide)
+    instruction = "колонки сделаем не три а две"
+    candidates = ed.edit_candidates(ctx, slide, theses, instruction)
+    assert candidates[1].builtin and ed.grid_rank(candidates[1], 2)[0] == 0
+    digest = ed.edit_digest(ctx, base_plan, slide, theses, candidates, instruction)
+    assert f"Подходят композиции ровно на 2 места: {candidates[1].pattern_id}" in digest
 
 
 def test_named_count_puts_the_slide_on_a_grid_with_that_many_places(
@@ -501,3 +535,40 @@ def test_violations_of_other_slides_do_not_block_the_edit(
         package=example_package,
     )
     assert result.changed and result.plan is not None
+
+
+def test_section_thesis_stays_on_the_edited_slide(
+    base_plan: dict[str, Any],
+    example_story: dict[str, Any],  # noqa: F811
+    mini_profile: dict[str, Any],  # noqa: F811
+    example_package: dict[str, Any],  # noqa: F811
+    make_client: Any,
+    stub: Any,
+) -> None:
+    """Обязательный тезис-раздел, который держится только на этом слайде (колода «Футбол»,
+    слайд 6), модели не показывается: ссылку на него правка переносит сама, иначе проверка
+    покрытия отклоняла бы любую правку слайда."""
+    index = _content_index(base_plan)
+    story = json.loads(json.dumps(example_story))
+    section = next(t for t in story["theses"] if t["kind"] == "section")
+    section["required"] = True
+    sid = section["thesis_id"]
+    plan = json.loads(json.dumps(base_plan))
+    for s in plan["slides"]:
+        s["thesis_refs"] = [t for t in s.get("thesis_refs") or [] if t != sid]
+    slide = ed.ordered_slides(plan)[index]
+    theses = list(slide["thesis_refs"])
+    slide["thesis_refs"] = [*theses, sid]
+    stub.answer(_answer(slide, theses=theses))
+    result = _edit(
+        plan,
+        index,
+        "сделай заголовок короче",
+        make_client(stub),
+        story=story,
+        profile=mini_profile,
+        package=example_package,
+    )
+    assert result.changed and result.plan is not None
+    assert ed.ordered_slides(result.plan)[index]["thesis_refs"] == [*theses, sid]
+    assert sid not in result.plan["coverage"]["missing"]
