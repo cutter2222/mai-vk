@@ -1,7 +1,7 @@
 # Манифест скилла по contracts/schemas/skill_manifest.schema.json
 schema_version: '1.1'
 name: slot_filler
-version: 0.1.0
+version: 0.2.0
 stage: plan
 description: 'Заполнение пустых слотов слайда: точечный дозапрос с указанием вместимости
   каждого слота, после того как застава качества убрала брак'
@@ -10,8 +10,8 @@ response_format: json_object
 reasoning: { mode: "off", max_output_tokens: 6000 }
 prompts:
   - id: fill.slots
-    version: 0.1.0
-    path: prompts/fill.slots.v0.1.0.md
+    version: 0.2.0
+    path: prompts/fill.slots.v0.2.0.md
 params:
   time_budget_s: 150     # один вызов на всю колоду, слоты передаются пачкой
   max_slots: 24          # больше за раз не просим: ответ становится небрежным

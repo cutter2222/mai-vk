@@ -111,6 +111,8 @@ class SlotInfo:
     indent_emu: int
     bullet: bool
     is_ordinal: bool = False
+    clear_height: float | None = None
+    clear_width: float | None = None
 
     @property
     def is_text(self) -> bool:
@@ -179,6 +181,40 @@ class PatternInfo:
             if best is None or g.count > best.count:
                 best = g
         return best
+
+    @property
+    def largest_text_slot(self) -> int:
+        """Ёмкость самого вместительного текстового слота под содержание (без заголовка)."""
+        kinds = ("body", "bullets", "subtitle", "caption", "label")
+        return max(
+            (
+                s.max_chars
+                for s in self.slots.values()
+                if s.kind in kinds and s is not self.title and s.max_chars
+            ),
+            default=0,
+        )
+
+    @property
+    def irregular_cards(self) -> bool:
+        """Карточки распознаны не полностью: рядом с группой стоит одиночный слот того же
+        вида и того же размера — карточка, выпавшая из ряда (ЛЦТ «Цифры × 4»: у второй
+        карточки иная геометрия). План пишет пункты не в те рамки, и тексты ложатся друг
+        на друга."""
+        for group in self.groups:
+            for kind, members in group.by_kind.items():
+                # Выпавшая подпись карточки заполняется одиночным слотом без вреда; выпавший
+                # текст карточки — нет: в него уходит абзац, рассчитанный на весь слайд.
+                if kind not in ("body", "bullets", "caption") or not members:
+                    continue
+                w = sum(m.bbox[2] for m in members) / len(members)
+                h = sum(m.bbox[3] for m in members) / len(members)
+                for single in self.single(kind):
+                    if single.group or single is self.title:
+                        continue
+                    if abs(single.bbox[2] - w) <= 0.12 * w and abs(single.bbox[3] - h) <= 0.12 * h:
+                        return True
+        return False
 
     @property
     def required_singles(self) -> list[SlotInfo]:
@@ -400,6 +436,8 @@ def _slot_info(raw: JsonDict) -> SlotInfo:
         sample_text=str(raw.get("sample_text") or ""),
         indent_emu=int(style.get("indent_emu") or 0),
         bullet=bullet,
+        clear_height=float(raw["clear_height"]) if raw.get("clear_height") else None,
+        clear_width=float(raw["clear_width"]) if raw.get("clear_width") else None,
     )
 
 
@@ -489,6 +527,23 @@ FIXED_FALLBACK_ROLES: dict[str, tuple[str, ...]] = {
     "agenda": ("agenda",),
 }
 STYLE_POLICIES = ("per_variant", "first")
+# Роли, чьи образцы шаблона берутся раньше своей композиции первой роли цепочки.
+DECORATED_FALLBACK_ROLES: dict[str, tuple[str, ...]] = {
+    "title": ("title", "section_divider"),
+    "section_divider": ("section_divider",),
+    # Шаблон без финального слайда закрывается своей обложкой, а не белой композицией.
+    "thanks": ("thanks", "qr", "title"),
+    "agenda": ("agenda",),
+}
+_COVER_HINTS = ("title slide", "cover", "обложк")
+
+
+def cover_like(p: PatternInfo) -> bool:
+    """Образец на титульном макете, а не на макете разделителя раздела."""
+    family = [*p.style_key.split("|"), "", ""][1].lower()
+    if any(h in family for h in _COVER_HINTS):
+        return True
+    return "титульн" in family and "раздел" not in family and "section" not in family
 
 
 def fixed_pattern_pool(
@@ -509,6 +564,7 @@ def fixed_pattern_pool(
         pool = [p for p in pool if p.service_safe] or pool
         pool.sort(
             key=lambda p: (
+                0 if role not in ("title", "thanks") or cover_like(p) else 1,
                 len(p.required_singles),
                 -p.confidence,
                 p.slide_index,
@@ -517,6 +573,17 @@ def fixed_pattern_pool(
         )
         return pool
 
+    # Нарисованный образец шаблона важнее своей композиции той же роли: анализатор нередко
+    # относит обложку к разделителям (VK Education: четыре обложки на макете «Титульный
+    # слайд» с ролью section_divider), и тогда белый титул библиотеки вытеснял их.
+    for r in DECORATED_FALLBACK_ROLES.get(role, ()):
+        pool = [
+            p
+            for p in patterns
+            if p.role == r and not p.builtin and p.fillable(has_datasets=has_datasets)
+        ]
+        if pool:
+            return ordered(pool)
     for r in FIXED_FALLBACK_ROLES.get(role, (role,)):
         pool = [p for p in patterns if p.role == r and p.fillable(has_datasets=has_datasets)]
         if pool:
@@ -615,6 +682,32 @@ def score_pattern(p: PatternInfo, need: Need, variant_id: str) -> float:
         # A chart image can be replaced with a native chart from the dataset.
         if not (p.role == "chart" and need.has_dataset):
             return 0.0
+    if (
+        not any(p.single(k) for k in ("body", "bullets", "subtitle"))
+        and p.cards is None
+        and not any(s.max_chars >= 40 for s in p.single("label"))
+        and p.number_capacity == 0
+        and not p.single("diagram")
+        and not ((p.has_chart or p.has_table) and need.has_dataset)
+        and not (p.has_image_slot and need.has_image)
+    ):
+        # Кроме заголовка содержание показать нечем (VK Tech «Карточки продуктов»: подписи —
+        # картинки образца): тезис потерялся бы, а на слайде остались бы чужие продукты.
+        return 0.0
+    if p.irregular_cards and not p.builtin:
+        return 0.0
+    if need.text_chars / max(need.items, 1) >= 90 and 0 < p.largest_text_slot < 60:
+        # Образец из одних подписей (VK Tech «Два блока с иконками»: слоты по 26–41 знаку,
+        # подписи 5,6 pt): абзацы в него не встают ни при каком кегле.
+        return 0.0
+    if p.role == "quote" and need.visual != "quote":
+        # У образца цитаты место есть только под саму цитату и автора: утверждение с
+        # пояснением теряет пояснение, на слайде остаётся одна строка.
+        return 0.0
+    if p.number_capacity >= 8 and p.number_capacity > 2 * max(need.numbers, 1) + 2:
+        # Инфографика на 16 полос под четыре числа: пустые полосы без подписей выглядят
+        # сломанной диаграммой (VK Tech «воронка», ЛЦТ «цифры × 16»).
+        return 0.0
     affinity = ROLE_AFFINITY.get(need.visual, ROLE_AFFINITY["text"])
     base = affinity.get(p.role, 0.0)
     if p.role == "freeform":
@@ -786,6 +879,7 @@ __all__ = [
     "PatternInfo",
     "SlotInfo",
     "candidates_for",
+    "cover_like",
     "fallback_visual",
     "fixed_pattern",
     "fixed_pattern_pool",

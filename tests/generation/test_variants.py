@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import pathlib
@@ -169,17 +170,19 @@ def _plans(
     profile: dict[str, Any],
     package: dict[str, Any],
     client: Any,
+    settings: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> dict[str, vr.PlanResult]:
     out: dict[str, vr.PlanResult] = {}
+    settings = settings or {"language": "ru"}
     for variant_id in vr.VARIANTS:
         out[variant_id] = vr.build_variant_plan(
             story,
             profile,
             package,
             variant_id,
-            {"language": "ru"},
-            slide_count=resolve_slide_count(variant_id, {"language": "ru"}),
+            settings,
+            slide_count=resolve_slide_count(variant_id, settings),
             client=client,
             skill=get_skill("variant_planner") if client is not None else None,
             use_model=client is not None,
@@ -570,8 +573,8 @@ def test_three_plans_on_replay_mini_template(
         assert plan["slides"][0]["role"] == "title" and plan["slides"][-1]["role"] == "thanks"
         assert plan["comparison"]["pattern_sequence"] == [s["pattern_id"] for s in plan["slides"]]
         meta = plan["generation_meta"]
-        assert meta["skills"] == [{"name": "variant_planner", "version": "0.4.1"}]
-        assert meta["prompts"] == [{"name": "plan.slides", "version": "0.4.1"}]
+        assert meta["skills"] == [{"name": "variant_planner", "version": "0.5.1"}]
+        assert meta["prompts"] == [{"name": "plan.slides", "version": "0.5.1"}]
         assert meta["models"][0]["reasoning_mode"] == "off" and meta["prompt_tokens"] > 1000
         _assert_overflow_reported(plan, result.report)
         # Факты — только ссылками или блоками number; значения не переписаны.
@@ -608,12 +611,14 @@ def test_three_plans_on_replay_rich_template(
         _assert_valid(plan, rich_profile, example_package, example_story)
         assert plan["coverage"]["missing"] == []
         assert plan["slide_count"]["min"] <= len(plan["slides"]) <= plan["slide_count"]["max"]
-        # Финального образца в шаблоне нет: роль закрывает своя композиция библиотеки,
-        # поэтому финальный слайд теперь есть и он помечен как builtin.
-        last = plan["slides"][-1]
+        # Финального образца в шаблоне нет: колоду закрывает обложка шаблона (образец
+        # на титульном макете), а если и её нет — своя композиция библиотеки.
+        patterns = {p["pattern_id"]: p for p in rich_profile["patterns"]}
         final_pattern = result.report["structure"]["final_pattern"]
-        assert last["role"] != "thanks" or last["pattern_id"].startswith("pat_builtin_")
-        assert final_pattern is None or str(final_pattern).startswith("pat_builtin_")
+        assert final_pattern is None or (
+            str(final_pattern).startswith("pat_builtin_")
+            or patterns[str(final_pattern)]["role"] == "title"
+        )
         _assert_overflow_reported(plan, result.report)
 
 
@@ -640,33 +645,61 @@ def test_fallback_plans_respect_design_mode(
 ) -> None:
     from presentation_designer.generation.design_mode import validate_plan_mode
 
-    if mode == "template_only":
-        # This fixture's source layouts cannot hold the supplied text. No builtin escape.
-        with pytest.raises(vr.PlanError) as exc:
-            vr.build_variant_plan(
-                example_story,
-                mini_profile,
-                example_package,
-                "balanced",
-                {"design_mode": mode, "slide_count": {"min": 3, "max": 30}},
-                use_model=False,
-            )
-        assert exc.value.code == "template_capacity_exceeded"
+    # template_only: содержание раскладывается только по образцам шаблона. Влезет ли оно в
+    # мини-шаблон, зависит от записанного плана: без своих композиций слайд, который не
+    # помещается, не подменяется композицией библиотеки, а даёт отказ с перечнем слайдов.
+    # Абзац, который не встаёт никуда, проверяет test_unplaceable_text_is_overflow_not_loss.
+    patterns = {p["pattern_id"]: p for p in mini_profile["patterns"]}
+    try:
+        result = vr.build_variant_plan(
+            example_story,
+            mini_profile,
+            example_package,
+            "balanced",
+            {"design_mode": mode, "slide_count": {"min": 3, "max": 30}},
+            use_model=False,
+        )
+    except vr.PlanError as e:
+        assert mode == "template_only" and e.code == "template_capacity_exceeded"
+        assert e.details["slides"]
+        for slide in e.details["slides"]:
+            assert patterns[slide["pattern"]]["source"]["kind"] != "builtin"
+            assert slide["overflow"]
         return
-    result = vr.build_variant_plan(
+    validate_plan_mode(result.plan, mini_profile, {"design_mode": mode})
+    if mode == "all_new":
+        slides = result.plan["slides"]
+        assert patterns[slides[0]["pattern_id"]]["source"]["kind"] == "builtin"
+        assert patterns[slides[-1]["pattern_id"]]["source"]["kind"] == "builtin"
+
+
+def test_unplaceable_text_is_overflow_not_loss(
+    example_story: dict[str, Any],
+    mini_profile: dict[str, Any],
+    example_package: dict[str, Any],
+) -> None:
+    """Абзац, который не встаёт ни в одну композицию шаблона, не пропадает молча и не
+    сворачивается до первых слов карточки: он ставится в самый вместительный слот с
+    переполнением — его видят подсказка модели, аудит и отказ template_capacity_exceeded."""
+    ctx = vr.build_context(
         example_story,
         mini_profile,
         example_package,
         "balanced",
-        {"design_mode": mode, "slide_count": {"min": 3, "max": 30}},
-        use_model=False,
+        {"design_mode": "template_only"},
+        get_settings(),
+        10,
     )
-    validate_plan_mode(result.plan, mini_profile, {"design_mode": mode})
-    if mode == "all_new":
-        patterns = {p["pattern_id"]: p for p in mini_profile["patterns"]}
-        slides = result.plan["slides"]
-        assert patterns[slides[0]["pattern_id"]]["source"]["kind"] == "builtin"
-        assert patterns[slides[-1]["pattern_id"]]["source"]["kind"] == "builtin"
+    pattern = next(p for p in ctx.patterns if p.single("body") and not p.builtin)
+    # Одно предложение: лестница ёмкости не сокращает его по предложениям.
+    text = ", ".join(f"подробность {i} об эффекте пилота в регионе" for i in range(80)) + "."
+    draft = vr.Draft(
+        kind="content", theses=[], pattern=pattern, title="Итоги", visual="text", text=text
+    )
+    vr.fit_draft(ctx, draft)
+    assert draft.overflow
+    assert not draft.unplaced_text
+    assert any(text[:60] in str(b.get("text") or "") for b in draft.blocks)
 
 
 def test_plan_cache_hit_rebinds_ids(
@@ -931,6 +964,32 @@ def _with_style_policy(policy: str) -> Settings:
     return app.model_copy(update={"plan": app.plan.model_copy(update={"style_policy": policy})})
 
 
+def _with_sections(story: dict[str, Any], before: dict[str, str]) -> dict[str, Any]:
+    """Копия смыслового плана с разделами перед указанными тезисами."""
+    out = copy.deepcopy(story)
+    theses: list[dict[str, Any]] = []
+    section = ""
+    for t in sorted(out["theses"], key=lambda t: t["order"]):
+        if t["thesis_id"] in before:
+            section = f"sec_{t['thesis_id']}"
+            theses.append(
+                {
+                    "thesis_id": section,
+                    "order": 0,
+                    "kind": "section",
+                    "statement": before[t["thesis_id"]],
+                    "required": True,
+                }
+            )
+        if section and t["kind"] != "section":
+            t["parent_id"] = section
+        theses.append(t)
+    for order, t in enumerate(theses, start=1):
+        t["order"] = order
+    out["theses"] = theses
+    return out
+
+
 def test_style_policy_per_variant(
     example_story: dict[str, Any], variety_profile: dict[str, Any], example_package: dict[str, Any]
 ) -> None:
@@ -938,11 +997,15 @@ def test_style_policy_per_variant(
     внутри колоды и разным между вариантами (per_variant); first даёт прежнее поведение —
     первый паттерн пула у всех вариантов."""
     by_id = {p["pattern_id"]: p for p in variety_profile["patterns"]}
+    # Запас по числу слайдов и разделы: проверяется стиль разделителей, а записанный
+    # смысловой план может обойтись одним разделом на всю колоду.
+    story = _with_sections(example_story, {"t4": "Результаты пилота", "t8": "План и риски"})
     results = _plans(
-        example_story,
+        story,
         variety_profile,
         example_package,
         None,
+        settings={"language": "ru", "slide_count": {"min": 10, "max": 16}},
         app_settings=_with_style_policy("per_variant"),
     )
     titles: dict[str, str] = {}
@@ -950,7 +1013,7 @@ def test_style_policy_per_variant(
     divider_styles: dict[str, str] = {}
     for variant_id, result in results.items():
         plan = result.plan
-        _assert_valid(plan, variety_profile, example_package, example_story)
+        _assert_valid(plan, variety_profile, example_package, story)
         assert plan["coverage"]["missing"] == []
         titles[variant_id] = plan["slides"][0]["pattern_id"]
         finals[variant_id] = plan["slides"][-1]["pattern_id"]

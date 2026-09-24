@@ -53,14 +53,14 @@
 | `brief_extractor` 0.2.0 | import | llm | `brief.extract` 0.2.0 | выключено, до 4000 | json_schema |
 | `chart_extractor` 0.1.0 | import | vlm | `import.chart_image` 0.1.0 | выключено, до 9000 | json_schema |
 | `chart_reader` 0.1.0 | analyze | vlm | `rebuild.chart_image` 0.1.0 | выключено, до 6000 | json_schema |
-| `content_importer` 0.1.0 | import | llm | `import.fact_context` 0.1.0 | выключено, до 6000 | json_schema |
+| `content_importer` 0.2.0 | import | llm | `import.fact_context` 0.2.0 | выключено, до 6000 | json_schema |
 | `project_assistant` 0.1.0 | import | llm | `chat.reply` 0.1.0 | выключено, до 1000 | json_schema |
 | `repairer` 0.1.0 | repair | llm | `repair.rewrite_block` 0.1.0 | короткое, до 10000 | json_schema |
 | `slide_editor` 0.1.0 | plan | llm | `edit.slide` 0.1.0 | выключено, до 8000 | json_schema |
-| `slot_filler` 0.1.0 | plan | llm | `fill.slots` 0.1.0 | выключено, до 6000 | json_object |
-| `story_planner` 0.2.0 | story | llm | `story.outline` 0.2.0 | выключено, до 14000 | json_schema |
+| `slot_filler` 0.2.0 | plan | llm | `fill.slots` 0.2.0 | выключено, до 6000 | json_object |
+| `story_planner` 0.3.2 | story | llm | `story.outline` 0.3.2 | выключено, до 14000 | json_schema |
 | `template_analyzer` 0.2.0 | analyze | vlm | `analyze.classify_samples` 0.3.0, `analyze.tag_assets` 0.1.0 | выключено, до 6000 | json_schema |
-| `variant_planner` 0.4.1 | plan | llm | `plan.slides` 0.4.1 | выключено, до 14000 | json_schema |
+| `variant_planner` 0.5.1 | plan | llm | `plan.slides` 0.5.1 | выключено, до 14000 | json_schema |
 
 Версия скилла и версия промпта входят в ключ кэша ответов и в `GenerationResult`:
 по результату видно, каким промптом он получен.

@@ -1,7 +1,7 @@
 # Манифест скилла по contracts/schemas/skill_manifest.schema.json
 schema_version: '1.1'
 name: story_planner
-version: 0.2.0
+version: 0.3.2
 stage: story
 description: 'Строит общий смысловой план StoryPlan из ContentPackage: тезисы, выводы,
   обязательность, ссылки на факты, наборы данных и изображения, допустимые сокращения,
@@ -13,8 +13,8 @@ reasoning:
   max_output_tokens: 14000
 prompts:
 - id: story.outline
-  path: prompts/story.outline.v0.2.0.md
-  version: 0.2.0
+  path: prompts/story.outline.v0.3.2.md
+  version: 0.3.2
 params:
   temperature: 0.2
   time_budget_s: 260     # модель ТЗ рассуждает перед ответом: один вызов плана ~90 с,
@@ -23,6 +23,18 @@ params:
 input_schema: content_package
 output_schema: story_plan
 changelog:
+- version: 0.3.2
+  date: '2026-09-24'
+  note: 'часть рассказа part у каждого тезиса (как topic в PPTAgent): если модель
+    свела разделы к одному, код строит их по частям, иначе по заголовкам источника'
+- version: 0.3.1
+  date: '2026-09-24'
+  note: 'крупные части рассказа — тезисы-разделы с parent у их тезисов: без них колода
+    теряет разделители и структуру'
+- version: 0.3.0
+  date: '2026-09-24'
+  note: 'покрытие всех разделов источника (риски, этапы, план), перечни пункт за пунктом,
+    обязательное пояснение с конкретикой у claim/evidence/context: из него строится слайд'
 - version: 0.2.0
   date: '2026-09-16'
   note: 'этап 6: рабочий промпт плана по выдержке содержания с идентификаторами; рассуждение

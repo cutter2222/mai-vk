@@ -48,6 +48,7 @@ from presentation_designer.generation.matching import (
     PatternInfo,
     SlotInfo,
     candidates_for,
+    cover_like,
     fallback_visual,
     fixed_pattern_pool,
     pick_style,
@@ -56,6 +57,7 @@ from presentation_designer.generation.matching import (
     siblings_of,
 )
 from presentation_designer.layout import diagrams
+from presentation_designer.parsing.content.facts import weak_metric
 from presentation_designer.shared import text_metrics
 from presentation_designer.shared.settings import Settings, get_settings
 from presentation_designer.shared.text import plural
@@ -85,6 +87,8 @@ CHART_TYPES = ("column", "bar", "stacked_column", "line", "area", "pie", "doughn
 MAX_SERIES = 5
 MAX_TABLE_COLUMNS = 5
 FACT_REF = cap.FACT_REF
+SERVICE_KINDS = ("title", "divider", "final")
+SERVICE_MIN_FONT_RATIO = 0.5
 
 VARIANT_RULES = {
     "compact": (
@@ -118,27 +122,30 @@ PLAN_MODEL_SCHEMA: JsonDict = {
             "type": "array",
             "items": {
                 "type": "object",
-                "required": ["theses", "title", "visual"],
+                # Содержание обязательно (пустое допустимо): по схеме модель пропускает
+                # необязательные поля и возвращала слайды из одного заголовка.
+                "required": ["theses", "title", "text", "items", "facts", "visual"],
                 "properties": {
                     "theses": {"type": "array", "items": {"type": "string"}},
-                    "pattern": {"type": "string"},
                     "title": {"type": "string"},
-                    "message": {"type": "string"},
-                    "visual": {"type": "string", "enum": list(CONTENT_VISUALS)},
                     "text": {"type": "string"},
                     "items": {
                         "type": "array",
                         "items": {
                             "type": "object",
-                            "required": ["text"],
+                            "required": ["sub", "text", "facts", "icon"],
                             "properties": {
-                                "text": {"type": "string"},
                                 "sub": {"type": "string"},
+                                "text": {"type": "string"},
                                 "facts": {"type": "array", "items": {"type": "string"}},
+                                "icon": {"type": "string"},
                             },
                         },
                     },
                     "facts": {"type": "array", "items": {"type": "string"}},
+                    "visual": {"type": "string", "enum": list(CONTENT_VISUALS)},
+                    "message": {"type": "string"},
+                    "pattern": {"type": "string"},
                     "dataset": {"type": "string"},
                     "chart_type": {"type": "string", "enum": list(CHART_TYPES)},
                     "diagram_kind": {"type": "string", "enum": list(diagrams.KINDS)},
@@ -266,10 +273,42 @@ class Context:
     slide_w: int = 12192000
     slide_h: int = 6858000
     fixes: list[JsonDict] = field(default_factory=list)
+    # Пиктограммы шаблона с тегами анализа: asset_id → основы тегов; словарь — частые теги.
+    icons: dict[str, set[str]] = field(default_factory=dict)
+    icon_vocab: list[str] = field(default_factory=list)
+    icon_uses: dict[str, int] = field(default_factory=dict)
+    slide_icons: set[str] = field(default_factory=set)
+    # Факты, уже показанные на собираемом слайде крупным числом: пункты их не повторяют.
+    slide_shown: set[str] = field(default_factory=set)
+    # Последняя попытка раскладки: абзац ставится даже туда, где не помещается.
+    force_text: bool = False
 
     @property
     def has_datasets(self) -> bool:
         return bool(self.datasets)
+
+    def icon_for(self, concept: str, text: str, taken: set[str]) -> str | None:
+        """Пиктограмма пункта: по слову-понятию от модели, иначе по словам пункта. Уже
+        стоящие на слайде не повторяются, реже использованные в колоде идут первыми."""
+        best: tuple[int, int, str] | None = None
+        for words, weight in ((_icon_stems(concept), 3), (_icon_stems(text), 1)):
+            if not words:
+                continue
+            for asset_id, tags in self.icons.items():
+                if asset_id in taken:
+                    continue
+                hits = len(words & tags)
+                if not hits:
+                    continue
+                key = (hits * weight, -self.icon_uses.get(asset_id, 0), asset_id)
+                if best is None or key > best:
+                    best = key
+            if best is not None:
+                break
+        if best is None:
+            return None
+        self.icon_uses[best[2]] = self.icon_uses.get(best[2], 0) + 1
+        return best[2]
 
     def thesis(self, tid: str) -> Thesis | None:
         return next((t for t in self.theses if t.id == tid), None)
@@ -332,7 +371,24 @@ def build_context(
         )
     for red in story.get("allowed_reductions") or []:
         ctx.reductions.setdefault(red["thesis_id"], []).append(red)
+    counts: dict[str, int] = {}
+    for asset in profile.get("assets") or []:
+        if asset.get("kind") != "icon" or not asset.get("reusable", True):
+            continue
+        tags = [
+            str(t).lower() for t in asset.get("tags") or [] if str(t).lower() not in _ICON_NOISE
+        ]
+        if not tags:
+            continue
+        ctx.icons[str(asset["asset_id"])] = _icon_stems(" ".join(tags))
+        for tag in tags:
+            counts[tag] = counts.get(tag, 0) + 1
+    ctx.icon_vocab = [t for t, _ in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))][:90]
     return ctx
+
+
+# Теги-пустышки анализа: подложки и заглушки, а не пиктограммы смысла.
+_ICON_NOISE = {"catalog", "пусто", "фон", "круг", "заглушка", "декор", "элемент"}
 
 
 # ---------- структура колоды ----------
@@ -505,8 +561,14 @@ def deck_structure(ctx: Context, *, use_agenda: bool | None = None) -> Structure
     has_ds = ctx.has_datasets
     policy = str(ctx.app.plan.style_policy)
     title_pool = fixed_pattern_pool(ctx.patterns, "title", has_datasets=has_ds)
+    # Обложка — образец на титульном макете, если он есть: чередование стилей между
+    # вариантами не должно выдавать за титул карточку с макета «Фотографии» (ЛЦТ).
+    title_pool = [p for p in title_pool if cover_like(p)] or title_pool
     divider_pool = fixed_pattern_pool(ctx.patterns, "section_divider", has_datasets=has_ds)
     final_pool = fixed_pattern_pool(ctx.patterns, "thanks", has_datasets=has_ds)
+    # Шаблон без финального слайда закрывается обложкой (пул взят из титулов): тоже только
+    # образцами на титульном макете.
+    final_pool = [p for p in final_pool if p.role != "title" or cover_like(p)] or final_pool
     agenda_pool = fixed_pattern_pool(ctx.patterns, "agenda", has_datasets=has_ds)
     # Разделитель задаёт стиль колоды: единый внутри неё, разный у вариантов (per_variant);
     # титул, финал и оглавление берутся в тон разделителя своим номером среди вариантов
@@ -570,7 +632,7 @@ def deck_structure(ctx: Context, *, use_agenda: bool | None = None) -> Structure
     if divider_pattern is not None and variant != "compact" and spare > 0:
         # Разделители получают разделы с наибольшим числом тезисов, не более запаса.
         ranked = sorted(
-            sections,
+            [s for s in sections if _divider_fits(ctx, divider_pattern, s)],
             key=lambda s: (-sum(1 for t in content if t.section == s.id), s.order),
         )
         dividers = [s.id for s in ranked[: min(len(ranked), spare)]]
@@ -741,8 +803,8 @@ def packet_digest(ctx: Context, structure: Structure, packet: Packet) -> str:
             "Каждый слайд пакета — конкретное авторское предложение. Заголовок до 55 знаков, "
             "начинай с «Идея:», «Предлагаем» или «Гипотеза:». Не снимай условность при "
             "сокращении. Дай 2–3 разных пункта: сценарий пользователя, проектное решение, "
-            "проверка или компромисс. В items используй text как короткий заголовок пункта "
-            "(до 35 знаков), sub как пояснение (до 110 знаков). Не заменяй пункты "
+            "проверка или компромисс. В items sub — короткий заголовок пункта (до 35 знаков), "
+            "text — его пояснение (до 110 знаков). Не заменяй пункты "
             "перефразированием общего заголовка. Не используй сведения о распространённости "
             "поведения пользователей как факты. Не создавай слайды с одним заголовком."
         )
@@ -795,11 +857,17 @@ def packet_digest(ctx: Context, structure: Structure, packet: Packet) -> str:
         fact_ids.extend(f for f in t.fact_refs if f in ctx.facts and f not in fact_ids)
         ds_ids.extend(d for d in t.dataset_refs if d in ctx.datasets and d not in ds_ids)
         asset_ids.extend(a for a in t.asset_refs if a in ctx.assets and a not in asset_ids)
-        for b in t.source_refs:
+        for b in _thesis_sources(ctx, t):
             block = ctx.blocks.get(b)
-            if block and block.get("kind") == "bullets" and block.get("items"):
+            if block is None:
+                continue
+            if block.get("kind") == "bullets" and block.get("items"):
                 items = " | ".join(str(i)[:120] for i in block["items"][:8])
                 lines.append(f"  список из источника {b}: {items}")
+            elif block.get("kind") in ("paragraph", "quote", "kpi", "code") and block.get("text"):
+                # Формулировка тезиса — вывод, а раскрывают его подробности источника:
+                # без них модель пересказывает заголовок одной фразой.
+                lines.append(f"  текст источника {b}: {_clean(block['text'], 500)}")
     if fact_ids:
         lines.append("Факты (только ссылками {fact:id}; значение подставит код):")
         lines.extend(_fact_line(ctx.facts[f]) for f in fact_ids)
@@ -822,6 +890,12 @@ def packet_digest(ctx: Context, structure: Structure, packet: Packet) -> str:
             f"{asset.get('width_px', '?')}×{asset.get('height_px', '?')})"
             + (f" «{asset['caption']}»" if asset.get("caption") else "")
         )
+    if ctx.icon_vocab:
+        lines.append(
+            "Словарь пиктограмм шаблона (для поля icon у пунктов): "
+            + ", ".join(ctx.icon_vocab)
+            + "."
+        )
     lines.append(
         "Сначала сформируй содержание слайдов: заголовок и смысловые блоки. "
         "Композицию и слоты подберёт код после ответа по числу блоков и наличию ресурсов. "
@@ -833,6 +907,60 @@ def packet_digest(ctx: Context, structure: Structure, packet: Packet) -> str:
         f"{structure.content_budget}."
     )
     return "\n".join(lines)
+
+
+def _thesis_sources(ctx: Context, t: Thesis, limit: int = 4) -> list[str]:
+    """Блоки источника тезиса: его ссылки, затем блоки, откуда взяты его факты."""
+    out = [b for b in t.source_refs if b in ctx.blocks]
+    for fid in t.fact_refs:
+        block_id = (ctx.facts.get(fid) or {}).get("block_id")
+        if block_id and block_id in ctx.blocks and block_id not in out:
+            out.append(str(block_id))
+    if not out:
+        # Модель не всегда ставит source_refs: блок с теми же значимыми словами, что в
+        # формулировке, — тот самый источник.
+        mine = _stems(f"{t.statement} {t.explanation}")
+        scored = []
+        for block_id, block in ctx.blocks.items():
+            if block.get("kind") not in ("paragraph", "bullets", "quote", "kpi"):
+                continue
+            text = (
+                str(block.get("text") or "")
+                + " "
+                + " ".join(str(i) for i in block.get("items") or [])
+            )
+            theirs = _stems(text)
+            common = len(mine & theirs)
+            if common >= 2 and common >= 0.3 * min(len(mine), len(theirs)):
+                scored.append((common, block_id))
+        out = [b for _, b in sorted(scored, reverse=True)[:2]]
+    return out[:limit]
+
+
+def _icon_stems(text: str) -> set[str]:
+    words = re.findall(r"[A-Za-zА-Яа-яЁё]{3,}", text.lower())
+    return {w[:5] for w in words if w not in _ICON_STOP}
+
+
+_ICON_STOP = {
+    "для",
+    "что",
+    "это",
+    "как",
+    "при",
+    "или",
+    "его",
+    "все",
+    "без",
+    "над",
+    "под",
+    "the",
+    "and",
+}
+
+
+def _stems(text: str) -> set[str]:
+    return {w[:5].lower() for w in re.findall(r"[A-Za-zА-Яа-яЁё]{4,}", text)}
 
 
 # ---------- ответ модели → черновики ----------
@@ -890,6 +1018,8 @@ def drafts_from_answer(
                 item: JsonDict = {"text": _clean(it.get("text"), 300)}
                 if _clean(it.get("sub")):
                     item["sub"] = _clean(it.get("sub"), 300)
+                if _clean(it.get("icon")):
+                    item["icon"] = _clean(it.get("icon"), 40)
                 facts = [str(f) for f in (it.get("facts") or []) if str(f) in ctx.facts] + [
                     f
                     for f in FACT_REF.findall(item["text"] + " " + item.get("sub", ""))
@@ -900,6 +1030,7 @@ def drafts_from_answer(
                 items.append(item)
             elif isinstance(it, str) and it.strip():
                 items.append({"text": _clean(it, 300)})
+        items = _distinct_items(ctx, items)
         facts = [str(f) for f in (raw.get("facts") or []) if str(f) in ctx.facts]
         for item in items:
             facts.extend(f for f in item.get("fact_refs", []) if f not in facts)
@@ -926,15 +1057,46 @@ def drafts_from_answer(
         if visual == "diagram" and not diagram_kind:
             # An unordered list is not evidence of a process or a hierarchy.
             visual = "bullets" if items else "text"
+        if visual == "quote" and not re.search(r"[«»\"“”„]", text + " " + title):
+            # Цитата — чужие слова в кавычках; утверждение в композиции цитаты теряет
+            # пояснение (у образца цитаты нет места под текст).
+            visual = "bullets" if items else "text"
         columns = _match_columns(ctx, dataset, [str(c) for c in (raw.get("columns") or [])])
         source_refs: list[str] = []
+        written = " ".join(
+            cap.substitute_facts(
+                " ".join([title, text, *[f"{it.get('sub', '')} {it['text']}" for it in items]]),
+                ctx.facts,
+            ).split()
+        )
         for tid in theses:
             t = ctx.thesis(tid)
             if t:
                 source_refs.extend(b for b in t.source_refs if b in ctx.blocks)
-                # Coverage is not just the thesis ID: retain its source quantities
-                # even when the model forgets the slide-level facts field.
-                facts.extend(f for f in t.fact_refs if f in ctx.facts and f not in facts)
+                # Факт тезиса привязывается к слайду, если его значение на слайде написано
+                # (модель забыла поле facts). Все факты тезиса подряд сюда не идут: их
+                # дописывали пунктами, и в карточках «Рисков» появлялись 62 % и «11 минут»
+                # из другого раздела. Покрытие обязательных фактов проверяет колода.
+                facts.extend(
+                    f
+                    for f in t.fact_refs
+                    if f in ctx.facts
+                    and f not in facts
+                    and " ".join(str(ctx.facts[f].get("raw") or "").split()) in written
+                )
+        if not items and not text and dataset is None and image is None:
+            # Модель вернула слайд из одного заголовка (бывает и после повтора с подсказкой):
+            # раскрытие берётся из пояснения тезиса и его источника, а не остаётся пустым.
+            items, text, dataset = _backfill(ctx, theses, title)
+            if items or text or dataset:
+                ctx.fix("content_backfilled", f"«{title[:40]}»: содержание из источника тезиса")
+                if dataset:
+                    visual = "table"
+                elif items and visual in ("text", "quote", "number", "image", "chart", "table"):
+                    visual = "bullets"
+                for item in items:
+                    facts.extend(f for f in item.get("fact_refs", []) if f not in facts)
+                facts.extend(f for f in FACT_REF.findall(text) if f in ctx.facts and f not in facts)
         if automatic:
             visual, cands = content_patterns(
                 ctx,
@@ -972,6 +1134,78 @@ def drafts_from_answer(
     if not drafts:
         raise ValueError("нужен непустой список slides")
     return drafts
+
+
+def _distinct_items(ctx: Context, items: list[JsonDict]) -> list[JsonDict]:
+    """Пункты, одинаковые после подстановки значений, — один пункт: модель пишет
+    «Плюс-минус {fact:f3} секунд в 90 % случаев» и то же с {fact:f4}, на слайде — две
+    одинаковые карточки."""
+    out: list[JsonDict] = []
+    shown: dict[str, JsonDict] = {}
+    for item in items:
+        key = " ".join(
+            cap.substitute_facts(f"{item.get('sub', '')} {item['text']}", ctx.facts).lower().split()
+        )
+        twin = shown.get(key)
+        if twin is not None:
+            refs = list(dict.fromkeys(twin.get("fact_refs", []) + item.get("fact_refs", [])))
+            if refs:
+                twin["fact_refs"] = refs
+            continue
+        shown[key] = item
+        out.append(item)
+    return out
+
+
+def _backfill(
+    ctx: Context, theses: list[str], title: str
+) -> tuple[list[JsonDict], str, str | None]:
+    """Содержание пустого слайда из его тезисов: пункты пояснения, списки и предложения
+    блоков-источников (числа — ссылками на факты этих блоков), иначе набор данных."""
+    seen = {title.strip().lower()}
+    items: list[JsonDict] = []
+
+    def add(sentence: str, block_id: str | None = None) -> None:
+        text = _clean(sentence, 240).strip(" ;")
+        if len(text) < 12 or text.lower() in seen or _similar(text, title) >= 0.7:
+            return
+        seen.add(text.lower())
+        refs: list[str] = []
+        if block_id:
+            for fid, fact in ctx.facts.items():
+                raw = str(fact.get("raw") or "")
+                if fact.get("block_id") == block_id and raw and raw in text:
+                    text = text.replace(raw, f"{{fact:{fid}}}", 1)
+                    refs.append(fid)
+        items.append({"text": text, **({"fact_refs": refs} if refs else {})})
+
+    for tid in theses:
+        t = ctx.thesis(tid)
+        if t is None:
+            continue
+        for sentence in _sentences(t.explanation or ""):
+            add(sentence)
+        for block_id in _thesis_sources(ctx, t):
+            block = ctx.blocks[block_id]
+            if block.get("kind") == "bullets":
+                for entry in block.get("items") or []:
+                    add(str(entry), block_id)
+            elif block.get("kind") in ("paragraph", "quote", "kpi"):
+                for sentence in _sentences(str(block.get("text") or "")):
+                    add(sentence, block_id)
+        if len(items) >= 4:
+            break
+    items = items[:5]
+    if len(items) == 1:
+        return [], str(items[0]["text"]), None
+    if items:
+        return items, "", None
+    for tid in theses:
+        t = ctx.thesis(tid)
+        dataset = next((d for d in (t.dataset_refs if t else []) if d in ctx.datasets), None)
+        if dataset:
+            return [], "", dataset
+    return [], "", None
 
 
 def content_patterns(
@@ -1078,15 +1312,7 @@ def drafts_without_model(ctx: Context, packet: Packet) -> list[Draft]:
             ][:5]
         if not items and t.fact_refs and need.visual not in ("chart", "table"):
             items = [
-                {
-                    "text": _clean(
-                        (ctx.facts[f].get("context") or {}).get("metric")
-                        or ctx.facts[f].get("label")
-                        or f,
-                        120,
-                    ),
-                    "fact_refs": [f],
-                }
+                {"text": _clean(_fact_phrase(ctx, f), 120), "fact_refs": [f]}
                 for f in t.fact_refs
                 if f in ctx.facts
             ][:4]
@@ -1138,6 +1364,39 @@ def _label_for_fact(ctx: Context, items: list[JsonDict], fact_id: str) -> str:
     return _fact_label(ctx, fact_id)
 
 
+_CLAUSE_BREAK = re.compile(r"[.;:()—–]|,\s")
+_LEADING_JOINER = re.compile(
+    r"^(?:(?:что|и|а|но|это|который|которая|которые|где|при этом|а также|также)\s+)+",
+    re.IGNORECASE,
+)
+
+
+def _fact_phrase(ctx: Context, fact_id: str) -> str:
+    """Факт, не упомянутый в тексте слайда, строкой для списка. С внятной подписью —
+    «Подписка: {fact}»; со слабой («дней», «даёт») — отрезок исходной фразы вокруг числа:
+    «{fact} подготовки» читается, «дней: 5 дней» — нет."""
+    fact = ctx.facts[fact_id]
+    context = fact.get("context") or {}
+    label = str(context.get("metric") or fact.get("label") or "").strip()
+    ref = f"{{fact:{fact_id}}}"
+    raw = str(fact.get("raw") or "")
+    if label and not weak_metric(label, fact.get("unit")):
+        return f"{label[:1].upper()}{label[1:]}: {ref}"
+    fragment = str((fact.get("source_location") or {}).get("fragment") or "").rstrip("…")
+    at = fragment.find(raw) if raw else -1
+    if at >= 0:
+        starts = [m.end() for m in _CLAUSE_BREAK.finditer(fragment, 0, at)]
+        start = starts[-1] if starts else 0
+        stop_match = _CLAUSE_BREAK.search(fragment, at + len(raw))
+        stop = stop_match.start() if stop_match else len(fragment)
+        clause = fragment[start:stop].strip(" ,")
+        clause = _LEADING_JOINER.sub("", clause)
+        if 0 < len(clause) <= 90 and len(clause) > len(raw) + 2:
+            phrase = clause.replace(raw, ref, 1)
+            return phrase[:1].upper() + phrase[1:]
+    return f"{label[:1].upper()}{label[1:]}: {ref}" if label else ref
+
+
 def _number_block(ctx: Context, slot: SlotInfo, fact_id: str) -> JsonDict:
     fact = ctx.facts[fact_id]
     return {
@@ -1157,6 +1416,38 @@ def _text_block(slot: SlotInfo, text: str, *, fact_refs: list[str] | None = None
     return out
 
 
+def _one_scale(ds: JsonDict, series: list[str]) -> list[str]:
+    """Ряды одной оси: вид и единица как у первого ряда, максимумы не дальше чем в 20 раз.
+    Проценты рядом с числом пользователей (десятки против сотен тысяч) прижимаются к нулю,
+    и диаграмма перестаёт что-либо показывать."""
+    cols = {c["name"]: c for c in ds["columns"]}
+    index = {c["name"]: i for i, c in enumerate(ds["columns"])}
+
+    def peak(name: str) -> float:
+        values = [row[index[name]] for row in ds["rows"] if index[name] < len(row)]
+        return max(
+            (
+                abs(float(v))
+                for v in values
+                if isinstance(v, int | float) and not isinstance(v, bool)
+            ),
+            default=0.0,
+        )
+
+    first = series[0]
+    scale = (cols[first]["type"], cols[first].get("unit") or "")
+    top = peak(first)
+    kept = [first]
+    for name in series[1:]:
+        if (cols[name]["type"], cols[name].get("unit") or "") != scale:
+            continue
+        value = peak(name)
+        if top and value and max(top, value) / min(top, value) > 20:
+            continue
+        kept.append(name)
+    return kept
+
+
 def _chart_block(ctx: Context, draft: Draft, slot: SlotInfo) -> JsonDict:
     ds = ctx.datasets[draft.dataset or ""]
     cols = ds["columns"]
@@ -1170,6 +1461,14 @@ def _chart_block(ctx: Context, draft: Draft, slot: SlotInfo) -> JsonDict:
     if source_chart:
         # A raster transcription preserves all series and their original order.
         series = numeric
+    else:
+        kept = _one_scale(ds, series)
+        if len(kept) < len(series):
+            ctx.fix(
+                "chart_series_dropped",
+                f"{draft.dataset}: {', '.join(s for s in series if s not in kept)} — другая шкала",
+            )
+            series = kept
     if chart_type is None:
         date_like = any(c["type"] == "date" for c in cols)
         chart_type = "line" if date_like and len(ds["rows"]) >= 4 else "column"
@@ -1205,6 +1504,24 @@ def _table_block(ctx: Context, draft: Draft, slot: SlotInfo) -> JsonDict:
     return {"slot_id": slot.slot_id, "kind": "table", "table": table}
 
 
+def _item_line(ctx: Context, item: JsonDict) -> str:
+    """Строка пункта для списка или абзаца: с подписью и значениями его фактов, если
+    модель привязала факт, но не написала число в тексте."""
+    line = _item_text(item)
+    written = cap.substitute_facts(line, ctx.facts)
+    missing = [
+        f
+        for f in item.get("fact_refs") or []
+        if f in ctx.facts
+        and f not in ctx.slide_shown
+        and f"{{fact:{f}}}" not in line
+        and str(ctx.facts[f].get("raw") or "") not in written
+    ]
+    if missing:
+        line = f"{line} — {', '.join(f'{{fact:{f}}}' for f in missing[:2])}"
+    return line
+
+
 def _item_text(item: JsonDict) -> str:
     """Keep a block heading when the layout has no separate heading slot."""
     text = str(item["text"])
@@ -1219,6 +1536,8 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
     used: set[str] = set()
     draft.filler_slots = set()
     draft.unplaced_text = ""
+    ctx.slide_icons = set()
+    ctx.slide_shown = set()
 
     def put(block: JsonDict, *, filler: bool = False) -> None:
         if block["slot_id"] in used:
@@ -1314,16 +1633,27 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
         + [str(b.get("text") or "") for b in blocks]
     )
     shown_ids = {b["number"]["fact_id"] for b in blocks if b.get("number")}
-    for fid in facts:
-        if fid in shown_ids or f"{{fact:{fid}}}" in visible:
+    visible_values = " ".join(cap.substitute_facts(visible, ctx.facts).split())
+    # На титуле, разделителе и финале числа не дописываются: «• Бюджет: 18 млн руб» под
+    # «Спасибо за внимание» — не подпись, а хвост тезиса.
+    item_refs = {f for it in items for f in it.get("fact_refs") or []}
+    ctx.slide_shown = set(shown_ids)
+    for fid in facts if draft.kind == "content" else []:
+        if fid in shown_ids or f"{{fact:{fid}}}" in visible or fid in item_refs:
+            # Факт пункта дописывает сам пункт (карточка или строка списка) — второй раз
+            # отдельным пунктом он не нужен.
             continue
-        fact = ctx.facts[fid]
-        label = str((fact.get("context") or {}).get("metric") or fact.get("label") or "")
+        raw = " ".join(str(ctx.facts[fid].get("raw") or "").split())
+        if raw and raw in visible_values:
+            # Значение уже написано словами («5 дней подготовки» в узле схемы): вторая
+            # строка «Подготовка: 5 дней» над схемой ложилась на неё.
+            continue
+        phrase = _fact_phrase(ctx, fid)
         if visual in ("diagram", "timeline"):
             # A missing quantity is a note, not an invented process step/child node.
-            text = "\n".join(t for t in (text, f"{label}: {{fact:{fid}}}".lstrip(": ")) if t)
+            text = "\n".join(t for t in (text, phrase) if t)
             continue
-        items.append({"text": f"{label}: {{fact:{fid}}}".lstrip(": "), "fact_refs": [fid]})
+        items.append({"text": phrase, "fact_refs": [fid]})
     # Схема потребляет те же смысловые пункты, но только после проверки реальных узлов.
     diagram_slot = free("diagram")
     if diagram_slot is not None and visual in ("diagram", "timeline"):
@@ -1380,7 +1710,7 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
                         {
                             k: v
                             for k, v in {
-                                "text": _item_text(it),
+                                "text": _item_line(ctx, it),
                                 "fact_refs": it.get("fact_refs"),
                             }.items()
                             if v
@@ -1407,7 +1737,7 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
                             {
                                 k: v
                                 for k, v in {
-                                    "text": _item_text(it),
+                                    "text": _item_line(ctx, it),
                                     "fact_refs": it.get("fact_refs"),
                                 }.items()
                                 if v
@@ -1426,7 +1756,7 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
             items = unplaced + items[cards.count :]
         if items:
             # Не поместившиеся пункты — в текст.
-            extra = "\n".join(f"• {_item_text(it)}" for it in items)
+            extra = "\n".join(f"• {_item_line(ctx, it)}" for it in items)
             text = f"{text}\n{extra}".strip() if text else extra
             items = []
     # Текст и подзаголовок.
@@ -1437,7 +1767,9 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
             put(_text_block(slot, message), filler=True)
             message = ""
     if text:
-        slot = free("body") or free("subtitle") or free("caption")
+        # Самый вместительный свободный слот, а не первый по порядку: у шаблона ЛЦТ первый
+        # «body» — однострочный заголовок карточки, и абзац с пунктами уходил в него.
+        slot = _slot_for_text(ctx, p, used, ("body", "subtitle", "caption"), text)
         if slot is not None:
             put(_text_block(slot, text))
             text = ""
@@ -1449,12 +1781,19 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
         and message.strip() != draft.title.strip()
         and not _text_repeats(message, placed_texts)
     ):
+        # На содержательном слайде message — смысл слайда для аудита, а не текст: крупным
+        # шрифтом он выглядит пересказом («Поэтапный план с конкретными этапами»). Ему место
+        # только в подзаголовке; у титула и финала это настоящая подпись.
         slot = (
             free("subtitle")
-            or (free("body") if not text else None)
-            or free("label")
-            or free("caption")
-            or free("position")
+            if draft.kind == "content"
+            else (
+                free("subtitle")
+                or (free("body") if not text else None)
+                or free("label")
+                or free("caption")
+                or free("position")
+            )
         )
         if slot is not None and not _tiny(slot):
             put(_text_block(slot, message), filler=True)
@@ -1496,8 +1835,23 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
             continue
         if slot.kind in ("body", "subtitle"):
             options = [text, message, draft.message, _explanation(ctx, draft), draft.title]
-            options += [ctx.story.get("key_takeaway", ""), slot.sample_text]
-            options = [o for o in options if o and o.strip()]
+            if draft.kind != "content":
+                # На содержательном слайде главный вывод колоды в пустом слоте повторялся
+                # на каждом втором слайде; пустой слот уберёт вёрстка.
+                options.append(ctx.story.get("key_takeaway", ""))
+            # Текст образца — не содержание: ни подписи-заглушки («Заголовок»), ни подсказки
+            # автора шаблона («Иконки можно брать из VKUI Icons Library») в колоду не идут.
+            placed_now = [str(b.get("text") or "") for b in blocks] + [
+                str(it.get("text", "")) for b in blocks for it in b.get("items") or []
+            ]
+            # Уже стоящий на слайде текст второй раз не ставится: основной текст и та же
+            # фраза мелкой сноской под ним выглядят как сбой вёрстки.
+            options = [o for o in options if o and o.strip() and not _text_repeats(o, placed_now)]
+            if not options:
+                # Сказать нечего нового: прочерк — «слот сознательно пуст» (контракт требует
+                # блок с текстом); вёрстка такой слот не заполняет и убирает рамку.
+                put(_text_block(slot, "—"))
+                continue
             filler = next((o for o in options if _fits_slot(ctx, slot, o)), options[0])
             put(_text_block(slot, filler))
             text = ""
@@ -1542,10 +1896,110 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
                 else _chart_block(ctx, draft, slot)
             )
     draft.unplaced_text = "\n".join(t for t in (draft.unplaced_text, text) if t)
+    _assign_icons(ctx, draft, p, blocks, used, put)
     return blocks
 
 
+def _icon_distance(center: tuple[float, float], slot: SlotInfo) -> float:
+    """Расстояние от иконки до текста; колонка важнее строки — подпись обычно под иконкой."""
+    x, y, w, h = slot.bbox
+    dx = max(x - center[0], 0.0, center[0] - (x + w))
+    dy = max(y - center[1], 0.0, center[1] - (y + h))
+    return dx * 2 + dy
+
+
+def _assign_icons(
+    ctx: Context,
+    draft: Draft,
+    p: PatternInfo,
+    blocks: list[JsonDict],
+    used: set[str],
+    put: Any,
+) -> None:
+    """Свободные иконки слайда — по смыслу ближайшего текста под ними или рядом.
+
+    У образцов, где анализ выделил иконки отдельной группой (VK Education: иконки ряда
+    отдельно от подписей), карточка их не видит, и на каждом слайде оставались лампочка,
+    книга и календарь образца. Иконка без подходящего слова остаётся иконкой образца."""
+    if not ctx.icons:
+        return
+    icon_slots = [s for s in p.slots.values() if s.kind == "icon" and s.slot_id not in used]
+    if not icon_slots:
+        return
+    concepts = {
+        " ".join(str(it.get("text", "")).split()).lower(): str(it.get("icon") or "")
+        for it in draft.items
+    }
+    texts: list[tuple[SlotInfo, str]] = []
+    for b in blocks:
+        slot = p.slots.get(str(b.get("slot_id")))
+        if slot is None or slot.kind in ("title", "number", "icon", "image"):
+            continue
+        body = str(b.get("text") or "") or " ".join(
+            str(it.get("text", "")) for it in b.get("items") or []
+        )
+        if body.strip():
+            texts.append((slot, body))
+    if not texts:
+        return
+    for icon in sorted(icon_slots, key=lambda s: (s.bbox[0], s.bbox[1])):
+        center = (icon.bbox[0] + icon.bbox[2] / 2, icon.bbox[1] + icon.bbox[3] / 2)
+        slot, body = min(texts, key=lambda entry: _icon_distance(center, entry[0]))
+        if _icon_distance(center, slot) > 0.25:
+            continue
+        concept = concepts.get(" ".join(body.split()).lower(), "")
+        asset_id = ctx.icon_for(concept, cap.substitute_facts(body, ctx.facts), ctx.slide_icons)
+        if asset_id:
+            ctx.slide_icons.add(asset_id)
+            put({"slot_id": icon.slot_id, "kind": "icon", "icon": {"asset_id": asset_id}})
+
+
 TINY_SLOT_CHARS = 12
+
+
+def _slot_for_text(
+    ctx: Context, p: PatternInfo, used: set[str], kinds: tuple[str, ...], text: str
+) -> SlotInfo | None:
+    """Слот под абзац: первый по порядку видов (основной текст раньше сноски), куда текст
+    помещается, — внутри вида от вместительного к тесному; не помещается никуда — самый
+    вместительный. Сноска мельче и формально вмещает больше знаков, но главное — не в ней."""
+    free = [
+        slot
+        for kind in kinds
+        for slot in sorted(p.single(kind), key=lambda s: -s.max_chars)
+        if slot.slot_id not in used
+    ]
+    if not free:
+        return None
+    body = cap.substitute_facts(text, ctx.facts)
+    fitting = next((slot for slot in free if not _tiny(slot) and _fits_slot(ctx, slot, body)), None)
+    if fitting is not None:
+        return fitting
+    roomiest = _roomiest(p, used, kinds)
+    if (
+        not ctx.force_text
+        and roomiest is not None
+        and roomiest.max_chars
+        and len(body) > 2 * roomiest.max_chars
+    ):
+        # Абзац вдвое длиннее самого вместительного слота: в нём он ляжет на соседние рамки.
+        # Неразмещённый текст заставит подгонку искать другую композицию.
+        return None
+    return roomiest
+
+
+def _roomiest(p: PatternInfo, used: set[str], kinds: tuple[str, ...]) -> SlotInfo | None:
+    """Свободный одиночный слот с наибольшей ёмкостью среди видов `kinds`; при равенстве —
+    по порядку видов."""
+    best: tuple[int, int, SlotInfo] | None = None
+    for rank, kind in enumerate(kinds):
+        for slot in p.single(kind):
+            if slot.slot_id in used:
+                continue
+            key = (slot.max_chars, -rank)
+            if best is None or key > best[:2]:
+                best = (key[0], key[1], slot)
+    return best[2] if best else None
 
 
 def _number_slots(p: PatternInfo, used: set[str]) -> list[SlotInfo]:
@@ -1638,8 +2092,27 @@ def _fill_card(
     text = str(item["text"])
     sub = str(item.get("sub") or "")
     refs = item.get("fact_refs")
+    number_free = (
+        "number" in card and card["number"].slot_id not in used and not card["number"].is_ordinal
+    )
+    if refs and not number_free:
+        # Показателю некуда встать отдельно (номера карточек — порядковые): значение
+        # дописывается к тексту пункта, иначе «общий бюджет» остаётся без суммы.
+        written = cap.substitute_facts(f"{sub} {text}", ctx.facts)
+        missing = [
+            f
+            for f in refs
+            if f in ctx.facts
+            and f not in ctx.slide_shown
+            and f"{{fact:{f}}}" not in f"{sub} {text}"
+            and str(ctx.facts[f].get("raw") or "") not in written
+        ]
+    else:
+        missing = []
     if heading is None or body is None:
         text = _item_text(item)
+    if missing:
+        text = f"{text} — {', '.join(f'{{fact:{f}}}' for f in missing[:2])}"
     if heading is not None and body is not None:
         head_text = ""
         if sub:
@@ -1689,6 +2162,13 @@ def _fill_card(
         and refs
     ):
         put(_number_block(ctx, card["number"], refs[0]))
+    if "icon" in card and card["icon"].slot_id not in used and ctx.icons:
+        # Пиктограмма по смыслу пункта из каталога шаблона: иначе на каждом слайде стоят
+        # те же три иконки образца (лампочка, книга, календарь), о чём бы ни шла речь.
+        asset_id = ctx.icon_for(str(item.get("icon") or ""), f"{sub} {text}", ctx.slide_icons)
+        if asset_id:
+            ctx.slide_icons.add(asset_id)
+            put({"slot_id": card["icon"].slot_id, "kind": "icon", "icon": {"asset_id": asset_id}})
     return True
 
 
@@ -1747,7 +2227,8 @@ def _item_placed(blocks: list[JsonDict], item: JsonDict) -> bool:
 def _explanation(ctx: Context, draft: Draft) -> str:
     for tid in draft.theses:
         t = ctx.thesis(tid)
-        if t and t.explanation:
+        # Раздел закрывается слайдом без разделителя, но его пояснение — не материал.
+        if t and t.kind != "section" and t.explanation:
             return t.explanation
     return ""
 
@@ -1823,8 +2304,14 @@ def measure_blocks(ctx: Context, draft: Draft, blocks: list[JsonDict]) -> list[J
             min_pt = cap.min_pt_for(
                 slot.kind, body_pt=plan_cfg.min_body_pt, title_pt=plan_cfg.min_title_pt
             )
+            # Обложку, разделитель и финал шаблон рисует под короткое имя («VK Tech» в 48 pt):
+            # тема презентации длиннее, и ей можно уменьшить кегль вдвое, а не на четверть.
+            ratio = SERVICE_MIN_FONT_RATIO if draft.kind in SERVICE_KINDS else None
             for size in cap.font_steps(
-                slot, ctx.scale, min_ratio=plan_cfg.min_font_ratio, min_pt=min_pt
+                slot,
+                ctx.scale,
+                min_ratio=min(ratio or plan_cfg.min_font_ratio, plan_cfg.min_font_ratio),
+                min_pt=min_pt,
             ):
                 m2 = cap.measure(
                     text,
@@ -2112,10 +2599,37 @@ def fit_draft(ctx: Context, draft: Draft) -> Draft:
     right_size_pattern(ctx, draft)
     blocks = fill_blocks(ctx, draft)
     measured = _drop_overflowing_fillers(draft, measure_blocks(ctx, draft, blocks))
-    if draft.overflow or draft.unplaced_text:
-        # Более вместительный паттерн среди кандидатов при исходных кеглях.
+    if (draft.overflow or draft.unplaced_text) and draft.kind == "content":
+        # Служебные слайды (титул, разделитель, финал) композицию не меняют: у них она
+        # задана стилем колоды, а подобранный содержательный образец терял бы заголовок.
+        # Более вместительная композиция: кандидаты тезиса и подбор по фактическому объёму
+        # слайда (пунктов и знаков), включая свои композиции — у шаблона карточки бывают
+        # рассчитаны на три слова, а содержание раскрыто предложениями.
         original = draft.pattern
-        alternatives = list(draft.candidates)
+        need = _need_of(draft)
+        need.has_image = bool(draft.image)
+        need.has_dataset = bool(draft.dataset)
+        alternatives = (
+            list(draft.candidates)
+            + candidates_for(
+                ctx.patterns,
+                need,
+                ctx.variant_id,
+                limit=10,
+                has_datasets=ctx.has_datasets,
+                include_library_alternative=True,
+            )
+            # Свои композиции пробуются всегда: в первых десяти их нет, когда в шаблоне
+            # полсотни образцов, а сетка карточек часто единственная, куда три пункта
+            # по предложению встают, не сливаясь в абзац.
+            + candidates_for(
+                [q for q in ctx.patterns if q.builtin],
+                need,
+                ctx.variant_id,
+                limit=4,
+                has_datasets=ctx.has_datasets,
+            )
+        )
         if draft.unplaced_text:
             alternatives += candidates_for(
                 ctx.patterns,
@@ -2125,10 +2639,14 @@ def fit_draft(ctx: Context, draft: Draft) -> Draft:
                 has_datasets=ctx.has_datasets,
                 include_library_alternative=True,
             )
-        for alt in sorted(alternatives, key=lambda c: -c.text_capacity):
-            if alt is original or (
-                not draft.unplaced_text and alt.text_capacity <= original.text_capacity
-            ):
+        best: tuple[tuple[int, int, int, int], PatternInfo, Draft, list[JsonDict]] | None = None
+        seen: set[str] = {original.pattern_id}
+        for rank, alt in enumerate(alternatives):
+            if alt.pattern_id in seen:
+                continue
+            seen.add(alt.pattern_id)
+            if not draft.image and _big_image_slot(alt):
+                # Картинка во весь слайд без картинки — пустая рамка, а не композиция.
                 continue
             trial = copy.copy(draft)
             trial.pattern = alt
@@ -2136,21 +2654,48 @@ def fit_draft(ctx: Context, draft: Draft) -> Draft:
             alt_blocks = _drop_overflowing_fillers(
                 trial, measure_blocks(ctx, trial, fill_blocks(ctx, trial))
             )
-            if (
-                not trial.overflow
-                and not trial.unplaced_text
-                and all(b.get("fit", {}).get("action", "as_is") == "as_is" for b in alt_blocks)
-            ):
-                draft.pattern = alt
-                draft.candidates = [c for c in draft.candidates if c is not alt] + [original]
-                draft.actions.append(f"pattern_swap:{original.pattern_id}→{alt.pattern_id}")
-                measured = [
-                    {**b, "fit": {**b["fit"], "action": "pattern_swap"}} if "fit" in b else b
-                    for b in alt_blocks
-                ]
-                draft.overflow = []
-                draft.unplaced_text = ""
+            if trial.overflow or trial.unplaced_text:
+                continue
+            trial.blocks = alt_blocks
+            if len(FACT_REF.sub("", _visible_text(trial)).strip()) < 0.85 * _content_chars(draft):
+                # Композиция «вместила» содержание, свернув абзац до первых слов карточки:
+                # это потеря, а не раскладка.
+                continue
+            stepped = any(b.get("fit", {}).get("action", "as_is") != "as_is" for b in alt_blocks)
+            # Пункты должны остаться пунктами: композиция, где три функции продукта
+            # слились в абзац с «•», хуже карточек с кеглем на ступень меньше.
+            flattened = len(draft.items) >= 2 and alt.item_capacity < len(draft.items)
+            # Порядок предпочтения: шаблон в своих кеглях, своя композиция в своих кеглях,
+            # шаблон с уменьшенным кеглем, своя с уменьшенным — всё лучше переполнения.
+            key = (int(flattened), int(stepped), int(alt.builtin), rank)
+            if best is None or key < best[0]:
+                best = (key, alt, trial, alt_blocks)
+            if not flattened and not stepped and not alt.builtin:
                 break
+        if best is not None:
+            _, alt, trial, alt_blocks = best
+            draft.pattern = alt
+            draft.visual = trial.visual
+            draft.candidates = [c for c in draft.candidates if c is not alt] + [original]
+            draft.actions.append(f"pattern_swap:{original.pattern_id}→{alt.pattern_id}")
+            measured = [
+                {**b, "fit": {**b["fit"], "action": "pattern_swap"}} if "fit" in b else b
+                for b in alt_blocks
+            ]
+            draft.overflow = []
+            draft.unplaced_text = ""
+    if draft.unplaced_text and draft.kind == "content" and not ctx.force_text:
+        # Другой композиции, где абзац помещается, нет: он встаёт в самый вместительный слот
+        # с отметкой о переполнении. Потерять содержание молча нельзя — переполнение видят
+        # подсказка модели при повторе, аудит и режим «только шаблон».
+        ctx.force_text = True
+        try:
+            draft.overflow = []
+            measured = _drop_overflowing_fillers(
+                draft, measure_blocks(ctx, draft, fill_blocks(ctx, draft))
+            )
+        finally:
+            ctx.force_text = False
     draft.blocks = measured
     for b in measured:
         act = b.get("fit", {}).get("action")
@@ -2348,6 +2893,16 @@ def _title_draft(ctx: Context, structure: Structure) -> Draft:
     return d
 
 
+def _divider_fits(ctx: Context, pattern: PatternInfo, section: Thesis) -> bool:
+    """Название раздела помещается в заголовок разделителя (с запасом на уменьшение
+    кегля). Разделитель рассчитан на пару крупных слов: вывод целым предложением в нём
+    обрезается, и такой раздел остаётся без разделителя — место уходит содержанию."""
+    if pattern.title is None or not pattern.title.max_chars:
+        return True
+    title = cap.substitute_facts(section.statement, ctx.facts)
+    return len(title) <= pattern.title.max_chars * 1.2
+
+
 def _divider_draft(
     ctx: Context, structure: Structure, section: Thesis, pattern: PatternInfo | None = None
 ) -> Draft:
@@ -2358,10 +2913,15 @@ def _divider_draft(
         theses=[section.id],
         pattern=p,
         title=_clean(cap.substitute_facts(section.statement, ctx.facts), 120),
-        message=_clean(section.explanation, 200),
+        message="" if _DECK_META.search(section.explanation) else _clean(section.explanation, 200),
         visual="text",
         section=section.id,
     )
+
+
+# Пояснение раздела о самой презентации («Введение в раздел с планом действий»,
+# «Заключительный раздел. Резюме презентации») — служебное, аудитории не показывается.
+_DECK_META = re.compile(r"(?i)\b(раздел|презентаци|слайд|доклад)")
 
 
 def _agenda_draft(ctx: Context, structure: Structure) -> Draft:
@@ -2511,19 +3071,18 @@ def split_draft(ctx: Context, draft: Draft) -> tuple[Draft, Draft] | None:
 
 
 def merge_drafts(
-    ctx: Context, a: Draft, b: Draft, *, across_sections: bool = False
+    ctx: Context, a: Draft, b: Draft, *, across_sections: bool = False, relaxed: bool = False
 ) -> Draft | None:
-    """Два соседних содержательных слайда одного раздела → один список/карточки."""
+    """Два соседних содержательных слайда одного раздела → один список/карточки.
+
+    `relaxed` — последний шаг перед отказом по числу слайдов: схемы и этапы тоже
+    становятся пунктами списка, пунктов до десяти."""
     if a.kind != "content" or b.kind != "content":
         return None
     if a.section != b.section and not across_sections:
         return None
-    if a.visual in ("chart", "table", "diagram", "timeline") or b.visual in (
-        "chart",
-        "table",
-        "diagram",
-        "timeline",
-    ):
+    unmergeable = ("chart", "table") if relaxed else ("chart", "table", "diagram", "timeline")
+    if a.visual in unmergeable or b.visual in unmergeable:
         return None
 
     def content_items(draft: Draft) -> list[JsonDict]:
@@ -2533,15 +3092,11 @@ def merge_drafts(
         # IDs alone do not render a quantity in a text list. Keep every source fact visible.
         missing = [f for f in draft.facts if f"{{fact:{f}}}" not in text]
         if missing:
-            text += "; " + "; ".join(
-                f"{ctx.facts[f].get('label') or ''} {{fact:{f}}}".strip()
-                for f in missing
-                if f in ctx.facts
-            )
+            text += "; " + "; ".join(_fact_phrase(ctx, f) for f in missing if f in ctx.facts)
         return [{"text": text, "fact_refs": draft.facts[:]}]
 
     items = content_items(a) + content_items(b)
-    if len(items) > 8:
+    if len(items) > (10 if relaxed else 8):
         return None
     need = Need(
         "bullets", items=len(items), numbers=0, text_chars=sum(len(i["text"]) for i in items)
@@ -2672,12 +3227,117 @@ def assemble(ctx: Context, structure: Structure, packet_drafts: list[list[Draft]
                 i += 2
                 continue
         i += 1
+    body = _drop_duplicates(ctx, body)
     deck = drafts + body + ([final] if final else [])
     deck = _control_count(ctx, structure, deck)
     deck = _ensure_coverage(ctx, structure, deck)
+    deck = _ensure_facts(ctx, deck)
     deck = _diversify(ctx, deck)
     deck = _limit_series(ctx, deck)
+    _distinct_titles(ctx, deck)
     return deck
+
+
+def _distinct_titles(ctx: Context, deck: list[Draft]) -> None:
+    """Заголовки содержательных слайдов не повторяются: слияние слайдов одного раздела даёт
+    обоим формулировку раздела. Повтор получает формулировку своего тезиса."""
+    seen: list[str] = []
+    for d in deck:
+        if d.kind != "content":
+            continue
+        if any(_similar(d.title, o) >= 0.8 for o in seen):
+            for tid in d.theses:
+                t = ctx.thesis(tid)
+                statement = _clean(cap.substitute_facts(t.statement, ctx.facts), 120) if t else ""
+                if statement and all(_similar(statement, o) < 0.8 for o in seen):
+                    ctx.fix("title_deduplicated", f"«{d.title[:40]}» → «{statement[:40]}»")
+                    d.title = statement
+                    d.overflow = []
+                    fit_draft(ctx, d)
+                    break
+        seen.append(d.title)
+
+
+def _ensure_facts(ctx: Context, deck: list[Draft]) -> list[Draft]:
+    """Обязательный факт, которого нет ни на одном слайде, — пунктом на слайд его тезиса.
+
+    Проверка по колоде, а не по слайду: факт тезиса, уже показанный на соседнем слайде,
+    второй раз не дописывается, а на слайд «Риски» не попадают числа из «Проблемы»."""
+    shown: set[str] = set()
+    written = []
+    for d in deck:
+        shown.update(b["number"]["fact_id"] for b in d.blocks if b.get("number"))
+        text = _visible_text(d) + " " + d.title
+        shown.update(FACT_REF.findall(text))
+        written.append(" ".join(cap.substitute_facts(text, ctx.facts).split()))
+    everything = " ".join(written)
+    for fid, fact in ctx.facts.items():
+        if not fact.get("must_keep", True) or fact.get("derived") or fid in shown:
+            continue
+        raw = " ".join(str(fact.get("raw") or "").split())
+        if raw and raw in everything:
+            continue
+        owners = {t.id for t in ctx.theses if fid in t.fact_refs}
+        home = next(
+            (d for d in deck if d.kind == "content" and owners & set(d.theses)),
+            None,
+        )
+        if home is None:
+            continue
+        home.items.append({"text": _fact_phrase(ctx, fid), "fact_refs": [fid]})
+        home.facts.append(fid)
+        home.overflow = []
+        fit_draft(ctx, home)
+        ctx.fix("fact_restored", f"«{home.title[:40]}»: добавлен показатель {fid}")
+    return deck
+
+
+def _drop_duplicates(ctx: Context, body: list[Draft]) -> list[Draft]:
+    """Два содержательных слайда с тем же заголовком и тем же содержанием — один слайд.
+
+    Бюджет пакета просит два слайда на тезис, и модель иногда повторяет первый дословно
+    (VK Tech: «Цель: 60 % открываемости…» дважды подряд). Недостачу восполнит контроль
+    числа слайдов настоящим раскрытием, а не копией.
+    """
+    out: list[Draft] = []
+    for d in body:
+        twin = next(
+            (
+                o
+                for o in out
+                if d.kind == o.kind == "content"
+                and _similar(d.title, o.title) >= 0.8
+                and _similar(_visible_text(d), _visible_text(o)) >= 0.8
+            ),
+            None,
+        )
+        if twin is not None:
+            twin.theses = list(dict.fromkeys(twin.theses + d.theses))
+            ctx.fix("duplicate_dropped", f"«{d.title[:40]}»: повтор предыдущего слайда")
+            continue
+        if d.kind == "content" and any(
+            o.kind == "content" and _similar(d.title, o.title) >= 0.8 for o in out
+        ):
+            # Разное содержание под одним заголовком: у второго слайда заголовком становится
+            # формулировка его тезиса, иначе колода читается как повтор.
+            for tid in d.theses:
+                t = ctx.thesis(tid)
+                statement = _clean(cap.substitute_facts(t.statement, ctx.facts), 120) if t else ""
+                if statement and all(_similar(statement, o.title) < 0.8 for o in out):
+                    ctx.fix("title_deduplicated", f"«{d.title[:40]}» → «{statement[:40]}»")
+                    d.title = statement
+                    d.overflow = []
+                    fit_draft(ctx, d)
+                    break
+        out.append(d)
+    return out
+
+
+def _similar(a: str, b: str) -> float:
+    left, right = _stems(a), _stems(b)
+    if not left and not right:
+        return 1.0
+    return len(left & right) / max(len(left | right), 1)
 
 
 def _count(deck: list[Draft]) -> int:
@@ -2698,6 +3358,10 @@ def _control_count(ctx: Context, structure: Structure, deck: list[Draft]) -> lis
         if _merge_one(ctx, deck, across_sections=True):
             continue
         if _drop_optional(ctx, deck):
+            continue
+        if _merge_one(ctx, deck, across_sections=True, relaxed=True):
+            continue
+        if _fold_thinnest(ctx, deck):
             continue
         break
     if _count(deck) > hi:
@@ -2798,13 +3462,15 @@ def _drop_optional(ctx: Context, deck: list[Draft]) -> bool:
     return False
 
 
-def _merge_one(ctx: Context, deck: list[Draft], *, across_sections: bool = False) -> bool:
+def _merge_one(
+    ctx: Context, deck: list[Draft], *, across_sections: bool = False, relaxed: bool = False
+) -> bool:
     best: tuple[int, Draft] | None = None
     for i in range(len(deck) - 1):
         a, b = deck[i], deck[i + 1]
         if a.kind != "content" or b.kind != "content":
             continue
-        merged = merge_drafts(ctx, a, b, across_sections=across_sections)
+        merged = merge_drafts(ctx, a, b, across_sections=across_sections, relaxed=relaxed)
         if merged is None:
             continue
         size = len(a.items) + len(b.items)
@@ -2815,6 +3481,32 @@ def _merge_one(ctx: Context, deck: list[Draft], *, across_sections: bool = False
     i, merged = best
     ctx.fix("slides_merged", f"«{deck[i].title[:30]}» + «{deck[i + 1].title[:30]}»")
     deck[i : i + 2] = [merged]
+    return True
+
+
+def _fold_thinnest(ctx: Context, deck: list[Draft]) -> bool:
+    """Последний шаг перед отказом по верхней границе: самый бедный содержательный слайд
+    уходит, его тезисы числятся за соседним. Колода на слайд короче лучше, чем вариант,
+    который не собран совсем."""
+    content = [
+        (len(FACT_REF.sub("", _visible_text(d))), i)
+        for i, d in enumerate(deck)
+        if d.kind == "content" and not any(b.get("kind") in ("chart", "table") for b in d.blocks)
+    ]
+    if len(content) < 2:
+        return False
+    _, i = min(content)
+    removed = deck.pop(i)
+    neighbour = next(
+        (deck[j] for j in (i - 1, i) if 0 <= j < len(deck) and deck[j].kind == "content"),
+        None,
+    )
+    if neighbour is not None:
+        neighbour.theses = list(dict.fromkeys(neighbour.theses + removed.theses))
+    ctx.fix(
+        "slide_folded",
+        f"«{removed.title[:40]}»: убран ради верхней границы числа слайдов",
+    )
     return True
 
 
@@ -2855,7 +3547,7 @@ def _add_divider(
         return False
     present = {d.section for d in deck if d.kind == "divider"}
     for sec in structure.sections:
-        if sec.id in present:
+        if sec.id in present or not _divider_fits(ctx, structure.divider_pattern, sec):
             continue
         idx = next(
             (i for i, d in enumerate(deck) if d.kind == "content" and d.section == sec.id), None
@@ -3015,6 +3707,7 @@ def _ensure_coverage(ctx: Context, structure: Structure, deck: list[Draft]) -> l
                     structure.divider_pattern is not None
                     and ctx.variant_id != "compact"
                     and _count(deck) < ctx.spec.hi
+                    and _divider_fits(ctx, structure.divider_pattern, t)
                 ):
                     idx = _insert_index(ctx, deck, t)
                     deck.insert(idx, fit_draft(ctx, _divider_draft(ctx, structure, t)))
@@ -3026,6 +3719,10 @@ def _ensure_coverage(ctx: Context, structure: Structure, deck: list[Draft]) -> l
                 covered.add(t.id)
                 continue
         host = next((d for d in deck if d.kind == "content" and d.section == t.section), None)
+        if host is None and _count(deck) >= ctx.spec.hi:
+            # Слайда своего раздела нет, а места больше нет: пункт соседнего слайда лучше
+            # отказа всего варианта.
+            host = _neighbour(ctx, deck, t)
         attached = False
         if host is not None:
             trial = copy.deepcopy(host)
@@ -3172,6 +3869,10 @@ def _diversify(ctx: Context, deck: list[Draft]) -> list[Draft]:
             fit_draft(ctx, trial)
             if trial.overflow or trial.pattern.pattern_id == d.pattern.pattern_id:
                 continue
+            if not _keeps_content(d, trial):
+                # Разнообразие не стоит содержания: подгонка вмещает текст в мелкие слоты
+                # сокращением, и «Каналы / Фокус» вместо трёх функций продукта хуже повтора.
+                continue
             used[d.pattern.pattern_id] -= 1
             used[trial.pattern.pattern_id] += 1
             ctx.fix(
@@ -3183,6 +3884,57 @@ def _diversify(ctx: Context, deck: list[Draft]) -> list[Draft]:
             d.actions.append(f"diversify:{trial.pattern.pattern_id}")
             break
     return deck
+
+
+def _content_chars(draft: Draft) -> int:
+    """Объём содержания черновика без заголовка: текст и пункты (с подписями)."""
+    parts = [draft.text] + [f"{it.get('sub', '')} {it.get('text', '')}" for it in draft.items]
+    return len(FACT_REF.sub("", " ".join(p for p in parts if p)).strip())
+
+
+def _big_image_slot(p: PatternInfo) -> bool:
+    return p.role != "chart" and any(
+        s.kind == "image" and s.bbox[2] * s.bbox[3] >= 0.18 for s in p.slots.values()
+    )
+
+
+def _visible_text(draft: Draft) -> str:
+    parts: list[str] = []
+    for b in draft.blocks:
+        if b.get("kind") == "title":
+            continue
+        if b.get("text"):
+            parts.append(str(b["text"]))
+        parts.extend(str(it.get("text") or "") for it in b.get("items") or [])
+        if b.get("diagram"):
+            parts.extend(
+                f"{it.get('text', '')} {it.get('sub', '')}"
+                for it in b["diagram"].get("items") or []
+            )
+    return " ".join(parts)
+
+
+def _keeps_content(before: Draft, after: Draft, ratio: float = 0.85) -> bool:
+    """Замена композиции не теряет содержание: все показанные факты на месте, видимого
+    текста не меньше доли `ratio`, ничего не осталось неразмещённым."""
+    if after.unplaced_text.strip() and not before.unplaced_text.strip():
+        return False
+    media = ("chart", "table", "image", "diagram")
+    if {b.get("kind") for b in before.blocks if b.get("kind") in media} - {
+        b.get("kind") for b in after.blocks
+    }:
+        return False
+    facts_before = set(FACT_REF.findall(_visible_text(before))) | {
+        b["number"]["fact_id"] for b in before.blocks if b.get("number")
+    }
+    facts_after = set(FACT_REF.findall(_visible_text(after))) | {
+        b["number"]["fact_id"] for b in after.blocks if b.get("number")
+    }
+    if not facts_before <= facts_after:
+        return False
+    chars_before = len(FACT_REF.sub("", _visible_text(before)).strip())
+    chars_after = len(FACT_REF.sub("", _visible_text(after)).strip())
+    return chars_after >= ratio * chars_before
 
 
 def _limit_series(ctx: Context, deck: list[Draft]) -> list[Draft]:
@@ -3200,6 +3952,8 @@ def _limit_series(ctx: Context, deck: list[Draft]) -> list[Draft]:
                 trial.overflow = []
                 fit_draft(ctx, trial)
                 if trial.overflow or not sequence_ok(sequence, trial.pattern):
+                    continue
+                if not _keeps_content(d, trial):
                     continue
                 sibling = bool(alt.group_id) and alt.group_id == d.pattern.group_id
                 ctx.fix(
@@ -3244,14 +3998,14 @@ def slide_from_draft(ctx: Context, d: Draft, *, slide_id: str, order: int) -> Js
         for it in b.get("items") or []:
             fact_refs.extend(it.get("fact_refs") or [])
     title = cap.substitute_facts(d.title, ctx.facts)
-    # Лестница ёмкости могла сократить блок заголовка: заголовок слайда — то, что на слайде.
+    # Лестница ёмкости могла сократить блок заголовка (а замена композиции — перезаписать
+    # отметку действия): заголовок слайда — то, что стоит в его слоте заголовка.
+    title_slot = d.pattern.title.slot_id if d.pattern.title is not None else None
     shortened = next(
         (
             b
             for b in d.blocks
-            if b.get("kind") == "title"
-            and (b.get("fit") or {}).get("action") == "shortened"
-            and b.get("text")
+            if b.get("kind") == "title" and b.get("slot_id") == title_slot and b.get("text")
         ),
         None,
     )
@@ -3757,6 +4511,7 @@ def build_variant_plan(
             "template_capacity_exceeded",
             "Текст не помещается в макеты шаблона. "
             "Увеличьте число слайдов, разделите содержание или сократите текст.",
+            details={"slides": unresolved[:5]},
         )
     # Переполнение после лестницы ёмкости остаётся в плане структурированно и уходит в аудит —
     # и при диапазоне, и при точном числе слайдов: колода с подсвеченной строкой лучше отказа

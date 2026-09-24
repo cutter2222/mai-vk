@@ -20,6 +20,7 @@ from typing import Any
 
 from presentation_designer.design.fit import Decision, _fits, content_slots
 from presentation_designer.design.measure import overflows_badly
+from presentation_designer.parsing.template.classify import is_marker
 
 log = logging.getLogger(__name__)
 
@@ -53,10 +54,17 @@ def drop_placeholders(slide: JsonDict, pattern: JsonDict, markers: set[str]) -> 
     samples |= {_norm(m) for m in markers}
     samples.discard("")
 
+    service = pattern.get("role") in ("title", "thanks", "qr", "section_divider", "agenda")
+    kinds = {s.get("slot_id"): s.get("kind") for s in pattern.get("slots", [])}
     kept, dropped = [], []
     for block in slide.get("blocks", []):
         text = _norm(block.get("text", ""))
         if text and text in samples:
+            if service and kinds.get(block.get("slot_id")) == "title" and not is_marker(text):
+                # «Спасибо за внимание» на финале совпадает с образцом, но это не
+                # заглушка: без него финальный слайд остаётся без заголовка.
+                kept.append(block)
+                continue
             dropped.append(block.get("slot_id"))
             continue
         kept.append(block)
@@ -75,7 +83,8 @@ def drop_duplicates(slide: JsonDict) -> list[str]:
     в каком макете.
     """
     seen: set[str] = set()
-    kept, dropped = [], []
+    kept: list[JsonDict] = []
+    dropped: list[str] = []
     for block in slide.get("blocks", []):
         text = _norm(block.get("text", ""))
         refs = set(_FACT.findall(str(block.get("text") or "")))

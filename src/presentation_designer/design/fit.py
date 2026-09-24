@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -125,7 +126,9 @@ def _kinds_needed(slide: JsonDict) -> dict[str, int]:
 _KIN = {
     "caption": ("caption", "body", "label"),
     "label": ("label", "caption", "body"),
-    "body": ("body", "label", "caption"),
+    # Основной текст — сначала в слот текста, и только потом в подпись: в сетке карточек
+    # `label` — заголовок карточки, и пункт в нём оставлял пустым слот текста под ним.
+    "body": ("body", "caption", "label"),
     "quote": ("quote", "body"),
 }
 
@@ -169,6 +172,13 @@ _ROLE_FAMILY = {
 }
 
 
+_SERVICE_ROLES = ("title", "section_divider", "thanks", "qr", "agenda")
+
+
+def _builtin(pattern: JsonDict) -> bool:
+    return (pattern.get("source") or {}).get("kind") == "builtin"
+
+
 def _roles_for(role: str) -> tuple[str, ...]:
     return _ROLE_FAMILY.get(role, (role,))
 
@@ -196,9 +206,14 @@ def choose_pattern(
 
     role = str(current.get("role") or "")
     family = _roles_for(role)
+    keep_template = role in _SERVICE_ROLES and _builtin(current) is False
     best, best_score = None, None
     for pattern in patterns.values():
         if str(pattern.get("role") or "") not in family or not _can_host(pattern, needed):
+            continue
+        if keep_template and _builtin(pattern):
+            # Обложка, разделитель и финал — лицо колоды, нарисованное автором шаблона:
+            # пустой слот подписи не повод менять их на свою белую композицию.
             continue
         slots = len(content_slots(pattern))
         if slots < blocks:
@@ -252,7 +267,7 @@ def remap_blocks(slide: JsonDict, pattern: JsonDict) -> None:
     """
     by_kind: dict[str, list[str]] = {}
     for slot in _data_slots(pattern):
-        by_kind.setdefault(slot.get("kind"), []).append(slot.get("slot_id"))
+        by_kind.setdefault(str(slot.get("kind")), []).append(str(slot.get("slot_id")))
 
     used: dict[str, int] = {}
     for block in slide.get("blocks", []):
@@ -275,12 +290,16 @@ def _thesis_texts(story: JsonDict, refs: list[str]) -> list[str]:
     """Пояснения и подтверждения тезисов слайда — источник добора.
 
     Ничего не сочиняется: берётся то, что стадия `story` уже построила из
-    исходных материалов и снабдила ссылками на источник.
+    исходных материалов и снабдила ссылками на источник. Пояснение раздела — описание
+    части рассказа («Введение в раздел с планом действий»), а не материал: слайд без
+    разделителя закрывает тезис-раздел, но его пояснение на слайд не идёт.
     """
     theses = {t.get("thesis_id"): t for t in story.get("theses", [])}
     out: list[str] = []
     for ref in refs:
         thesis = theses.get(ref) or {}
+        if thesis.get("kind") == "section":
+            continue
         for key in ("explanation", "detail", "evidence"):
             value = thesis.get(key)
             if isinstance(value, str) and value.strip():
@@ -320,6 +339,19 @@ def _fits(slot: JsonDict, text: str, canvas: Any | None = None) -> bool | None:
     return fits(slot, text, canvas)
 
 
+def _overlap(a: str, b: str) -> float:
+    """Доля общих основ слов (по пять букв) — пересказ той же мысли, а не новое."""
+    left = {w[:5] for w in a.split() if len(w) > 3}
+    right = {w[:5] for w in b.split() if len(w) > 3}
+    if not left or not right:
+        return 0.0
+    return len(left & right) / min(len(left), len(right))
+
+
+def _plain(text: Any) -> str:
+    return re.sub(r"\W+", " ", str(text or "")).strip().lower()
+
+
 def enrich(
     slide: JsonDict, pattern: JsonDict, story: JsonDict, canvas: Any | None = None
 ) -> list[str]:
@@ -341,6 +373,20 @@ def enrich(
     texts = _thesis_texts(story, refs)
     if not texts and str(slide.get("role", "")).startswith("section"):
         texts = _section_lead(story, refs)
+    # Пояснение тезиса часто уже стоит на слайде основным текстом: второй раз мелкой
+    # сноской под ним оно выглядит как сбой вёрстки.
+    on_slide = [_plain(b.get("text")) for b in slide.get("blocks", [])] + [
+        _plain(it.get("text")) for b in slide.get("blocks", []) for it in b.get("items") or []
+    ]
+    texts = [
+        t
+        for t in texts
+        if not any(
+            _plain(t) and (_plain(t) in o or o in _plain(t) or _overlap(_plain(t), o) >= 0.5)
+            for o in on_slide
+            if o
+        )
+    ]
     added: list[str] = []
     for slot, text in zip(free, texts, strict=False):
         if _fits(slot, text, canvas) is not True:  # при «неизвестно» не рискуем

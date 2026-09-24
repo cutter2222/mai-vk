@@ -160,8 +160,13 @@ def test_model_cannot_claim_thesis_coverage_while_omitting_its_facts() -> None:
             ]
         },
     )
-    assert drafts[0].facts == ["f1"]
-    assert any("{fact:f1}" in b.get("text", "") for b in vr.fill_blocks(ctx, drafts[0]))
+    # Факт тезиса, не написанный на слайде, к нему не привязывается (иначе на слайд
+    # попадали числа из других разделов), но колода не теряет его: проверка по колоде
+    # дописывает обязательный факт на слайд его тезиса.
+    assert drafts[0].facts == []
+    deck = vr._ensure_facts(ctx, drafts)
+    assert deck[0].facts == ["f1"]
+    assert any("{fact:f1}" in b.get("text", "") for b in vr.fill_blocks(ctx, deck[0]))
 
 
 def test_content_packet_omits_design_but_plan_cache_tracks_it() -> None:

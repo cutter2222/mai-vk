@@ -44,8 +44,8 @@ def test_request_from_manifest() -> None:
     assert req.reasoning == "off"
     assert req.max_output_tokens == skill.manifest.reasoning.max_output_tokens
     assert req.temperature == 0.2
-    assert req.prompt == ("story.outline", "0.2.0")
-    assert req.skill == ("story_planner", "0.2.0")
+    assert req.prompt == ("story.outline", "0.3.2")
+    assert req.skill == ("story_planner", "0.3.2")
     assert req.stage == "story"
     assert req.messages[0].role == "system" and req.messages[1].text == "Материалы: ..."
     with pytest.raises(SkillError):
@@ -57,8 +57,8 @@ def test_request_from_manifest() -> None:
 def test_version_refs_match_contract_shape() -> None:
     skills, prompts = version_refs()
     assert all(set(x) == {"name", "version"} for x in skills + prompts)
-    assert {"name": "story_planner", "version": "0.2.0"} in skills
-    assert {"name": "story.outline", "version": "0.2.0"} in prompts
+    assert {"name": "story_planner", "version": "0.3.2"} in skills
+    assert {"name": "story.outline", "version": "0.3.2"} in prompts
 
 
 def test_prompt_version_mismatch_fails(tmp_path: pathlib.Path) -> None:

@@ -947,6 +947,17 @@ def check_empty_slide(slide: JsonDict, ctx: Context) -> list[Issue]:
         only_title = len(texts) == 1 and not visuals and texts[0].get("slot_kind") == "title"
         if not only_title:
             return []
+        role = next(
+            (
+                str(p.get("role") or "")
+                for p in ctx.profile.get("patterns") or []
+                if p.get("pattern_id") == slide.get("pattern_id")
+            ),
+            "",
+        )
+        if role in ("title", "thanks", "qr", "section_divider", "agenda"):
+            # Обложка, разделитель и финал из одного заголовка — так они и нарисованы.
+            return []
         message = "На слайде только заголовок"
     else:
         message = "Слайд пустой"

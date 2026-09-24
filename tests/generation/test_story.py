@@ -118,6 +118,167 @@ def test_assemble_repairs_refs_and_covers_required_content(example_package: dict
     assert story["effective_brief"]["language"] == "ru"
 
 
+def _assemble(package: dict[str, Any], theses: list[dict[str, Any]]) -> tuple[Any, list[Any]]:
+    brief = st.effective_brief(package, {"language": "ru"})
+    brief["must_include"] = []
+    answer = {"key_takeaway": "Пилот удался", "theses": theses}
+    return st.assemble_story(
+        answer,
+        package,
+        brief,
+        content_hash="sha256:test",
+        story_id="story_t",
+        generation_meta={"skills": [], "models": []},
+    )
+
+
+def _claim(tid: str, part: str = "", refs: list[str] | None = None) -> dict[str, Any]:
+    return {
+        "id": tid,
+        "kind": "claim",
+        "part": part,
+        "parent": "t1",
+        "statement": f"Утверждение {tid}",
+        "required": True,
+        "source_refs": refs or [],
+    }
+
+
+def test_single_section_is_split_by_parts(example_package: dict[str, Any]) -> None:
+    """Модель свела всё к одному разделу-теме: разделы строятся по частям рассказа, как
+    topic в PPTAgent; повтор пройденной части и вывод не открывают новый раздел."""
+    theses = [
+        {"id": "t1", "kind": "section", "part": "", "statement": "Умные уведомления"},
+        _claim("t2", "Проблема"),
+        _claim("t3", "проблема"),
+        _claim("t4", "Результаты пилота"),
+        _claim("t5", "Проблема"),
+        _claim("t6", "План"),
+        {"id": "t7", "kind": "conclusion", "part": "Итоги", "statement": "Просим одобрить"},
+    ]
+    story, fixes = _assemble(example_package, theses)
+    assert not check_story_plan(
+        StoryPlan.model_validate(story), ContentPackage.model_validate(example_package)
+    )
+    by_id = {t["thesis_id"]: t for t in story["theses"]}
+    sections = [t for t in story["theses"] if t["kind"] == "section"]
+    assert [s["statement"] for s in sections] == [
+        "Умные уведомления",
+        "Проблема",
+        "Результаты пилота",
+        "План",
+    ]
+    parents = [
+        by_id[t["parent_id"]]["statement"] for t in story["theses"] if t["kind"] != "section"
+    ]
+    assert parents[:6] == ["Проблема"] * 2 + ["Результаты пилота"] * 2 + ["План"] * 2
+    assert "sections_from_parts" in {f["code"] for f in fixes}
+    assert all("_part" not in t for t in story["theses"])
+
+
+def test_replaced_section_hands_over_its_facts(example_package: dict[str, Any]) -> None:
+    """Модель поставила обязательный факт на раздел, который код заменяет своими: факт
+    переходит к следующему тезису и план проходит проверку связей."""
+    fact = next(f["fact_id"] for f in example_package["facts"] if f["must_keep"])
+    theses = [
+        {"id": "t1", "kind": "section", "part": "", "statement": "Умные уведомления"},
+        _claim("t2", "Проблема"),
+        {
+            "id": "t3",
+            "kind": "section",
+            "part": "Результаты",
+            "statement": "Результаты",
+            "fact_refs": [fact],
+        },
+        _claim("t4", "Результаты"),
+        _claim("t5", "Результаты"),
+        _claim("t6", "План"),
+    ]
+    theses[3]["parent"] = "t3"
+    story, fixes = _assemble(example_package, theses)
+    assert "sections_from_parts" in {f["code"] for f in fixes}
+    assert not check_story_plan(
+        StoryPlan.model_validate(story), ContentPackage.model_validate(example_package)
+    )
+    host = next(t for t in story["theses"] if t["statement"] == "Утверждение t4")
+    assert fact in host["fact_refs"]
+
+
+def test_section_with_conclusion_becomes_claim(example_package: dict[str, Any]) -> None:
+    """Раздел модели, названный целым выводом, несёт содержание: при перестройке разделов
+    он становится тезисом своей части с фактами, а не пропадает."""
+    fact = next(f["fact_id"] for f in example_package["facts"] if f["must_keep"])
+    plan = "В декабре расширение на все регионы с целью поднять открываемость до 60 %"
+    theses = [
+        {"id": "t1", "kind": "section", "part": "", "statement": "Умные уведомления"},
+        _claim("t2", "Проблема"),
+        _claim("t3", "Проблема"),
+        _claim("t4", "Результаты"),
+        {"id": "t5", "kind": "section", "part": "План", "statement": plan, "fact_refs": [fact]},
+        _claim("t6", "План"),
+    ]
+    story, fixes = _assemble(example_package, theses)
+    codes = {f["code"] for f in fixes}
+    assert {"section_named_by_part", "sections_from_parts"} <= codes
+    claim = next(t for t in story["theses"] if t["statement"] == plan)
+    assert claim["kind"] == "claim" and fact in claim["fact_refs"]
+    sections = {t["thesis_id"]: t["statement"] for t in story["theses"] if t["kind"] == "section"}
+    assert sections[claim["parent_id"]] == "План"
+
+
+def test_sections_fall_back_to_source_headings(example_package: dict[str, Any]) -> None:
+    labels = st._heading_labels(example_package)
+    first: dict[str, str] = {}
+    for block_id, label in labels.items():
+        if label and label not in first.values():
+            first[block_id] = label
+    (b1, h1), (b2, h2) = list(first.items())[:2]
+    theses = [
+        {"id": "t1", "kind": "context", "part": "", "statement": "Вводная"},
+        _claim("t2", refs=[b1]),
+        _claim("t3"),
+        _claim("t4", refs=[b2]),
+        _claim("t5", refs=[b2]),
+    ]
+    story, fixes = _assemble(example_package, theses)
+    sections = [t["statement"] for t in story["theses"] if t["kind"] == "section"]
+    assert sections == [h1[:1].upper() + h1[1:], h2[:1].upper() + h2[1:]]
+    assert story["theses"][0]["statement"] == "Вводная"
+    assert "sections_from_headings" in {f["code"] for f in fixes}
+
+
+def test_section_per_thesis_is_not_structure(example_package: dict[str, Any]) -> None:
+    """Своя часть у каждого тезиса — не разделы: колода из одних разделителей, а пакеты не
+    укладываются в число слайдов. Разделы тогда не перестраиваются."""
+    theses = [
+        {"id": "t1", "kind": "section", "part": "", "statement": "Экспедиция"},
+        *[_claim(f"t{i}", f"Часть {i}") for i in range(2, 8)],
+    ]
+    story, fixes = _assemble(example_package, theses)
+    assert not {"sections_from_parts", "sections_from_headings"} & {f["code"] for f in fixes}
+    assert [t["kind"] for t in story["theses"]].count("section") == 1
+
+
+def test_model_sections_are_kept(example_package: dict[str, Any]) -> None:
+    theses = [
+        {"id": "a", "kind": "section", "part": "", "statement": "Проблема"},
+        _claim("b", "Другое"),
+        _claim("c", "Другое"),
+        {"id": "d", "kind": "section", "part": "", "statement": "Решение"},
+        _claim("e", "Ещё"),
+    ]
+    theses[1]["parent"] = theses[2]["parent"] = "a"
+    theses[4]["parent"] = "d"
+    story, fixes = _assemble(example_package, theses)
+    # Первый раздел покрывает титул: с содержанием остался один раздел — строим по частям.
+    assert "sections_from_parts" in {f["code"] for f in fixes}
+    theses.insert(0, {"id": "z", "kind": "context", "part": "", "statement": "Вводная"})
+    story, fixes = _assemble(example_package, theses)
+    sections = [t["statement"] for t in story["theses"] if t["kind"] == "section"]
+    assert sections == ["Проблема", "Решение"]
+    assert not {"sections_from_parts", "sections_from_headings"} & {f["code"] for f in fixes}
+
+
 def test_story_key_depends_on_content_brief_and_settings(example_package: dict[str, Any]) -> None:
     skill = get_skill("story_planner")
     base = st.story_key(
@@ -200,15 +361,19 @@ def test_build_story_on_replay(example_package: dict[str, Any], replay_client: A
     kinds = {t["kind"] for t in story["theses"]}
     assert "section" in kinds and kinds & {"conclusion", "call_to_action"}
     meta = story["generation_meta"]
-    assert meta["skills"] == [{"name": "story_planner", "version": "0.2.0"}]
-    assert meta["prompts"] == [{"name": "story.outline", "version": "0.2.0"}]
+    assert meta["skills"] == [{"name": "story_planner", "version": "0.3.2"}]
+    assert meta["prompts"] == [{"name": "story.outline", "version": "0.3.2"}]
     from presentation_designer.shared.settings import get_models_config
 
     role = get_models_config().role("llm")
     assert meta["models"][0]["name"] == role.model
     assert meta["models"][0]["reasoning_mode"] == role.reasoning.mode
     assert meta["prompt_tokens"] > 1000 and meta["completion_tokens"] > 500
-    assert result.report["digest_truncated"] is False and result.report["fixes"] == []
+    # Правок ответа нет; допустима только нормализация разделов по частям рассказа.
+    codes = {f["code"] for f in result.report["fixes"]}
+    assert not codes - {"section_named_by_part", "sections_from_parts", "sections_from_headings"}
+    assert result.report["digest_truncated"] is False
+    assert st._content_sections(story["theses"]) >= 2
 
 
 def test_bad_answer_is_retried_with_hint(

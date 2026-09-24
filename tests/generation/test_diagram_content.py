@@ -139,8 +139,28 @@ def test_relationships_are_not_merged_and_diagram_text_counts_toward_density() -
 def test_unplaced_diagram_content_requests_retry_when_no_text_layout_exists() -> None:
     ctx, packet, answer = _answer("cycle")
     ctx.patterns = [ctx.patterns[0]]
-    answer["slides"][0]["items"] = [{"text": "Длинное объяснение " * 15}] * 3
+    answer["slides"][0]["items"] = [{"text": f"Длинное объяснение {i} " * 15} for i in range(3)]
     draft = vr.make_validator(ctx, packet)(answer)["drafts"][0]
     vr.fit_draft(ctx, draft)
     assert draft.unplaced_text
     assert "часть содержания не размещена" in (vr.overflow_hint([draft]) or "")
+
+
+def test_chart_keeps_series_of_one_scale() -> None:
+    """Проценты и число пользователей на одной оси: проценты прижаты к нулю — второй
+    шкалы нет, поэтому остаются ряды вида и единицы первого, сопоставимые по величине."""
+    ds = {
+        "columns": [
+            {"name": "Месяц", "type": "date"},
+            {"name": "Открываемость", "type": "percent", "unit": "%"},
+            {"name": "Отписки", "type": "percent", "unit": "%"},
+            {"name": "Активные пользователи", "type": "number"},
+            {"name": "Доля сессий", "type": "percent", "unit": "%"},
+        ],
+        "rows": [["Май", 31, 4.1, 120500, 0.01], ["Июнь", 38, 3.2, 131200, 0.02]],
+    }
+    series = ["Открываемость", "Отписки", "Активные пользователи", "Доля сессий"]
+    assert vr._one_scale(ds, series) == ["Открываемость", "Отписки"]
+    assert vr._one_scale(ds, ["Активные пользователи", "Открываемость"]) == [
+        "Активные пользователи"
+    ]

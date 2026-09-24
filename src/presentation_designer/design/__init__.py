@@ -79,6 +79,12 @@ def apply(
     result = copy.deepcopy(plan)
     report = Report()
     limits = thresholds_for(variant, config)
+    # Замена композиции после плана выключается тем же флагом, что и в правке по фактам:
+    # подбор по объёму уже сделал планировщик, а перенос блоков по видам слотов терял
+    # разметку карточек (пункт уходил в заголовок карточки, текст под ним пустел).
+    swap_allowed = bool(
+        (((config or {}).get("design") or {}).get("feedback") or {}).get("pattern_swap", True)
+    )
     # Холст шаблона, а не «обычный» 16:9: доли рамок не во что переводить без
     # размера слайда, а ошибка в нём — это ошибка каждого замера слоя.
     canvas = canvas_of(profile)
@@ -140,7 +146,7 @@ def apply(
         # площадь решает лишь вопрос о подмене паттерна, а добор идёт всегда,
         # когда есть пустой слот и есть чем его заполнить.
         chosen, why = (None, "заполненность в норме")
-        if limits.underfilled(before):
+        if swap_allowed and limits.underfilled(before):
             chosen, why = choose_pattern(slide, patterns, limits)
         if chosen is not None:
             remap_blocks(slide, chosen)

@@ -47,7 +47,7 @@ from presentation_designer.layout import text as tx
 from presentation_designer.layout.composed import SlideRecord, SlotFill, build_composed_deck
 from presentation_designer.layout.integrity import IntegrityReport, check_deck
 from presentation_designer.layout.media import export_media
-from presentation_designer.layout.ooxml import clone_slide, keep_only_slides
+from presentation_designer.layout.ooxml import NS_A, NS_P, NS_R, clone_slide, keep_only_slides
 from presentation_designer.layout.overrides import apply_overrides
 from presentation_designer.layout.package import (
     drop_template_logos,
@@ -64,6 +64,7 @@ from presentation_designer.layout.shapes import (
     ensure_xfrm,
     in_group,
     next_shape_id,
+    part_by_name,
     remove_shape,
     set_element_box,
     shape_element,
@@ -74,6 +75,7 @@ from presentation_designer.library.spec import find_composition
 from presentation_designer.library.tokens import DesignCode
 from presentation_designer.parsing.raster_charts.model import ChartReading
 from presentation_designer.parsing.template.geometry import walk_shapes
+from presentation_designer.shared import text_metrics
 
 log = logging.getLogger(__name__)
 
@@ -327,6 +329,11 @@ def _fill_slide(
         if fill is not None:
             filled[slot.slot_id] = fill
             record.fills.append(fill)
+            raw_slot: JsonDict = next(
+                (s for s in pattern_raw["slots"] if s["slot_id"] == slot.slot_id), {}
+            )
+            if raw_slot.get("backing") and fill.text and not from_layout:
+                _fit_backing(ctx, slide, slot, raw_slot["backing"], fill)
     if ctx.preserve:
         _keep_rest(slide, pattern_raw, pinfo, filled, record, from_layout)
         record.removed_object_ids = []
@@ -341,6 +348,31 @@ def _fill_slide(
         except Exception:
             ctx.warn("notes_failed", f"{record.slide_id}: заметки не записаны", slide_index)
     return record
+
+
+def _fit_backing(
+    ctx: _Context, slide: Any, slot: SlotInfo, backing: JsonDict, fill: SlotFill
+) -> None:
+    """Плашка под строкой по ширине текста: не уже образца и не дальше препятствия в полосе
+    (логотипы). Длинный заголовок-вывод иначе вылезает с плашки на фон."""
+    element = shape_element(slide, str(backing.get("element_ref") or ""))
+    if element is None:
+        return
+    xfrm = element.find(f".//{{{NS_A}}}xfrm")
+    ext = xfrm.find(f"{{{NS_A}}}ext") if xfrm is not None else None
+    if ext is None:
+        return
+    font = text_metrics.resolve_font(slot.family, bold=slot.bold, italic=slot.italic)
+    size = float(fill.size_pt or slot.size_pt or 18.0)
+    lines = [ln for ln in (fill.text or "").split("\n") if ln.strip()] or [""]
+    text_pt = max(text_metrics.text_width_pt(ln, font, size) for ln in lines)
+    pad = float(backing.get("pad") or 0.01)
+    wanted = text_pt * text_metrics.EMU_PER_PT / ctx.slide_w + 2 * pad
+    low = float(backing.get("min_width") or 0.0)
+    high = float(backing.get("max_width") or low)
+    width = min(max(wanted, low), max(high, low))
+    ext.set("cx", str(int(width * ctx.slide_w)))
+    ctx.count("backing_resized")
 
 
 def _apply_block(
@@ -377,11 +409,27 @@ def _apply_block(
         return fill
     if kind in TEXT_KINDS:
         text = _number_text(ctx, block) if kind == "number" else str(block.get("text") or "")
-        if text.strip() in ("", "—") and not slot.sample_text.strip():
-            # Планировщик оставил пустой крошечный слот прочерком: содержимого нет,
-            # судьбу объекта решают правила карточек.
+        if text.strip() == "—" or (not text.strip() and not slot.sample_text.strip()):
+            # Планировщик оставил слот прочерком: содержимого нет, судьбу объекта решают
+            # правила карточек и уборка пустых слотов (прочерк на слайд не выводится).
             return None
+        if kind == "number":
+            text, size = _one_line_number(ctx, slot, element, text, size)
+        if (slot.clear_width or slot.clear_height) and not in_group(element):
+            # Рамка — по месту, которым её мерил план: до препятствия в полосе (логотипы) и
+            # до соседнего слота снизу. Рамка образца шире и выше, текст уходил под логотипы,
+            # а рамка заголовка лежала на подзаголовке.
+            own = element_box(element)
+            if own is not None:
+                width = int(slot.clear_width * ctx.slide_w) if slot.clear_width else own[2]
+                height = int(slot.clear_height * ctx.slide_h) if slot.clear_height else own[3]
+                if 0 < width < own[2] or 0 < height < own[3]:
+                    set_element_box(
+                        element, (own[0], own[1], min(width, own[2]), min(height, own[3]))
+                    )
         result = tx.fill_text(element, text, size_pt=size, facts=ctx.facts)
+        if kind == "number" and " " in text:
+            tx.set_wrap(element, False)
         if (
             kind == "number"
             and re.fullmatch(r"\d{1,2}", text.strip())
@@ -409,6 +457,36 @@ def _apply_block(
         "block_unsupported", f"блок {kind} в слоте {slot.slot_id} не поддерживается", slide_index
     )
     return None
+
+
+_NUMBER_GAP = re.compile(r"(?<=[\d%])\s+(?=\S)|(?<=\S)\s+(?=[%₽$€])")
+
+
+def _one_line_number(
+    ctx: _Context, slot: SlotInfo, element: Any, text: str, size: float | None
+) -> tuple[str, float | None]:
+    """Показатель — одна строка: «60 %» с переносом знака на вторую строку ложится поверх
+    цифр (у крупного числа плотный интервал). Пробелы внутри значения неразрывные, а если
+    строка шире рамки, кегль уменьшается под ширину, не ниже половины исходного."""
+    if not text.strip() or len(text) > 24:
+        return text, size
+    joined = _NUMBER_GAP.sub(" ", text.strip())
+    base = float(size or slot.size_pt or 0.0)
+    if base <= 0:
+        return joined, size
+    font = text_metrics.resolve_font(slot.family, bold=slot.bold, italic=slot.italic)
+    width_pt = text_metrics.text_width_pt(joined.replace(" ", " "), font, base)
+    _, _, box_w, _ = _slot_box(ctx, slot, element)
+    insets = slot.insets or {}
+    inner_w = (
+        box_w - (float(insets.get("left", 0.0)) + float(insets.get("right", 0.0))) * ctx.slide_w
+    )
+    avail_pt = max(inner_w, 0) / text_metrics.EMU_PER_PT * 0.95
+    if width_pt <= avail_pt or avail_pt <= 0:
+        return joined, size
+    fitted = max(base * avail_pt / width_pt, base * 0.5)
+    ctx.count("number_shrunk")
+    return joined, round(fitted, 1)
 
 
 def _renumbered(ctx: _Context, element: Any) -> str:
@@ -652,7 +730,40 @@ def _apply_icon(
         fill.content_source = "sample"
         fill.picture = {"origin": "template", "fit": "as_is"}
         return fill
-    result = icons.place_icon(slide, element, asset, color=icon.get("color"))
+    color = (
+        icon.get("color")
+        or _sample_icon_color(slide, element)
+        or (ctx.design_code.accent if ctx.design_code is not None else None)
+    )
+    if element.find(f".//{{{NS_A}}}blip") is None:
+        # Якорь своей композиции — фигура, а не картинка: пиктограмма встаёт на её место.
+        import io
+
+        part = part_by_name(slide.part.package, str(asset.get("media_path", "")))
+        if part is None:
+            fill.content_source = "sample"
+            return fill
+        blob = bytes(part.blob)
+        if color and icons.is_monochrome_mask(blob):
+            blob = icons.recolor_mask(blob, color)
+        box = _slot_box(ctx, slot, element)
+        side = min(box[2], box[3])
+        remove_shape(slide, element)
+        pic = slide.shapes.add_picture(
+            io.BytesIO(blob),
+            box[0] + (box[2] - side) // 2,
+            box[1] + (box[3] - side) // 2,
+            side,
+            side,
+        )
+        fill.element_id = _renumbered(ctx, pic._element)
+        fill.source_object_id = None
+        fill.content_source = "plan"
+        fill.asset_id = asset_id
+        fill.picture = {"asset_id": asset_id, "origin": "template", "fit": "contain"}
+        ctx.count("icons")
+        return fill
+    result = icons.place_icon(slide, element, asset, color=color)
     fill.content_source = "plan"
     fill.asset_id = asset_id
     fill.picture = {
@@ -663,6 +774,37 @@ def _apply_icon(
     }
     ctx.count("icons")
     return fill
+
+
+def _sample_icon_color(slide: Any, element: Any) -> str | None:
+    """Цвет одноцветной иконки образца: новая пиктограмма перекрашивается в него, чтобы
+    карточки остались в палитре образца (синяя иконка на белом круге и т. п.)."""
+    import io
+
+    blip = element.find(f".//{{{NS_A}}}blip")
+    rid = blip.get(f"{{{NS_R}}}embed") if blip is not None else None
+    if not rid:
+        return None
+    try:
+        blob = bytes(slide.part.related_part(rid).blob)
+    except (KeyError, AttributeError):
+        return None
+    if not icons.is_monochrome_mask(blob):
+        return None
+    from PIL import Image
+
+    try:
+        with Image.open(io.BytesIO(blob)) as img:
+            rgba = img.convert("RGBA")
+            rgba.thumbnail((48, 48))
+            pixels: list[Any] = list(rgba.getdata())
+            opaque = [px[:3] for px in pixels if px[3] > 128]
+    except Exception:
+        return None
+    if not opaque:
+        return None
+    r, g, b = (round(sum(c[i] for c in opaque) / len(opaque)) for i in range(3))
+    return f"#{r:02X}{g:02X}{b:02X}"
 
 
 def _apply_diagram(
@@ -1010,7 +1152,7 @@ def _cleanup(
             ctx.count("step_numbers")
             continue
         if _is_textual(slot) or slot.kind in ("qr", "footer"):
-            if slot.kind in ("qr", "footer") or (
+            if slot.kind == "footer" or (
                 _is_tiny(slot)
                 and sample
                 and sample not in ctx.markers
@@ -1167,6 +1309,51 @@ def _cleanup(
                 )
                 if nearest_unfilled < nearest_filled:
                     drop(oid)
+    # 3г. Аватар пустого слота спикера: кружок или фото рядом с убранным именем (VK
+    #     WorkSpace — серые круги на обложке и финале) сам по себе выглядит заглушкой.
+    speaker_boxes = [
+        (s.x, s.y, s.width, s.height)
+        for sid, ref in refs.items()
+        if ref in removed
+        and sid in pinfo.slots
+        and pinfo.slots[sid].kind in ("name", "position")
+        and (s := infos_before.get(ref)) is not None
+    ]
+    if speaker_boxes:
+        fixed_refs_speaker = {
+            str(f.get("element_ref"))
+            for f in ctx.profile.get("fixed_elements") or []
+            if str(f.get("source_part")) == record.source_slide_part
+        }
+        infos_avatar = {
+            s.element_id: s for s in walk_shapes(slide, slide.part, ctx.slide_w, ctx.slide_h)
+        }
+        for oid, info in infos_avatar.items():
+            if (
+                oid in fixed_refs_speaker
+                or info.kind not in ("shape", "picture", "text")
+                or info.text.strip()
+            ):
+                continue
+            if (
+                info.area >= 0.02
+                or not info.height
+                or not 0.6 <= info.width / info.height * (ctx.slide_w / ctx.slide_h) <= 1.6
+            ):
+                continue
+            if any(_beside(info, box) for box in speaker_boxes):
+                drop(oid)
+    # 3д. QR-код образца (статичная картинка): ведёт на ресурс автора шаблона, к колоде
+    #     отношения не имеет. Постоянные элементы (логотипы) не трогаются.
+    fixed_refs_qr = {
+        str(f.get("element_ref"))
+        for f in ctx.profile.get("fixed_elements") or []
+        if str(f.get("source_part")) == record.source_slide_part
+    }
+    for oid in [str(i) for i in pattern_raw.get("static_object_ids") or []]:
+        if oid not in fixed_refs_qr and oid not in removed and _looks_like_qr(slide, oid):
+            drop(oid)
+            ctx.count("sample_qr_removed")
     # 4. Пустые рамки карточек: статичная фигура без текста, внутри которой были только
     #    удалённые слоты и не осталось ни одного заполненного или сохранённого объекта,
     #    убирается вместе с содержимым карточки (подложка без содержания — не декор).
@@ -1195,6 +1382,17 @@ def _cleanup(
     if removed:
         ctx.count("removed_objects", len(removed))
     return list(dict.fromkeys(removed))
+
+
+def _beside(info: Any, box: tuple[float, float, float, float]) -> bool:
+    """Объект стоит в строку с рамкой: по вертикали пересекается с ней, а по горизонтали
+    отстоит не дальше своей ширины (аватар слева или справа от имени)."""
+    x, y, w, h = box
+    top, bottom = info.y, info.y + info.height
+    if bottom < y - h * 0.5 or top > y + h * 1.5:
+        return False
+    gap = max(x - (info.x + info.width), info.x - (x + w), 0.0)
+    return bool(gap <= max(info.width * 1.5, 0.02))
 
 
 def _touches(point: tuple[float, float], box: tuple[float, float, float, float]) -> bool:
@@ -1256,11 +1454,14 @@ def _dangling_connectors(
 def _contains(
     frame: tuple[float, float, float, float], box: tuple[float, float, float, float]
 ) -> bool:
-    """Рамка содержит не меньше 80 % площади box."""
+    """Рамка содержит центр box и не меньше 60 % его площади: подпись в карточке бывает
+    шире самой карточки (VK Tech, финал с QR: «Вставить QR» выступает за белую плашку)."""
     ix = max(0.0, min(frame[0] + frame[2], box[0] + box[2]) - max(frame[0], box[0]))
     iy = max(0.0, min(frame[1] + frame[3], box[1] + box[3]) - max(frame[1], box[1]))
     area = box[2] * box[3]
-    return area > 0 and ix * iy >= 0.8 * area
+    cx, cy = box[0] + box[2] / 2, box[1] + box[3] / 2
+    inside = frame[0] <= cx <= frame[0] + frame[2] and frame[1] <= cy <= frame[1] + frame[3]
+    return area > 0 and inside and ix * iy >= 0.6 * area
 
 
 def _overlaps(
@@ -1282,6 +1483,52 @@ def _is_picture(slide: Any, element_id: str) -> bool:
 
 
 _CHART_WORDS = ("диаграмм", "график", "chart", "graph", "скриншот", "screenshot", "мокап", "mockup")
+
+
+def _looks_like_qr(slide: Any, element_id: str) -> bool:
+    """QR-код по самой картинке: почти квадрат, почти только чёрное и белое, яркость
+    меняется десятки раз по строке. Каталог ресурсов отмечает QR не всегда."""
+    import io
+
+    element = shape_element(slide, element_id)
+    if element is None:
+        return False
+    owner, blip = slide, element.find(f".//{{{NS_A}}}blip")
+    if blip is None:
+        # Плейсхолдер без своей картинки наследует заливку плейсхолдера макета (VK Education
+        # «Финальный с QR»: QR нарисован в макете, на слайде пустой плейсхолдер).
+        ph = element.find(f".//{{{NS_P}}}nvPr/{{{NS_P}}}ph")
+        idx = ph.get("idx") if ph is not None else None
+        layout = getattr(slide, "slide_layout", None)
+        for candidate in list(layout.placeholders) if layout is not None and idx else []:
+            if str(candidate.placeholder_format.idx) == idx:
+                owner, blip = layout, candidate._element.find(f".//{{{NS_A}}}blip")
+                break
+    rid = blip.get(f"{{{NS_R}}}embed") if blip is not None else None
+    if not rid:
+        return False
+    try:
+        blob = bytes(owner.part.related_part(rid).blob)
+        from PIL import Image
+
+        with Image.open(io.BytesIO(blob)) as img:
+            if not 0.85 <= img.width / max(img.height, 1) <= 1.15:
+                return False
+            gray = img.convert("L").resize((96, 96), Image.Resampling.NEAREST)
+            pixels: list[Any] = list(gray.getdata())
+    except Exception:
+        return False
+    extreme = sum(1 for v in pixels if v < 70 or v > 190) / len(pixels)
+    dark = sum(1 for v in pixels if v < 70) / len(pixels)
+    if extreme < 0.85 or not 0.15 <= dark <= 0.7:
+        return False
+    transitions = sum(
+        1
+        for row in range(96)
+        for col in range(95)
+        if (pixels[row * 96 + col] < 128) != (pixels[row * 96 + col + 1] < 128)
+    )
+    return transitions / 96 >= 8
 
 
 def _asset_kind_of(ctx: _Context, slide: Any, element_id: str) -> str | None:
@@ -1331,6 +1578,9 @@ def _sample_image_misleading(
     роли или имени, если она занимает заметную часть содержательного слайда, либо если
     соседняя картинка той же группы карточек — такая."""
     if _asset_kind_of(ctx, slide, element_id) in MISLEADING_ASSET_KINDS:
+        return True
+    if _looks_like_qr(slide, element_id):
+        # QR образца ведёт на ресурс автора шаблона, а не на что-то из этой колоды.
         return True
     role = str(pattern_raw.get("role") or "")
     decorative_role = role in ("title", "section_divider", "thanks", "image_full", "speaker")

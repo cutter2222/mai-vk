@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-24T04:53:16Z",
+ "entry_version": 1,
+ "key": "d551176af77aeb0490e0a797f89a15de4e4b46f72be9333d67fa9c6a1db2bab6",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 5486,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3727,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Вариант: compact. Компактная подача: слайдов ближе к нижней границе, один слайд может объединять два-три родственных тезиса одного раздела. Заголовок-вывод и два-три коротких пункта (до 8 слов) или по",
+  "prompt": [
+   "plan.slides",
+   "0.5.1"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.5.1"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 10267,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\n  \"slides\": [\n    {\n      \"dataset\": \"ds1\",\n      \"diagram_kind\": \"process\",\n      \"facts\": [\n        \"f11\"\n      ],\n      \"items\": [\n        {\n          \"facts\": [],\n          \"icon\": \"календарь\",\n          \"sub\": \"Октябрь\",\n          \"text\": \"Подключение двух новых продуктов\"\n        },\n        {\n          \"facts\": [],\n          \"icon\": \"часы\",\n          \"sub\": \"Ноябрь\",\n          \"text\": \"Запуск персональных тихих часов\"\n        },\n        {\n          \"facts\": [\n            \"f11\"\n          ],\n          \"icon\": \"глобус\",\n          \"sub\": \"Декабрь\",\n          \"text\": \"Расширение на все регионы, цель — {fact:f11} открываемости\"\n        }\n      ],\n      \"notes\": \"\",\n      \"text\": \"План расширения сервиса на четвертый квартал включает поэтапное подключение продуктов и запуск новых функций для достижения целевой открываемости.\",\n      \"theses\": [\n        \"t12\"\n      ],\n      \"title\": \"План расширения сервиса на Q4\",\n      \"visual\": \"diagram\"\n    },\n    {\n      \"dataset\": \"ds2\",\n      \"diagram_kind\": \"matrix\",\n      \"facts\": [],\n      \"items\": [\n        {\n          \"facts\": [],\n          \"icon\": \"сервер\",\n          \"sub\": \"Зависимость от провайдера\",\n          \"text\": \"Решение: внедрение резервных каналов доставки\"\n        },\n        {\n          \"facts\": [],\n          \"icon\": \"поддержка\",\n          \"sub\": \"Нагрузка на поддержку\",\n          \"text\": \"Решение: усиление службы поддержки в первые недели\"\n        }\n      ],\n      \"notes\": \"\",\n      \"text\": \"Основные риски связаны с инфраструктурой и операционной нагрузкой, для каждого предусмотрен план митигации.\",\n      \"theses\": [\n        \"t14\"\n      ],\n      \"title\": \"Риски и меры по их снижению\",\n      \"visual\": \"diagram\"\n    }\n  ]\n}",
+  "usage": {
+   "completion_tokens": 521,
+   "prompt_tokens": 2575,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

@@ -85,6 +85,16 @@ def test_задание_содержит_только_пустые_слоты_с
     assert tasks[0]["filled"], "модель должна видеть, что уже написано"
 
 
+def test_служебный_слайд_без_материала_не_дозаполняется():
+    """Финал без тезиса: материала нет, и модель сочиняла подпись из соседних названий."""
+    plan = _plan()
+    plan["slides"][0]["role"] = "thanks"
+    plan["slides"][0]["thesis_refs"] = []
+    assert collect_gaps(plan, {"cards_3": PATTERN}, limit=24, story={"theses": []}) == []
+    plan["slides"][0]["role"] = "cards"
+    assert collect_gaps(plan, {"cards_3": PATTERN}, limit=24, story={"theses": []})
+
+
 def test_заголовки_и_числа_не_запрашиваются():
     pattern = {**PATTERN, "slots": PATTERN["slots"] + [_slot("number_1", "number", 0.2, 0.1)]}
     tasks = collect_gaps(_plan(), {"cards_3": pattern}, limit=24)

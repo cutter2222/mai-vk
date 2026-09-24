@@ -34,7 +34,7 @@ log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 
-STORY_VERSION = "0.1.3"
+STORY_VERSION = "0.1.4"
 STORY_SCHEMA_VERSION = "1.2"
 THESIS_KINDS = ("section", "claim", "evidence", "conclusion", "call_to_action", "context")
 VISUALS = (
@@ -70,10 +70,30 @@ STORY_MODEL_SCHEMA: JsonDict = {
             "type": "array",
             "items": {
                 "type": "object",
-                "required": ["id", "kind", "statement", "required"],
+                # Поля содержания обязательны, хотя могут быть пустыми: при ответе по схеме
+                # модель пропускает необязательные поля, и тезисы приходили без пояснений,
+                # источников и фактов — слайды из них получались в одну фразу.
+                "required": [
+                    "id",
+                    "kind",
+                    "part",
+                    "parent",
+                    "statement",
+                    "explanation",
+                    "required",
+                    "source_refs",
+                    "fact_refs",
+                    "dataset_refs",
+                    "asset_refs",
+                    "visual",
+                    "covers",
+                ],
                 "properties": {
                     "id": {"type": "string"},
                     "kind": {"type": "string", "enum": list(THESIS_KINDS)},
+                    # Крупная часть рассказа плоской строкой: связи parent модель часто
+                    # сводит к одному разделу на всю колоду, а по частям код строит разделы.
+                    "part": {"type": "string"},
                     "parent": {"type": "string"},
                     "statement": {"type": "string"},
                     "explanation": {"type": "string"},
@@ -461,6 +481,22 @@ def assemble_story(
             thesis["explanation"] = explanation[:800]
         if raw.get("parent"):
             thesis["_parent_raw"] = str(raw["parent"])
+        part = " ".join(str(raw.get("part") or "").split())
+        if part:
+            thesis["_part"] = part[:80]
+        # Первый тезис покрывает титул, его формулировка — подпись обложки: не трогаем.
+        if (
+            theses
+            and kind == "section"
+            and len(statement.split()) > 6
+            and 0 < len(part.split()) <= 6
+        ):
+            # Раздел назван целым выводом — в заголовок разделителя он не помещается;
+            # короткое название части есть в part, вывод становится пояснением.
+            thesis["statement"] = part[:1].upper() + part[1:80]
+            thesis.setdefault("explanation", statement[:800])
+            thesis["_claim"] = statement[:400]
+            fixes.append({"code": "section_named_by_part", "message": f"{new_id}: {part}"})
         for key, known in (
             ("source_refs", blocks),
             ("fact_refs", set(facts)),
@@ -591,6 +627,12 @@ def assemble_story(
             matched = [extra_item]
             fixes.append({"code": "must_include_added", "message": item})
         coverage_items.append({"item": item, "thesis": matched})
+    moved: dict[int, JsonDict] = {}
+    theses = _ensure_sections(theses, package, fixes, moved)
+    present = {id(t) for t in theses}
+    for c in coverage_items:
+        hosts = [moved.get(id(t), t) for t in c["thesis"]]
+        c["thesis"] = list({id(t): t for t in hosts if id(t) in present}.values())
     # Порядок и идентификаторы после вставок; служебные поля убираем.
     old_ids = {t["thesis_id"]: t for t in theses if t["thesis_id"]}
     renumber: dict[str, str] = {}
@@ -605,6 +647,8 @@ def assemble_story(
             if thesis["parent_id"] not in {t["thesis_id"] for t in theses}:
                 thesis.pop("parent_id")
         thesis.pop("_covers", None)
+        thesis.pop("_part", None)
+        thesis.pop("_claim", None)
     _ = old_ids
     coverage_must_include = [
         {"item": c["item"], "thesis_ids": [t["thesis_id"] for t in c["thesis"]]}
@@ -682,6 +726,151 @@ def assemble_story(
         if fix["code"] != "ref_unknown"
     ]
     return story, fixes
+
+
+def _content_sections(theses: list[JsonDict]) -> int:
+    """Разделы, под которыми есть содержание; первый тезис-раздел покрывает титул."""
+    lead = theses[0]["thesis_id"] if theses and theses[0]["kind"] == "section" else None
+    running: str | None = None
+    filled: set[str] = set()
+    for thesis in theses:
+        if thesis["kind"] == "section":
+            running = thesis["thesis_id"]
+            continue
+        section = thesis.get("parent_id") or running
+        if section and section != lead:
+            filled.add(section)
+    kinds = {t["thesis_id"]: t["kind"] for t in theses if t["thesis_id"]}
+    return sum(1 for s in filled if kinds.get(s) == "section")
+
+
+def _heading_labels(package: JsonDict) -> dict[str, str]:
+    """Блок → заголовок раздела источника: верхний уровень, который встречается хотя бы
+    дважды (одиночный заголовок первого уровня — название документа, а не раздел)."""
+    blocks = package.get("blocks", [])
+    levels = [int(b.get("level") or 1) for b in blocks if b.get("kind") == "heading"]
+    repeated = sorted({lv for lv in levels if levels.count(lv) >= 2})
+    if not repeated:
+        return {}
+    top = repeated[0]
+    label = ""
+    labels: dict[str, str] = {}
+    for b in blocks:
+        if b.get("kind") == "heading":
+            level = int(b.get("level") or 1)
+            if level < top:
+                label = ""
+            elif level == top:
+                label = " ".join(str(b.get("text") or "").split())[:80]
+        labels[b["block_id"]] = label
+    return labels
+
+
+def _ensure_sections(
+    theses: list[JsonDict],
+    package: JsonDict,
+    fixes: list[JsonDict],
+    moved: dict[int, JsonDict] | None = None,
+) -> list[JsonDict]:
+    """Разделы для разделителей колоды, если модель дала меньше двух: по частям рассказа
+    (поле part), иначе по заголовкам источника, к которым ведут source_refs тезисов.
+    Части идут подряд, как в PPTAgent: новая часть — новый раздел; повтор уже пройденной
+    части и завершающие тезисы остаются в текущем разделе. Ссылки заменённого раздела
+    модели (факты, данные, изображения, источники) переходят к следующему за ним тезису,
+    иначе обязательные факты раздела теряются; moved — раздел → получатель."""
+    if len(theses) < 4 or _content_sections(theses) >= 2:
+        return theses
+    lead = theses[0] if theses[0]["kind"] in ("section", "context") else None
+    # Раздел модели, названный целым выводом («В декабре расширение на все регионы…»),
+    # несёт содержание: при перестройке он становится тезисом своей части, а не удаляется.
+    substantive = [
+        t for t in theses if t["kind"] == "section" and t is not lead and t.get("_claim")
+    ]
+    body = [
+        t
+        for t in theses
+        if (t["kind"] != "section" and t is not lead) or any(t is c for c in substantive)
+    ]
+    headings = _heading_labels(package)
+
+    def heading_of(thesis: JsonDict) -> str:
+        return next((headings[r] for r in thesis.get("source_refs", []) if headings.get(r)), "")
+
+    for code, labels in (
+        ("sections_from_parts", [str(t.get("_part") or "") for t in body]),
+        ("sections_from_headings", [heading_of(t) for t in body]),
+    ):
+        groups: list[tuple[str, list[JsonDict]]] = []
+        seen: set[str] = set()
+        for thesis, label in zip(body, labels, strict=True):
+            key = label.lower().strip(" .:")
+            opens = key and key not in seen and thesis["kind"] not in _CLOSING_KINDS
+            if opens or not groups:
+                groups.append((label, [thesis]))
+                seen.add(key)
+            else:
+                groups[-1][1].append(thesis)
+        named = [g for g in groups if g[0]]
+        # Раздел на каждый тезис — не структура: колода из одних разделителей, а пакеты
+        # слайдов не объединяют тезисы разных разделов и не укладываются в число слайдов.
+        if not 2 <= len(named) <= max(2, -(-len(body) // 2)):
+            continue
+        for thesis in substantive:
+            thesis["kind"] = "claim"
+            thesis["statement"] = thesis.pop("_claim")
+            if thesis.get("explanation") == thesis["statement"]:
+                thesis.pop("explanation")
+        _hand_over_refs(theses, lead, moved if moved is not None else {})
+        rebuilt: list[JsonDict] = [lead] if lead is not None else []
+        for n, (label, members) in enumerate(groups, start=1):
+            if not label:
+                # Начало до первой части: прежний раздел удалён, родитель — титульный.
+                for member in members:
+                    member.pop("parent_id", None)
+            else:
+                section_id = f"s{n}"
+                rebuilt.append(
+                    {
+                        "thesis_id": section_id,
+                        "order": 0,
+                        "kind": "section",
+                        "statement": label[:1].upper() + label[1:],
+                        "required": any(m.get("required", True) for m in members),
+                    }
+                )
+                for member in members:
+                    member["parent_id"] = section_id
+            rebuilt.extend(members)
+        fixes.append(
+            {
+                "code": code,
+                "message": "разделы: " + "; ".join(label for label, _ in named),
+            }
+        )
+        return rebuilt
+    return theses
+
+
+_CLOSING_KINDS = ("conclusion", "call_to_action")
+_REF_KEYS = ("fact_refs", "dataset_refs", "asset_refs", "source_refs")
+
+
+def _hand_over_refs(
+    theses: list[JsonDict], lead: JsonDict | None, moved: dict[int, JsonDict]
+) -> None:
+    """Ссылки удаляемых разделов модели — первому содержательному тезису после раздела."""
+    for pos, section in enumerate(theses):
+        if section["kind"] != "section" or section is lead:
+            continue
+        receiver = next((t for t in theses[pos + 1 :] if t["kind"] != "section"), None)
+        if receiver is None:
+            receiver = next((t for t in reversed(theses[:pos]) if t["kind"] != "section"), None)
+        if receiver is None:
+            continue
+        moved[id(section)] = receiver
+        for key in _REF_KEYS:
+            if section.get(key):
+                receiver[key] = list(dict.fromkeys([*receiver.get(key, []), *section[key]]))
 
 
 def _mentions(item: str, text: str) -> bool:

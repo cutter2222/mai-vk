@@ -217,9 +217,11 @@ def test_measured_text_wraps_even_when_template_disables_wrapping(
         assert all(r.font.size.pt == 26.0 for p in shape.text_frame.paragraphs for r in p.runs)
 
 
+# Значение с единицей — одна строка: пробелы неразрывные, перенос выключен, кегль при
+# нехватке ширины уменьшается (перенос «%» под число ложился поверх цифр).
 @pytest.mark.parametrize(
     "text,lines,wrap",
-    [("3000 м", 2, True), ("18 млн руб", 2, True), ("27", 1, False), ("27", 2, True)],
+    [("3000 м", 2, False), ("18 млн руб", 2, False), ("27", 1, False), ("27", 2, True)],
 )
 def test_small_number_slot_respects_measured_wrap(
     text: str,
@@ -255,7 +257,7 @@ def test_small_number_slot_respects_measured_wrap(
     shape = next(
         s
         for s in Presentation(result.pptx_path).slides[0].shapes
-        if s.has_text_frame and s.text == text
+        if s.has_text_frame and s.text.replace("\u00a0", " ") == text
     )
     assert shape.text_frame.word_wrap is wrap
 
@@ -1113,3 +1115,14 @@ def test_failure_fixture_fails_detailed_only(
             )
         )
     assert out.slide_count > 0
+
+
+def test_card_frame_contains_wider_caption() -> None:
+    """Подпись в карточке шире самой карточки (VK Tech, финал с QR): плашка всё равно
+    считается рамкой убранного слота, а соседняя подпись, лишь задевающая её, — нет."""
+    from presentation_designer.layout.compose import _contains
+
+    frame = (0.055, 0.557, 0.055, 0.098)
+    assert _contains(frame, (0.048, 0.587, 0.071, 0.042))
+    assert not _contains(frame, (0.100, 0.587, 0.300, 0.042))
+    assert not _contains(frame, (0.055, 0.557, 0.0, 0.0))

@@ -823,7 +823,7 @@ def complete_rows(
     расточительно: материал есть, он уже проверен по источникам, и сократить
     его до нужной длины можно без модели.
     """
-    from presentation_designer.design.refill import _restates
+    from presentation_designer.design.refill import _cut_word, _restates
 
     patterns = {p.get("pattern_id"): p for p in profile.get("patterns", [])}
     added: list[tuple[str, str]] = []
@@ -851,8 +851,28 @@ def complete_rows(
         # Готовые подписи из фактов пробуются целиком и только потом режутся:
         # «5 дней Срок» получилось именно из сокращения готовой формы, где от
         # метрики «Срок согласования рейса» осталось одно слово.
-        labels = fact_labels(package)
-        material = deck_material(plan, story, slide_id, facts.titles)
+        # Только факты этого слайда: его блоков и его тезисов. Подписи всех фактов пакета
+        # дописывали в карточки «Рисков» числа из «Проблемы» («62 %», «11 минут»).
+        own = {str(f) for b in slide.get("blocks", []) for f in b.get("fact_refs") or []}
+        theses = {str(t.get("thesis_id")): t for t in (story or {}).get("theses", [])}
+        for ref in slide.get("thesis_refs") or []:
+            own.update(str(f) for f in (theses.get(str(ref)) or {}).get("fact_refs") or [])
+        labels = fact_labels(
+            {"facts": [f for f in (package or {}).get("facts") or [] if f.get("fact_id") in own]}
+        )
+        # Материал колоды (заголовки других слайдов) — только итоговому слайду без своих
+        # тезисов; у остальных — формулировки и пояснения их тезисов: «Три функции сервиса»
+        # из соседнего слайда в карточке «Рисков» — не материал, а мусор.
+        if slide.get("thesis_refs"):
+            from presentation_designer.design.refill import _slide_material
+
+            material = [
+                m
+                for m in _slide_material(story or {}, slide.get("thesis_refs") or [])["material"]
+                if _norm(m) != _norm(str(slide.get("title") or ""))
+            ]
+        else:
+            material = deck_material(plan, story, slide_id, facts.titles)
         spare = [m for m in labels + material if not _restates(_norm(m), "", seen)]
         for fact in empty:
             slot = slots.get(fact.slot_id)
@@ -867,6 +887,11 @@ def complete_rows(
                 if short is None and source not in labels:
                     short = condense(source, slot, facts.canvas)
                 if not short or _restates(_norm(short), slide.get("title", ""), seen):
+                    continue
+                if str(slot.get("kind")) in ("body", "caption", "bullets") and (
+                    len(short.split()) < 2 or _cut_word(short, slide, str(slot.get("kind")))
+                ):
+                    # «Отсутствие» в карточке — обрывок, а не подпись.
                     continue
                 if _same_number(short, seen):
                     continue

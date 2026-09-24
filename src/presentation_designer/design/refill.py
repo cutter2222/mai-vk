@@ -35,6 +35,8 @@ JsonDict = dict[str, Any]
 # Ссылка на факт исходных материалов в тексте плана: подставляется вёрсткой.
 _FACT = re.compile(r"\{fact:[^}]+\}")
 
+_BARE_FACT = re.compile(r"(?<![{:\w])(f\d+)\b")
+
 # Числа ответа: сокращение обязано сохранить все показатели исходной строки.
 _DIGITS = re.compile(r"\d+")
 
@@ -98,6 +100,11 @@ def collect_gaps(
         pattern = patterns.get(slide.get("pattern_id") or "")
         if pattern is None or budget <= 0:
             continue
+        material = _slide_material(story or {}, slide.get("thesis_refs") or [])
+        if not material["material"] and slide.get("role") in _SERVICE_ROLES:
+            # Служебный слайд без тезисов (финал без призыва): материала нет, и модель
+            # сочиняет подпись из соседних названий («Масштабирование» под «Спасибо»).
+            continue
         filled = {b.get("slot_id") for b in slide.get("blocks", [])}
         gaps = []
         for slot in content_slots(pattern):
@@ -126,10 +133,12 @@ def collect_gaps(
                 ],
                 "empty_slots": gaps,
             }
-            task.update(_slide_material(story or {}, slide.get("thesis_refs") or []))
+            task.update(material)
             tasks.append(task)
     return tasks
 
+
+_SERVICE_ROLES = frozenset({"title", "section_divider", "thanks", "qr", "agenda"})
 
 # Доля слов ответа, совпавших с уже написанным, после которой ответ считается
 # пересказом. Подстрочного сравнения мало: «Масштаб и активность» под
@@ -210,6 +219,12 @@ def tidy(value: str, facts: dict[str, JsonDict] | None = None) -> str:
     пустая строка, и ответ будет отвергнут дальше по проверке.
     """
     text = str(value or "").strip()
+    # «цель — f11 открываемости»: модель пишет идентификатор факта без скобок (так факты
+    # даны ей в материале). Известный идентификатор становится ссылкой и подставится
+    # значением; неизвестный ответ не спасает — его отвергнет проверка чисел.
+    text = _BARE_FACT.sub(
+        lambda m: f"{{fact:{m.group(1)}}}" if m.group(1) in (facts or {}) else m.group(0), text
+    )
     for match in list(_FACT.finditer(text)):
         fact = (facts or {}).get(match.group(0)[6:-1])
         raw = str((fact or {}).get("raw") or "")
@@ -221,6 +236,31 @@ def tidy(value: str, facts: dict[str, JsonDict] | None = None) -> str:
     while words and words[-1].lower().strip(".,:;") in _TAIL:
         words.pop()
     return " ".join(words).strip(" ,:;—–-")
+
+
+def _cut_word(text: str, slide: JsonDict, kind: str) -> bool:
+    """Обрубок слова вместо подписи: «Ванд» при «вандализм» на том же слайде, «Гео» при
+    «география». Модель так «укладывается» в крошечный слот; такой текст хуже пустоты.
+    Для основного текста и подписи одно короткое слово — тоже обрубок."""
+    words = re.findall(r"[A-Za-zА-Яа-яЁё]+", str(text))
+    if not words:
+        return False
+    if kind in ("body", "caption", "bullets") and len(words) == 1 and len(words[0]) <= 5:
+        return True
+    around = " ".join(
+        [str(slide.get("title") or "")]
+        + [str(b.get("text") or "") for b in slide.get("blocks") or []]
+        + [
+            str(it.get("text") or "")
+            for b in slide.get("blocks") or []
+            for it in b.get("items") or []
+        ]
+    ).lower()
+    whole = set(re.findall(r"[a-zа-яё]+", around))
+    for word in (w.lower() for w in words if 2 <= len(w) <= 5):
+        if word not in whole and any(other.startswith(word) for other in whole):
+            return True
+    return False
 
 
 def _dangling(text: str) -> bool:
@@ -382,7 +422,7 @@ def apply_answer(
                     slot_id,
                 )
                 continue
-            if _dangling(value):
+            if _dangling(value) or _cut_word(value, slide, str(slot.get("kind") or "")):
                 log.info("отвергнут %s/%s: обрывок — %r", slide.get("slide_id"), slot_id, value)
                 continue
             if _restates(norm, slide.get("title", ""), seen):

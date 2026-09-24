@@ -1,7 +1,7 @@
 # Манифест скилла по contracts/schemas/skill_manifest.schema.json
 schema_version: '1.1'
 name: variant_planner
-version: 0.4.1
+version: 0.5.1
 stage: plan
 description: 'Строит SlidePlan из StoryPlan: модель пишет структурированное содержание,
   код выбирает композиции по числу блоков и доступным ресурсам, заполняет слоты и измеряет ёмкость'
@@ -12,8 +12,8 @@ reasoning:
   max_output_tokens: 14000
 prompts:
 - id: plan.slides
-  path: prompts/plan.slides.v0.4.1.md
-  version: 0.4.1
+  path: prompts/plan.slides.v0.5.1.md
+  version: 0.5.1
 params:
   temperature: 0.2
   time_budget_s: 260     # пакеты варианта идут параллельно, но каждый ответ с рассуждением
@@ -21,6 +21,13 @@ params:
 input_schema: story_plan
 output_schema: slide_plan
 changelog:
+- version: 0.5.1
+  date: '2026-09-24'
+  note: 'пиктограмма пункта словом из словаря тегов иконок шаблона; код подбирает иконку каталога'
+- version: 0.5.0
+  date: '2026-09-24'
+  note: 'пункты из подробностей источника (текст блоков тезиса в запросе), заголовок до 8 слов
+    и 60 знаков, пояснение пункта одним предложением'
 - version: 0.4.1
   date: '2026-09-22'
   note: 'Тип схемы и отношения узлов; выбор графика по смыслу данных; проверка вместимости нативных схем'
