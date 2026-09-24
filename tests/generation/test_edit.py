@@ -431,3 +431,73 @@ def test_count_request_brings_grids_with_that_many_columns(
     assert ed.columns(candidates[1]) == want
     digest = ed.edit_digest(ctx, base_plan, slide, theses, candidates, instruction)
     assert f"Названо число элементов: {want}" in digest
+
+
+def test_named_count_puts_the_slide_on_a_grid_with_that_many_places(
+    base_plan: dict[str, Any],
+    example_story: dict[str, Any],  # noqa: F811
+    mini_profile: dict[str, Any],  # noqa: F811
+    example_package: dict[str, Any],  # noqa: F811
+    make_client: Any,
+    stub: Any,
+) -> None:
+    index = _content_index(base_plan)
+    slide = ed.ordered_slides(base_plan)[index]
+    ctx = vr.build_context(
+        example_story, mini_profile, example_package, "balanced", {}, vr.get_settings(), None
+    )
+    instruction = "сделай в две колонки"
+    candidates = ed.edit_candidates(ctx, slide, ed.slide_theses(ctx, slide), instruction)
+    fits = [c.pattern_id for c in candidates if ed.grid_rank(c, 2)[0] == 0]
+    if not fits or slide["pattern_id"] in fits:
+        pytest.skip("в мини-шаблоне нет другой чистой сетки на два места")
+    # Модель оставила прежнюю композицию и дала два пункта — сетка на два места ставится кодом.
+    items = [{"text": "Первая колонка"}, {"text": "Вторая колонка"}]
+    stub.answer(_answer(slide, pattern=slide["pattern_id"], items=items))
+    result = _edit(
+        base_plan,
+        index,
+        instruction,
+        make_client(stub),
+        story=example_story,
+        profile=mini_profile,
+        package=example_package,
+    )
+    assert result.changed and result.plan is not None
+    new = ed.ordered_slides(result.plan)[index]
+    # Подгонка выбирает среди сеток на два места ту, куда содержание встаёт лучше.
+    assert new["pattern_id"] in fits
+    _valid(result.plan, mini_profile, example_package, example_story)
+
+
+def test_violations_of_other_slides_do_not_block_the_edit(
+    base_plan: dict[str, Any],
+    example_story: dict[str, Any],  # noqa: F811
+    mini_profile: dict[str, Any],  # noqa: F811
+    example_package: dict[str, Any],  # noqa: F811
+    make_client: Any,
+    stub: Any,
+) -> None:
+    index = _content_index(base_plan)
+    slides = ed.ordered_slides(base_plan)
+    slide = slides[index]
+    # Сборка оставила на другом слайде нарушение (ссылку на факт вне пакета): правка тут ни при чём.
+    broken = json.loads(json.dumps(base_plan))
+    other = next(
+        s
+        for s in ed.ordered_slides(broken)
+        if s["slide_id"] != slide["slide_id"] and s.get("blocks")
+    )
+    other["blocks"][0]["fact_refs"] = ["f_missing"]
+    assert ed.plan_violations(broken, mini_profile, example_package, example_story)
+    stub.answer(_answer(slide))
+    result = _edit(
+        broken,
+        index,
+        "сделай заголовок короче",
+        make_client(stub),
+        story=example_story,
+        profile=mini_profile,
+        package=example_package,
+    )
+    assert result.changed and result.plan is not None

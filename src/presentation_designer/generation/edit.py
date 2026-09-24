@@ -531,9 +531,15 @@ def make_edit_validator(
     slide: JsonDict,
     packet: Packet | None,
     candidates: list[PatternInfo],
+    count: int | None = None,
 ) -> Any:
     """Структура ответа: отказ с причиной или ровно один слайд с композицией из списка.
-    Детерминирована, поэтому совместима с кэшем и replay; ёмкость проверяется отдельно."""
+    Детерминирована, поэтому совместима с кэшем и replay; ёмкость проверяется отдельно.
+
+    Названо число мест («не 4 колонки, а 2») и в списке есть сетки ровно на столько — ответ
+    с другой композицией получает первую из них: прежняя сетка на четыре места с двумя пунктами
+    оставила бы обязательные места пустыми, и план не прошёл бы проверку."""
+    fit = [c.pattern_id for c in candidates if count and grid_rank(c, count)[0] == 0]
 
     def validate(value: Any) -> Any:
         if not isinstance(value, dict):
@@ -550,6 +556,9 @@ def make_edit_validator(
             raw = dict(slides[0])
             if not raw.get("theses"):
                 raw["theses"] = [t.id for t in packet.theses]
+            if fit and raw.get("pattern") not in fit:
+                ctx.fix("edit_count_pattern", f"{raw.get('pattern')} → {fit[0]}: просили {count}")
+                raw["pattern"] = fit[0]
             draft = drafts_from_answer(ctx, packet, {"slides": [raw]})[0]
         else:
             draft = service_draft(ctx, slide, slides[0], candidates)
@@ -565,8 +574,20 @@ def make_edit_validator(
 # ---------- новый план ----------
 
 
-def _fit_edit(ctx: Context, draft: Draft) -> Draft:
-    fitted = fit_draft(ctx, draft)
+def _fit_edit(ctx: Context, draft: Draft, places: list[PatternInfo] | None = None) -> Draft:
+    """Подгонка черновика; `places` — сетки на названное число мест: подгонка выбирает
+    композицию только среди них, иначе переполнение или малый объём вернули бы прежнюю
+    сетку на другое число мест."""
+    if places and draft.pattern in places:
+        saved = ctx.patterns
+        ctx.patterns = list(places)
+        draft.candidates = [c for c in draft.candidates if c in places]
+        try:
+            fitted = fit_draft(ctx, draft)
+        finally:
+            ctx.patterns = saved
+    else:
+        fitted = fit_draft(ctx, draft)
     if fitted.kind != "content":
         _drop_overflowing_optional(fitted)
     return fitted
@@ -669,7 +690,35 @@ def apply_slide(
     return doc
 
 
-def validate_plan(doc: JsonDict, profile: JsonDict, package: JsonDict, story: JsonDict) -> None:
+def validate_plan(
+    doc: JsonDict,
+    profile: JsonDict,
+    package: JsonDict,
+    story: JsonDict,
+    *,
+    before: JsonDict | None = None,
+) -> None:
+    """Связи плана после правки. `before` — план до правки: нарушения, которые в нём уже были
+    (на других слайдах сборки), правка не вносила, и отклонять её из-за них нельзя — иначе
+    один пустой обязательный слот на слайде 6 запрещал бы править любой слайд колоды."""
+    violations = plan_violations(doc, profile, package, story)
+    if before is not None and violations:
+        known = {str(v) for v in plan_violations(before, profile, package, story)}
+        inherited = [v for v in violations if str(v) in known]
+        if inherited:
+            log.warning("нарушения плана до правки не мешают ей: %d", len(inherited))
+        violations = [v for v in violations if str(v) not in known]
+    if violations:
+        raise EditError(
+            "edit_invalid",
+            "Правка нарушает связи контракта: " + "; ".join(str(v) for v in violations[:6]),
+            details={"violations": [str(v) for v in violations[:20]]},
+        )
+
+
+def plan_violations(
+    doc: JsonDict, profile: JsonDict, package: JsonDict, story: JsonDict
+) -> list[Any]:
     from presentation_designer.generation.original import original_profile
 
     original = str((doc.get("variant") or {}).get("variant_id")) == "original"
@@ -684,18 +733,12 @@ def validate_plan(doc: JsonDict, profile: JsonDict, package: JsonDict, story: Js
     )
     # У исходной презентации (вариант original) обязательные слоты без блока заполнены самим
     # образцом — композер в режиме сохранения их не трогает.
-    violations = [
+    return [
         v
         for v in violations
         if (v.code != "package_mismatch" or story.get("package_id") == package.get("package_id"))
         and not (original and v.code == "slot_required")
     ]
-    if violations:
-        raise EditError(
-            "edit_invalid",
-            "Правка нарушает связи контракта: " + "; ".join(str(v) for v in violations[:6]),
-            details={"violations": [str(v) for v in violations[:20]]},
-        )
 
 
 def edit_slide(
@@ -749,7 +792,9 @@ def edit_slide(
         req.seed = int((settings or {})["seed"])
     if nonce:
         req.regenerate_nonce = nonce
-    validator = make_edit_validator(ctx, slide, packet, candidates)
+    count = requested_count(instruction)
+    places = [c for c in candidates if count and grid_rank(c, count)[0] == 0]
+    validator = make_edit_validator(ctx, slide, packet, candidates, count)
     report: JsonDict = {
         "slide_id": slide["slide_id"],
         "slide_index": slide_index,
@@ -765,7 +810,7 @@ def edit_slide(
         parsed = resp.parsed
         if parsed.get("unchanged"):
             return parsed, responses
-        draft = _fit_edit(ctx, parsed["draft"])
+        draft = _fit_edit(ctx, parsed["draft"], places)
         hint = overflow_hint([draft])
         if hint and req.deadline is not None and req.deadline.remaining() >= 5:
             retry = with_capacity_hint(req, resp.text, hint)
@@ -773,7 +818,7 @@ def edit_slide(
             responses.append(resp2)
             parsed2 = resp2.parsed
             if not parsed2.get("unchanged"):
-                draft2 = _fit_edit(ctx, parsed2["draft"])
+                draft2 = _fit_edit(ctx, parsed2["draft"], places)
                 if len(draft2.overflow) <= len(draft.overflow):
                     draft = draft2
                     parsed = parsed2
@@ -816,7 +861,7 @@ def edit_slide(
         "completion_tokens": report["llm"]["completion_tokens"],
     }
     doc = apply_slide(ctx, plan, slide, draft, change_note=change_note, meta_update=meta_update)
-    validate_plan(doc, profile, package, story)
+    validate_plan(doc, profile, package, story, before=plan)
     report["pattern_after"] = draft.pattern.pattern_id
     report["actions"] = list(draft.actions)
     report["overflow"] = list(draft.overflow)
