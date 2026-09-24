@@ -53,7 +53,8 @@ LEGEND = {
 
 @dataclass
 class ChartSwap:
-    """Картинка слайда, прочитанная как диаграмма: заменена или оставлена с причиной."""
+    """Картинка слайда, прочитанная как диаграмма, или диаграмма, собранная из фигур слайда
+    (`kind="pieces"`, см. `composite_charts`): заменена или оставлена с причиной."""
 
     slide: int
     name: str
@@ -61,6 +62,7 @@ class ChartSwap:
     status: str  # replaced | kept
     reason: str = ""
     measured: int = 0
+    kind: str = "picture"  # picture | pieces
 
 
 def picture_sha(shape: Any) -> str:
@@ -706,9 +708,19 @@ def charts_report(
             if outcome.status != "skipped" or outcome.reason in LATE
         ],
         "swaps": [
-            {"slide": s.slide, "sha256": s.sha256, "status": s.status, "reason": s.reason}
+            {
+                "slide": s.slide,
+                "sha256": s.sha256,
+                "status": s.status,
+                "reason": s.reason,
+                "kind": s.kind,
+                "name": s.name,
+            }
             for s in swaps
         ],
+        # Диаграммы из фигур полная сборка находит заново (поиск без модели и повторяем);
+        # число говорит ей, что предварительная ревизия их заменяла.
+        "composites": sum(1 for s in swaps if s.kind == "pieces" and s.status == "replaced"),
         "message": message,
     }
 

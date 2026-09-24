@@ -6,9 +6,15 @@
  */
 const ORDINALS = ["перв", "втор", "трет", "четверт", "пят", "шест", "седьм", "восьм", "девят", "десят"];
 
+/** Вопрос, а не просьба: «что на слайде 3?», «сколько слайдов», «где таблица». */
+export function isQuestion(text: string): boolean {
+  const t = text.toLowerCase().replace(/ё/g, "е").trim();
+  return /\?\s*$/.test(t) || /^(что|как|почему|зачем|сколько|какой|какая|какие|где|когда|о\s+чем|есть\s+ли)(?![а-я])/.test(t);
+}
+
 export function slideRequest(text: string): number | null {
   const t = text.toLowerCase().replace(/ё/g, "е").trim();
-  if (!t || /\?\s*$/.test(t) || /^(что|как|почему|зачем|сколько|какой|какая|какие|где|когда)(?![а-я])/.test(t)) return null;
+  if (!t || isQuestion(t)) return null;
   // «слайд 3», «на слайде 3», «слайд №3»
   const after = t.match(/(?:^|[^а-я])слайд(?:е|а|у|ом)?\s*(?:№\s*)?(\d{1,3})(?!\d)/);
   // «3 слайд», «на 3 слайде», «3-й слайд», «на 3-м слайде»; «10 слайдов» — счёт, не номер

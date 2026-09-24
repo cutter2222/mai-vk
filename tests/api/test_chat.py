@@ -208,3 +208,75 @@ def test_partial_audit_is_reported_not_hidden(client: TestClient, monkeypatch: p
         ).status_code
         == 200
     )
+
+
+def test_assistant_sees_the_open_copy_of_this_project_only(
+    client: TestClient,
+    orchestrator: Orchestrator,
+    monkeypatch: pytest.MonkeyPatch,
+    pptx_bytes: bytes,
+) -> None:
+    from presentation_designer.pipeline.office import OfficeStore
+
+    orchestrator.settings.onlyoffice.enabled = True
+    orchestrator.settings.onlyoffice.jwt_secret = "test-onlyoffice-secret-not-for-production-123456"
+    store = OfficeStore(orchestrator.settings.paths.data_dir)
+    project = client.post("/api/projects", json={}).json()["project_id"]
+    mine = store.create(f"project/{project}/template/tpl_test/abc", "Шаблон", pptx_bytes)
+    other = store.create("project/prj_other/template/tpl_test/abc", "Чужой", pptx_bytes)
+    seen: list[Any] = []
+
+    def answer(state: assistant.ProjectState, text: str, history: list[Any], **_: Any) -> Any:
+        seen.append(state.deck)
+        return {"reply": "ok", "options": [], "source": "model"}
+
+    monkeypatch.setattr(assistant, "answer", answer)
+    for document in (mine, other):
+        event = message(client, project, "Что на слайде 1?")
+        office = {"document_id": document["id"], "revision": 0}
+        result = client.post(
+            "/api/chat", json={"project_id": project, "event_id": event, "office": office}
+        )
+        assert result.status_code == 200, result.text
+    assert seen[0]["source"]["document_id"] == mine["id"] and seen[0]["slides"]
+    assert seen[1] is None
+
+
+def test_rules_answer_what_is_on_a_slide_from_the_open_copy(
+    client: TestClient, orchestrator: Orchestrator, pptx_bytes: bytes
+) -> None:
+    from presentation_designer.generation.snapshot import deck_snapshot
+    from presentation_designer.pipeline.office import OfficeStore
+
+    orchestrator.settings.onlyoffice.enabled = True
+    orchestrator.settings.onlyoffice.jwt_secret = "test-onlyoffice-secret-not-for-production-123456"
+    store = OfficeStore(orchestrator.settings.paths.data_dir)
+    project = client.post("/api/projects", json={}).json()["project_id"]
+    document = store.create(f"project/{project}/template/tpl_test/abc", "Шаблон", pptx_bytes)
+    expected = deck_snapshot(pptx_bytes)
+    office = {"document_id": document["id"], "revision": 0}
+
+    def ask(text: str) -> str:
+        event = message(client, project, text)
+        body = {"project_id": project, "event_id": event, "office": office}
+        result = client.post("/api/chat", json=body)
+        assert result.status_code == 200, result.text
+        assert result.json()["source"] == "rules"
+        return str(result.json()["reply"])
+
+    count = len(expected["slides"])
+    assert ask("Сколько слайдов?").startswith(f"В презентации {count} ")
+    title = expected["slides"][0]["title"] or "без заголовка"
+    assert ask("что на слайде 1?").startswith(f"Слайд 1 «{title}»")
+    assert ask(f"что на слайде {count + 5}?").startswith(f"Слайда {count + 5} нет")
+
+
+def test_asked_slides_understands_numbers_ordinals_and_lists() -> None:
+    assert assistant.asked_slides("что на слайде 3?", 10) == [3]
+    assert assistant.asked_slides("а на третьем слайде?", 10) == [3]
+    assert assistant.asked_slides("на 3-м слайде", 10) == [3]
+    assert assistant.asked_slides("что на слайдах 2, 4 и 6", 10) == [2, 4, 6]
+    assert assistant.asked_slides("слайды 3–5", 10) == [3, 4, 5]
+    assert assistant.asked_slides("что на последнем слайде", 10) == [10]
+    assert assistant.asked_slides("сделай 10 слайдов", 10) == []
+    assert assistant.asked_slides("пятнадцатый слайд", 20) == []

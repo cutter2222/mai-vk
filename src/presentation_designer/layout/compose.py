@@ -43,7 +43,15 @@ from pptx import Presentation
 from presentation_designer.generation import reflow
 from presentation_designer.generation.matching import SlotInfo, pattern_info
 from presentation_designer.generation.original import original_profile, unchanged_slide
-from presentation_designer.layout import chart_images, charts, diagrams, icons, images, tables
+from presentation_designer.layout import (
+    chart_images,
+    charts,
+    composite_charts,
+    diagrams,
+    icons,
+    images,
+    tables,
+)
 from presentation_designer.layout import text as tx
 from presentation_designer.layout.composed import SlideRecord, SlotFill, build_composed_deck
 from presentation_designer.layout.integrity import IntegrityReport, check_deck
@@ -83,7 +91,7 @@ log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 COMPOSER_NAME = "layout_composer"
-COMPOSER_VERSION = "0.3.2"
+COMPOSER_VERSION = "0.3.3"
 TEXT_KINDS = (
     "title",
     "subtitle",
@@ -1820,6 +1828,7 @@ def compose_deck(
     media_dir: pathlib.Path | None = None,
     media_prefix: str = "",
     chart_readings: Mapping[str, Any] | None = None,
+    composites: bool = False,
     reflow_cards: bool = True,
 ) -> ComposeResult:
     """Собирает PPTX по плану и возвращает ComposedDeck, заголовки и отчёт.
@@ -1829,7 +1838,9 @@ def compose_deck(
     `media_dir` — куда выложить медиа колоды для интерфейса (имена артефактов получают
     `media_prefix`, как `<variant>/r<N>/`). `chart_readings` — чтения диаграмм-картинок по
     sha256 картинки (ChartReading или его JSON): в варианте original такие картинки
-    заменяются нативными диаграммами. `reflow_cards` — оставшиеся карточки однорядной сетки
+    заменяются нативными диаграммами. `composites` — там же диаграммы, собранные из фигур
+    слайда (столбцы-картинки, кольца с числом в центре), становятся нативными (поиск без
+    модели, см. `composite_charts`). `reflow_cards` — оставшиеся карточки однорядной сетки
     расходятся на всю ширину ряда; режим «По шаблону» передаёт False."""
     started = time.perf_counter()
     template_path = pathlib.Path(template_path)
@@ -1959,14 +1970,23 @@ def compose_deck(
     if not new_slides:
         raise ComposeError("compose_plan_empty", "в плане нет слайдов")
     swaps: list[chart_images.ChartSwap] = []
+    if preserve and composites:
+        # Готовая презентация: диаграммы из фигур слайда → нативные, до картинок — как в
+        # предварительной ревизии.
+        swaps = composite_charts.swap_composites(prs, slides=new_slides)
+        assembled = sum(1 for s in swaps if s.status == "replaced")
+        if assembled:
+            unchanged = False
+            ctx.count("charts_assembled", assembled)
     if preserve and chart_readings:
         # Готовая презентация: диаграммы-картинки → нативные диаграммы по готовым чтениям.
         readings = {
             str(sha): r if isinstance(r, ChartReading) else ChartReading.model_validate(r)
             for sha, r in chart_readings.items()
         }
-        swaps = chart_images.swap_pictures(prs, readings, slides=new_slides)
-        replaced = sum(1 for s in swaps if s.status == "replaced")
+        pictures = chart_images.swap_pictures(prs, readings, slides=new_slides)
+        swaps += pictures
+        replaced = sum(1 for s in pictures if s.status == "replaced")
         if replaced:
             unchanged = False
             ctx.count("charts_rebuilt", replaced)

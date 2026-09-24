@@ -18,7 +18,7 @@ import { useGenerationSession } from "@/lib/hooks/useGenerationSession";
 import { setPanelOpen, usePanelOpen } from "@/lib/state/panel";
 import { plural, VARIANT_LABELS } from "@/lib/format";
 import type { LiveSelection } from "@/lib/editor/officeLive";
-import { slideRequest } from "@/lib/slideRequest";
+import { isQuestion, slideRequest } from "@/lib/slideRequest";
 import { addProjectFiles, appendMessage, getProject, patchProjectFile, slideCountAsked, updateProject, type Project } from "@/lib/state/projects";
 
 import { ChatPanel } from "./chat/ChatPanel";
@@ -186,7 +186,7 @@ export function ProjectEditor({ project }: { project: Project }) {
       appendMessage(project.project_id, { role: "user", kind: "message", text: `Слайд ${liveTarget.slide} · ${liveTarget.label}\n${text}`, file_ids: [] });
       try {
         if (!officeEdit.current) throw new Error("Дождитесь открытия презентации.");
-        const message = await officeEdit.current.edit(text.trim(), { slide: liveSelection.slide, name: liveObject.name, ...(liveObject.box ? { box: liveObject.box } : {}) });
+        const message = await officeEdit.current.edit(text.trim(), { slide: liveSelection.slide, name: liveObject.name, ...(liveObject.box ? { box: liveObject.box } : {}), ...(liveObject.inGroup ? { in_group: true } : {}) });
         appendMessage(project.project_id, { role: "assistant", kind: "text", text: message });
       } catch (e) {
         appendMessage(project.project_id, { role: "assistant", kind: "text", text: e instanceof Error ? e.message : "Правка не применена." });
@@ -197,7 +197,8 @@ export function ProjectEditor({ project }: { project: Project }) {
     // правка идёт в задание ревизии, и пересобранный слайд встаёт в открытую копию. Пока
     // презентация разбирается в фоне, сервер ставит правку за разбором и говорит, когда применит.
     const phrase = officePresent && !officeSelection && !target && !files.length && !/^\/edit\s+/i.test(text.trim()) ? slideRequest(text) : null;
-    const slide = phrase ?? (liveTarget?.kind === "slide" && !target && !files.length ? liveTarget.slide : null);
+    // Вопрос («что на этом слайде?») при плашке слайда — к ассистенту: он видит содержимое.
+    const slide = phrase ?? (liveTarget?.kind === "slide" && !target && !files.length && !isQuestion(text) ? liveTarget.slide : null);
     const variant = session.variant;
     if (slide && session.jobId && variant?.artifacts?.pptx && variant.status !== "failed") {
       const count = variant.slide_count ?? 0;

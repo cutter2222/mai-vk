@@ -12,8 +12,12 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any
+
+from presentation_designer.generation.snapshot import outline_lines, slide_lines
+from presentation_designer.shared.text import plural
 
 JsonDict = dict[str, Any]
 
@@ -48,6 +52,8 @@ class ProjectState:
     audit_status: str | None = None
     slides: int | None = None
     design_mode: str | None = None
+    # Снимок открытой презентации (офисная копия или ревизия варианта): оглавление и тексты.
+    deck: JsonDict | None = None
 
     def lines(self) -> list[str]:
         out = [
@@ -74,8 +80,171 @@ class ProjectState:
         return out
 
 
+# Сколько символов содержимого слайдов уходит модели: слайд из вопроса — целиком, остальные —
+# началом, чтобы «где таблица?» и «о чём слайд 7?» находились и в длинной колоде.
+NAMED_SLIDE_CHARS = 2500
+OTHER_SLIDE_CHARS = 300
+DECK_CHARS = 9000
+ORDINALS = ["перв", "втор", "трет", "четверт", "пят", "шест", "седьм", "восьм", "девят", "десят"]
+QUESTION = re.compile(
+    r"\?\s*$|^(что|как|какой|какая|какие|каких|где|сколько|о\s+ч[её]м|покажи|расскажи|есть\s+ли)"
+    r"(?![а-я])"
+)
+FIND = {
+    "table": re.compile(r"таблиц"),
+    "chart": re.compile(r"диаграмм|график"),
+    "picture": re.compile(r"картинк|фото|изображени|иллюстрац"),
+    "diagram": re.compile(r"схем"),
+}
+FOUND_NAMES = {
+    "table": "таблица",
+    "chart": "диаграмма",
+    "picture": "картинки",
+    "diagram": "схема",
+}
+
+
+def asked_slides(text: str, count: int) -> list[int]:
+    """Номера слайдов из вопроса: «слайд 3», «на 3-м слайде», «на третьем», «последний»."""
+    t = text.lower().replace("ё", "е")
+    found: list[int] = []
+    # «слайд 3», «на слайдах 3, 5 и 7», «слайды 3–5»
+    for group in re.findall(
+        r"слайд[а-я]*\s*(?:№\s*)?(\d{1,3}(?:\s*(?:,|и|-|–|—)\s*\d{1,3})*)(?!\d)", t
+    ):
+        for start, end in re.findall(r"(\d{1,3})(?:\s*[-–—]\s*(\d{1,3}))?", group):
+            first, last = int(start), int(end or start)
+            found.extend(range(first, min(last, first + 50) + 1) if last >= first else [first])
+    found += [
+        int(m)
+        for m in re.findall(
+            r"(?<!\d)(\d{1,3})\s*(?:-?\s*(?:й|я|е|м|ом|ем|ой|ий))?\s+слайд(?![а-я]*ов)", t
+        )
+    ]
+    for word in re.findall(r"([а-я]+)\s+слайд", t):
+        if word.startswith("последн") and count:
+            found.append(count)
+            continue
+        index = next(
+            (
+                n
+                for n, stem in enumerate(ORDINALS)
+                if word.startswith(stem) and len(word) <= len(stem) + 4 and "надцат" not in word
+            ),
+            None,
+        )
+        if index is not None:
+            found.append(index + 1)
+    return sorted(set(found))
+
+
+def deck_lines(state: ProjectState, text: str) -> list[str]:
+    """Открытая презентация для модели: оглавление и содержимое слайдов в пределах объёма."""
+    deck = state.deck
+    if not deck:
+        return []
+    slides = deck.get("slides") or []
+    named = set(asked_slides(text, len(slides)))
+    out = [f"Открытая презентация, слайдов: {len(slides)}. Оглавление:", *outline_lines(deck)]
+    out.append("Содержимое слайдов:")
+    total = 0
+    for slide in slides:
+        limit = NAMED_SLIDE_CHARS if slide["index"] in named else OTHER_SLIDE_CHARS
+        body = slide_lines(slide, limit)
+        block = [f"Слайд {slide['index']}:", *(f"  {line}" for line in body or ["(пусто)"])]
+        size = sum(len(line) for line in block)
+        if total + size > DECK_CHARS and slide["index"] not in named:
+            continue
+        total += size
+        out.extend(block)
+    missing = sorted(n for n in named if n > len(slides))
+    if missing:
+        out.append(f"Слайдов с номерами {', '.join(map(str, missing))} в презентации нет.")
+    return out
+
+
+def answer_about_deck(state: ProjectState, text: str) -> JsonDict | None:
+    """Вопрос о содержимом открытой презентации — правилами по снимку: сколько слайдов, что на
+    слайде N, где таблица или диаграмма. Не вопрос или нет снимка — None."""
+    deck = state.deck
+    t = text.lower().replace("ё", "е").strip()
+    if not deck or not QUESTION.search(t):
+        return None
+    slides = deck.get("slides") or []
+    count = len(slides)
+    reply: str | None = None
+    asked = asked_slides(t, count)
+    if asked:
+        parts = []
+        for n in asked[:3]:
+            if n > count:
+                parts.append(f"Слайда {n} нет: в презентации {count} {_slides_word(count)}.")
+                continue
+            parts.append(_slide_summary(slides[n - 1]))
+        reply = " ".join(parts)
+    elif re.search(r"сколько\s+(всего\s+)?слайд", t):
+        reply = f"В презентации {count} {_slides_word(count)}."
+    elif re.search(r"\bгде\b|на\s+как(ом|их)\s+слайд|есть\s+ли", t):
+        for kind, pattern in FIND.items():
+            if not pattern.search(t):
+                continue
+            where = [e["index"] for e in deck.get("outline") or [] if kind in e.get("kinds", [])]
+            name = FOUND_NAMES[kind]
+            reply = (
+                f"{name.capitalize()}: {_slide_list(where)}."
+                if where
+                else f"В презентации нет: {name}."
+            )
+            break
+    if reply is None:
+        return None
+    return {"reply": reply[:MAX_REPLY], "options": [], "source": "rules"}
+
+
+def _slide_summary(slide: JsonDict) -> str:
+    """Слайд одной фразой: заголовок, первые тексты, сколько картинок, таблиц и диаграмм."""
+    texts: list[str] = []
+    counts = {"image": 0, "icon": 0, "table": 0, "chart": 0}
+    for obj in slide.get("objects") or []:
+        if obj["fixed"] or obj["role"] in ("title", "decoration", "background"):
+            continue
+        if obj.get("text"):
+            texts.append(" ".join(obj["text"]["plain"].split()))
+        elif obj["role"] in counts:
+            counts[obj["role"]] += 1
+    extra = [
+        f"{n} {plural(n, *forms)}"
+        for role, forms in (
+            ("table", ("таблица", "таблицы", "таблиц")),
+            ("chart", ("диаграмма", "диаграммы", "диаграмм")),
+            ("image", ("картинка", "картинки", "картинок")),
+            ("icon", ("иконка", "иконки", "иконок")),
+        )
+        if (n := counts[role])
+    ]
+    body = "; ".join(t[:120] for t in texts[:3]) + ("…" if len(texts) > 3 else "")
+    tail = ", ".join(extra)
+    title = slide.get("title") or "без заголовка"
+    detail = "; ".join(part for part in (body, tail) if part)
+    end = "" if detail.endswith("…") else "."
+    return f"Слайд {slide['index']} «{title}»" + (f": {detail}{end}" if detail else ".")
+
+
+def _slides_word(n: int) -> str:
+    return plural(n, "слайд", "слайда", "слайдов")
+
+
+def _slide_list(numbers: list[int]) -> str:
+    head = ", ".join(map(str, numbers[:12])) + ("…" if len(numbers) > 12 else "")
+    return ("слайд " if len(numbers) == 1 else "слайды ") + head
+
+
 def answer_without_model(state: ProjectState, text: str) -> JsonDict:
-    """Ответ правилами: ведёт к недостающему шагу. Вопрос по существу правила не понимают."""
+    """Ответ правилами: ведёт к недостающему шагу; о содержимом открытой презентации — по
+    снимку. Остальные вопросы по существу правила не понимают."""
+    about_deck = answer_about_deck(state, text)
+    if about_deck is not None:
+        return about_deck
     if state.job_status and state.job_status not in {"succeeded", "needs_review"}:
         return {
             "reply": (
@@ -157,9 +326,11 @@ def answer(
             for m in (history or [])[-6:]
             if m.get("text")
         )
+        deck = "\n".join(deck_lines(state, text))
         request = skill.request(
             "chat.reply",
             f"Состояние проекта:\n{lines}\n\n"
+            + (f"{deck}\n\n" if deck else "")
             + (f"Недавний разговор:\n{talk}\n\n" if talk else "")
             + f"Сообщение пользователя: {text}",
             schema=REPLY_SCHEMA,
@@ -183,4 +354,12 @@ def answer(
         return answer_without_model(state, text)
 
 
-__all__ = ["REPLY_SCHEMA", "ProjectState", "answer", "answer_without_model"]
+__all__ = [
+    "REPLY_SCHEMA",
+    "ProjectState",
+    "answer",
+    "answer_about_deck",
+    "answer_without_model",
+    "asked_slides",
+    "deck_lines",
+]

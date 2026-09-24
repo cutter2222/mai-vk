@@ -537,7 +537,9 @@ class RealLayers(StubLayers):
     def chart_images(
         self, pptx_path: pathlib.Path, progress: Callable[[str, float], None] | None = None
     ) -> ChartImagesOutput:
-        """Копия готовой презентации: диаграммы-картинки заменяются нативными на месте."""
+        """Копия готовой презентации: диаграммы, собранные из фигур слайда, и
+        диаграммы-картинки заменяются нативными на месте. Фигуры — первыми: их поиск без
+        модели, а картинки, ушедшие в собранную диаграмму, модели читать уже не нужно."""
         from pptx import Presentation
 
         from presentation_designer.layout.chart_images import (
@@ -548,12 +550,13 @@ class RealLayers(StubLayers):
         )
 
         prs = Presentation(str(pptx_path))
+        pieces = self._swap_composites(prs)
         read = self._read_deck_charts(prs, progress)
-        if read is None:
+        if read is None and not pieces:
             return ChartImagesOutput()
-        outcomes, where = read
+        outcomes, where = read if read is not None else ({}, {})
         readings = {sha: o.reading for sha, o in outcomes.items() if o.reading is not None}
-        swaps = swap_pictures(prs, readings) if readings else []
+        swaps = pieces + (swap_pictures(prs, readings) if readings else [])
         replaced = sum(1 for s in swaps if s.status == "replaced")
         if replaced:
             prs.save(str(pptx_path))
@@ -563,6 +566,38 @@ class RealLayers(StubLayers):
             message=message,
             replaced=replaced,
         )
+
+    def _swap_composites(self, prs: Any) -> list[Any]:
+        """Диаграммы из фигур слайда (столбцы-картинки, кольца с числом) → нативные."""
+        from presentation_designer.layout.composite_charts import swap_composites
+
+        cfg = self.settings.layout.chart_images
+        if not (cfg.enabled and cfg.composites):
+            return []
+        started = time.perf_counter()
+        try:
+            swaps = swap_composites(prs)
+        except Exception:  # замена необязательна: колода остаётся как есть
+            log.warning("диаграммы из фигур не разобраны", exc_info=True)
+            return []
+        log.info(
+            "диаграммы из фигур: заменено %d, оставлено %d, %d мс",
+            sum(1 for s in swaps if s.status == "replaced"),
+            sum(1 for s in swaps if s.status != "replaced"),
+            int((time.perf_counter() - started) * 1000),
+        )
+        return swaps
+
+    def _original_composites(self, inp: ComposeInput) -> bool:
+        """Повторять ли в сборке original замену диаграмм из фигур: да, если её сделала
+        предварительная ревизия (charts.json), а без неё — если поиск включён. Поиск
+        повторяем: без модели он даёт то же самое на тех же слайдах."""
+        if inp.variant_id != ORIGINAL_VARIANT:
+            return False
+        if inp.chart_report is not None:
+            return bool(inp.chart_report.get("composites"))
+        cfg = self.settings.layout.chart_images
+        return cfg.enabled and cfg.composites
 
     # ----- вёрстка -----
 
@@ -610,6 +645,7 @@ class RealLayers(StubLayers):
                 media_dir=inp.staging.path("media"),
                 media_prefix=inp.staging.prefix,
                 chart_readings=chart_readings,
+                composites=self._original_composites(inp),
                 reflow_cards=inp.settings.get("design_mode") != "template_only",
             )
         except ComposeError as e:
@@ -700,9 +736,9 @@ class RealLayers(StubLayers):
             if inp.chart_report:
                 inp.staging.write_json("charts.json", inp.chart_report)
             return None
-        if read_here is None:
+        if read_here is None and not result.chart_swaps:
             return None
-        outcomes, where = read_here
+        outcomes, where = read_here if read_here is not None else ({}, {})
         message = swap_summary(result.chart_swaps, unread_charts(outcomes, where))
         inp.staging.write_json(
             "charts.json", charts_report(outcomes, where, result.chart_swaps, message)

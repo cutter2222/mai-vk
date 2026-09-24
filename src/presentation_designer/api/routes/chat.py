@@ -13,14 +13,25 @@ from presentation_designer.generation import assistant
 from presentation_designer.generation.design_mode import DESCRIPTIONS, LABELS, parse_design_mode
 from presentation_designer.pipeline.real import RealLayers
 from presentation_designer.pipeline.results import result_or_none
+from presentation_designer.pipeline.snapshots import project_snapshot
 from presentation_designer.pipeline.state import NotFound
 
 router = APIRouter(tags=["chat"])
 
 
+class OpenDocument(BaseModel):
+    """Офисная копия, открытая в редакторе проекта, и её ревизия."""
+
+    document_id: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
+    revision: int = Field(ge=0)
+
+
 class ChatRequest(BaseModel):
     project_id: str = Field(min_length=1, max_length=100)
     event_id: str = Field(min_length=1, max_length=100)
+    # Ассистент отвечает о содержимом того, что открыто: копии (если она этого проекта) или
+    # последней ревизии выбранного варианта.
+    office: OpenDocument | None = None
 
 
 class ChatResponse(BaseModel):
@@ -71,6 +82,7 @@ def chat(body: ChatRequest, orch: Orch) -> dict[str, Any]:
             state.template_ready = template["status"] == "succeeded"
         except NotFound:
             pass
+    chosen = None
     if project.get("job_id"):
         result = result_or_none(orch.state, project["job_id"])
         state.job_status = result["status"] if result else "missing"
@@ -87,6 +99,15 @@ def chat(body: ChatRequest, orch: Orch) -> dict[str, Any]:
                 state.audit_status = audit.get("status")
                 if audit.get("status") in {"done", "partial"}:
                     state.issues = audit.get("issues_total")
+    if body.office is not None or chosen is not None:
+        state.deck = project_snapshot(
+            orch,
+            project,
+            body.office.model_dump() if body.office else None,
+            chosen if chosen and chosen.get("artifacts", {}).get("pptx") else None,
+        )
+        if state.deck:
+            state.slides = len(state.deck["slides"])
     client = skill = None
     if (
         not selected_mode

@@ -227,3 +227,45 @@ def test_real_compose_carries_the_preview_report_into_the_revision(tmp_path: pat
         assert layers._chart_report(inp, None, None) is None
     manifest = store.read_manifest("job_x", "original", 2)
     assert "original/r2/charts.json" in manifest
+
+
+def test_real_layer_assembles_charts_from_pieces_without_a_model(tmp_path: pathlib.Path) -> None:
+    """Кольцо-картинка с числом в центре становится диаграммой и без модели vlm: поиск по
+    геометрии; отчёт говорит полной сборке повторить замену."""
+    from pptx.util import Inches, Pt
+
+    from tests.parsing.raster_charts import synth
+
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    arcs = [(0.0, 42 * 3.6, synth.BLUE), (42 * 3.6, 58 * 3.6, synth.TRACK)]
+    ring = io.BytesIO(synth.ring_piece(300, 0.66, arcs))
+    slide.shapes.add_picture(ring, Inches(1), Inches(1), Inches(2.4), Inches(2.4))
+    label = slide.shapes.add_textbox(Inches(1.4), Inches(1.95), Inches(1.6), Inches(0.5))
+    label.text_frame.text = "42%"
+    label.text_frame.paragraphs[0].runs[0].font.size = Pt(28)
+    path = tmp_path / "deck.pptx"
+    prs.save(str(path))
+
+    settings = Settings()
+    settings.layout.chart_images.max_images = 0  # модель не зовётся
+    out = RealLayers(settings).chart_images(path)
+    assert out.replaced == 1
+    assert out.report["composites"] == 1
+    assert out.message is not None and "слайд 1" in out.message
+    assert any(s.has_chart for s in Presentation(str(path)).slides[0].shapes)
+
+    layers = RealLayers(settings)
+    store = ArtifactStore(tmp_path / "artifacts")
+    with store.stage_revision("job_y", "original", 3) as staging:
+
+        def inp(report: dict[str, Any] | None) -> ComposeInput:
+            return ComposeInput(
+                "job_y", "original", 3, {}, {}, None, {}, {}, staging, chart_report=report
+            )
+
+        assert layers._original_composites(inp(out.report))
+        assert not layers._original_composites(inp(REPORT))  # только картинки
+        assert not layers._original_composites(inp({}))  # отчёта нет — не заменять
+        assert layers._original_composites(inp(None))  # сборка читает сама
+        staging.discard = True

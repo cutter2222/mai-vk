@@ -30,6 +30,8 @@ MODELS: dict[str, type] = {
     "project": m.Project,
     "project_file": m.ProjectFile,
     "brief_extract": m.BriefExtract,
+    "chat_ops": m.ChatOps,
+    "deck_snapshot": m.DeckSnapshot,
 }
 
 

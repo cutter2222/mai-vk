@@ -1,0 +1,4580 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://presentation-designer.local/contracts/chat_ops.schema.json",
+ "title": "ChatOps",
+ "description": "Операции правки из чата (этап 36 серии «чат как редактор»): одна схема для плана варианта и офисной копии. У каждой операции адрес в снимке колоды (deck_snapshot) ревизии base, источник значений и признак «требует подтверждения». Операции исполняются по порядку; ошибка одной не откатывает уже применённые. overrides плана (common.override) — подмножество: text → text.set, style → style.*, geometry → object.move + object.resize, picture → picture.replace + picture.recolor, background → background.*, delete → object.delete, add_text → object.add_text; order и template_logo запроса slide_patch → deck.move, deck.logo. Номера слайдов, абзацев, строк, столбцов и шагов — с единицы.",
+ "type": "object",
+ "required": [
+  "schema_version",
+  "base",
+  "ops"
+ ],
+ "additionalProperties": false,
+ "properties": {
+  "schema_version": {
+   "const": "1.0"
+  },
+  "base": {
+   "type": "object",
+   "description": "ревизия, к снимку которой относятся адреса",
+   "required": [
+    "kind",
+    "revision"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "enum": [
+      "variant",
+      "office"
+     ]
+    },
+    "job_id": {
+     "$ref": "common.schema.json#/$defs/id"
+    },
+    "variant_id": {
+     "$ref": "common.schema.json#/$defs/id"
+    },
+    "document_id": {
+     "$ref": "common.schema.json#/$defs/id"
+    },
+    "revision": {
+     "$ref": "common.schema.json#/$defs/revision"
+    }
+   },
+   "allOf": [
+    {
+     "if": {
+      "properties": {
+       "kind": {
+        "const": "variant"
+       }
+      }
+     },
+     "then": {
+      "required": [
+       "job_id",
+       "variant_id"
+      ]
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "kind": {
+        "const": "office"
+       }
+      }
+     },
+     "then": {
+      "required": [
+       "document_id"
+      ]
+     }
+    }
+   ]
+  },
+  "ops": {
+   "type": "array",
+   "items": {
+    "$ref": "#/$defs/op"
+   },
+   "maxItems": 100
+  },
+  "facts": {
+   "type": "array",
+   "items": {
+    "$ref": "#/$defs/chat_fact"
+   },
+   "description": "факты «чат»: значения, названные человеком (раздел 4.6)"
+  }
+ },
+ "$defs": {
+  "slide_ref": {
+   "type": "object",
+   "description": "слайд: номер и sld_id ревизии снимка; у плана — slide_id",
+   "additionalProperties": false,
+   "properties": {
+    "index": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "sld_id": {
+     "type": "integer"
+    },
+    "slide_id": {
+     "$ref": "common.schema.json#/$defs/id"
+    }
+   },
+   "anyOf": [
+    {
+     "required": [
+      "index"
+     ]
+    },
+    {
+     "required": [
+      "slide_id"
+     ]
+    }
+   ]
+  },
+  "object_ref": {
+   "type": "object",
+   "description": "объект снимка; slot_id и source_object_id — охрана адреса в плане, как у target правки override",
+   "additionalProperties": false,
+   "required": [
+    "object_id"
+   ],
+   "properties": {
+    "object_id": {
+     "$ref": "common.schema.json#/$defs/id",
+     "description": "p:cNvPr@id объекта снимка; у надписи, созданной этими же операциями (object.add_text), — её new_object_id"
+    },
+    "group_path": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "pattern": "^[0-9]{1,20}$"
+     }
+    },
+    "slot_id": {
+     "$ref": "common.schema.json#/$defs/id"
+    },
+    "source_object_id": {
+     "type": "string"
+    }
+   }
+  },
+  "address": {
+   "type": "object",
+   "description": "адрес операции в снимке, к которому относится документ; scope говорит, что именно адресовано",
+   "required": [
+    "scope"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "scope": {
+     "enum": [
+      "object",
+      "objects",
+      "paragraph",
+      "fragment",
+      "cell",
+      "slide",
+      "slides",
+      "deck",
+      "none"
+     ]
+    },
+    "slide": {
+     "$ref": "#/$defs/slide_ref"
+    },
+    "slides": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/slide_ref"
+     },
+     "minItems": 1
+    },
+    "object": {
+     "$ref": "#/$defs/object_ref"
+    },
+    "objects": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/object_ref"
+     },
+     "minItems": 1
+    },
+    "paragraph": {
+     "type": "integer",
+     "minimum": 1,
+     "description": "номер абзаца объекта"
+    },
+    "fragment": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "text"
+     ],
+     "properties": {
+      "text": {
+       "type": "string",
+       "description": "слово или фраза в тексте объекта"
+      },
+      "paragraph": {
+       "type": "integer",
+       "minimum": 1
+      }
+     }
+    },
+    "cell": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "row",
+      "col"
+     ],
+     "properties": {
+      "row": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "col": {
+       "type": "integer",
+       "minimum": 1
+      }
+     }
+    }
+   },
+   "allOf": [
+    {
+     "if": {
+      "properties": {
+       "scope": {
+        "const": "object"
+       }
+      }
+     },
+     "then": {
+      "required": [
+       "slide",
+       "object"
+      ]
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "scope": {
+        "const": "objects"
+       }
+      }
+     },
+     "then": {
+      "required": [
+       "slide",
+       "objects"
+      ]
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "scope": {
+        "const": "paragraph"
+       }
+      }
+     },
+     "then": {
+      "required": [
+       "slide",
+       "object",
+       "paragraph"
+      ]
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "scope": {
+        "const": "fragment"
+       }
+      }
+     },
+     "then": {
+      "required": [
+       "slide",
+       "object",
+       "fragment"
+      ]
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "scope": {
+        "const": "cell"
+       }
+      }
+     },
+     "then": {
+      "required": [
+       "slide",
+       "object",
+       "cell"
+      ]
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "scope": {
+        "const": "slide"
+       }
+      }
+     },
+     "then": {
+      "required": [
+       "slide"
+      ]
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "scope": {
+        "const": "slides"
+       }
+      }
+     },
+     "then": {
+      "required": [
+       "slides"
+      ]
+     }
+    }
+   ]
+  },
+  "chat_fact": {
+   "type": "object",
+   "description": "значение из сообщения человека: подставляется как есть, в аудите подписано «по указанию пользователя»",
+   "required": [
+    "fact_id",
+    "value",
+    "quote"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "fact_id": {
+     "$ref": "common.schema.json#/$defs/id"
+    },
+    "value": {
+     "type": [
+      "number",
+      "string"
+     ]
+    },
+    "unit": {
+     "type": "string"
+    },
+    "period": {
+     "type": "string"
+    },
+    "quote": {
+     "type": "string",
+     "description": "цитата из сообщения"
+    },
+    "at": {
+     "$ref": "common.schema.json#/$defs/timestamp"
+    }
+   }
+  },
+  "op": {
+   "type": "object",
+   "required": [
+    "op",
+    "address",
+    "source",
+    "confirm",
+    "args"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "op": {
+     "enum": [
+      "text.set",
+      "text.replace",
+      "text.insert_paragraph",
+      "text.delete_paragraph",
+      "text.reorder_paragraphs",
+      "text.set_bullets",
+      "text.set_notes",
+      "style.size",
+      "style.bold",
+      "style.italic",
+      "style.underline",
+      "style.color",
+      "style.align",
+      "style.font",
+      "style.spacing",
+      "style.caps",
+      "style.reset",
+      "object.move",
+      "object.resize",
+      "object.align",
+      "object.distribute",
+      "object.z_order",
+      "object.delete",
+      "object.add_text",
+      "object.add",
+      "object.add_block",
+      "object.duplicate",
+      "picture.replace",
+      "picture.insert",
+      "picture.fit",
+      "picture.recolor",
+      "picture.pick_icon",
+      "picture.set_qr",
+      "background.solid",
+      "background.image",
+      "background.inherited",
+      "table.set_cell",
+      "table.add_row",
+      "table.delete_row",
+      "table.add_column",
+      "table.delete_column",
+      "table.sort",
+      "table.reorder",
+      "table.highlight",
+      "table.layout",
+      "table.from_dataset",
+      "table.to_chart",
+      "chart.set_values",
+      "chart.add_series",
+      "chart.delete_series",
+      "chart.rename",
+      "chart.set_type",
+      "chart.colors",
+      "chart.highlight",
+      "chart.options",
+      "chart.number_format",
+      "chart.sort",
+      "chart.from_image",
+      "chart.from_dataset",
+      "chart.from_text",
+      "chart.to_table",
+      "diagram.add",
+      "diagram.delete",
+      "diagram.reorder",
+      "diagram.rename",
+      "diagram.set_kind",
+      "diagram.colors",
+      "slide.rebuild",
+      "slide.set_composition",
+      "slide.fixed_toggle",
+      "slide.hide",
+      "slide.make_editable",
+      "slide.placeholder_fill",
+      "slide.placeholder_clear",
+      "deck.add_slide",
+      "deck.add_slides",
+      "deck.duplicate",
+      "deck.delete",
+      "deck.move",
+      "deck.split",
+      "deck.merge",
+      "deck.sections",
+      "deck.agenda",
+      "deck.replace_everywhere",
+      "deck.translate",
+      "deck.style_everywhere",
+      "deck.recolor",
+      "deck.logo",
+      "deck.notes",
+      "deck.update_facts",
+      "deck.repair",
+      "service.undo",
+      "service.question",
+      "service.refusal",
+      "service.confirm"
+     ],
+     "description": "семейство.имя"
+    },
+    "address": {
+     "$ref": "#/$defs/address"
+    },
+    "source": {
+     "enum": [
+      "snapshot",
+      "package",
+      "chat",
+      "attachment",
+      "template"
+     ],
+     "description": "откуда значения: текущий снимок (переформулировка, перестановка), факты пакета, слово человека, вложение, токены и ресурсы шаблона"
+    },
+    "confirm": {
+     "type": "boolean",
+     "description": "требует подтверждения кнопкой до исполнения: разрушающие и массовые операции"
+    },
+    "fact_refs": {
+     "type": "array",
+     "items": {
+      "$ref": "common.schema.json#/$defs/id"
+     },
+     "description": "факты пакета или «чат», на которые опираются значения"
+    },
+    "args": {
+     "type": "object"
+    }
+   },
+   "allOf": [
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "text.set"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object",
+           "paragraph"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "text": {
+          "type": "string",
+          "description": "новый текст; строки через \\n; {fact:<id>} подставляется как в плане"
+         }
+        },
+        "description": "заменить весь текст объекта или абзаца",
+        "required": [
+         "text"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "text.replace"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object",
+           "objects",
+           "fragment",
+           "slide"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "find": {
+          "type": "string"
+         },
+         "replace": {
+          "type": "string"
+         }
+        },
+        "description": "заменить слово или фразу",
+        "required": [
+         "find",
+         "replace"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "text.insert_paragraph"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object",
+           "paragraph"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "text": {
+          "type": "string"
+         },
+         "position": {
+          "enum": [
+           "before",
+           "after"
+          ],
+          "description": "относительно абзаца адреса; у объекта — в конец"
+         }
+        },
+        "description": "новый абзац с оформлением соседнего",
+        "required": [
+         "text"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "text.delete_paragraph"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "paragraph"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "description": "убрать абзац"
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "text.reorder_paragraphs"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "order": {
+          "type": "array",
+          "items": {
+           "type": "integer",
+           "minimum": 1
+          },
+          "minItems": 1,
+          "description": "номера абзацев в новом порядке"
+         }
+        },
+        "description": "новый порядок абзацев",
+        "required": [
+         "order"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "text.set_bullets"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object",
+           "paragraph"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "kind": {
+          "enum": [
+           "none",
+           "bullet",
+           "number"
+          ]
+         }
+        },
+        "description": "маркеры и нумерация по образцу списка шаблона",
+        "required": [
+         "kind"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "text.set_notes"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "slide"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "text": {
+          "type": "string"
+         },
+         "mode": {
+          "enum": [
+           "replace",
+           "append"
+          ]
+         }
+        },
+        "description": "заметки докладчика",
+        "required": [
+         "text"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "style.size"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object",
+           "paragraph",
+           "fragment",
+           "objects"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "size_pt": {
+          "type": "number",
+          "minimum": 6,
+          "maximum": 120
+         },
+         "step": {
+          "enum": [
+           "larger",
+           "smaller",
+           "fit"
+          ],
+          "description": "fit — ближайшая помещающаяся ступень, не ниже 9 пт"
+         }
+        },
+        "description": "кегль: ступень шкалы шаблона или число",
+        "anyOf": [
+         {
+          "required": [
+           "size_pt"
+          ]
+         },
+         {
+          "required": [
+           "step"
+          ]
+         }
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "style.bold"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object",
+           "paragraph",
+           "fragment",
+           "objects"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "value": {
+          "type": "boolean"
+         }
+        },
+        "description": "жирный",
+        "required": [
+         "value"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "style.italic"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object",
+           "paragraph",
+           "fragment",
+           "objects"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "value": {
+          "type": "boolean"
+         }
+        },
+        "description": "курсив",
+        "required": [
+         "value"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "style.underline"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object",
+           "paragraph",
+           "fragment",
+           "objects"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "value": {
+          "type": "boolean"
+         }
+        },
+        "description": "подчёркивание",
+        "required": [
+         "value"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "style.color"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object",
+           "paragraph",
+           "fragment",
+           "objects"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "color": {
+          "$ref": "common.schema.json#/$defs/color"
+         },
+         "token": {
+          "type": "string",
+          "description": "имя цвета палитры шаблона (accent1, dark1…); цвет вне палитры — только с предупреждением"
+         }
+        },
+        "description": "цвет текста из палитры шаблона",
+        "anyOf": [
+         {
+          "required": [
+           "color"
+          ]
+         },
+         {
+          "required": [
+           "token"
+          ]
+         }
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "style.align"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object",
+           "paragraph",
+           "objects"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "align": {
+          "enum": [
+           "left",
+           "center",
+           "right",
+           "justify"
+          ]
+         }
+        },
+        "description": "выравнивание абзацев",
+        "required": [
+         "align"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "style.font"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object",
+           "paragraph",
+           "fragment",
+           "objects"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "family": {
+          "type": "string"
+         }
+        },
+        "description": "шрифт из шрифтов шаблона",
+        "required": [
+         "family"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "style.spacing"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object",
+           "paragraph"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "line": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 3
+         },
+         "before_pt": {
+          "type": "number",
+          "minimum": 0
+         },
+         "after_pt": {
+          "type": "number",
+          "minimum": 0
+         },
+         "step": {
+          "enum": [
+           "tighter",
+           "looser"
+          ]
+         }
+        },
+        "description": "межстрочный и отступы абзацев по ступеням образцов",
+        "anyOf": [
+         {
+          "required": [
+           "line"
+          ]
+         },
+         {
+          "required": [
+           "before_pt"
+          ]
+         },
+         {
+          "required": [
+           "after_pt"
+          ]
+         },
+         {
+          "required": [
+           "step"
+          ]
+         }
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "style.caps"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object",
+           "paragraph",
+           "fragment"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "value": {
+          "type": "boolean"
+         }
+        },
+        "description": "все прописные",
+        "required": [
+         "value"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "style.reset"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object",
+           "objects"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "description": "вернуть оформление образца шаблона"
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "object.move"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object",
+           "objects"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "x": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 2
+         },
+         "y": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 2
+         },
+         "dx": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1
+         },
+         "dy": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1
+         },
+         "place": {
+          "type": "string",
+          "description": "место словами из словаря мест: right, left, top, bottom, center, top_right, under_title, full_width, full_slide…"
+         }
+        },
+        "description": "переместить в долях слайда (левый верхний угол), сдвигом или в место по словарю",
+        "anyOf": [
+         {
+          "required": [
+           "x"
+          ]
+         },
+         {
+          "required": [
+           "y"
+          ]
+         },
+         {
+          "required": [
+           "dx"
+          ]
+         },
+         {
+          "required": [
+           "dy"
+          ]
+         },
+         {
+          "required": [
+           "place"
+          ]
+         }
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "object.resize"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object",
+           "objects"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "width": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3
+         },
+         "height": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3
+         },
+         "scale": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 10
+         },
+         "place": {
+          "type": "string",
+          "description": "место словами из словаря мест: right, left, top, bottom, center, top_right, under_title, full_width, full_slide…"
+         }
+        },
+        "description": "размер в долях слайда, масштаб или место по словарю",
+        "anyOf": [
+         {
+          "required": [
+           "width"
+          ]
+         },
+         {
+          "required": [
+           "height"
+          ]
+         },
+         {
+          "required": [
+           "scale"
+          ]
+         },
+         {
+          "required": [
+           "place"
+          ]
+         }
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "object.align"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "objects"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "edge": {
+          "enum": [
+           "left",
+           "center",
+           "right",
+           "top",
+           "middle",
+           "bottom"
+          ]
+         }
+        },
+        "description": "выровнять несколько объектов по краю",
+        "required": [
+         "edge"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "object.distribute"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "objects"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "axis": {
+          "enum": [
+           "horizontal",
+           "vertical"
+          ]
+         }
+        },
+        "description": "равные промежутки",
+        "required": [
+         "axis"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "object.z_order"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object",
+           "objects"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "to": {
+          "enum": [
+           "front",
+           "back",
+           "forward",
+           "backward"
+          ]
+         }
+        },
+        "description": "порядок наложения",
+        "required": [
+         "to"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "object.delete"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object",
+           "objects"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "description": "убрать объект; перекладка ряда — отдельной просьбой"
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "object.add_text"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "slide"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "text": {
+          "type": "string"
+         },
+         "role": {
+          "enum": [
+           "title",
+           "subtitle",
+           "body",
+           "caption",
+           "label"
+          ]
+         },
+         "bbox": {
+          "$ref": "common.schema.json#/$defs/bbox"
+         },
+         "place": {
+          "type": "string",
+          "description": "место словами из словаря мест: right, left, top, bottom, center, top_right, under_title, full_width, full_slide…"
+         },
+         "style": {
+          "$ref": "common.schema.json#/$defs/override/properties/style"
+         },
+         "new_object_id": {
+          "type": "string",
+          "description": "идентификатор новой надписи в плане (target.object_id правки add_text)"
+         }
+        },
+        "description": "своя надпись в стиле роли профиля",
+        "required": [
+         "text"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "object.add"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "slide"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "kind": {
+          "enum": [
+           "icon",
+           "shape",
+           "line"
+          ]
+         },
+         "asset": {
+          "$ref": "common.schema.json#/$defs/asset_source"
+         },
+         "place": {
+          "type": "string",
+          "description": "место словами из словаря мест: right, left, top, bottom, center, top_right, under_title, full_width, full_slide…"
+         },
+         "bbox": {
+          "$ref": "common.schema.json#/$defs/bbox"
+         }
+        },
+        "description": "иконка, фигура или линия из ресурсов и образцов шаблона",
+        "required": [
+         "kind"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "object.add_block"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "text": {
+          "type": "string"
+         }
+        },
+        "description": "ещё одна карточка — клон соседней с перекладкой ряда"
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "object.duplicate"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "description": "копия объекта рядом"
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "picture.replace"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "asset": {
+          "$ref": "common.schema.json#/$defs/asset_source"
+         },
+         "fit": {
+          "enum": [
+           "cover",
+           "contain"
+          ]
+         }
+        },
+        "description": "заменить картинку объекта",
+        "required": [
+         "asset"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "picture.insert"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "slide"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "asset": {
+          "$ref": "common.schema.json#/$defs/asset_source"
+         },
+         "place": {
+          "type": "string",
+          "description": "место словами из словаря мест: right, left, top, bottom, center, top_right, under_title, full_width, full_slide…"
+         },
+         "bbox": {
+          "$ref": "common.schema.json#/$defs/bbox"
+         },
+         "fit": {
+          "enum": [
+           "cover",
+           "contain"
+          ]
+         }
+        },
+        "description": "вставить картинку в место по сетке шаблона",
+        "required": [
+         "asset"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "picture.fit"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "fit": {
+          "enum": [
+           "cover",
+           "contain"
+          ]
+         },
+         "focus": {
+          "enum": [
+           "center",
+           "top",
+           "bottom",
+           "left",
+           "right"
+          ]
+         }
+        },
+        "description": "вписать или заполнить рамку",
+        "required": [
+         "fit"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "picture.recolor"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object",
+           "objects",
+           "slide"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "color": {
+          "$ref": "common.schema.json#/$defs/color"
+         },
+         "token": {
+          "type": "string",
+          "description": "имя цвета палитры шаблона (accent1, dark1…); цвет вне палитры — только с предупреждением"
+         }
+        },
+        "description": "перекрасить монохромную иконку",
+        "anyOf": [
+         {
+          "required": [
+           "color"
+          ]
+         },
+         {
+          "required": [
+           "token"
+          ]
+         }
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "picture.pick_icon"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object",
+           "slide"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "query": {
+          "type": "string"
+         }
+        },
+        "description": "иконка по смыслу из ресурсов шаблона",
+        "required": [
+         "query"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "picture.set_qr"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object",
+           "slide"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "url": {
+          "type": "string"
+         }
+        },
+        "description": "QR-код на ссылку в слот шаблона",
+        "required": [
+         "url"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "background.solid"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "slide",
+           "slides"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "color": {
+          "$ref": "common.schema.json#/$defs/color"
+         },
+         "token": {
+          "type": "string",
+          "description": "имя цвета палитры шаблона (accent1, dark1…); цвет вне палитры — только с предупреждением"
+         }
+        },
+        "description": "сплошной фон из палитры; для тёмного — макет-брат",
+        "anyOf": [
+         {
+          "required": [
+           "color"
+          ]
+         },
+         {
+          "required": [
+           "token"
+          ]
+         }
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "background.image"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "slide",
+           "slides"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "asset": {
+          "$ref": "common.schema.json#/$defs/asset_source"
+         },
+         "fit": {
+          "enum": [
+           "cover",
+           "contain"
+          ]
+         }
+        },
+        "description": "картинка фоном",
+        "required": [
+         "asset"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "background.inherited"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "slide",
+           "slides"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "description": "фон как в макете"
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "table.set_cell"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "cell"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "value": {
+          "type": "string"
+         }
+        },
+        "description": "значение ячейки",
+        "required": [
+         "value"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "table.add_row"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "at": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "номер новой строки; нет — в конец"
+         },
+         "values": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         }
+        },
+        "description": "строка с оформлением соседних"
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "table.delete_row"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "row": {
+          "type": "integer",
+          "minimum": 1
+         }
+        },
+        "description": "убрать строку",
+        "required": [
+         "row"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "table.add_column"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "at": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "header": {
+          "type": "string"
+         },
+         "values": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         }
+        },
+        "description": "столбец с оформлением соседних"
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "table.delete_column"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "col": {
+          "type": "integer",
+          "minimum": 1
+         }
+        },
+        "description": "убрать столбец",
+        "required": [
+         "col"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "table.sort"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "by_col": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "order": {
+          "enum": [
+           "asc",
+           "desc"
+          ]
+         }
+        },
+        "description": "сортировка строк",
+        "required": [
+         "by_col",
+         "order"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "table.reorder"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "rows": {
+          "type": "array",
+          "items": {
+           "type": "integer",
+           "minimum": 1
+          }
+         },
+         "cols": {
+          "type": "array",
+          "items": {
+           "type": "integer",
+           "minimum": 1
+          }
+         }
+        },
+        "description": "порядок строк или столбцов",
+        "anyOf": [
+         {
+          "required": [
+           "rows"
+          ]
+         },
+         {
+          "required": [
+           "cols"
+          ]
+         }
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "table.highlight"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object",
+           "cell"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "row": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "col": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "style": {
+          "enum": [
+           "bold",
+           "accent",
+           "fill"
+          ]
+         }
+        },
+        "description": "выделить строку, столбец или ячейку",
+        "required": [
+         "style"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "table.layout"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "col_widths": {
+          "type": "array",
+          "items": {
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          }
+         },
+         "align": {
+          "type": "array",
+          "items": {
+           "type": "object",
+           "additionalProperties": false,
+           "required": [
+            "col",
+            "align"
+           ],
+           "properties": {
+            "col": {
+             "type": "integer",
+             "minimum": 1
+            },
+            "align": {
+             "enum": [
+              "left",
+              "center",
+              "right"
+             ]
+            }
+           }
+          }
+         }
+        },
+        "description": "ширины столбцов и выравнивание",
+        "anyOf": [
+         {
+          "required": [
+           "col_widths"
+          ]
+         },
+         {
+          "required": [
+           "align"
+          ]
+         }
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "table.from_dataset"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "slide",
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "dataset_id": {
+          "$ref": "common.schema.json#/$defs/id"
+         },
+         "file_id": {
+          "$ref": "common.schema.json#/$defs/id"
+         },
+         "columns": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "place": {
+          "type": "string",
+          "description": "место словами из словаря мест: right, left, top, bottom, center, top_right, under_title, full_width, full_slide…"
+         }
+        },
+        "description": "таблица из набора данных или файла",
+        "anyOf": [
+         {
+          "required": [
+           "dataset_id"
+          ]
+         },
+         {
+          "required": [
+           "file_id"
+          ]
+         }
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "table.to_chart"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "chart_type": {
+          "type": "string",
+          "description": "тип диаграммы: column, bar, line, pie, doughnut, area, stacked_column, stacked_bar…"
+         }
+        },
+        "description": "таблица → диаграмма с теми же данными"
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "chart.set_values"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "series": {
+          "type": "string",
+          "description": "ряд по имени; нет — первый"
+         },
+         "values": {
+          "type": "array",
+          "items": {
+           "type": "object",
+           "additionalProperties": false,
+           "required": [
+            "category",
+            "value"
+           ],
+           "properties": {
+            "category": {
+             "type": "string"
+            },
+            "value": {
+             "type": [
+              "number",
+              "null"
+             ]
+            }
+           }
+          },
+          "minItems": 1
+         }
+        },
+        "description": "значения по категориям",
+        "required": [
+         "values"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "chart.add_series"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "values": {
+          "type": "array",
+          "items": {
+           "type": [
+            "number",
+            "null"
+           ]
+          }
+         }
+        },
+        "description": "новый ряд",
+        "required": [
+         "name",
+         "values"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "chart.delete_series"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "series": {
+          "type": "string"
+         }
+        },
+        "description": "убрать ряд",
+        "required": [
+         "series"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "chart.rename"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "series": {
+          "type": "string"
+         },
+         "category": {
+          "type": "string"
+         },
+         "name": {
+          "type": "string"
+         }
+        },
+        "description": "переименовать ряд или категорию",
+        "required": [
+         "name"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "chart.set_type"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "chart_type": {
+          "type": "string",
+          "description": "тип диаграммы: column, bar, line, pie, doughnut, area, stacked_column, stacked_bar…"
+         }
+        },
+        "description": "сменить тип",
+        "required": [
+         "chart_type"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "chart.colors"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "scheme": {
+          "enum": [
+           "theme",
+           "accent",
+           "muted"
+          ]
+         },
+         "color": {
+          "$ref": "common.schema.json#/$defs/color"
+         },
+         "token": {
+          "type": "string",
+          "description": "имя цвета палитры шаблона (accent1, dark1…); цвет вне палитры — только с предупреждением"
+         }
+        },
+        "description": "цвета рядов из темы",
+        "anyOf": [
+         {
+          "required": [
+           "scheme"
+          ]
+         },
+         {
+          "required": [
+           "color"
+          ]
+         },
+         {
+          "required": [
+           "token"
+          ]
+         }
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "chart.highlight"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "category": {
+          "type": "string"
+         },
+         "series": {
+          "type": "string"
+         },
+         "token": {
+          "type": "string",
+          "description": "имя цвета палитры шаблона (accent1, dark1…); цвет вне палитры — только с предупреждением"
+         }
+        },
+        "description": "выделить категорию или ряд акцентом, остальные приглушить",
+        "anyOf": [
+         {
+          "required": [
+           "category"
+          ]
+         },
+         {
+          "required": [
+           "series"
+          ]
+         }
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "chart.options"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "legend": {
+          "enum": [
+           "none",
+           "top",
+           "bottom",
+           "left",
+           "right"
+          ]
+         },
+         "data_labels": {
+          "type": "boolean"
+         },
+         "gridlines": {
+          "type": "boolean"
+         },
+         "title": {
+          "type": [
+           "string",
+           "null"
+          ]
+         },
+         "axis_titles": {
+          "type": "boolean"
+         }
+        },
+        "description": "легенда, подписи, сетка, заголовок",
+        "anyOf": [
+         {
+          "required": [
+           "legend"
+          ]
+         },
+         {
+          "required": [
+           "data_labels"
+          ]
+         },
+         {
+          "required": [
+           "gridlines"
+          ]
+         },
+         {
+          "required": [
+           "title"
+          ]
+         },
+         {
+          "required": [
+           "axis_titles"
+          ]
+         }
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "chart.number_format"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "format": {
+          "enum": [
+           "integer",
+           "decimal1",
+           "decimal2",
+           "percent",
+           "thousands",
+           "millions"
+          ]
+         },
+         "unit": {
+          "type": "string"
+         }
+        },
+        "description": "формат подписей; пересчёт — только явный, кодом",
+        "required": [
+         "format"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "chart.sort"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "order": {
+          "enum": [
+           "asc",
+           "desc"
+          ]
+         }
+        },
+        "description": "порядок категорий",
+        "required": [
+         "order"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "chart.from_image"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "slide",
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "asset": {
+          "$ref": "common.schema.json#/$defs/asset_source"
+         },
+         "chart_type": {
+          "type": "string",
+          "description": "тип диаграммы: column, bar, line, pie, doughnut, area, stacked_column, stacked_bar…"
+         }
+        },
+        "description": "нативная диаграмма по картинке",
+        "required": [
+         "asset"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "chart.from_dataset"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "slide",
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "dataset_id": {
+          "$ref": "common.schema.json#/$defs/id"
+         },
+         "file_id": {
+          "$ref": "common.schema.json#/$defs/id"
+         },
+         "columns": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "chart_type": {
+          "type": "string",
+          "description": "тип диаграммы: column, bar, line, pie, doughnut, area, stacked_column, stacked_bar…"
+         }
+        },
+        "description": "диаграмма по набору данных или файлу",
+        "anyOf": [
+         {
+          "required": [
+           "dataset_id"
+          ]
+         },
+         {
+          "required": [
+           "file_id"
+          ]
+         }
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "chart.from_text"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "slide",
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "text": {
+          "type": "string"
+         },
+         "chart_type": {
+          "type": "string",
+          "description": "тип диаграммы: column, bar, line, pie, doughnut, area, stacked_column, stacked_bar…"
+         }
+        },
+        "description": "диаграмма по числам из сообщения",
+        "required": [
+         "text"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "chart.to_table"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "description": "диаграмма → таблица с теми же данными"
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "diagram.add"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "text": {
+          "type": "string"
+         },
+         "after": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "после какого шага; 0 — в начало"
+         }
+        },
+        "description": "новый шаг схемы",
+        "required": [
+         "text"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "diagram.delete"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "node": {
+          "type": "integer",
+          "minimum": 1
+         }
+        },
+        "description": "убрать шаг",
+        "required": [
+         "node"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "diagram.reorder"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "order": {
+          "type": "array",
+          "items": {
+           "type": "integer",
+           "minimum": 1
+          },
+          "minItems": 1
+         }
+        },
+        "description": "порядок шагов",
+        "required": [
+         "order"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "diagram.rename"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "node": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "text": {
+          "type": "string"
+         }
+        },
+        "description": "текст шага",
+        "required": [
+         "node",
+         "text"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "diagram.set_kind"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "kind": {
+          "enum": [
+           "process",
+           "cycle",
+           "funnel",
+           "timeline",
+           "hierarchy",
+           "matrix"
+          ]
+         }
+        },
+        "description": "другой вид схемы",
+        "required": [
+         "kind"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "diagram.colors"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "highlight": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "scheme": {
+          "enum": [
+           "theme",
+           "accent"
+          ]
+         }
+        },
+        "description": "выделить шаг или цвета темы",
+        "anyOf": [
+         {
+          "required": [
+           "highlight"
+          ]
+         },
+         {
+          "required": [
+           "scheme"
+          ]
+         }
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "slide.rebuild"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "slide"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "instruction": {
+          "type": "string"
+         },
+         "need": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+           "visual": {
+            "type": "string",
+            "description": "подача: cards, list, table, chart, kpi, diagram, quote, image"
+           },
+           "items": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "названное число мест"
+           }
+          }
+         }
+        },
+        "description": "перестроить слайд по плану (slide_editor)",
+        "required": [
+         "instruction"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "slide.set_composition"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "slide"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "pattern_id": {
+          "$ref": "common.schema.json#/$defs/id"
+         },
+         "like_slide": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "side": {
+          "enum": [
+           "mirror",
+           "left",
+           "right"
+          ]
+         },
+         "tone": {
+          "enum": [
+           "dark",
+           "light"
+          ]
+         }
+        },
+        "description": "другая композиция того же шаблона",
+        "anyOf": [
+         {
+          "required": [
+           "pattern_id"
+          ]
+         },
+         {
+          "required": [
+           "like_slide"
+          ]
+         },
+         {
+          "required": [
+           "side"
+          ]
+         },
+         {
+          "required": [
+           "tone"
+          ]
+         }
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "slide.fixed_toggle"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "slide",
+           "slides"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "element": {
+          "enum": [
+           "logo",
+           "page_number",
+           "footer",
+           "date"
+          ]
+         },
+         "visible": {
+          "type": "boolean"
+         }
+        },
+        "description": "показать или скрыть элемент шаблона на слайде",
+        "required": [
+         "element",
+         "visible"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "slide.hide"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "slide",
+           "slides"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "hidden": {
+          "type": "boolean"
+         }
+        },
+        "description": "скрыть слайд при показе",
+        "required": [
+         "hidden"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "slide.make_editable"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "slide",
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "description": "диаграммы и таблицы из картинок и фигур → нативные"
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "slide.placeholder_fill"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "text": {
+          "type": "string"
+         }
+        },
+        "description": "заполнить заглушку макета",
+        "required": [
+         "text"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "slide.placeholder_clear"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "object",
+           "slide"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "description": "убрать подсказки заглушек"
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "deck.add_slide"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "deck",
+           "slide"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "after": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "после какого слайда; 0 — первым"
+         },
+         "role": {
+          "type": "string"
+         },
+         "need": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+           "visual": {
+            "type": "string",
+            "description": "подача: cards, list, table, chart, kpi, diagram, quote, image"
+           },
+           "items": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "названное число мест"
+           }
+          }
+         },
+         "content": {
+          "type": "string",
+          "description": "содержание словами человека"
+         }
+        },
+        "description": "новый слайд в композиции шаблона"
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "deck.add_slides"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "deck"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "file_id": {
+          "$ref": "common.schema.json#/$defs/id"
+         },
+         "section": {
+          "type": "string"
+         },
+         "after": {
+          "type": "integer",
+          "minimum": 0
+         }
+        },
+        "description": "слайды из вложенного документа",
+        "required": [
+         "file_id"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "deck.duplicate"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "slide"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "after": {
+          "type": "integer",
+          "minimum": 0
+         }
+        },
+        "description": "копия слайда"
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "deck.delete"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "slide",
+           "slides"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "description": "удалить слайды — только с подтверждением"
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "deck.move"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "slide",
+           "slides",
+           "deck"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "before": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "after": {
+          "type": "integer",
+          "minimum": 0
+         },
+         "order": {
+          "type": "array",
+          "items": {
+           "$ref": "common.schema.json#/$defs/id"
+          },
+          "description": "новый порядок всех slide_id плана (как order в slide_patch)"
+         }
+        },
+        "description": "переставить слайды",
+        "anyOf": [
+         {
+          "required": [
+           "before"
+          ]
+         },
+         {
+          "required": [
+           "after"
+          ]
+         },
+         {
+          "required": [
+           "order"
+          ]
+         }
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "deck.split"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "slide"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "parts": {
+          "type": "integer",
+          "minimum": 2
+         }
+        },
+        "description": "разбить слайд"
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "deck.merge"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "slides"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "description": "объединить слайды"
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "deck.sections"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "deck"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "description": "разделители по ролям шаблона"
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "deck.agenda"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "deck"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "description": "пересобрать оглавление"
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "deck.replace_everywhere"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "deck",
+           "slides"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "find": {
+          "type": "string"
+         },
+         "replace": {
+          "type": "string"
+         }
+        },
+        "description": "заменить во всей колоде с отчётом по слайдам",
+        "required": [
+         "find",
+         "replace"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "deck.translate"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "deck",
+           "slides"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "language": {
+          "type": "string"
+         }
+        },
+        "description": "перевести с проверкой ёмкости",
+        "required": [
+         "language"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "deck.style_everywhere"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "deck"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "role": {
+          "$ref": "deck_snapshot.schema.json#/$defs/role"
+         },
+         "style": {
+          "$ref": "common.schema.json#/$defs/override/properties/style"
+         }
+        },
+        "description": "оформление по роли во всей колоде",
+        "required": [
+         "role",
+         "style"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "deck.recolor"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "deck"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "from": {
+          "$ref": "common.schema.json#/$defs/color"
+         },
+         "to": {
+          "$ref": "common.schema.json#/$defs/color"
+         }
+        },
+        "description": "заменить цвет палитры на другой цвет палитры",
+        "required": [
+         "from",
+         "to"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "deck.logo"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "deck"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "action": {
+          "enum": [
+           "keep",
+           "drop",
+           "replace"
+          ],
+          "description": "keep — вернуть, drop — снять (template_logo в slide_patch), replace — заменить картинкой"
+         },
+         "asset": {
+          "$ref": "common.schema.json#/$defs/asset_source"
+         }
+        },
+        "description": "знак шаблона во всей колоде",
+        "required": [
+         "action"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "deck.notes"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "deck",
+           "slides"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "mode": {
+          "enum": [
+           "write",
+           "append"
+          ]
+         }
+        },
+        "description": "заметки докладчика ко всем слайдам"
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "deck.update_facts"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "deck"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "file_id": {
+          "$ref": "common.schema.json#/$defs/id"
+         }
+        },
+        "description": "обновить цифры по новому файлу",
+        "required": [
+         "file_id"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "deck.repair"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "deck",
+           "slides",
+           "slide"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "issues": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         }
+        },
+        "description": "починка по находкам аудита"
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "service.undo"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "none"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "steps": {
+          "type": "integer",
+          "minimum": 1
+         }
+        },
+        "description": "отменить последние правки"
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "service.question"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "none",
+           "slide",
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "text": {
+          "type": "string"
+         },
+         "options": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          },
+          "minItems": 2,
+          "maxItems": 3
+         }
+        },
+        "description": "уточняющий вопрос без правки",
+        "required": [
+         "text"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "service.refusal"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "none",
+           "slide",
+           "object"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "reason": {
+          "type": "string"
+         },
+         "alternative": {
+          "type": "string"
+         }
+        },
+        "description": "отказ с причиной и альтернативой",
+        "required": [
+         "reason"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "op": {
+        "const": "service.confirm"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "address": {
+        "properties": {
+         "scope": {
+          "enum": [
+           "none",
+           "deck",
+           "slides"
+          ]
+         }
+        }
+       },
+       "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "text": {
+          "type": "string"
+         },
+         "affects": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "сколько слайдов затронет"
+         }
+        },
+        "description": "вопрос-подтверждение перед разрушающей или массовой операцией",
+        "required": [
+         "text"
+        ]
+       }
+      }
+     }
+    }
+   ]
+  }
+ }
+}

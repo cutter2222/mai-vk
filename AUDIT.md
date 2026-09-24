@@ -68,7 +68,7 @@
 | `density.bullet_length` | Буллет длиннее пятнадцати слов | по файлу | слайд | замечание | `max_words` = 15 | composed_deck | `audit/deterministic.py` | — |
 | `density.table_size` | Таблица больше семи строк или пяти колонок | по файлу | слайд | замечание | `max_rows` = 7, `max_cols` = 5 | composed_deck | `audit/deterministic.py` | — |
 | `density.chart_series` | Больше пяти серий на диаграмме | по файлу | слайд | замечание | `max_series` = 5 | composed_deck | `audit/deterministic.py` | — |
-| `density.fill_ratio` | Слайд заполнен меньше четверти или больше трёх четвертей | по файлу | слайд | замечание | `min_ratio` = 0.25, `max_ratio` = 0.75 | composed_deck | `audit/deterministic.py` | `audit/test_repair.py` |
+| `density.fill_ratio` | Слайд заполнен меньше четверти или больше трёх четвертей | по файлу | слайд | замечание | `min_ratio` = 0.25, `max_ratio` = 0.75 | composed_deck | `audit/deterministic.py` | `audit/test_deterministic.py`, `audit/test_repair.py` |
 
 ### Целостность
 
@@ -76,7 +76,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `integrity.package` | Файл открывается и связи целы | по файлу | колода | блокирующая | — | xml | `audit/deterministic.py` | `audit/test_deterministic.py`, `audit/test_package.py` |
 | `integrity.placeholder_text` | Остался текст-заглушка | по файлу | слайд | ошибка | `markers` = ['lorem ipsum', 'todo', 'вставьте текст', 'xxx', 'ххх'] | composed_deck | `audit/deterministic.py` | — |
-| `integrity.empty_slide` | Пустой слайд или слайд с одним заголовком | по файлу | слайд | ошибка | — | composed_deck | `audit/deterministic.py` | — |
+| `integrity.empty_slide` | Пустой слайд или слайд с одним заголовком | по файлу | слайд | ошибка | — | composed_deck | `audit/deterministic.py` | `audit/test_deterministic.py` |
 | `integrity.raster_slide` | Слайд оказался картинкой, а не редактируемыми объектами | по файлу | слайд | блокирующая | — | composed_deck | `audit/deterministic.py` | — |
 | `integrity.chart_labels` | У диаграммы нет подписей осей, единиц или легенды | по файлу | слайд | замечание | — | composed_deck | `audit/deterministic.py` | `audit/test_deterministic.py` |
 | `integrity.duplicate_slides` | Два слайда дублируют друг друга | по файлу | колода | ошибка | — | composed_deck, whole_deck_text | `audit/deterministic.py` | `audit/test_deterministic.py` |
@@ -111,5 +111,5 @@
 
 Версия реестра проверок: 1.0.
 
-Проверки без отдельного теста: `layout.clipped`, `template.font_families`, `template.layout_not_from_template`, `density.bullets`, `density.bullet_length`, `density.table_size`, `density.chart_series`, `integrity.placeholder_text`, `integrity.empty_slide`, `integrity.raster_slide`, `content.title_matches_body`, `content.has_content`, `content.one_language`. Они выполняются и попадают в отчёт, но доказательства в виде дефектной
+Проверки без отдельного теста: `layout.clipped`, `template.font_families`, `template.layout_not_from_template`, `density.bullets`, `density.bullet_length`, `density.table_size`, `density.chart_series`, `integrity.placeholder_text`, `integrity.raster_slide`, `content.title_matches_body`, `content.has_content`, `content.one_language`. Они выполняются и попадают в отчёт, но доказательства в виде дефектной
 фикстуры у них пока нет.

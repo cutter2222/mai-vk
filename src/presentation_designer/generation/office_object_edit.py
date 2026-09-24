@@ -18,7 +18,13 @@ from presentation_designer.generation.office_edit import (
     text_context_json,
 )
 from presentation_designer.generation.office_facts import SHORTENING_RULE
-from presentation_designer.generation.office_objects import ObjectTarget, geometry, selected, xml
+from presentation_designer.generation.office_objects import (
+    ObjectTarget,
+    geometry,
+    selected,
+    shape_element,
+    xml,
+)
 from presentation_designer.llm.client import build_client
 from presentation_designer.llm.types import Deadline, Message, Request
 from presentation_designer.shared.settings import Settings
@@ -50,30 +56,43 @@ def patch_object(data: bytes, target: ObjectTarget, plan: ObjectEditPlan) -> byt
         name = slides(archive)[obj.slide - 1]
         root = xml(archive.read(name))
         size = xml(archive.read("ppt/presentation.xml")).find("p:sldSz", NS)
-        tree = root.find("p:cSld/p:spTree", NS)
-        assert size is not None and tree is not None
-        shape = next(
-            s
-            for s in tree
-            if (identity := s.find(".//p:cNvPr", NS)) is not None
-            and identity.get("id") == obj.shape_id
-        )
-        transform = geometry(shape)
-        assert transform is not None
-        offset = transform.find("a:off", NS)
-        assert offset is not None
-        x = str(round(plan.position.x * int(size.attrib["cx"])))
-        y = str(round(plan.position.y * int(size.attrib["cy"])))
+        shape = shape_element(root, obj.shape_id)
+        assert size is not None and shape is not None
+        width, height = int(size.attrib["cx"]), int(size.attrib["cy"])
         # Models may round a copied normalized coordinate to six decimal places.
         # Preserve the original axis below that precision instead of introducing drift.
-        if abs(plan.position.x - obj.bbox.x) <= 1e-6:
-            x = offset.attrib["x"]
-        if abs(plan.position.y - obj.bbox.y) <= 1e-6:
-            y = offset.attrib["y"]
-        if offset.get("x") == x and offset.get("y") == y:
+        dx = plan.position.x - obj.bbox.x if abs(plan.position.x - obj.bbox.x) > 1e-6 else 0.0
+        dy = plan.position.y - obj.bbox.y if abs(plan.position.y - obj.bbox.y) > 1e-6 else 0.0
+        if not dx and not dy:
             return updated
-        offset.set("x", x)
-        offset.set("y", y)
+        transform = geometry(shape)
+        if transform is None:
+            # Плейсхолдер с рамкой макета: своя рамка появляется на слайде, размер прежний.
+            properties = shape.find("p:spPr", NS)
+            if properties is None:
+                raise ValueError("У объекта нет рамки, его нельзя переместить")
+            transform = etree.Element(f"{{{NS['a']}}}xfrm")
+            properties.insert(0, transform)
+            etree.SubElement(
+                transform,
+                f"{{{NS['a']}}}off",
+                x=str(round(obj.bbox.x * width)),
+                y=str(round(obj.bbox.y * height)),
+            )
+            etree.SubElement(
+                transform,
+                f"{{{NS['a']}}}ext",
+                cx=str(round(obj.bbox.width * width)),
+                cy=str(round(obj.bbox.height * height)),
+            )
+        offset = transform.find("a:off", NS)
+        assert offset is not None
+        # Фигура в группе хранит координаты в системе группы: сдвиг на слайде пересчитывается
+        # через масштаб всех групп над ней (chExt/ext). Поворот не меняется — рамка сдвигается
+        # целиком, центр вместе с ней.
+        scale_x, scale_y = _group_scale(shape)
+        offset.set("x", str(int(offset.get("x", "0")) + round(dx * width * scale_x)))
+        offset.set("y", str(int(offset.get("y", "0")) + round(dy * height * scale_y)))
         output = io.BytesIO()
         with ZipFile(output, "w") as result:
             result.comment = archive.comment
@@ -85,6 +104,24 @@ def patch_object(data: bytes, target: ObjectTarget, plan: ObjectEditPlan) -> byt
                     else archive.read(entry),
                 )
         return output.getvalue()
+
+
+def _group_scale(shape: etree._Element) -> tuple[float, float]:
+    """Сколько единиц системы координат фигуры приходится на EMU слайда: произведение
+    chExt/ext всех групп над ней."""
+    scale_x = scale_y = 1.0
+    parent = shape.getparent()
+    while parent is not None and etree.QName(parent).localname == "grpSp":
+        transform = parent.find("p:grpSpPr/a:xfrm", NS)
+        extent = transform.find("a:ext", NS) if transform is not None else None
+        child = transform.find("a:chExt", NS) if transform is not None else None
+        if extent is not None and child is not None:
+            if int(extent.get("cx", "0")) > 0:
+                scale_x *= int(child.get("cx", "0")) / int(extent.get("cx", "0"))
+            if int(extent.get("cy", "0")) > 0:
+                scale_y *= int(child.get("cy", "0")) / int(extent.get("cy", "0"))
+        parent = parent.getparent()
+    return scale_x or 1.0, scale_y or 1.0
 
 
 async def propose(

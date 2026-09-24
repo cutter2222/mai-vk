@@ -1,5 +1,168 @@
 /* Сгенерировано scripts/gen-types.mjs из contracts/schemas. Не редактировать вручную. */
 
+export type Op = {
+  [k: string]: unknown;
+} & {
+  /**
+   * семейство.имя
+   */
+  op:
+    | "text.set"
+    | "text.replace"
+    | "text.insert_paragraph"
+    | "text.delete_paragraph"
+    | "text.reorder_paragraphs"
+    | "text.set_bullets"
+    | "text.set_notes"
+    | "style.size"
+    | "style.bold"
+    | "style.italic"
+    | "style.underline"
+    | "style.color"
+    | "style.align"
+    | "style.font"
+    | "style.spacing"
+    | "style.caps"
+    | "style.reset"
+    | "object.move"
+    | "object.resize"
+    | "object.align"
+    | "object.distribute"
+    | "object.z_order"
+    | "object.delete"
+    | "object.add_text"
+    | "object.add"
+    | "object.add_block"
+    | "object.duplicate"
+    | "picture.replace"
+    | "picture.insert"
+    | "picture.fit"
+    | "picture.recolor"
+    | "picture.pick_icon"
+    | "picture.set_qr"
+    | "background.solid"
+    | "background.image"
+    | "background.inherited"
+    | "table.set_cell"
+    | "table.add_row"
+    | "table.delete_row"
+    | "table.add_column"
+    | "table.delete_column"
+    | "table.sort"
+    | "table.reorder"
+    | "table.highlight"
+    | "table.layout"
+    | "table.from_dataset"
+    | "table.to_chart"
+    | "chart.set_values"
+    | "chart.add_series"
+    | "chart.delete_series"
+    | "chart.rename"
+    | "chart.set_type"
+    | "chart.colors"
+    | "chart.highlight"
+    | "chart.options"
+    | "chart.number_format"
+    | "chart.sort"
+    | "chart.from_image"
+    | "chart.from_dataset"
+    | "chart.from_text"
+    | "chart.to_table"
+    | "diagram.add"
+    | "diagram.delete"
+    | "diagram.reorder"
+    | "diagram.rename"
+    | "diagram.set_kind"
+    | "diagram.colors"
+    | "slide.rebuild"
+    | "slide.set_composition"
+    | "slide.fixed_toggle"
+    | "slide.hide"
+    | "slide.make_editable"
+    | "slide.placeholder_fill"
+    | "slide.placeholder_clear"
+    | "deck.add_slide"
+    | "deck.add_slides"
+    | "deck.duplicate"
+    | "deck.delete"
+    | "deck.move"
+    | "deck.split"
+    | "deck.merge"
+    | "deck.sections"
+    | "deck.agenda"
+    | "deck.replace_everywhere"
+    | "deck.translate"
+    | "deck.style_everywhere"
+    | "deck.recolor"
+    | "deck.logo"
+    | "deck.notes"
+    | "deck.update_facts"
+    | "deck.repair"
+    | "service.undo"
+    | "service.question"
+    | "service.refusal"
+    | "service.confirm";
+  address: Address;
+  /**
+   * откуда значения: текущий снимок (переформулировка, перестановка), факты пакета, слово человека, вложение, токены и ресурсы шаблона
+   */
+  source: "snapshot" | "package" | "chat" | "attachment" | "template";
+  /**
+   * требует подтверждения кнопкой до исполнения: разрушающие и массовые операции
+   */
+  confirm: boolean;
+  /**
+   * факты пакета или «чат», на которые опираются значения
+   */
+  fact_refs?: string[];
+  args: {};
+};
+/**
+ * адрес операции в снимке, к которому относится документ; scope говорит, что именно адресовано
+ */
+export type Address = {
+  [k: string]: unknown;
+} & {
+  scope: "object" | "objects" | "paragraph" | "fragment" | "cell" | "slide" | "slides" | "deck" | "none";
+  slide?: SlideRef;
+  /**
+   * @minItems 1
+   */
+  slides?: [SlideRef, ...SlideRef[]];
+  object?: ObjectRef;
+  /**
+   * @minItems 1
+   */
+  objects?: [ObjectRef, ...ObjectRef[]];
+  /**
+   * номер абзаца объекта
+   */
+  paragraph?: number;
+  fragment?: {
+    /**
+     * слово или фраза в тексте объекта
+     */
+    text: string;
+    paragraph?: number;
+  };
+  cell?: {
+    row: number;
+    col: number;
+  };
+};
+/**
+ * слайд: номер и sld_id ревизии снимка; у плана — slide_id
+ */
+export type SlideRef = {
+  [k: string]: unknown;
+} & {
+  index?: number;
+  sld_id?: number;
+  /**
+   * Стабильный идентификатор. Не содержит пробелов и путей.
+   */
+  slide_id?: string;
+};
 /**
  * Ручная правка одного объекта слайда или фона слайда из визуального редактора. Применяется композером после заполнения слота и чистки слайда, поэтому ревизия воспроизводится из плана. target.object_id — p:cNvPr@id объекта в ComposedDeck базовой ревизии (у объектов клона образца совпадает с образцом, у новых объектов детерминирован); source_object_id и slot_id — охрана адреса: при несовпадении правка отбрасывается с предупреждением, а не применяется к чужому объекту. Фон (op background) относится к слайду целиком, target не нужен. Операция delete убирает объект со слайда; add_text создаёт свою надпись, её target.object_id придуман редактором (объекта с таким идентификатором в базовой ревизии нет), а идентификатор готовой фигуры выводится из него детерминированно, поэтому пересборка ревизии повторяема.
  */
@@ -19,22 +182,7 @@ export type Override = {
    * новый текст объекта (op text) или текст создаваемой надписи (op add_text): строки через \n; ссылки {fact:<id>} подставляются как в плане
    */
   text?: string;
-  /**
-   * оформление всех фрагментов объекта; передаются только изменяемые свойства; у add_text — оформление создаваемой надписи
-   */
-  style?: {
-    font?: {
-      family?: string;
-      size_pt?: number;
-      bold?: boolean;
-      italic?: boolean;
-      /**
-       * Цвет в формате #RRGGBB
-       */
-      color?: string;
-    };
-    align?: "left" | "center" | "right" | "justify";
-  };
+  style?: Style;
   /**
    * новое положение и размер в долях слайда (как bbox ComposedDeck, с учётом групп); у add_text — рамка создаваемой надписи
    */
@@ -297,8 +445,10 @@ export type Block = {
 export interface Contracts {
   audit_report?: AuditReport;
   brief_extract?: BriefExtract;
+  chat_ops?: ChatOps;
   composed_deck?: ComposedDeck;
   content_package?: ContentPackage;
+  deck_snapshot?: DeckSnapshot;
   generation_request?: GenerationRequest;
   generation_result?: GenerationResult;
   job_status?: JobStatus;
@@ -597,6 +747,58 @@ export interface BriefExtract {
    */
   source: "model" | "heuristic";
   model?: ModelRef;
+}
+/**
+ * Операции правки из чата (этап 36 серии «чат как редактор»): одна схема для плана варианта и офисной копии. У каждой операции адрес в снимке колоды (deck_snapshot) ревизии base, источник значений и признак «требует подтверждения». Операции исполняются по порядку; ошибка одной не откатывает уже применённые. overrides плана (common.override) — подмножество: text → text.set, style → style.*, geometry → object.move + object.resize, picture → picture.replace + picture.recolor, background → background.*, delete → object.delete, add_text → object.add_text; order и template_logo запроса slide_patch → deck.move, deck.logo. Номера слайдов, абзацев, строк, столбцов и шагов — с единицы.
+ */
+export interface ChatOps {
+  schema_version: "1.0";
+  /**
+   * ревизия, к снимку которой относятся адреса
+   */
+  base: {
+    [k: string]: unknown;
+  };
+  /**
+   * @maxItems 100
+   */
+  ops: Op[];
+  /**
+   * факты «чат»: значения, названные человеком (раздел 4.6)
+   */
+  facts?: ChatFact[];
+}
+/**
+ * объект снимка; slot_id и source_object_id — охрана адреса в плане, как у target правки override
+ */
+export interface ObjectRef {
+  /**
+   * Стабильный идентификатор. Не содержит пробелов и путей.
+   */
+  object_id: string;
+  group_path?: string[];
+  /**
+   * Стабильный идентификатор. Не содержит пробелов и путей.
+   */
+  slot_id?: string;
+  source_object_id?: string;
+}
+/**
+ * значение из сообщения человека: подставляется как есть, в аудите подписано «по указанию пользователя»
+ */
+export interface ChatFact {
+  /**
+   * Стабильный идентификатор. Не содержит пробелов и путей.
+   */
+  fact_id: string;
+  value: number | string;
+  unit?: string;
+  period?: string;
+  /**
+   * цитата из сообщения
+   */
+  quote: string;
+  at?: string;
 }
 /**
  * Описание фактически собранного PPTX одного варианта: объекты, вычисленные стили, геометрия, порядок слоёв, ресурсы, связи со слотами плана и исходными слайдами шаблона. Строится слоем вёрстки по сохранённому файлу и используется аудитом, подсветкой и HTML-экспортом. Версия 1.3 (этап 22): у слайда overrides — применённые ручные правки (эхо плана) и overrides_dropped — отброшенные с причиной; у объекта user_overrides и content_source user, geometry — форма фигуры (prstGeom) для холста редактора; у ресурса artifact — имя файла медиа в ревизии для интерфейса. Версия 1.2 (этап 8): composer и created_at, шрифты с подменой рендерера, статистика; у слайда заголовок, заметки, часть образца и удалённые объекты образца; у объекта content_source (содержимое из плана, оставленный текст образца, статика шаблона, построенный объект), вид слота и блока, fit из плана; у картинки режим вписывания и происхождение; у таблицы смещение строк и усечение; у диаграммы число категорий и способ построения.
@@ -1017,6 +1219,22 @@ export interface StyleSource {
   modifiers?: string[];
 }
 /**
+ * оформление всех фрагментов объекта; передаются только изменяемые свойства; у add_text — оформление создаваемой надписи
+ */
+export interface Style {
+  font?: {
+    family?: string;
+    size_pt?: number;
+    bold?: boolean;
+    italic?: boolean;
+    /**
+     * Цвет в формате #RRGGBB
+     */
+    color?: string;
+  };
+  align?: "left" | "center" | "right" | "justify";
+}
+/**
  * Источник картинки для ручной правки: ресурс шаблона (asset_id из TemplateProfile.assets), ресурс контент-пакета (asset_id из ContentPackage.assets) или загруженный файл проекта (file_id; sha256 дописывает конвейер, name — для подписи в интерфейсе)
  */
 export interface AssetSource {
@@ -1350,6 +1568,240 @@ export interface ContentPackage {
 export interface VersionRef1 {
   name: string;
   version: string;
+}
+/**
+ * Снимок колоды для чата (этап 36): что на каждом слайде и где, одной формой для ревизии варианта и для офисной копии в ONLYOFFICE. Строится по байтам PPTX тем же обходом фигур, что и ComposedDeck (группы с путём, рамка плейсхолдера из макета, поворот); ComposedDeck и план ревизии добавляют идентификатор слайда плана, роль объекта по слоту и признак элемента шаблона. Адреса (номер слайда, sld_id, object_id) действительны только для ревизии снимка: ONLYOFFICE при сохранении перенумеровывает p:sldId и cNvPr id, сохраняя имена фигур. Номера слайдов, абзацев, строк и столбцов — с единицы.
+ */
+export interface DeckSnapshot {
+  schema_version: "1.0";
+  source: Source;
+  slide_size: SlideSize;
+  slides: Slide1[];
+  /**
+   * оглавление: по строке на слайд, в порядке файла
+   */
+  outline: OutlineEntry[];
+}
+/**
+ * откуда снимок: ревизия варианта (variant), офисная копия (office) или файл без проекта (file)
+ */
+export interface Source {
+  kind: "variant" | "office" | "file";
+  /**
+   * Стабильный идентификатор. Не содержит пробелов и путей.
+   */
+  job_id?: string;
+  /**
+   * Стабильный идентификатор. Не содержит пробелов и путей.
+   */
+  variant_id?: string;
+  /**
+   * Стабильный идентификатор. Не содержит пробелов и путей.
+   */
+  document_id?: string;
+  /**
+   * Номер ревизии результата варианта. Растёт после каждого исправления; находки аудита и запросы исправлений привязаны к ревизии.
+   */
+  revision?: number;
+  pptx_sha256?: string;
+}
+export interface Slide1 {
+  /**
+   * номер слайда в файле, с единицы
+   */
+  index: number;
+  /**
+   * p:sldId@id в presentation.xml этой ревизии
+   */
+  sld_id: number;
+  /**
+   * Стабильный идентификатор. Не содержит пробелов и путей.
+   */
+  slide_id?: string;
+  /**
+   * роль слайда: из плана (роль паттерна) или по содержимому копии
+   */
+  role?: string;
+  /**
+   * имя макета
+   */
+  layout: string;
+  title: string;
+  hidden: boolean;
+  background: {
+    kind: "solid" | "gradient" | "image" | "inherited";
+    /**
+     * Цвет в формате #RRGGBB
+     */
+    color?: string;
+    image_sha256?: string;
+  };
+  /**
+   * заметки докладчика
+   */
+  notes: string;
+  /**
+   * слайд копии отличается от исходной ревизии (ручные правки); нет поля — не сравнивали
+   */
+  edited?: boolean;
+  /**
+   * объекты слайда в порядке наложения снизу вверх; дети групп идут сразу за группой
+   */
+  objects: Object1[];
+}
+export interface Object1 {
+  address: Address1;
+  /**
+   * p:cNvPr@name; сохраняется при сохранении в ONLYOFFICE, им редактор называет выделенную фигуру
+   */
+  name: string;
+  kind: "text" | "picture" | "table" | "chart" | "shape" | "connector" | "group" | "placeholder_empty" | "other";
+  /**
+   * роль объекта: виды слотов профиля шаблона и служебные (логотип, номер слайда, декор, фон, группа)
+   */
+  role:
+    | "title"
+    | "subtitle"
+    | "body"
+    | "bullets"
+    | "number"
+    | "label"
+    | "caption"
+    | "date"
+    | "name"
+    | "position"
+    | "image"
+    | "icon"
+    | "table"
+    | "chart"
+    | "diagram"
+    | "qr"
+    | "code"
+    | "footer"
+    | "logo"
+    | "page_number"
+    | "decoration"
+    | "background"
+    | "group"
+    | "other";
+  text?: {
+    plain: string;
+    paragraphs: {
+      text: string;
+      level: number;
+      bullet: boolean;
+    }[];
+  };
+  bbox: Bbox2;
+  rotation_deg?: number;
+  placeholder?: {
+    type: string;
+    idx?: number;
+    /**
+     * своей рамки на слайде нет, рамка — из макета или мастера
+     */
+    inherited_geometry: boolean;
+  };
+  style?: FontSpec1;
+  /**
+   * фиксированный элемент шаблона: логотип, номер, колонтитул, навигация
+   */
+  fixed: boolean;
+  slot?: {
+    /**
+     * Стабильный идентификатор. Не содержит пробелов и путей.
+     */
+    slot_id: string;
+    slot_kind?: string;
+    source_object_id?: string;
+  };
+  table?: {
+    /**
+     * тексты ячеек строками; у объединённых ячеек текст в первой, остальные пустые
+     */
+    rows: string[][];
+    /**
+     * объединения: первая ячейка (с единицы) и сколько строк и столбцов она занимает
+     */
+    merged?: {
+      row: number;
+      col: number;
+      rows: number;
+      cols: number;
+    }[];
+  };
+  chart?: {
+    type: string;
+    categories: string[];
+    series: {
+      name: string;
+      values: (number | null)[];
+    }[];
+    /**
+     * откуда значения: кэш части chart или встроенная книга
+     */
+    values_from?: "cache" | "workbook";
+  };
+  picture?: {
+    sha256?: string;
+    width_px?: number;
+    height_px?: number;
+    /**
+     * Стабильный идентификатор. Не содержит пробелов и путей.
+     */
+    asset_id?: string;
+  };
+  hidden?: boolean;
+}
+/**
+ * адрес объекта на слайде: p:cNvPr@id и путь групп от внешней к внутренней (пустой — объект верхнего уровня)
+ */
+export interface Address1 {
+  object_id: string;
+  group_path?: string[];
+}
+/**
+ * Прямоугольник в долях ширины и высоты слайда; начало координат в левом верхнем углу. Значения вне 0..1 допустимы: так описываются элементы, вышедшие за слайд.
+ */
+export interface Bbox2 {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+/**
+ * Шрифт текстовой области. size_pt всегда в пунктах и всегда вместе с размером слайда в профиле.
+ */
+export interface FontSpec1 {
+  family?: string;
+  size_pt?: number;
+  bold?: boolean;
+  italic?: boolean;
+  /**
+   * Цвет в формате #RRGGBB
+   */
+  color?: string;
+  /**
+   * множитель межстрочного интервала
+   */
+  line_spacing?: number;
+  all_caps?: boolean;
+}
+export interface OutlineEntry {
+  index: number;
+  sld_id: number;
+  /**
+   * Стабильный идентификатор. Не содержит пробелов и путей.
+   */
+  slide_id?: string;
+  role: string;
+  title: string;
+  /**
+   * виды содержательных объектов слайда без повторов: текст, картинка, таблица, диаграмма, схема
+   */
+  kinds: string[];
+  hidden?: boolean;
+  edited?: boolean;
 }
 /**
  * Тело POST /api/generations и вход CLI-команды generate. Версия 1.2: вариант original — загруженная презентация как готовый результат (шаблон и материал — один и тот же файл; план строится из профиля без модели, слайды и тексты сохраняются как есть; сочетается только сам с собой). Приоритет: явные настройки запроса → бриф ContentPackage → умолчания config/app.yaml. Пути файлов от клиента не принимаются: только идентификаторы.
@@ -2046,7 +2498,7 @@ export interface SlidePlan {
   /**
    * @minItems 1
    */
-  slides: [Slide1, ...Slide1[]];
+  slides: [Slide2, ...Slide2[]];
   generation_meta: GenerationMeta;
   warnings?: Warning[];
   /**
@@ -2090,7 +2542,7 @@ export interface SlidePlan {
    */
   template_logo?: "keep" | "drop";
 }
-export interface Slide1 {
+export interface Slide2 {
   /**
    * Стабильный идентификатор. Не содержит пробелов и путей.
    */

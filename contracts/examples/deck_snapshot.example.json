@@ -1,0 +1,279 @@
+{
+ "schema_version": "1.0",
+ "source": {
+  "kind": "office",
+  "document_id": "d8aeef577f1f45b59fa84fcea1fbe429",
+  "revision": 4,
+  "pptx_sha256": "5b0f1ad5e2f1c0f5bd7a1f7a8e5a3d4c9b8e7f6a5d4c3b2a1908f7e6d5c4b3a2"
+ },
+ "slide_size": {
+  "width_emu": 9144000,
+  "height_emu": 5143500,
+  "aspect_ratio": 1.7778
+ },
+ "slides": [
+  {
+   "index": 1,
+   "sld_id": 256,
+   "slide_id": "s01",
+   "role": "title",
+   "layout": "TITLE",
+   "title": "VK Tech",
+   "hidden": false,
+   "background": {
+    "kind": "solid",
+    "color": "#000000"
+   },
+   "notes": "",
+   "edited": false,
+   "objects": [
+    {
+     "address": {
+      "object_id": "1759623531",
+      "group_path": []
+     },
+     "name": "Google Shape;401;p42",
+     "kind": "text",
+     "role": "title",
+     "text": {
+      "plain": "VK Tech",
+      "paragraphs": [
+       {
+        "text": "VK Tech",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     },
+     "bbox": {
+      "x": 0.1,
+      "y": 0.3,
+      "width": 0.8,
+      "height": 0.16
+     },
+     "placeholder": {
+      "type": "ctrTitle",
+      "idx": 0,
+      "inherited_geometry": false
+     },
+     "style": {
+      "family": "VK Sans Display",
+      "size_pt": 48,
+      "bold": false,
+      "italic": false,
+      "color": "#FFFFFF"
+     },
+     "fixed": false,
+     "slot": {
+      "slot_id": "title",
+      "slot_kind": "title",
+      "source_object_id": "401"
+     }
+    },
+    {
+     "address": {
+      "object_id": "1759883713",
+      "group_path": []
+     },
+     "name": "Google Shape;402;p42",
+     "kind": "picture",
+     "role": "logo",
+     "bbox": {
+      "x": 0.46,
+      "y": 0.12,
+      "width": 0.08,
+      "height": 0.07
+     },
+     "fixed": true,
+     "picture": {
+      "sha256": "8d3c1b2a4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9",
+      "width_px": 256,
+      "height_px": 224
+     }
+    }
+   ]
+  },
+  {
+   "index": 2,
+   "sld_id": 257,
+   "role": "table",
+   "layout": "TITLE_ONLY",
+   "title": "Выручка по годам",
+   "hidden": false,
+   "background": {
+    "kind": "inherited"
+   },
+   "notes": "Рост за три года — в полтора раза.",
+   "edited": true,
+   "objects": [
+    {
+     "address": {
+      "object_id": "12",
+      "group_path": []
+     },
+     "name": "Заголовок 1",
+     "kind": "text",
+     "role": "title",
+     "text": {
+      "plain": "Выручка по годам",
+      "paragraphs": [
+       {
+        "text": "Выручка по годам",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     },
+     "bbox": {
+      "x": 0.05,
+      "y": 0.05,
+      "width": 0.9,
+      "height": 0.12
+     },
+     "placeholder": {
+      "type": "title",
+      "idx": 0,
+      "inherited_geometry": true
+     },
+     "fixed": false
+    },
+    {
+     "address": {
+      "object_id": "15",
+      "group_path": []
+     },
+     "name": "Таблица 3",
+     "kind": "table",
+     "role": "table",
+     "bbox": {
+      "x": 0.05,
+      "y": 0.22,
+      "width": 0.9,
+      "height": 0.4
+     },
+     "fixed": false,
+     "table": {
+      "rows": [
+       [
+        "Год",
+        "Выручка, млн ₽"
+       ],
+       [
+        "2023",
+        "100"
+       ],
+       [
+        "2024",
+        "120"
+       ]
+      ]
+     }
+    },
+    {
+     "address": {
+      "object_id": "22",
+      "group_path": []
+     },
+     "name": "Диаграмма 4",
+     "kind": "chart",
+     "role": "chart",
+     "bbox": {
+      "x": 0.05,
+      "y": 0.65,
+      "width": 0.5,
+      "height": 0.3
+     },
+     "fixed": false,
+     "chart": {
+      "type": "column_clustered",
+      "categories": [
+       "2023",
+       "2024"
+      ],
+      "series": [
+       {
+        "name": "Выручка",
+        "values": [
+         100,
+         120
+        ]
+       }
+      ],
+      "values_from": "cache"
+     }
+    },
+    {
+     "address": {
+      "object_id": "40",
+      "group_path": []
+     },
+     "name": "Группа 5",
+     "kind": "group",
+     "role": "group",
+     "bbox": {
+      "x": 0.6,
+      "y": 0.65,
+      "width": 0.35,
+      "height": 0.3
+     },
+     "fixed": false
+    },
+    {
+     "address": {
+      "object_id": "41",
+      "group_path": [
+       "40"
+      ]
+     },
+     "name": "Шаг 1",
+     "kind": "text",
+     "role": "body",
+     "text": {
+      "plain": "Анализ",
+      "paragraphs": [
+       {
+        "text": "Анализ",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     },
+     "bbox": {
+      "x": 0.6,
+      "y": 0.65,
+      "width": 0.16,
+      "height": 0.3
+     },
+     "rotation_deg": 90,
+     "fixed": false
+    }
+   ]
+  }
+ ],
+ "outline": [
+  {
+   "index": 1,
+   "sld_id": 256,
+   "slide_id": "s01",
+   "role": "title",
+   "title": "VK Tech",
+   "kinds": [
+    "text"
+   ],
+   "edited": false
+  },
+  {
+   "index": 2,
+   "sld_id": 257,
+   "role": "table",
+   "title": "Выручка по годам",
+   "kinds": [
+    "text",
+    "table",
+    "chart",
+    "group"
+   ],
+   "edited": true
+  }
+ ]
+}

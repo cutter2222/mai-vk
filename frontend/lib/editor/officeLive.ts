@@ -12,8 +12,10 @@ export interface LiveObject {
   /** Текст объекта из карты сохранённой копии — подпись для чата. */
   label?: string;
   kind: "shape" | "image" | "chart" | "table";
-  /** Рамка в миллиметрах, как в панели свойств ONLYOFFICE. */
+  /** Рамка в миллиметрах, как в панели свойств ONLYOFFICE; у фигуры в группе — от угла группы. */
   box?: { x: number; y: number; width: number; height: number };
+  /** Фигура внутри группы (`asc_getFromGroup`): щелчок по её тексту выделяет её саму. */
+  inGroup?: boolean;
 }
 
 export interface LiveSelection {
@@ -75,7 +77,8 @@ function describe(api: LiveApi, types: Record<string, number>): LiveSelection {
     const width = Number(call(value, "asc_getWidth", "get_Width"));
     const height = Number(call(value, "asc_getHeight", "get_Height"));
     const box = [x, y, width, height].every(Number.isFinite) ? { x, y, width, height } : undefined;
-    objects.push({ name, kind, ...(box ? { box } : {}) });
+    const inGroup = call(value, "asc_getFromGroup", "get_FromGroup") === true;
+    objects.push({ name, kind, ...(box ? { box } : {}), ...(inGroup ? { inGroup } : {}) });
   }
   // Несколько фигур ONLYOFFICE сводит в одну запись со свойствами общей рамки — имени у неё нет.
   const several = (api.asc_getSelectedDrawingObjectsCount?.() ?? objects.length) > 1;

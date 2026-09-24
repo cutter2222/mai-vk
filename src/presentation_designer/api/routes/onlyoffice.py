@@ -33,9 +33,11 @@ from presentation_designer.generation.office_objects import (
 from presentation_designer.layout.merge import MergeError, replace_slide
 from presentation_designer.llm.types import LlmError
 from presentation_designer.parsing.template.embedded_fonts import prepare_fonts
+from presentation_designer.parsing.template.package import PackageError
 from presentation_designer.pipeline.artifacts import content_type_for
 from presentation_designer.pipeline.office import OfficeStore, sign, verify
 from presentation_designer.pipeline.results import build_generation_result
+from presentation_designer.pipeline.snapshots import office_snapshot
 from presentation_designer.pipeline.state import NotFound
 from presentation_designer.shared.text import plural
 
@@ -157,6 +159,16 @@ def _extension(name: str) -> str:
 def document_objects(document_id: str, revision: int, orch: Orch) -> dict[str, Any]:
     data = store(orch).read(document_id, revision)
     return {"revision": revision, "objects": [obj.model_dump() for obj in objects(data)]}
+
+
+@router.get("/documents/{document_id}/snapshot/{revision}")
+def document_snapshot(document_id: str, revision: int, orch: Orch) -> dict[str, Any]:
+    """Снимок колоды копии (`deck_snapshot`): слайды, объекты с адресами, оглавление."""
+    office = store(orch)
+    try:
+        return office_snapshot(orch, office, document_id, revision)
+    except (PackageError, ValueError) as exc:
+        raise ApiError(422, "office_snapshot_failed", "Снимок не построен: " + str(exc)) from exc
 
 
 @router.post("/documents/{document_id}/edit")

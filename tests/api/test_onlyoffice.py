@@ -966,3 +966,89 @@ def test_apply_slide_puts_the_rebuilt_slide_into_the_edited_copy(
     assert client.post(url, json=body | {"revision": 2, "artifact_revision": 3}).status_code == 404
     assert client.post(url, json=body | {"revision": 2, "slide": 9}).status_code == 422
     assert store.get(doc_id)["active_key"] is None
+
+
+def _group_and_placeholder_deck() -> Presentation:
+    from pptx.util import Mm
+
+    deck = Presentation()
+    slide = deck.slides.add_slide(deck.slide_layouts[5])  # заголовок с рамкой из макета
+    slide.shapes.title.text = "Команда проекта"
+    group = slide.shapes.add_group_shape()
+    for x, text in [(20, "Имя Фамилия"), (120, "Должность")]:
+        box = group.shapes.add_textbox(Mm(x), Mm(90), Mm(60), Mm(20))
+        box.text = text
+        box.name = f"Google Shape;{x};p54"
+    return deck
+
+
+@pytest.mark.parametrize(
+    ("live", "before"),
+    [
+        # Фигура в группе: ONLYOFFICE отдаёт её имя и рамку от угла группы.
+        (
+            {
+                "name": "Google Shape;120;p54",
+                "in_group": True,
+                "box": {"x": 100, "y": 0, "width": 60, "height": 20},
+            },
+            "Должность",
+        ),
+        (
+            {"name": "Title 1", "box": {"x": 12.7, "y": 7.6, "width": 228.6, "height": 31.75}},
+            "Команда проекта",
+        ),
+    ],
+)
+def test_live_selection_edit_reaches_group_child_and_placeholder(
+    client, office, monkeypatch, live, before
+):
+    from presentation_designer.generation.office_edit import TextPatch
+    from presentation_designer.generation.office_object_edit import ObjectEditPlan
+
+    store, doc_id = office
+    _saved(store, doc_id, _group_and_placeholder_deck())
+    objects = client.get(f"/api/office/documents/{doc_id}/objects/1").json()["objects"]
+    wanted = next(o for o in objects if o["label"] == before)
+
+    async def propose(original, instruction, settings, selected):
+        assert selected.model_dump() == {"slide": 1, "shape_id": wanted["shape_id"]}
+        return ObjectEditPlan(
+            explanation="Готово",
+            patches=[
+                TextPatch(slide=1, run=wanted["runs"][0], before=before, after=before + " (новое)")
+            ],
+        )
+
+    monkeypatch.setattr(onlyoffice.office_object_edit, "propose", propose)
+    response = client.post(
+        f"/api/office/documents/{doc_id}/edit",
+        json={"revision": 1, "instruction": "допиши", "live_target": {"slide": 1, **live}},
+    )
+    assert response.status_code == 200, response.text
+    after = client.get(f"/api/office/documents/{doc_id}/objects/2").json()["objects"]
+    assert any(o["label"] == before + " (новое)" for o in after)
+
+
+def test_snapshot_of_a_saved_copy_marks_manually_edited_slides(client, office):
+    store, doc_id = office
+    original = store.read(doc_id, 0)
+    deck = Presentation(io.BytesIO(original))
+    first = next(s for s in deck.slides[0].shapes if s.has_text_frame and s.text_frame.text)
+    first.text_frame.text = "Ручная правка"
+    _saved(store, doc_id, deck)
+    seed = client.get(f"/api/office/documents/{doc_id}/snapshot/0").json()
+    saved = client.get(f"/api/office/documents/{doc_id}/snapshot/1").json()
+    assert seed["source"] == {
+        "kind": "office",
+        "document_id": doc_id,
+        "revision": 0,
+        "pptx_sha256": seed["source"]["pptx_sha256"],
+    }
+    assert "edited" not in seed["outline"][0]
+    assert [e["edited"] for e in saved["outline"]] == [True] + [False] * (len(saved["outline"]) - 1)
+    assert any(
+        (o.get("text") or {}).get("plain") == "Ручная правка" for o in saved["slides"][0]["objects"]
+    )
+    missing = client.get(f"/api/office/documents/{doc_id}/snapshot/9")
+    assert missing.status_code == 404

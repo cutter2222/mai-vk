@@ -14,10 +14,12 @@
 Сводка — в stdout. Модель вызывается только для картинок, прошедших предфильтр.
 
 CLI `rebuild-charts`: те же чтения — и диаграммы-картинки заменяются нативными диаграммами,
-как при «Открыть как презентацию»:
+как при «Открыть как презентацию»; сначала — диаграммы, собранные на слайде из фигур
+(столбцы-картинки, кольца с числом в центре; см. `layout/composite_charts.py`):
 
     uv run -m presentation_designer.cli rebuild-charts deck.pptx --out runs/charts/deck.pptx
     … --structure runs/charts/vkedu/  без модели, по сохранённым устройствам
+    … --pieces-only                   только диаграммы из фигур, без модели
 """
 
 from __future__ import annotations
@@ -37,6 +39,7 @@ from presentation_designer.layout.chart_images import (
     swap_summary,
     unread_charts,
 )
+from presentation_designer.layout.composite_charts import swap_composites
 from presentation_designer.parsing.raster_charts.model import ChartStructure
 from presentation_designer.parsing.raster_charts.overlay import draw_overlay
 from presentation_designer.parsing.raster_charts.pixels import chart_likeness, load
@@ -201,20 +204,30 @@ def build_rebuild_parser(parser: argparse.ArgumentParser | None = None) -> argpa
     parser.add_argument("--structure", default=None, help="каталог с <ключ>.structure.json")
     parser.add_argument("--budget", type=float, default=240.0, help="секунд на все вызовы модели")
     parser.add_argument("--max-images", type=int, default=40, help="не больше вызовов модели")
+    parser.add_argument(
+        "--pieces-only",
+        action="store_true",
+        help="только диаграммы из фигур слайда (без модели), картинки не читать",
+    )
     return parser
 
 
 def rebuild(args: argparse.Namespace) -> int:
-    """Диаграммы-картинки файла → нативные диаграммы, сводка — в stdout."""
+    """Диаграммы из фигур слайда и диаграммы-картинки файла → нативные диаграммы, сводка —
+    в stdout. Фигуры — первыми, как при «Открыть как презентацию»: картинки, ушедшие в
+    собранную диаграмму, модель уже не читает."""
     source = pathlib.Path(args.pptx)
-    items = collect([str(source)], None)
-    outcomes = _outcomes(items, args)
+    prs = Presentation(str(source))
+    swaps = swap_composites(prs)
+    blobs, where = deck_pictures(prs)
+    items = [it for it in collect([str(source)], None) if it["sha256"] in blobs]
+    outcomes: dict[str, Outcome] | None = {}
+    if not args.pieces_only:
+        outcomes = _outcomes(items, args)
     if outcomes is None:
         return 2
-    prs = Presentation(str(source))
-    _, where = deck_pictures(prs)
     readings = {sha: o.reading for sha, o in outcomes.items() if o.reading is not None}
-    swaps = swap_pictures(prs, readings)
+    swaps += swap_pictures(prs, readings)
     out = pathlib.Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     prs.save(str(out))

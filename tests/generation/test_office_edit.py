@@ -157,16 +157,128 @@ def test_selected_object_rejects_other_text_and_off_slide_position(manual_deck):
     )
 
 
-def test_object_map_omits_groups_and_rotated_shapes(manual_deck):
-    from presentation_designer.generation.office_objects import objects
-
-    deck = Presentation(io.BytesIO(manual_deck))
-    deck.slides[0].shapes[0].rotation = 45
-    group = deck.slides[0].shapes.add_group_shape()
-    group.shapes.add_textbox(Inches(1), Inches(1), Inches(2), Inches(1)).text = "В группе"
+@pytest.fixture
+def structured_deck():
+    """Фигура во вложенной группе с масштабом (система координат группы вдвое крупнее),
+    заголовок-плейсхолдер с рамкой из макета, повёрнутая надпись и соседний слайд."""
+    deck = Presentation()
+    slide = deck.slides.add_slide(deck.slide_layouts[5])
+    slide.shapes.title.text = "Заголовок из макета"
+    outer = slide.shapes.add_group_shape()
+    inner = outer.shapes.add_group_shape()
+    box = inner.shapes.add_textbox(Inches(2), Inches(0), Inches(2), Inches(1))
+    box.name = "Шаг 2"
+    box.text = "Тестирование"
+    inner.shapes.add_textbox(Inches(0), Inches(0), Inches(2), Inches(1)).text = "Анализ"
+    # Группа занимает на слайде 2×1 дюйма, её дети живут в системе 4×2: масштаб 0,5.
+    transform = outer._element.find("p:grpSpPr/a:xfrm", NS)
+    transform.find("a:off", NS).attrib.update({"x": str(Inches(1)), "y": str(Inches(4))})
+    transform.find("a:ext", NS).attrib.update({"cx": str(Inches(2)), "cy": str(Inches(1))})
+    transform.find("a:chOff", NS).attrib.update({"x": "0", "y": "0"})
+    transform.find("a:chExt", NS).attrib.update({"cx": str(Inches(4)), "cy": str(Inches(2))})
+    turned = slide.shapes.add_textbox(Inches(6), Inches(1), Inches(2), Inches(1))
+    turned.text = "Повёрнут"
+    turned.rotation = 30
+    deck.slides.add_slide(deck.slide_layouts[6]).shapes.add_textbox(
+        Inches(1), Inches(1), Inches(3), Inches(1)
+    ).text = "Соседний слайд"
     output = io.BytesIO()
     deck.save(output)
-    assert all(obj.slide == 2 for obj in objects(output.getvalue()))
+    return output.getvalue()
+
+
+def test_object_map_sees_groups_placeholders_and_rotated_shapes(structured_deck):
+    from presentation_designer.generation.office_objects import objects
+
+    found = {obj.label: obj for obj in objects(structured_deck)}
+    title = found["Заголовок из макета"]
+    assert title.placeholder == "title" and title.bbox.width > 0.5
+    step = found["Тестирование"]
+    assert step.name == "Шаг 2" and len(step.group_path) == 2 and step.kind == "sp"
+    # 2 дюйма в системе группы — 1 дюйм на слайде, от левого края группы (1 дюйм).
+    assert step.bbox.x * 10 == pytest.approx(2) and step.bbox.width * 10 == pytest.approx(1)
+    assert found["Повёрнут"].rotation == 30
+    groups = [obj for obj in objects(structured_deck) if obj.kind == "grpSp"]
+    assert len(groups) == 2
+    assert groups[0].label == "Тестирование Анализ" and sorted(groups[0].runs) == sorted(
+        step.runs + found["Анализ"].runs
+    )
+
+
+def assert_only_slide1_changed(before_bytes, after_bytes):
+    with ZipFile(io.BytesIO(before_bytes)) as before, ZipFile(io.BytesIO(after_bytes)) as after:
+        assert before.namelist() == after.namelist()
+        for name in before.namelist():
+            if name != "ppt/slides/slide1.xml":
+                assert before.read(name) == after.read(name), name
+
+
+@pytest.mark.parametrize("label", ["Тестирование", "Заголовок из макета", "Повёрнут"])
+def test_text_edit_and_move_of_group_child_placeholder_and_rotated(structured_deck, label):
+    from presentation_designer.generation.office_object_edit import (
+        ObjectEditPlan,
+        Position,
+        patch_object,
+    )
+    from presentation_designer.generation.office_objects import objects
+
+    obj = next(o for o in objects(structured_deck) if o.label == label)
+    text = patch_object(
+        structured_deck,
+        obj,
+        ObjectEditPlan(
+            explanation="",
+            patches=[TextPatch(slide=1, run=obj.runs[0], before=label, after=label + "!")],
+        ),
+    )
+    assert_only_slide1_changed(structured_deck, text)
+    assert any(o.label == label + "!" for o in objects(text))
+    x, y = min(0.5, 0.99 - obj.bbox.width), min(0.6, 0.99 - obj.bbox.height)
+    moved = patch_object(
+        structured_deck,
+        obj,
+        ObjectEditPlan(explanation="", patches=[], position=Position(x=x, y=y)),
+    )
+    assert_only_slide1_changed(structured_deck, moved)
+    after = next(o for o in objects(moved) if o.shape_id == obj.shape_id)
+    assert (after.bbox.x, after.bbox.y) == (pytest.approx(x), pytest.approx(y))
+    assert (after.bbox.width, after.bbox.height) == (
+        pytest.approx(obj.bbox.width),
+        pytest.approx(obj.bbox.height),
+    )
+    assert after.rotation == obj.rotation and after.group_path == obj.group_path
+    others = [o for o in objects(moved) if o.shape_id != obj.shape_id and not o.group_path]
+    assert others == [
+        o for o in objects(structured_deck) if o.shape_id != obj.shape_id and not o.group_path
+    ]
+
+
+def test_live_selection_finds_group_child_by_group_relative_box(structured_deck):
+    from presentation_designer.generation.office_objects import LiveBox, LiveTarget, resolve_live
+
+    deck = Presentation(io.BytesIO(structured_deck))
+    # Второе «Шаг 2» верхнего уровня: имя совпадает, но рамка от угла слайда.
+    deck.slides[0].shapes.add_textbox(Inches(5), Inches(4), Inches(1), Inches(0.5)).name = "Шаг 2"
+    output = io.BytesIO()
+    deck.save(output)
+    data = output.getvalue()
+    # ONLYOFFICE отдаёт у фигуры в группе положение от левого верхнего угла группы.
+    live = LiveTarget(
+        slide=1,
+        name="Шаг 2",
+        in_group=True,
+        box=LiveBox(x=25.4, y=0, width=25.4, height=12.7),
+    )
+    target = resolve_live(data, live)
+    from presentation_designer.generation.office_objects import objects
+
+    chosen = next(o for o in objects(data) if o.shape_id == target.shape_id)
+    assert chosen.group_path and chosen.label == "Тестирование"
+    top = resolve_live(
+        data,
+        LiveTarget(slide=1, name="Шаг 2", box=LiveBox(x=127, y=101.6, width=25.4, height=12.7)),
+    )
+    assert next(o for o in objects(data) if o.shape_id == top.shape_id).group_path == []
 
 
 async def test_object_proposal_receives_only_selected_text(manual_deck, monkeypatch):

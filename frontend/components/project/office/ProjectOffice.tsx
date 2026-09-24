@@ -14,6 +14,7 @@ import { selectOfficeObject } from "@/lib/editor/officeSelection";
 import { downloadArtifact } from "@/lib/download";
 import { VARIANT_LABELS } from "@/lib/format";
 import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
+import { setOpenDocument } from "@/lib/state/projects";
 import { SlideViewer } from "../preview/SlideViewer";
 
 /** «balanced/r2/deck.pptx» → вариант и номер ревизии артефакта. */
@@ -119,6 +120,12 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
   const id = doc?.id;
   const revision = doc?.revision;
   useEffect(() => { onSelectionChange(null); }, [id, revision, index, onSelectionChange]);
+  // Ассистент в чате отвечает о содержимом именно этой копии и её сохранённой ревизии.
+  useEffect(() => {
+    if (!id || revision === undefined) return;
+    setOpenDocument(projectId, { document_id: id, revision });
+    return () => setOpenDocument(projectId, null);
+  }, [projectId, id, revision]);
   // Карта объектов сохранённой ревизии: в превью — рамки для выбора, в живом редакторе —
   // подписи выделенного объекта для чата.
   useEffect(() => {
@@ -135,7 +142,12 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
     const map = objectMapRef.current?.objects ?? [];
     onLiveSelection?.(value && {
       ...value,
-      objects: value.objects.map((obj) => ({ ...obj, label: obj.name ? map.find((o) => o.slide === value.slide && o.name === obj.name)?.label : undefined })),
+      // Подпись — текст объекта из карты: сначала среди тех, что там же относительно группы.
+      objects: value.objects.map((obj) => {
+        const named = obj.name ? map.filter((o) => o.slide === value.slide && o.name === obj.name) : [];
+        const found = named.find((o) => Boolean(o.group_path?.length) === Boolean(obj.inGroup)) ?? named[0];
+        return { ...obj, label: found?.label };
+      }),
     });
   }, [onLiveSelection]);
   useEffect(() => {

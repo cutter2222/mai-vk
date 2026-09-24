@@ -1723,6 +1723,28 @@ class Issue(BaseModel):
     """
 
 
+class ChatFact(BaseModel):
+    """
+    значение из сообщения человека: подставляется как есть, в аудите подписано «по указанию пользователя»
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    fact_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    value: float | str
+    unit: str | None = None
+    period: str | None = None
+    quote: str
+    """
+    цитата из сообщения
+    """
+    at: AwareDatetime | None = None
+
+
 class Background1(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1758,6 +1780,66 @@ class OverridesDroppedItem(BaseModel):
     target: Target1 | None = None
     code: str
     message: str
+
+
+class OutlineEntry(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    index: int = Field(..., ge=1)
+    sld_id: int
+    slide_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    role: str
+    title: str
+    kinds: list[str]
+    """
+    виды содержательных объектов слайда без повторов: текст, картинка, таблица, диаграмма, схема
+    """
+    hidden: bool | None = None
+    edited: bool | None = None
+
+
+class Background2(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: Literal["solid", "gradient", "image", "inherited"]
+    color: str | None = Field(None, pattern="^#[0-9A-Fa-f]{6}$")
+    """
+    Цвет в формате #RRGGBB
+    """
+    image_sha256: str | None = None
+
+
+class SourceModel(BaseModel):
+    """
+    откуда снимок: ревизия варианта (variant), офисная копия (office) или файл без проекта (file)
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: Literal["variant", "office", "file"]
+    job_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    variant_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    document_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    revision: int | None = Field(None, ge=1)
+    """
+    Номер ревизии результата варианта. Растёт после каждого исправления; находки аудита и запросы исправлений привязаны к ревизии.
+    """
+    pptx_sha256: str | None = Field(None, pattern="^[0-9a-f]{64}$")
 
 
 class BriefDraft(BaseModel):
@@ -2152,6 +2234,25 @@ class Tone(BaseModel):
     """
 
 
+class Fragment(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    text: str
+    """
+    слово или фраза в тексте объекта
+    """
+    paragraph: int | None = Field(None, ge=1)
+
+
+class Cell(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    row: int = Field(..., ge=1)
+    col: int = Field(..., ge=1)
+
+
 class Paragraph(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2305,6 +2406,105 @@ class Diagram(BaseModel):
     node_ids: list[str] | None = None
 
 
+class Paragraph1(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    text: str
+    level: int = Field(..., ge=0)
+    bullet: bool
+
+
+class Text1(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    plain: str
+    paragraphs: list[Paragraph1]
+
+
+class Placeholder1(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    type: str
+    idx: int | None = None
+    inherited_geometry: bool
+    """
+    своей рамки на слайде нет, рамка — из макета или мастера
+    """
+
+
+class Slot1(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    slot_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    slot_kind: str | None = None
+    source_object_id: str | None = None
+
+
+class MergedItem(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    row: int = Field(..., ge=1)
+    col: int = Field(..., ge=1)
+    rows: int = Field(..., ge=1)
+    cols: int = Field(..., ge=1)
+
+
+class Table1(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    rows: list[list[str]]
+    """
+    тексты ячеек строками; у объединённых ячеек текст в первой, остальные пустые
+    """
+    merged: list[MergedItem] | None = None
+    """
+    объединения: первая ячейка (с единицы) и сколько строк и столбцов она занимает
+    """
+
+
+class Series(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: str
+    values: list[float | None]
+
+
+class Chart1(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    type: str
+    categories: list[str]
+    series: list[Series]
+    values_from: Literal["cache", "workbook"] | None = None
+    """
+    откуда значения: кэш части chart или встроенная книга
+    """
+
+
+class Picture2(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    sha256: str | None = None
+    width_px: int | None = None
+    height_px: int | None = None
+    asset_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+
+
 class Number(BaseModel):
     fact_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
@@ -2316,7 +2516,7 @@ class Number(BaseModel):
     """
 
 
-class Table1(BaseModel):
+class Table2(BaseModel):
     dataset_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
     Стабильный идентификатор. Не содержит пробелов и путей.
@@ -2330,7 +2530,7 @@ class Table1(BaseModel):
     """
 
 
-class Chart1(BaseModel):
+class Chart2(BaseModel):
     """
     Нативная диаграмма PowerPoint; стиль берётся из палитры и правил шаблона
     """
@@ -2510,6 +2710,74 @@ class Slot(BaseModel):
     """
 
 
+class GroupPathItem(RootModel[str]):
+    root: str = Field(..., pattern="^[0-9]{1,20}$")
+
+
+class ObjectRef(BaseModel):
+    """
+    объект снимка; slot_id и source_object_id — охрана адреса в плане, как у target правки override
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    object_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    p:cNvPr@id объекта снимка; у надписи, созданной этими же операциями (object.add_text), — её new_object_id
+    """
+    group_path: list[GroupPathItem] | None = None
+    slot_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    source_object_id: str | None = None
+
+
+class SlideRef1(BaseModel):
+    """
+    слайд: номер и sld_id ревизии снимка; у плана — slide_id
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    index: int = Field(..., ge=1)
+    sld_id: int | None = None
+    slide_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+
+
+class SlideRef2(BaseModel):
+    """
+    слайд: номер и sld_id ревизии снимка; у плана — slide_id
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    index: int | None = Field(None, ge=1)
+    sld_id: int | None = None
+    slide_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+
+
+class Address(BaseModel):
+    """
+    адрес объекта на слайде: p:cNvPr@id и путь групп от внешней к внутренней (пустой — объект верхнего уровня)
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    object_id: str = Field(..., pattern="^[0-9]{1,20}$")
+    group_path: list[GroupPathItem] | None = None
+
+
 class Icon(BaseModel):
     asset_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
@@ -2663,6 +2931,33 @@ class BriefExtract(BaseModel):
     model: извлечено моделью; heuristic: детерминированные правила без модели
     """
     model: ModelRef | None = None
+
+
+class Base(BaseModel):
+    """
+    ревизия, к снимку которой относятся адреса
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: Literal["variant", "office"]
+    job_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    variant_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    document_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    Стабильный идентификатор. Не содержит пробелов и путей.
+    """
+    revision: int = Field(..., ge=1)
+    """
+    Номер ревизии результата варианта. Растёт после каждого исправления; находки аудита и запросы исправлений привязаны к ревизии.
+    """
 
 
 class Error(BaseModel):
@@ -3183,6 +3478,32 @@ class Pattern(BaseModel):
     """
 
 
+class AddressModel(BaseModel):
+    """
+    адрес операции в снимке, к которому относится документ; scope говорит, что именно адресовано
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    scope: Literal[
+        "object", "objects", "paragraph", "fragment", "cell", "slide", "slides", "deck", "none"
+    ]
+    slide: SlideRef1 | SlideRef2 | None = None
+    """
+    слайд: номер и sld_id ревизии снимка; у плана — slide_id
+    """
+    slides: list[SlideRef1 | SlideRef2] | None = Field(None, min_length=1)
+    object: ObjectRef | None = None
+    objects: list[ObjectRef] | None = Field(None, min_length=1)
+    paragraph: int | None = Field(None, ge=1)
+    """
+    номер абзаца объекта
+    """
+    fragment: Fragment | None = None
+    cell: Cell | None = None
+
+
 class Object(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -3259,6 +3580,77 @@ class Object(BaseModel):
     """
 
 
+class ObjectModel(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    address: Address
+    name: str
+    """
+    p:cNvPr@name; сохраняется при сохранении в ONLYOFFICE, им редактор называет выделенную фигуру
+    """
+    kind: Literal[
+        "text",
+        "picture",
+        "table",
+        "chart",
+        "shape",
+        "connector",
+        "group",
+        "placeholder_empty",
+        "other",
+    ]
+    role: Literal[
+        "title",
+        "subtitle",
+        "body",
+        "bullets",
+        "number",
+        "label",
+        "caption",
+        "date",
+        "name",
+        "position",
+        "image",
+        "icon",
+        "table",
+        "chart",
+        "diagram",
+        "qr",
+        "code",
+        "footer",
+        "logo",
+        "page_number",
+        "decoration",
+        "background",
+        "group",
+        "other",
+    ]
+    """
+    роль объекта: виды слотов профиля шаблона и служебные (логотип, номер слайда, декор, фон, группа)
+    """
+    text: Text1 | None = None
+    bbox: Bbox
+    """
+    рамка без поворота в долях слайда, с учётом групп
+    """
+    rotation_deg: float | None = None
+    placeholder: Placeholder1 | None = None
+    style: FontSpec | None = None
+    """
+    вычисленный шрифт первого непустого фрагмента: гарнитура, кегль, начертание, цвет
+    """
+    fixed: bool
+    """
+    фиксированный элемент шаблона: логотип, номер, колонтитул, навигация
+    """
+    slot: Slot1 | None = None
+    table: Table1 | None = None
+    chart: Chart1 | None = None
+    picture: Picture2 | None = None
+    hidden: bool | None = None
+
+
 class Item(BaseModel):
     text: str
     icon: Icon | None = None
@@ -3317,8 +3709,8 @@ class BlockModel(BaseModel):
     """
     items: list[Item] | None = None
     number: Number | None = None
-    table: Table1 | None = None
-    chart: Chart1 | None = None
+    table: Table2 | None = None
+    chart: Chart2 | None = None
     """
     Нативная диаграмма PowerPoint; стиль берётся из палитры и правил шаблона
     """
@@ -3382,6 +3774,126 @@ class TemplateProfile(BaseModel):
     """
 
 
+class Op(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    op: Literal[
+        "text.set",
+        "text.replace",
+        "text.insert_paragraph",
+        "text.delete_paragraph",
+        "text.reorder_paragraphs",
+        "text.set_bullets",
+        "text.set_notes",
+        "style.size",
+        "style.bold",
+        "style.italic",
+        "style.underline",
+        "style.color",
+        "style.align",
+        "style.font",
+        "style.spacing",
+        "style.caps",
+        "style.reset",
+        "object.move",
+        "object.resize",
+        "object.align",
+        "object.distribute",
+        "object.z_order",
+        "object.delete",
+        "object.add_text",
+        "object.add",
+        "object.add_block",
+        "object.duplicate",
+        "picture.replace",
+        "picture.insert",
+        "picture.fit",
+        "picture.recolor",
+        "picture.pick_icon",
+        "picture.set_qr",
+        "background.solid",
+        "background.image",
+        "background.inherited",
+        "table.set_cell",
+        "table.add_row",
+        "table.delete_row",
+        "table.add_column",
+        "table.delete_column",
+        "table.sort",
+        "table.reorder",
+        "table.highlight",
+        "table.layout",
+        "table.from_dataset",
+        "table.to_chart",
+        "chart.set_values",
+        "chart.add_series",
+        "chart.delete_series",
+        "chart.rename",
+        "chart.set_type",
+        "chart.colors",
+        "chart.highlight",
+        "chart.options",
+        "chart.number_format",
+        "chart.sort",
+        "chart.from_image",
+        "chart.from_dataset",
+        "chart.from_text",
+        "chart.to_table",
+        "diagram.add",
+        "diagram.delete",
+        "diagram.reorder",
+        "diagram.rename",
+        "diagram.set_kind",
+        "diagram.colors",
+        "slide.rebuild",
+        "slide.set_composition",
+        "slide.fixed_toggle",
+        "slide.hide",
+        "slide.make_editable",
+        "slide.placeholder_fill",
+        "slide.placeholder_clear",
+        "deck.add_slide",
+        "deck.add_slides",
+        "deck.duplicate",
+        "deck.delete",
+        "deck.move",
+        "deck.split",
+        "deck.merge",
+        "deck.sections",
+        "deck.agenda",
+        "deck.replace_everywhere",
+        "deck.translate",
+        "deck.style_everywhere",
+        "deck.recolor",
+        "deck.logo",
+        "deck.notes",
+        "deck.update_facts",
+        "deck.repair",
+        "service.undo",
+        "service.question",
+        "service.refusal",
+        "service.confirm",
+    ]
+    """
+    семейство.имя
+    """
+    address: AddressModel
+    source: Literal["snapshot", "package", "chat", "attachment", "template"]
+    """
+    откуда значения: текущий снимок (переформулировка, перестановка), факты пакета, слово человека, вложение, токены и ресурсы шаблона
+    """
+    confirm: bool
+    """
+    требует подтверждения кнопкой до исполнения: разрушающие и массовые операции
+    """
+    fact_refs: list[Id] | None = None
+    """
+    факты пакета или «чат», на которые опираются значения
+    """
+    args: dict[str, Any]
+
+
 class Slide(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -3436,6 +3948,47 @@ class Slide(BaseModel):
 
 
 class SlideModel(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    index: int = Field(..., ge=1)
+    """
+    номер слайда в файле, с единицы
+    """
+    sld_id: int
+    """
+    p:sldId@id в presentation.xml этой ревизии
+    """
+    slide_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    слайд плана варианта; есть у ревизии варианта и у копии, сопоставленной с ней
+    """
+    role: str | None = None
+    """
+    роль слайда: из плана (роль паттерна) или по содержимому копии
+    """
+    layout: str
+    """
+    имя макета
+    """
+    title: str
+    hidden: bool
+    background: Background2
+    notes: str
+    """
+    заметки докладчика
+    """
+    edited: bool | None = None
+    """
+    слайд копии отличается от исходной ревизии (ручные правки); нет поля — не сравнивали
+    """
+    objects: list[ObjectModel]
+    """
+    объекты слайда в порядке наложения снизу вверх; дети групп идут сразу за группой
+    """
+
+
+class SlideModel1(BaseModel):
     slide_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
     Стабильный идентификатор. Не содержит пробелов и путей.
@@ -3469,6 +4022,26 @@ class SlideModel(BaseModel):
     overrides: list[Override] | None = None
     """
     ручные правки объектов слайда (этап 22): применяются композером по порядку после заполнения слотов и чистки; адресуют объекты ComposedDeck предыдущей ревизии
+    """
+
+
+class ChatOps(BaseModel):
+    """
+    Операции правки из чата (этап 36 серии «чат как редактор»): одна схема для плана варианта и офисной копии. У каждой операции адрес в снимке колоды (deck_snapshot) ревизии base, источник значений и признак «требует подтверждения». Операции исполняются по порядку; ошибка одной не откатывает уже применённые. overrides плана (common.override) — подмножество: text → text.set, style → style.*, geometry → object.move + object.resize, picture → picture.replace + picture.recolor, background → background.*, delete → object.delete, add_text → object.add_text; order и template_logo запроса slide_patch → deck.move, deck.logo. Номера слайдов, абзацев, строк, столбцов и шагов — с единицы.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["1.0"]
+    base: Base
+    """
+    ревизия, к снимку которой относятся адреса
+    """
+    ops: list[Op] = Field(..., max_length=100)
+    facts: list[ChatFact] | None = None
+    """
+    факты «чат»: значения, названные человеком (раздел 4.6)
     """
 
 
@@ -3534,6 +4107,24 @@ class ComposedDeck(BaseModel):
     """
 
 
+class DeckSnapshot(BaseModel):
+    """
+    Снимок колоды для чата (этап 36): что на каждом слайде и где, одной формой для ревизии варианта и для офисной копии в ONLYOFFICE. Строится по байтам PPTX тем же обходом фигур, что и ComposedDeck (группы с путём, рамка плейсхолдера из макета, поворот); ComposedDeck и план ревизии добавляют идентификатор слайда плана, роль объекта по слоту и признак элемента шаблона. Адреса (номер слайда, sld_id, object_id) действительны только для ревизии снимка: ONLYOFFICE при сохранении перенумеровывает p:sldId и cNvPr id, сохраняя имена фигур. Номера слайдов, абзацев, строк и столбцов — с единицы.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["1.0"]
+    source: SourceModel
+    slide_size: SlideSize
+    slides: list[SlideModel]
+    outline: list[OutlineEntry]
+    """
+    оглавление: по строке на слайд, в порядке файла
+    """
+
+
 class SlidePlan(BaseModel):
     """
     План одного варианта презентации: порядок слайдов, выбранные паттерны и содержание каждого слота. Создаётся слоем генерации, проверяется по схеме и по ёмкости слотов до вёрстки. Версия 1.3 (этап 22): у слайда overrides — ручные правки объектов из визуального редактора, которые композер применяет после заполнения слота; правка из чата заменяет слайд целиком и отбрасывает его overrides с предупреждением overrides_dropped. Версия 1.2 (этап 7): у блоков fit — результат измерения текста по метрикам шрифта после подстановки фактов (выбранный кегль, строки, действие лестницы ёмкости); у таблиц row_offset — часть большого набора данных на этом слайде; у slide_count target — целевое число слайдов варианта внутри диапазона; блок chart допускается в слоте image паттерна с ролью chart (картинка диаграммы в образце заменяется нативной диаграммой). Версия 1.1: ссылка на StoryPlan, покрытие обязательных тезисов, точное число или диапазон слайдов, данные для сопоставления вариантов. Соответствие kind содержимому блока проверяется схемой (allOf/if) и валидаторами.
@@ -3558,7 +4149,7 @@ class SlidePlan(BaseModel):
     Три варианта вёрстки одного контента различаются по одной заявленной оси. Ось и обоснование попадают в документацию и в интерфейс сравнения.
     """
     story: Story | None = None
-    slides: list[SlideModel] = Field(..., min_length=1)
+    slides: list[SlideModel1] = Field(..., min_length=1)
     generation_meta: GenerationMeta
     warnings: list[Warning] | None = None
     story_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
@@ -3586,8 +4177,10 @@ class SlidePlan(BaseModel):
 class Contracts(BaseModel):
     audit_report: AuditReport | None = None
     brief_extract: BriefExtract | None = None
+    chat_ops: ChatOps | None = None
     composed_deck: ComposedDeck | None = None
     content_package: ContentPackage | None = None
+    deck_snapshot: DeckSnapshot | None = None
     generation_request: GenerationRequest | None = None
     generation_result: GenerationResult | None = None
     job_status: JobStatus | None = None

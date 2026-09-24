@@ -11,6 +11,7 @@ async function setup(page: Page, { slides = 5, editorSlides = 5 } = {}) {
   const state = {
     revision: 1, docRevision: 1, edits: [] as Record<string, unknown>[], editBodies: [] as Record<string, unknown>[],
     applied: [] as Record<string, unknown>[], objectEdits: [] as Record<string, unknown>[], editDone: false,
+    chats: [] as Record<string, unknown>[],
   };
   const createdAt = new Date().toISOString();
   const doc = () => ({ id: "live-doc", revision: state.docRevision, active_key: null, error: null });
@@ -45,8 +46,21 @@ async function setup(page: Page, { slides = 5, editorSlides = 5 } = {}) {
   await page.route("**/api/office/documents/live-doc/config", (r) => r.fulfill({ json: { script_url: "/live-sdk.js", config: {} } }));
   await page.route(/\/api\/office\/documents\/live-doc\/objects\/\d+$/, (r) => r.fulfill({ json: {
     revision: state.docRevision,
-    objects: [{ slide: 3, shape_id: "7", label: "Идея: плотность в центре снижает атаки", name: "Заголовок 1", kind: "sp", bbox: { x: 0.05, y: 0.05, width: 0.6, height: 0.1 }, z: 1, hollow: false }],
+    objects: [
+      { slide: 3, shape_id: "7", label: "Идея: плотность в центре снижает атаки", name: "Заголовок 1", kind: "sp", bbox: { x: 0.05, y: 0.05, width: 0.6, height: 0.1 }, z: 1, hollow: false, placeholder: "title" },
+      // Одноимённая фигура верхнего уровня и фигура в группе: подпись берётся у той, что в группе.
+      { slide: 3, shape_id: "40", label: "Шаг", name: "Google Shape;587;p54", kind: "sp", bbox: { x: 0.7, y: 0.8, width: 0.1, height: 0.05 }, z: 2, hollow: false },
+      { slide: 3, shape_id: "587", label: "Название команды", name: "Google Shape;587;p54", kind: "sp", bbox: { x: 0.238, y: 0.204, width: 0.12, height: 0.062 }, z: 5, hollow: false, group_path: ["581"] },
+    ],
   } }));
+  await page.route("**/api/projects/live-test/events", (r) => {
+    const body = r.request().postDataJSON() as Record<string, unknown>;
+    return r.fulfill({ json: { ...body, event_id: `evt_${Date.now()}`, created_at: createdAt } });
+  });
+  await page.route("**/api/chat", (r) => {
+    state.chats.push(r.request().postDataJSON());
+    return r.fulfill({ json: { reply: "Слайд 3 «Идея»: две карточки.", options: [], source: "rules", event: { event_id: "evt_reply", role: "assistant", kind: "text", text: "Слайд 3 «Идея»: две карточки.", created_at: createdAt } } });
+  });
   await page.route("**/api/office/documents/live-doc/apply-slide", (r) => {
     state.applied.push(r.request().postDataJSON());
     state.docRevision++;
@@ -87,6 +101,14 @@ async function setup(page: Page, { slides = 5, editorSlides = 5 } = {}) {
           asc_getName: () => 'Заголовок 1', asc_getWidth: () => 200, asc_getHeight: () => 30,
           asc_getPosition: () => ({ get_X: () => 20, get_Y: () => 10 }),
         } }, { type: 0, value: {} }];
+        emit('asc_onFocusObject', []);
+      };
+      // Щелчок по тексту фигуры в группе выделяет её саму: имя её, рамка — от угла группы.
+      live.selectGroupChild = () => {
+        live.selected = [{ type: 7, value: {} }, { type: 6, value: {
+          asc_getName: () => 'Google Shape;587;p54', asc_getFromGroup: () => true, asc_getWidth: () => 30.6, asc_getHeight: () => 8.9,
+          asc_getPosition: () => ({ get_X: () => 52.75, get_Y: () => 0 }),
+        } }];
         emit('asc_onFocusObject', []);
       };
       setTimeout(() => config.events.onDocumentReady(), 0);
@@ -155,5 +177,33 @@ test("слайды добавлены в редакторе вручную — �
   await page.getByTestId("chat-input").fill("сделай две колонки");
   await page.getByTestId("chat-send").click();
   await expect(page.getByTestId("chat-list")).toContainText("Слайды в редакторе добавлены или удалены вручную");
+  expect(state.editBodies).toHaveLength(0);
+});
+
+test("фигура в группе — плашка с её текстом, правка находит её по имени и рамке группы", async ({ page }) => {
+  const state = await setup(page);
+  await page.goto("/project?id=live-test");
+  await expect.poll(() => live(page, "window.__live?.opened ?? 0")).toBe(1);
+  await live(page, "window.__live.selectSlide(2)");
+  await live(page, "window.__live.selectGroupChild()");
+  const chip = page.getByTestId("live-target");
+  await expect(chip).toHaveText("Слайд 3 · «Название команды»");
+  await page.getByTestId("chat-input").fill("сократи");
+  await page.getByTestId("chat-send").click();
+  await expect.poll(() => state.objectEdits.length, { timeout: 20_000 }).toBe(1);
+  expect(state.objectEdits[0]).toEqual({ revision: 1, instruction: "сократи", live_target: { slide: 3, name: "Google Shape;587;p54", box: { x: 52.75, y: 0, width: 30.6, height: 8.9 }, in_group: true } });
+});
+
+test("вопрос при плашке слайда уходит ассистенту вместе с открытой копией, слайд не пересобирается", async ({ page }) => {
+  const state = await setup(page);
+  await page.goto("/project?id=live-test");
+  await expect.poll(() => live(page, "window.__live?.opened ?? 0")).toBe(1);
+  await live(page, "window.__live.selectSlide(2)");
+  await expect(page.getByTestId("live-target")).toHaveText("Слайд 3 · Сбалансированный");
+  await page.getByTestId("chat-input").fill("что на этом слайде?");
+  await page.getByTestId("chat-send").click();
+  await expect.poll(() => state.chats.length, { timeout: 20_000 }).toBe(1);
+  expect(state.chats[0]).toMatchObject({ project_id: "live-test", office: { document_id: "live-doc", revision: 1 } });
+  await expect(page.getByTestId("chat-list")).toContainText("Слайд 3 «Идея»: две карточки.");
   expect(state.editBodies).toHaveLength(0);
 });

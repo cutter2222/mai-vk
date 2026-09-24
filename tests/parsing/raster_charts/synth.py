@@ -210,3 +210,55 @@ def photo_like() -> bytes:
                 (x * 7 + y * 3) % 256,
             )
     return png(image)
+
+
+# ---------- куски диаграмм из фигур слайда (прозрачный фон, как в Google Slides) ----------
+
+TRACK = (230, 234, 242)
+
+
+def bar_piece(
+    w: int, h: int, color: tuple[int, int, int], alpha_top: float = 1.0, alpha_bottom: float = 0.0
+) -> bytes:
+    """Столбец-картинка: цвет ровный поперёк, прозрачность меняется сверху вниз."""
+    image = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    px = image.load()
+    assert px is not None
+    for y in range(h):
+        a = round(255 * (alpha_top + (alpha_bottom - alpha_top) * y / max(1, h - 1)))
+        for x in range(w):
+            px[x, y] = (*color, a)
+    return png(image)
+
+
+def ring_piece(
+    size: int,
+    hole: float,
+    arcs: list[tuple[float, float, tuple[int, int, int] | tuple[tuple[int, int, int], ...]]],
+) -> bytes:
+    """Кольцо на прозрачном фоне: дуги (начало и размах в градусах от 12 часов по часовой
+    стрелке, цвет или пара цветов — градиент слева направо по картинке)."""
+    k = 2  # сглаживание: рисуем крупнее и уменьшаем
+    big = size * k
+    image = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+    px = image.load()
+    assert px is not None
+    c = big / 2
+    outer, inner = big / 2 - 1, (big / 2 - 1) * hole
+    for y in range(big):
+        for x in range(big):
+            r = math.hypot(x + 0.5 - c, y + 0.5 - c)
+            if not inner <= r <= outer:
+                continue
+            ang = math.degrees(math.atan2(x + 0.5 - c, -(y + 0.5 - c))) % 360
+            for start, sweep, color in arcs:
+                if (ang - start) % 360 <= sweep:
+                    if isinstance(color[0], tuple):
+                        a, b = color  # type: ignore[misc]
+                        t = x / big
+                        rgb = tuple(round(a[i] + (b[i] - a[i]) * t) for i in range(3))
+                    else:
+                        rgb = color  # type: ignore[assignment]
+                    px[x, y] = (*rgb, 255)  # type: ignore[misc]
+                    break
+    return png(image.resize((size, size), Image.Resampling.LANCZOS))

@@ -198,6 +198,14 @@ def _is_content(obj: JsonDict) -> bool:
     return obj.get("role") != "fixed"
 
 
+DATA_KINDS = ("chart", "table")
+
+
+def _is_data(obj: JsonDict) -> bool:
+    """Диаграмма или таблица: данные слайда, какую бы роль объект ни получил."""
+    return obj.get("kind") in DATA_KINDS
+
+
 def _paragraph_styles(obj: JsonDict) -> list[JsonDict]:
     return [p.get("style") or {} for p in ((obj.get("text") or {}).get("paragraphs") or [])]
 
@@ -535,7 +543,9 @@ def check_fixed_elements(slide: JsonDict, ctx: Context) -> list[Issue]:
     boxes = [_box(o) for o in slide.get("objects") or [] if o.get("role") == "fixed"]
     out: list[Issue] = []
     for obj in slide.get("objects") or []:
-        if obj.get("role") != "fixed":
+        # Диаграмма и таблица — данные слайда, а не логотип или декор макета: в готовой
+        # презентации они «статика образца», и рамка диаграммы бывает размером с декор.
+        if obj.get("role") != "fixed" or obj.get("kind") in DATA_KINDS:
             continue
         x, y, w, h = _box(obj)
         # Линии и другие фигуры без толщины: сравнивать по размеру нечего, а рамка находки
@@ -893,10 +903,10 @@ def check_density(slide: JsonDict, ctx: Context) -> list[Issue]:
 
 
 def check_fill_ratio(slide: JsonDict, ctx: Context) -> list[Issue]:
-    """Доля холста под содержательными объектами."""
+    """Доля холста под содержательными объектами (диаграммы и таблицы — всегда)."""
     low = float(threshold("density.fill_ratio", "min_ratio", 0.25))
     high = float(threshold("density.fill_ratio", "max_ratio", 0.75))
-    objects = [o for o in slide.get("objects") or [] if _is_content(o)]
+    objects = [o for o in slide.get("objects") or [] if _is_content(o) or _is_data(o)]
     if not objects:
         return []
     filled = sum(_area(o) for o in objects if o.get("kind") != "text" or _plain(o))
@@ -943,6 +953,9 @@ def check_empty_slide(slide: JsonDict, ctx: Context) -> list[Issue]:
     content = [o for o in slide.get("objects") or [] if _is_content(o)]
     texts = [o for o in content if o.get("kind") == "text" and _plain(o)]
     visuals = [o for o in content if o.get("kind") in ("picture", "chart", "table", "group")]
+    # Слайд с диаграммой или таблицей не пустой, даже если это статика образца: у готовой
+    # презентации весь слайд — образец, и диаграмма из фигур слайда тоже.
+    visuals += [o for o in slide.get("objects") or [] if _is_data(o) and not _is_content(o)]
     if texts or visuals:
         only_title = len(texts) == 1 and not visuals and texts[0].get("slot_kind") == "title"
         if not only_title:

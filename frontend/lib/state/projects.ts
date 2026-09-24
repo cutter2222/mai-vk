@@ -2,7 +2,7 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 
-import { api, type EventInput, type ProjectListItem, type ProjectPatch } from "@/lib/api/client";
+import { api, type EventInput, type OpenOfficeDocument, type ProjectListItem, type ProjectPatch } from "@/lib/api/client";
 import type { BriefDraft, Event, Project as ProjectDoc, ProjectFile, SettingsDraft } from "@/lib/api/types";
 
 /**
@@ -405,6 +405,14 @@ export async function patchMessage(projectId: string, messageId: string, patch: 
   }
 }
 
+// Офисная копия, открытая в редакторе проекта: ассистент отвечает о её содержимом.
+const openDocuments = new Map<string, OpenOfficeDocument>();
+
+export function setOpenDocument(projectId: string, document: OpenOfficeDocument | null): void {
+  if (document) openDocuments.set(projectId, document);
+  else openDocuments.delete(projectId);
+}
+
 /** Ask about a saved message; only the backend persists the answer. */
 export async function askAssistant(projectId: string, messageId: string) {
   const eventId = (await tempIds.get(messageId)) ?? savedEventIds.get(messageId) ?? messageId;
@@ -420,7 +428,7 @@ export async function askAssistant(projectId: string, messageId: string) {
     pendingPatches.delete(real);
   }
   await api.projects.patch(real, { ...pending?.patch, brief: project.brief, settings: project.settings });
-  const result = await api.chat(real, eventId);
+  const result = await api.chat(real, eventId, openDocuments.get(real) ?? openDocuments.get(projectId));
   updateProject(real, (p) => ({ events: p.events.some((e) => e.event_id === result.event.event_id)
     ? p.events : [...p.events, result.event as ChatMessage] }));
   return result;

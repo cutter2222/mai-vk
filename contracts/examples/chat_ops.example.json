@@ -1,0 +1,278 @@
+{
+ "schema_version": "1.0",
+ "base": {
+  "kind": "office",
+  "document_id": "d8aeef577f1f45b59fa84fcea1fbe429",
+  "revision": 4
+ },
+ "facts": [
+  {
+   "fact_id": "chat_1",
+   "value": 120,
+   "unit": "млн ₽",
+   "period": "2024",
+   "quote": "выручка за 2024 не 100, а 120 млн",
+   "at": "2026-09-24T21:40:12.000Z"
+  }
+ ],
+ "ops": [
+  {
+   "op": "text.set",
+   "address": {
+    "scope": "object",
+    "slide": {
+     "index": 3,
+     "sld_id": 258
+    },
+    "object": {
+     "object_id": "1637038131",
+     "group_path": []
+    }
+   },
+   "source": "snapshot",
+   "confirm": false,
+   "args": {
+    "text": "Плотность в центре снижает атаки"
+   }
+  },
+  {
+   "op": "text.delete_paragraph",
+   "address": {
+    "scope": "paragraph",
+    "slide": {
+     "index": 3,
+     "sld_id": 258
+    },
+    "object": {
+     "object_id": "908966588"
+    },
+    "paragraph": 2
+   },
+   "source": "snapshot",
+   "confirm": false,
+   "args": {}
+  },
+  {
+   "op": "style.size",
+   "address": {
+    "scope": "object",
+    "slide": {
+     "index": 3,
+     "sld_id": 258
+    },
+    "object": {
+     "object_id": "1637038131"
+    }
+   },
+   "source": "template",
+   "confirm": false,
+   "args": {
+    "step": "larger"
+   }
+  },
+  {
+   "op": "object.move",
+   "address": {
+    "scope": "object",
+    "slide": {
+     "index": 13,
+     "sld_id": 268
+    },
+    "object": {
+     "object_id": "587",
+     "group_path": [
+      "581"
+     ]
+    }
+   },
+   "source": "snapshot",
+   "confirm": false,
+   "args": {
+    "place": "right"
+   }
+  },
+  {
+   "op": "picture.replace",
+   "address": {
+    "scope": "object",
+    "slide": {
+     "index": 5,
+     "sld_id": 260
+    },
+    "object": {
+     "object_id": "401"
+    }
+   },
+   "source": "attachment",
+   "confirm": false,
+   "args": {
+    "asset": {
+     "kind": "file",
+     "file_id": "file_4c1d",
+     "name": "команда.png"
+    },
+    "fit": "cover"
+   }
+  },
+  {
+   "op": "background.solid",
+   "address": {
+    "scope": "slide",
+    "slide": {
+     "index": 5,
+     "sld_id": 260
+    }
+   },
+   "source": "template",
+   "confirm": false,
+   "args": {
+    "token": "dark1"
+   }
+  },
+  {
+   "op": "table.set_cell",
+   "address": {
+    "scope": "cell",
+    "slide": {
+     "index": 7,
+     "sld_id": 262
+    },
+    "object": {
+     "object_id": "15"
+    },
+    "cell": {
+     "row": 2,
+     "col": 3
+    }
+   },
+   "source": "chat",
+   "confirm": false,
+   "fact_refs": [
+    "chat_1"
+   ],
+   "args": {
+    "value": "120"
+   }
+  },
+  {
+   "op": "chart.set_values",
+   "address": {
+    "scope": "object",
+    "slide": {
+     "index": 8,
+     "sld_id": 263
+    },
+    "object": {
+     "object_id": "22"
+    }
+   },
+   "source": "chat",
+   "confirm": false,
+   "fact_refs": [
+    "chat_1"
+   ],
+   "args": {
+    "series": "Выручка",
+    "values": [
+     {
+      "category": "2024",
+      "value": 120
+     }
+    ]
+   }
+  },
+  {
+   "op": "diagram.rename",
+   "address": {
+    "scope": "object",
+    "slide": {
+     "index": 9,
+     "sld_id": 264
+    },
+    "object": {
+     "object_id": "40"
+    }
+   },
+   "source": "chat",
+   "confirm": false,
+   "args": {
+    "node": 2,
+    "text": "Тестирование"
+   }
+  },
+  {
+   "op": "slide.rebuild",
+   "address": {
+    "scope": "slide",
+    "slide": {
+     "index": 4,
+     "sld_id": 259,
+     "slide_id": "s04"
+    }
+   },
+   "source": "snapshot",
+   "confirm": false,
+   "args": {
+    "instruction": "сделай не 4 колонки, а 2",
+    "need": {
+     "items": 2
+    }
+   }
+  },
+  {
+   "op": "deck.delete",
+   "address": {
+    "scope": "slides",
+    "slides": [
+     {
+      "index": 8
+     },
+     {
+      "index": 9
+     },
+     {
+      "index": 10
+     }
+    ]
+   },
+   "source": "snapshot",
+   "confirm": true,
+   "args": {}
+  },
+  {
+   "op": "service.confirm",
+   "address": {
+    "scope": "slides",
+    "slides": [
+     {
+      "index": 8
+     },
+     {
+      "index": 9
+     },
+     {
+      "index": 10
+     }
+    ]
+   },
+   "source": "snapshot",
+   "confirm": false,
+   "args": {
+    "text": "Удалить слайды 8–10?",
+    "affects": 3
+   }
+  },
+  {
+   "op": "service.refusal",
+   "address": {
+    "scope": "none"
+   },
+   "source": "snapshot",
+   "confirm": false,
+   "args": {
+    "reason": "Анимации в презентацию не добавляю.",
+    "alternative": "Переходы можно настроить в ONLYOFFICE на вкладке «Переходы»."
+   }
+  }
+ ]
+}

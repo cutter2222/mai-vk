@@ -58,13 +58,22 @@ export interface OfficeObject extends OfficeObjectTarget {
   bbox: { x: number; y: number; width: number; height: number };
   z: number;
   hollow: boolean;
+  /** Группы над объектом, от внешней к внутренней; пусто — объект верхнего уровня. */
+  group_path?: string[];
+  rotation?: number;
+  /** Тип плейсхолдера (title, body…), если объект — плейсхолдер. */
+  placeholder?: string | null;
 }
-/** Объект, выделенный в живом редакторе: слайд, имя фигуры и её рамка в миллиметрах. */
+/** Объект, выделенный в живом редакторе: слайд, имя фигуры и её рамка в миллиметрах. У фигуры
+ * внутри группы (`in_group`) рамку редактор отдаёт от левого верхнего угла группы. */
 export interface OfficeLiveTarget {
   slide: number;
   name: string;
   box?: { x: number; y: number; width: number; height: number };
+  in_group?: boolean;
 }
+/** Открытая в редакторе офисная копия: ассистент отвечает о её содержимом. */
+export interface OpenOfficeDocument { document_id: string; revision: number }
 /** Слайд новой ревизии варианта — на место слайда офисной копии (номера с единицы). */
 export interface OfficeApplySlide {
   job_id: string;
@@ -305,7 +314,7 @@ export const api = {
     extract: (text: string, brief?: Record<string, unknown>) => request<BriefExtractResponse>("/brief", json({ text, brief })),
   },
 
-  chat: (projectId: string, eventId: string) => request<{ reply: string; options: string[]; source: "model" | "rules"; event: Event }>("/chat", json({ project_id: projectId, event_id: eventId })),
+  chat: (projectId: string, eventId: string, office?: OpenOfficeDocument | null) => request<{ reply: string; options: string[]; source: "model" | "rules"; event: Event }>("/chat", json({ project_id: projectId, event_id: eventId, ...(office ? { office } : {}) })),
 
   content: {
     /** Контент-пакет из файлов проекта по идентификаторам и брифа. */

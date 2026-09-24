@@ -73,7 +73,7 @@ class SlideRecord:
     background_override: JsonDict | None = None
 
 
-def _kind(info: ShapeInfo) -> str:
+def object_kind(info: ShapeInfo) -> str:
     if info.kind == "group":
         return "group"
     if info.kind == "picture":
@@ -287,7 +287,7 @@ def build_composed_deck(
         proxies = shape_map(slide_info.slide) if slide_info.slide is not None else {}
         objects: list[JsonDict] = []
         for info in slide_info.shapes:
-            kind = _kind(info)
+            kind = object_kind(info)
             fill = fills_by_id.get(info.element_id)
             obj: JsonDict = {
                 "object_id": info.element_id,
@@ -624,4 +624,4 @@ def _sha256(path: pathlib.Path) -> str:
     return digest.hexdigest()
 
 
-__all__ = ["SUPPORTED_KINDS", "SlideRecord", "SlotFill", "build_composed_deck"]
+__all__ = ["SUPPORTED_KINDS", "SlideRecord", "SlotFill", "build_composed_deck", "object_kind"]

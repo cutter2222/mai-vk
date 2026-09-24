@@ -8,7 +8,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from presentation_designer.audit.deterministic import Context, check_contrast, check_fixed_elements
+from presentation_designer.audit.deterministic import (
+    Context,
+    check_contrast,
+    check_empty_slide,
+    check_fill_ratio,
+    check_fixed_elements,
+)
 
 JsonDict = dict[str, Any]
 
@@ -93,6 +99,41 @@ def test_row_of_equal_shapes_is_not_a_moved_element() -> None:
     ]
     slide = _slide(objects)
     assert check_fixed_elements(slide, Context(deck={"slides": [slide]}, profile=_profile())) == []
+
+
+def test_chart_is_never_a_moved_decoration() -> None:
+    """Диаграмма готовой презентации — «статика образца», но не логотип и не декор макета,
+    даже если её рамка того же размера, что декор на другом месте."""
+    profile = _profile()
+    profile["fixed_elements"].append(
+        {
+            "element_id": "fixed_3",
+            "kind": "decoration",
+            "element_ref": "40",
+            "bbox": {"x": 0.42, "y": 0.03, "width": 0.52, "height": 0.93},
+        }
+    )
+    chart = _obj("2380", (0.44, 0.1, 0.52, 0.93), kind="chart", name="Диаграмма (из фигур)")
+    slide = _slide([chart])
+    assert check_fixed_elements(slide, Context(deck={"slides": [slide]}, profile=profile)) == []
+
+
+def test_slide_with_a_template_chart_is_neither_empty_nor_underfilled() -> None:
+    """У готовой презентации весь слайд — статика образца, и диаграмма из фигур слайда тоже:
+    слайд с ней не «пустой» и не «заполнен меньше четверти»."""
+    title = _obj("2", (0.02, 0.05, 0.7, 0.14), name="Заголовок")
+    chart = _obj("2380", (0.44, 0.1, 0.52, 0.8), kind="chart", name="Диаграмма (из фигур)")
+    slide = _slide([title, chart])
+    ctx = Context(deck={"slides": [slide]}, profile=_profile())
+    found = {i.check_id for i in check_empty_slide(slide, ctx) + check_fill_ratio(slide, ctx)}
+    assert "integrity.empty_slide" not in found
+    assert "density.fill_ratio" not in found
+
+
+def test_slide_without_content_is_empty() -> None:
+    slide = _slide([_obj("2", (0.02, 0.05, 0.7, 0.14), name="Заголовок")])
+    issues = check_empty_slide(slide, Context(deck={"slides": [slide]}, profile=_profile()))
+    assert [(i.check_id, i.message) for i in issues] == [("integrity.empty_slide", "Слайд пустой")]
 
 
 def _text(

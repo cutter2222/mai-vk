@@ -1,0 +1,498 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://presentation-designer.local/contracts/deck_snapshot.schema.json",
+ "title": "DeckSnapshot",
+ "description": "Снимок колоды для чата (этап 36): что на каждом слайде и где, одной формой для ревизии варианта и для офисной копии в ONLYOFFICE. Строится по байтам PPTX тем же обходом фигур, что и ComposedDeck (группы с путём, рамка плейсхолдера из макета, поворот); ComposedDeck и план ревизии добавляют идентификатор слайда плана, роль объекта по слоту и признак элемента шаблона. Адреса (номер слайда, sld_id, object_id) действительны только для ревизии снимка: ONLYOFFICE при сохранении перенумеровывает p:sldId и cNvPr id, сохраняя имена фигур. Номера слайдов, абзацев, строк и столбцов — с единицы.",
+ "type": "object",
+ "required": [
+  "schema_version",
+  "source",
+  "slide_size",
+  "slides",
+  "outline"
+ ],
+ "additionalProperties": false,
+ "properties": {
+  "schema_version": {
+   "const": "1.0"
+  },
+  "source": {
+   "$ref": "#/$defs/source"
+  },
+  "slide_size": {
+   "$ref": "common.schema.json#/$defs/slide_size"
+  },
+  "slides": {
+   "type": "array",
+   "items": {
+    "$ref": "#/$defs/slide"
+   }
+  },
+  "outline": {
+   "type": "array",
+   "description": "оглавление: по строке на слайд, в порядке файла",
+   "items": {
+    "$ref": "#/$defs/outline_entry"
+   }
+  }
+ },
+ "$defs": {
+  "source": {
+   "type": "object",
+   "description": "откуда снимок: ревизия варианта (variant), офисная копия (office) или файл без проекта (file)",
+   "required": [
+    "kind"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "enum": [
+      "variant",
+      "office",
+      "file"
+     ]
+    },
+    "job_id": {
+     "$ref": "common.schema.json#/$defs/id"
+    },
+    "variant_id": {
+     "$ref": "common.schema.json#/$defs/id"
+    },
+    "document_id": {
+     "$ref": "common.schema.json#/$defs/id"
+    },
+    "revision": {
+     "$ref": "common.schema.json#/$defs/revision"
+    },
+    "pptx_sha256": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{64}$"
+    }
+   }
+  },
+  "address": {
+   "type": "object",
+   "description": "адрес объекта на слайде: p:cNvPr@id и путь групп от внешней к внутренней (пустой — объект верхнего уровня)",
+   "required": [
+    "object_id"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "object_id": {
+     "type": "string",
+     "pattern": "^[0-9]{1,20}$"
+    },
+    "group_path": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "pattern": "^[0-9]{1,20}$"
+     }
+    }
+   }
+  },
+  "role": {
+   "enum": [
+    "title",
+    "subtitle",
+    "body",
+    "bullets",
+    "number",
+    "label",
+    "caption",
+    "date",
+    "name",
+    "position",
+    "image",
+    "icon",
+    "table",
+    "chart",
+    "diagram",
+    "qr",
+    "code",
+    "footer",
+    "logo",
+    "page_number",
+    "decoration",
+    "background",
+    "group",
+    "other"
+   ],
+   "description": "роль объекта: виды слотов профиля шаблона и служебные (логотип, номер слайда, декор, фон, группа)"
+  },
+  "slide": {
+   "type": "object",
+   "required": [
+    "index",
+    "sld_id",
+    "layout",
+    "title",
+    "hidden",
+    "background",
+    "notes",
+    "objects"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "index": {
+     "type": "integer",
+     "minimum": 1,
+     "description": "номер слайда в файле, с единицы"
+    },
+    "sld_id": {
+     "type": "integer",
+     "description": "p:sldId@id в presentation.xml этой ревизии"
+    },
+    "slide_id": {
+     "$ref": "common.schema.json#/$defs/id",
+     "description": "слайд плана варианта; есть у ревизии варианта и у копии, сопоставленной с ней"
+    },
+    "role": {
+     "type": "string",
+     "description": "роль слайда: из плана (роль паттерна) или по содержимому копии"
+    },
+    "layout": {
+     "type": "string",
+     "description": "имя макета"
+    },
+    "title": {
+     "type": "string"
+    },
+    "hidden": {
+     "type": "boolean"
+    },
+    "background": {
+     "type": "object",
+     "required": [
+      "kind"
+     ],
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "enum": [
+        "solid",
+        "gradient",
+        "image",
+        "inherited"
+       ]
+      },
+      "color": {
+       "$ref": "common.schema.json#/$defs/color"
+      },
+      "image_sha256": {
+       "type": "string"
+      }
+     }
+    },
+    "notes": {
+     "type": "string",
+     "description": "заметки докладчика"
+    },
+    "edited": {
+     "type": "boolean",
+     "description": "слайд копии отличается от исходной ревизии (ручные правки); нет поля — не сравнивали"
+    },
+    "objects": {
+     "type": "array",
+     "description": "объекты слайда в порядке наложения снизу вверх; дети групп идут сразу за группой",
+     "items": {
+      "$ref": "#/$defs/object"
+     }
+    }
+   }
+  },
+  "object": {
+   "type": "object",
+   "required": [
+    "address",
+    "name",
+    "kind",
+    "role",
+    "bbox",
+    "fixed"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "address": {
+     "$ref": "#/$defs/address"
+    },
+    "name": {
+     "type": "string",
+     "description": "p:cNvPr@name; сохраняется при сохранении в ONLYOFFICE, им редактор называет выделенную фигуру"
+    },
+    "kind": {
+     "enum": [
+      "text",
+      "picture",
+      "table",
+      "chart",
+      "shape",
+      "connector",
+      "group",
+      "placeholder_empty",
+      "other"
+     ]
+    },
+    "role": {
+     "$ref": "#/$defs/role"
+    },
+    "text": {
+     "type": "object",
+     "required": [
+      "plain",
+      "paragraphs"
+     ],
+     "additionalProperties": false,
+     "properties": {
+      "plain": {
+       "type": "string"
+      },
+      "paragraphs": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "required": [
+         "text",
+         "level",
+         "bullet"
+        ],
+        "additionalProperties": false,
+        "properties": {
+         "text": {
+          "type": "string"
+         },
+         "level": {
+          "type": "integer",
+          "minimum": 0
+         },
+         "bullet": {
+          "type": "boolean"
+         }
+        }
+       }
+      }
+     }
+    },
+    "bbox": {
+     "$ref": "common.schema.json#/$defs/bbox",
+     "description": "рамка без поворота в долях слайда, с учётом групп"
+    },
+    "rotation_deg": {
+     "type": "number"
+    },
+    "placeholder": {
+     "type": "object",
+     "required": [
+      "type",
+      "inherited_geometry"
+     ],
+     "additionalProperties": false,
+     "properties": {
+      "type": {
+       "type": "string"
+      },
+      "idx": {
+       "type": "integer"
+      },
+      "inherited_geometry": {
+       "type": "boolean",
+       "description": "своей рамки на слайде нет, рамка — из макета или мастера"
+      }
+     }
+    },
+    "style": {
+     "$ref": "common.schema.json#/$defs/font_spec",
+     "description": "вычисленный шрифт первого непустого фрагмента: гарнитура, кегль, начертание, цвет"
+    },
+    "fixed": {
+     "type": "boolean",
+     "description": "фиксированный элемент шаблона: логотип, номер, колонтитул, навигация"
+    },
+    "slot": {
+     "type": "object",
+     "required": [
+      "slot_id"
+     ],
+     "additionalProperties": false,
+     "properties": {
+      "slot_id": {
+       "$ref": "common.schema.json#/$defs/id"
+      },
+      "slot_kind": {
+       "type": "string"
+      },
+      "source_object_id": {
+       "type": "string"
+      }
+     }
+    },
+    "table": {
+     "type": "object",
+     "required": [
+      "rows"
+     ],
+     "additionalProperties": false,
+     "properties": {
+      "rows": {
+       "type": "array",
+       "description": "тексты ячеек строками; у объединённых ячеек текст в первой, остальные пустые",
+       "items": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      },
+      "merged": {
+       "type": "array",
+       "description": "объединения: первая ячейка (с единицы) и сколько строк и столбцов она занимает",
+       "items": {
+        "type": "object",
+        "required": [
+         "row",
+         "col",
+         "rows",
+         "cols"
+        ],
+        "additionalProperties": false,
+        "properties": {
+         "row": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "col": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "rows": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "cols": {
+          "type": "integer",
+          "minimum": 1
+         }
+        }
+       }
+      }
+     }
+    },
+    "chart": {
+     "type": "object",
+     "required": [
+      "type",
+      "categories",
+      "series"
+     ],
+     "additionalProperties": false,
+     "properties": {
+      "type": {
+       "type": "string"
+      },
+      "categories": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "series": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "required": [
+         "name",
+         "values"
+        ],
+        "additionalProperties": false,
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "values": {
+          "type": "array",
+          "items": {
+           "type": [
+            "number",
+            "null"
+           ]
+          }
+         }
+        }
+       }
+      },
+      "values_from": {
+       "enum": [
+        "cache",
+        "workbook"
+       ],
+       "description": "откуда значения: кэш части chart или встроенная книга"
+      }
+     }
+    },
+    "picture": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "sha256": {
+       "type": "string"
+      },
+      "width_px": {
+       "type": "integer"
+      },
+      "height_px": {
+       "type": "integer"
+      },
+      "asset_id": {
+       "$ref": "common.schema.json#/$defs/id"
+      }
+     }
+    },
+    "hidden": {
+     "type": "boolean"
+    }
+   }
+  },
+  "outline_entry": {
+   "type": "object",
+   "required": [
+    "index",
+    "sld_id",
+    "role",
+    "title",
+    "kinds"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "index": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "sld_id": {
+     "type": "integer"
+    },
+    "slide_id": {
+     "$ref": "common.schema.json#/$defs/id"
+    },
+    "role": {
+     "type": "string"
+    },
+    "title": {
+     "type": "string"
+    },
+    "kinds": {
+     "type": "array",
+     "description": "виды содержательных объектов слайда без повторов: текст, картинка, таблица, диаграмма, схема",
+     "items": {
+      "type": "string"
+     }
+    },
+    "hidden": {
+     "type": "boolean"
+    },
+    "edited": {
+     "type": "boolean"
+    }
+   }
+  }
+ }
+}
