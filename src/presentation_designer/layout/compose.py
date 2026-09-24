@@ -81,6 +81,7 @@ from presentation_designer.layout.shapes import (
     shape_map,
 )
 from presentation_designer.library.build import build_slide as build_builtin_slide
+from presentation_designer.library.skin import Skin, template_skin
 from presentation_designer.library.spec import find_composition
 from presentation_designer.library.tokens import DesignCode
 from presentation_designer.parsing.raster_charts.model import ChartReading
@@ -91,7 +92,7 @@ log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 COMPOSER_NAME = "layout_composer"
-COMPOSER_VERSION = "0.3.3"
+COMPOSER_VERSION = "0.3.5"
 TEXT_KINDS = (
     "title",
     "subtitle",
@@ -179,6 +180,11 @@ class _Context:
     fit_min_title_pt: float = 20.0
     # Дизайн-код шаблона: нужен только собственным композициям, поэтому считается лениво.
     design_code: DesignCode | None = None
+    # Слайды образцов до сборки и снятая с них кожа (фон и декор) по макету — тоже лениво.
+    samples: list[Any] = field(default_factory=list)
+    skins: dict[str, Skin] = field(default_factory=dict)
+    # Текст, не вошедший на текущий слайд даже на минимальном кегле: уходит в заметки.
+    spill: list[str] = field(default_factory=list)
     # Оставшиеся карточки однорядной сетки расходятся на всю ширину ряда (`_reflow_cards`);
     # режим «По шаблону» обещает не двигать блоки и выключает это.
     reflow_cards: bool = True
@@ -293,6 +299,7 @@ def _fill_slide(
     filled: dict[str, SlotFill] = {}
     ctx.next_id = next_shape_id(slide)
     ctx.chart_areas = []
+    ctx.spill = []
     ctx.decor_boxes = _side_decor(ctx, slide, pattern_raw)
 
     def resolve(slot: SlotInfo) -> Any | None:
@@ -358,6 +365,15 @@ def _fill_slide(
             ctx, slide, pattern_raw, pinfo, filled, record, slide_index
         )
     apply_overrides(ctx, slide, record, plan_slide, pinfo, slide_index)
+    if ctx.spill:
+        from presentation_designer.generation.capacity import substitute_facts
+
+        more = "\n".join(substitute_facts(text, ctx.facts) for text in ctx.spill)
+        label = "Подробнее" if ctx.language.lower().startswith("ru") else "More"
+        record.notes = f"{record.notes}\n\n{label}: {more}".strip()
+    sources = _web_sources_note(ctx, plan_slide)
+    if sources and sources not in record.notes:
+        record.notes = f"{record.notes}\n\n{sources}".strip()
     if record.notes:
         try:
             slide.notes_slide.notes_text_frame.text = record.notes
@@ -417,6 +433,13 @@ def _apply_block(
             # Расчёт capacity переносит слова по ширине слота. Запрет переноса
             # из образца иначе превращает рассчитанные две строки в одну за краем.
             tx.set_wrap(element, True)
+    if kind in SPILL_KINDS and (block.get("fit") or {}).get("action") == "overflow":
+        spilled = _spill_overflow(ctx, slot, block, size)
+        if spilled is None:
+            return None
+        block, size = spilled
+        fill.fit = _fit_plain(block)
+        tx.set_wrap(element, True)
     if kind == "bullets":
         items = [str(it.get("text", "")) for it in block.get("items") or []]
         result = tx.fill_bullets(element, items, size_pt=size, facts=ctx.facts)
@@ -511,6 +534,126 @@ def _renumbered(ctx: _Context, element: Any) -> str:
     return ctx.fresh_ids(element)[own]
 
 
+SPILL_KINDS = ("title", "subtitle", "body", "caption", "label", "bullets")
+_SENTENCE_END = re.compile(r"(?<=[.!?…])\s+")
+# Подпись, от которой осталось меньше этой доли слов, уходит в заметки целиком: «Свободные
+# сахара…» в кружке ничего не сообщает.
+SPILL_MIN_WORDS = 0.5
+_CLAUSE_END = re.compile(r"(?<=[,;:])\s+|\s+(?=[—–]\s)")
+SPILL_MIN_CLAUSE_WORDS = 4
+
+
+def _spill_overflow(
+    ctx: _Context, slot: SlotInfo, block: JsonDict, size: float | None
+) -> tuple[JsonDict, float | None] | None:
+    """Последняя страховка от текста за рамкой.
+
+    План отметил блок как не помещающийся (`overflow`): лестница кеглей и сокращение не
+    помогли, а короткую версию модели отклонила проверка сохранения смысла. На слайде такой
+    текст лезет на заголовок и соседние блоки. Здесь остаются целые предложения (пункты
+    списка), которые по замеру входят в рамку на допустимом кегле, а остаток уходит в
+    заметки докладчика: содержание не теряется, вёрстка не ломается. None — в рамку не
+    входит ничего осмысленного, блок целиком в заметках, слот остаётся пустым.
+    """
+    from presentation_designer.generation.capacity import (
+        font_steps,
+        measure,
+        min_pt_for,
+        substitute_facts,
+    )
+
+    kind = str(block.get("kind"))
+    scale = [float(t["size_pt"]) for t in ctx.profile["design_tokens"]["typography"]["scale"]]
+    min_pt = min_pt_for(slot.kind, body_pt=ctx.fit_min_body_pt, title_pt=ctx.fit_min_title_pt)
+    ratio = 0.5 if kind == "title" else ctx.fit_min_ratio
+    base = float(size or slot.size_pt or 18.0)
+    sizes = [base, *font_steps(slot, scale, min_ratio=ratio, min_pt=min_pt, fill_below=True)]
+
+    def fitting(value: str | list[str]) -> tuple[float, Any] | None:
+        text = (
+            [substitute_facts(v, ctx.facts) for v in value]
+            if isinstance(value, list)
+            else substitute_facts(value, ctx.facts)
+        )
+        for candidate in sizes:
+            measured = measure(text, slot, ctx.slide_w, ctx.slide_h, size_pt=candidate)
+            if measured.fits:
+                return candidate, measured
+        return None
+
+    fit = dict(block.get("fit") or {})
+
+    def done(new_block: JsonDict, found: tuple[float, Any], rest: str) -> tuple[JsonDict, float]:
+        chosen, measured = found
+        if rest.strip():
+            ctx.spill.append(rest.strip())
+        ctx.count("text_spilled_to_notes" if rest.strip() else "text_fit_smaller")
+        new_block["fit"] = {
+            **fit,
+            "size_pt": chosen,
+            "lines": measured.lines,
+            "max_lines": measured.max_lines,
+            "action": "shortened" if rest.strip() else "font_step",
+            "note": "не поместилось — остаток в заметках" if rest.strip() else "кегль меньше",
+        }
+        return new_block, chosen
+
+    whole = (
+        [str(it.get("text", "")) for it in block.get("items") or []]
+        if kind == "bullets"
+        else str(block.get("text") or "")
+    )
+    found = fitting(whole)
+    if found is not None:
+        # План мерил лестницу крупными ступенями шкалы; мелкие шаги до нижней границы
+        # вмещают текст целиком — кегль меньше, но ничего не уходит в заметки.
+        return done(dict(block), found, "")
+    if kind == "bullets":
+        items = list(block.get("items") or [])
+        rest_items: list[str] = []
+        while items:
+            found = fitting([str(it.get("text", "")) for it in items])
+            if found is not None:
+                return done({**block, "items": items}, found, "\n".join(rest_items))
+            rest_items.insert(0, str(items.pop().get("text", "")))
+        ctx.spill.append("\n".join(rest_items))
+        return None
+    text = str(block.get("text") or "")
+    sentences = [s for s in _SENTENCE_END.split(text.strip()) if s]
+    for count in range(len(sentences) - 1, 0, -1):
+        found = fitting(" ".join(sentences[:count]))
+        if found is not None:
+            return done(
+                {**block, "text": " ".join(sentences[:count])}, found, " ".join(sentences[count:])
+            )
+    # Первое предложение целиком не входит: его начало до запятой, точки с запятой или тире,
+    # если это законченная мысль хотя бы из четырёх слов — «Значительная часть сахара
+    # «спрятана» в переработанных продуктах.» вместо обрыва на полуслове.
+    first = sentences[0] if sentences else text
+    clauses = [c for c in _CLAUSE_END.split(first) if c]
+    for count in range(len(clauses) - 1, 0, -1):
+        head = " ".join(clauses[:count]).rstrip(" ,;:—–-")
+        if len(head.split()) < SPILL_MIN_CLAUSE_WORDS:
+            break
+        cut = head if head.endswith((".", "!", "?", "…")) else head + "."
+        found = fitting(cut)
+        if found is not None:
+            return done({**block, "text": cut}, found, text)
+    words = text.split() if kind != "title" else []
+    for count in range(len(words) - 1, 0, -1):
+        if count < max(2, len(words) * SPILL_MIN_WORDS):
+            break
+        cut = " ".join(words[:count]).rstrip(" ,;:—–-") + "…"
+        found = fitting(cut)
+        if found is not None:
+            return done({**block, "text": cut}, found, text)
+    if kind == "title":
+        return block, size  # заголовок не снимается: без него слайд теряет смысл
+    ctx.spill.append(text)
+    ctx.count("text_spilled_to_notes")
+    return None
+
+
 def _fit_plain(block: JsonDict) -> JsonDict | None:
     fit = block.get("fit")
     if not fit:
@@ -536,6 +679,33 @@ def _record_text(
             f"слот {fill.slot_id}: текст не помещается по измерению плана",
             slide_index,
         )
+
+
+def _web_sources_note(ctx: _Context, plan_slide: JsonDict) -> str:
+    """Страницы из интернета, на которых стоит содержание слайда: докладчик в заметках видит,
+    откуда взят факт. Блоки и факты ведут к источнику пакета, у веб-источника есть адрес."""
+    package = ctx.package or {}
+    blocks = {str(b.get("block_id")): b for b in package.get("blocks") or []}
+    sources = {str(s.get("source_id")): s for s in package.get("sources") or []}
+    ids: list[str] = []
+    for ref in plan_slide.get("source_refs") or []:
+        block = blocks.get(str(ref))
+        if block is not None:
+            ids.append(str(block.get("source_id")))
+    for ref in plan_slide.get("fact_refs") or []:
+        fact = ctx.facts.get(str(ref))
+        if fact is not None:
+            ids.append(str(fact.get("source_id")))
+    lines = []
+    for source_id in dict.fromkeys(ids):
+        source = sources.get(source_id) or {}
+        url = str(source.get("url") or "")
+        if url:
+            lines.append(f"{source.get('name') or source.get('domain') or url} — {url}")
+    if not lines:
+        return ""
+    label = "Источники" if ctx.language.lower().startswith("ru") else "Sources"
+    return f"{label}: " + "; ".join(lines)
 
 
 def _element_id(element: Any) -> str:
@@ -1167,6 +1337,23 @@ def _cleanup(
             )
             ctx.count("step_numbers")
             continue
+        if slot.kind == "footer" and re.fullmatch(r"\d{1,3}", sample) and element is not None:
+            # Номер страницы, набранный на образце текстом («09»): пишется номер этого
+            # слайда в той же форме, иначе на десятом слайде стояло бы «09».
+            number = str(record.order).zfill(len(sample))
+            tx.fill_text(element, number, facts=ctx.facts)
+            record.fills.append(
+                SlotFill(
+                    slot_id=slot.slot_id,
+                    slot_kind=slot.kind,
+                    block_kind=slot.kind,
+                    element_id=ref,
+                    source_object_id=ref,
+                    content_source="generated",
+                    text=number,
+                )
+            )
+            continue
         if _is_textual(slot) or slot.kind in ("qr", "footer"):
             if slot.kind == "footer" or (
                 _is_tiny(slot)
@@ -1789,7 +1976,12 @@ def _build_builtin(
         )
     if ctx.design_code is None:
         ctx.design_code = DesignCode.from_profile(ctx.profile)
-    slide, refs, card_ids = build_builtin_slide(ctx.prs, layout, composition, ctx.design_code)
+    layout_id = str(source.get("layout_id") or "")
+    if layout_id not in ctx.skins:
+        ctx.skins[layout_id] = template_skin(ctx.samples, ctx.profile, layout_id)
+    slide, refs, card_ids = build_builtin_slide(
+        ctx.prs, layout, composition, ctx.design_code, ctx.skins[layout_id]
+    )
     patched = dict(pattern_raw)
     patched["slots"] = [
         {**slot, "element_ref": refs[str(slot.get("slot_id"))]}
@@ -1887,6 +2079,7 @@ def compose_deck(
     samples = list(prs.slides)
     if not samples:
         raise ComposeError("compose_template_empty", "в шаблоне нет слайдов")
+    ctx.samples = samples
     timings: dict[str, int] = {}
     t0 = time.perf_counter()
     records: list[SlideRecord] = []

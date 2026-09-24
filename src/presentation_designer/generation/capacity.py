@@ -227,14 +227,17 @@ def font_steps(
     *,
     min_ratio: float = 0.75,
     min_pt: float = 12.0,
+    fill_below: bool = False,
 ) -> list[float]:
     """Допустимые кегли ниже исходного: из шкалы шаблона, не ниже min_ratio × исходный и
-    min_pt; если шкала не даёт ступеней — шаги по 2 пт."""
+    min_pt; если шкала не даёт ступеней — шаги по 2 пт. `fill_below` — после ступеней шкалы
+    ещё шаги по 2 пт до нижней границы: обложке с темой в 60 знаков мало трёх крупных
+    ступеней шаблона (54 → 43,5 → 36), и заголовок иначе наезжает на подзаголовок."""
     base = float(slot.size_pt or 18.0)
     floor = max(base * min_ratio, min_pt)
     steps = sorted({s for s in scale if floor <= s < base}, reverse=True)
-    if not steps:
-        s = base - 2
+    if not steps or fill_below:
+        s = (steps[-1] if steps else base) - 2
         while s >= floor:
             steps.append(round(s, 1))
             s -= 2

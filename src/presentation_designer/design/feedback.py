@@ -766,6 +766,33 @@ def fact_labels(package: JsonDict | None) -> list[str]:
 _TAIL_WORDS = frozenset({"в", "на", "с", "до", "за", "от", "по", "и", "или", "для", "к", "у", "о"})
 
 
+_SUBORDINATE = frozenset(
+    {
+        "что",
+        "чтобы",
+        "который",
+        "которая",
+        "которое",
+        "которые",
+        "которых",
+        "которым",
+        "когда",
+        "если",
+        "хотя",
+        "потому",
+        "поскольку",
+        "пока",
+        "где",
+        "куда",
+        "чем",
+        "как",
+        "так",
+        "причём",
+        "причем",
+    }
+)
+
+
 def condense(text: str, slot: JsonDict, canvas: Canvas | None = None) -> str | None:
     """Самая содержательная часть строки, помещающаяся в слот.
 
@@ -796,10 +823,19 @@ def condense(text: str, slot: JsonDict, canvas: Canvas | None = None) -> str | N
             candidate = " ".join(chunk).strip(" ,:;—–-")
             if len(candidate) < 4:
                 continue
-            if fits(slot, candidate, canvas) is not True:
-                continue
             has_digit = any(c.isdigit() for c in candidate)
             has_word = any(len(w) > 2 and w.isalpha() for w in candidate.split())
+            # Обрывок придаточного — не подпись: из «…, что после Второй мировой войны…»
+            # выходило «что после Второй». Кусок не начинается с союза, а кусок из середины
+            # строки кончается там, где кончается мысль: на знаке препинания или на числе.
+            if chunk[0].lower().strip(".,:;«»") in _SUBORDINATE:
+                continue
+            whole = end == len(words) or words[end - 1][-1] in ",;:—–.!?"
+            on_number = any(c.isdigit() for c in " ".join(chunk[-2:]))
+            if start > 0 and not whole and not (has_digit and on_number):
+                continue
+            if fits(slot, candidate, canvas) is not True:
+                continue
             # Число со словом — лучшая подпись: «3400 рейсов» говорит больше,
             # чем «3400» и чем «рейсов» по отдельности.
             rank = (int(has_digit and has_word), int(has_digit), len(candidate))

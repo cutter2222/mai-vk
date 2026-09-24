@@ -52,6 +52,14 @@ class DesignCode:
         default_factory=lambda: {"left": 0.06, "right": 0.06, "top": 0.08, "bottom": 0.08}
     )
     gutter: float = 0.03
+    # Заголовки содержательных образцов жирные: собственная композиция пишет так же.
+    title_bold: bool = False
+    # Цвет заголовка, если он у образцов свой (иначе — цвет текста).
+    title_color: str | None = None
+    # Акценты сняты со слайдов, а не с темы (тема файла с оформлением не связана).
+    accents_from_slides: bool = False
+    # Самый частый цвет объектов слайдов: заливка шапки таблицы и т. п.
+    primary: str | None = None
     missing: list[str] = field(default_factory=list)
 
     @property
@@ -85,6 +93,7 @@ class DesignCode:
         _read_typography(code, tokens.get("typography") or {})
         _read_content_sizes(code, profile)
         _read_colors(code, tokens.get("colors") or {})
+        _read_sample_styles(code, profile)
         _read_spacing(code, tokens.get("spacing") or {})
         _read_shape(code, tokens.get("shape") or {})
         return code
@@ -227,6 +236,151 @@ def _read_colors(code: DesignCode, colors: JsonDict) -> None:
         if luminance(hex_color) >= 0.88
     ]
     code.theme = {str(k): str(v) for k, v in theme.items() if isinstance(v, str)}
+
+
+def content_samples(profile: JsonDict) -> list[JsonDict]:
+    """Содержательные образцы шаблона (без обложки, разделителей и финала) преобладающего
+    тона. Их вид — то, как автор оформляет обычный слайд, и собственная композиция обязана
+    выглядеть так же, а не как пустой макет."""
+    samples = [
+        p
+        for p in profile.get("patterns") or []
+        if (p.get("source") or {}).get("kind") == "sample_slide"
+        and p.get("role") not in SERVICE_ROLES
+    ]
+    tones = [str((p.get("tone") or {}).get("background") or "") for p in samples]
+    known = [t for t in tones if t in ("light", "dark")]
+    if not known:
+        return samples
+    major = max(("light", "dark"), key=known.count)
+    return [p for p, t in zip(samples, tones, strict=True) if t == major]
+
+
+def content_tone(profile: JsonDict) -> JsonDict | None:
+    """Тон фона содержательных образцов: светлый или тёмный и медианная яркость."""
+    values = sorted(
+        float((p.get("tone") or {})["luminance"])
+        for p in content_samples(profile)
+        if (p.get("tone") or {}).get("luminance") is not None
+    )
+    if not values:
+        return None
+    luminance = values[len(values) // 2]
+    return {"background": "light" if luminance >= 0.5 else "dark", "luminance": luminance}
+
+
+def _most_common(values: list[str]) -> str | None:
+    counted = [v for v in values if v]
+    return max(dict.fromkeys(counted), key=counted.count) if counted else None
+
+
+def _read_sample_styles(code: DesignCode, profile: JsonDict) -> None:
+    """Начертание заголовка — с содержательных образцов; цвета — тоже с них, если тема файла
+    с оформлением не связана.
+
+    Тема часто не имеет к оформлению отношения: шаблон, собранный генератором или перенесённый
+    из другого файла, несёт тему Office (синий акцент, чёрный текст, белый фон), а настоящие
+    цвета заданы прямо на объектах слайдов. Без этого собственная композиция выходила белой с
+    чёрным текстом и синими плашками Office рядом с тёмно-синими заголовками образцов.
+    Признак отвязанной темы — ни один акцент темы не встречается на слайдах; у шаблонов, где
+    тема и слайды согласованы (VK: фирменный синий — accent1 и он же на объектах), цвета
+    остаются из темы и палитры, как раньше.
+    """
+    samples = content_samples(profile)
+    if not samples:
+        return
+    title_colors: list[str] = []
+    body_colors: list[str] = []
+    bold: list[bool] = []
+    for pattern in samples:
+        for slot in pattern.get("slots") or []:
+            font = slot.get("font") or {}
+            color = str(font.get("color") or "").upper()
+            if not color.startswith("#") or len(color) != 7:
+                color = ""
+            if slot.get("kind") == "title":
+                title_colors.append(color)
+                bold.append(bool(font.get("bold")))
+            elif slot.get("kind") in ("body", "bullets", "subtitle", "caption"):
+                body_colors.append(color)
+    if bold:
+        code.title_bold = sum(bold) * 2 > len(bold)
+    if not theme_detached(profile):
+        return
+    tone = content_tone(profile)
+    dark = tone is not None and tone["background"] == "dark"
+
+    def readable(color: str | None) -> bool:
+        return bool(color) and (relative_luminance(str(color)) < 0.5) != dark
+
+    title = _most_common(title_colors)
+    if readable(title):
+        code.title_color = str(title)
+        code.text_color = str(title)
+    body = _most_common([c for c in body_colors if c != code.title_color])
+    if readable(body):
+        code.muted_color = str(body)
+    palette = ((profile.get("design_tokens") or {}).get("colors") or {}).get("palette") or []
+    text = {code.text_color.upper(), code.muted_color.upper()}
+    used = sorted(
+        (
+            e
+            for e in palette
+            if e.get("source") != "theme"
+            and e.get("role") not in ("muted", "background", "text")
+            and e.get("hex")
+            and str(e["hex"]).upper() not in text
+            and luminance(str(e["hex"])) < 0.88
+        ),
+        key=lambda e: -int(e.get("usage_count") or 0),
+    )
+    own = list(dict.fromkeys(str(e["hex"]).upper() for e in used))
+    if len(own) >= 3:
+        # Порядок цветов для рядов — как у нумерованных шагов образцов (01 красный, 02
+        # оранжевый…): так карточки и узлы схемы окрашиваются в той же последовательности.
+        code.primary = own[0]
+        code.accents = list(dict.fromkeys([*_series(samples), *own]))
+        code.accents_from_slides = True
+
+
+def _series(samples: list[JsonDict]) -> list[str]:
+    """Самая длинная последовательность цветов номеров шагов одного образца."""
+    best: list[str] = []
+    for pattern in samples:
+        numbers = [
+            slot
+            for slot in pattern.get("slots") or []
+            if slot.get("kind") == "number"
+            and str((slot.get("font") or {}).get("color") or "").startswith("#")
+        ]
+        numbers.sort(key=lambda slot: _natural(str(slot.get("slot_id") or "")))
+        colors = list(
+            dict.fromkeys(str((slot.get("font") or {})["color"]).upper() for slot in numbers)
+        )
+        colors = [c for c in colors if luminance(c) < 0.88]
+        if len(colors) > len(best):
+            best = colors
+    return best if len(best) >= 3 else []
+
+
+def _natural(value: str) -> tuple[str, int]:
+    head = value.rstrip("0123456789")
+    tail = value[len(head) :]
+    return head, int(tail) if tail else 0
+
+
+def theme_detached(profile: JsonDict) -> bool:
+    """Акценты темы не встречаются ни на одном слайде шаблона: тема досталась файлу от
+    генератора или другой презентации и о его оформлении ничего не говорит."""
+    palette = ((profile.get("design_tokens") or {}).get("colors") or {}).get("palette") or []
+    theme = ((profile.get("design_tokens") or {}).get("colors") or {}).get("theme") or {}
+    accents = {str(v).upper() for k, v in theme.items() if k.startswith("accent") and v}
+    if not accents:
+        return False
+    for entry in palette:
+        if str(entry.get("hex") or "").upper() in accents and int(entry.get("usage_count") or 0):
+            return False
+    return any(e.get("source") != "theme" for e in palette)
 
 
 def _first(*values: Any) -> str:

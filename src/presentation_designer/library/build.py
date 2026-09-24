@@ -11,6 +11,8 @@
 
 from __future__ import annotations
 
+import copy
+import dataclasses
 from typing import Any
 
 from pptx.dml.color import RGBColor
@@ -19,6 +21,7 @@ from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Emu, Pt
 
 from presentation_designer.layout.ooxml import NS_A, NS_P, NS_R
+from presentation_designer.library.skin import Box, Skin, lift_title, overlaps
 from presentation_designer.library.spec import CardSpec, Composition, CompositionSlot
 from presentation_designer.library.tokens import DesignCode
 from presentation_designer.parsing.template.tone import relative_luminance
@@ -43,12 +46,16 @@ def build_slide(
     layout: Any,
     composition: Composition,
     code: DesignCode,
+    skin: Skin | None = None,
 ) -> tuple[Any, dict[str, str], list[str]]:
     """Создаёт слайд по композиции.
 
     Возвращает слайд, карту `slot_id → id объекта` и id плашек, которые можно убрать вместе с
     незаполненной карточкой. Текст не пишется: рамки создаются пустыми, а заполняет их общий
     путь вёрстки по `element_ref`, как и у паттернов из образцов шаблона.
+
+    `skin` — фон и декор содержательных образцов (`library.skin`): у шаблона, где оформление
+    нарисовано на слайдах, а не в макете, без неё композиция выходит белым листом.
     """
     slide = prs.slides.add_slide(layout)
     _drop_placeholders(slide)
@@ -57,6 +64,12 @@ def build_slide(
     # не совпадать с фоном дизайн-кода (у ЛЦТ все макеты фиолетовые, а белые слайды
     # образцов получают фон на самом слайде) — тёмный текст палитры там не читается.
     backdrop = layout_background(layout, code, width, height) or code.background
+    if skin is not None:
+        backdrop = _apply_skin(slide, composition, skin, width, height) or backdrop
+        composition = _placed(composition, skin)
+        if skin.background:
+            # Мягкие плашки разбавляют акцент настоящим фоном слайда.
+            code = dataclasses.replace(code, background=skin.background)
     cards = {card.index: card for card in composition.cards}
     card_ids: list[str] = []
     for card in composition.cards:
@@ -78,6 +91,74 @@ def build_slide(
         refs[slot.slot_id] = str(shape.shape_id)
     # Незаполненный якорь убирается вместе с пустой карточкой, как и текстовые рамки.
     return slide, refs, card_ids + anchor_ids
+
+
+def _decor_fits(composition: Composition, skin: Skin) -> list[Box] | None:
+    """Места декора, если он не задевает ничего, кроме заголовка (тот поднимается над ним);
+    None — декор мешает содержанию, и слайд обходится одним фоном."""
+    boxes = [box for _element, box in skin.decor]
+    if not boxes:
+        return None
+    title = next((slot for slot in composition.slots if slot.kind == "title"), None)
+    if title is None or skin.title_box is None:
+        return None
+    if title.bbox[1] > skin.title_box[1] + skin.title_box[3] + 0.05:
+        # Заголовок посередине (разделитель, акцент-фраза): шапка образцов над пустым верхом
+        # выглядит оторванной, слайду хватает фона.
+        return None
+    for slot in composition.slots:
+        if slot.kind == "title":
+            if lift_title(slot.bbox, skin, boxes) is None:
+                return None
+            continue
+        if any(overlaps(slot.bbox, box) for box in boxes):
+            return None
+    if any(overlaps(card.bbox, box) for card in composition.cards for box in boxes):
+        return None
+    return boxes
+
+
+def _apply_skin(
+    slide: Any, composition: Composition, skin: Skin, width: int, height: int
+) -> str | None:
+    """Фон и декор образцов на новом слайде; возвращает цвет фона, если он известен."""
+    from presentation_designer.layout import background
+    from presentation_designer.layout.shapes import next_shape_id
+
+    if skin.bg_blob is not None:
+        background.set_image(slide, skin.bg_blob, fit="cover", slide_w=width, slide_h=height)
+    elif skin.bg_element is not None:
+        csld = slide._element.find(f"{{{NS_P}}}cSld")
+        for old in csld.findall(f"{{{NS_P}}}bg"):
+            csld.remove(old)
+        csld.insert(0, copy.deepcopy(skin.bg_element))
+    if _decor_fits(composition, skin) is not None:
+        tree = slide.shapes._spTree
+        # Декор ложится под содержание: сразу за служебными nvGrpSpPr и grpSpPr.
+        position = 2
+        for element, _box in skin.decor:
+            clone = copy.deepcopy(element)
+            cnvpr = clone.find(f".//{{{NS_P}}}cNvPr")
+            if cnvpr is not None:
+                cnvpr.set("id", str(next_shape_id(slide)))
+            tree.insert(position, clone)
+            position += 1
+    return skin.background
+
+
+def _placed(composition: Composition, skin: Skin) -> Composition:
+    """Композиция с заголовком, поднятым над декором образцов (если декор ставится)."""
+    boxes = _decor_fits(composition, skin)
+    if not boxes:
+        return composition
+    slots = []
+    for slot in composition.slots:
+        if slot.kind == "title":
+            lifted = lift_title(slot.bbox, skin, boxes)
+            if lifted is not None and lifted != slot.bbox:
+                slot = dataclasses.replace(slot, bbox=lifted)
+        slots.append(slot)
+    return dataclasses.replace(composition, slots=slots)
 
 
 def _rgb(hex_color: str) -> Any:
@@ -235,7 +316,7 @@ def _add_text_box(
     if family:
         font.name = family
     font.size = Pt(code.size_for(slot.text_role))
-    font.bold = slot.bold
+    font.bold = slot.bold or (slot.text_role == "title" and code.title_bold)
     font.color.rgb = _rgb(_color_for(slot, code, card, backdrop))
     return shape
 
@@ -254,7 +335,8 @@ def _color_for(
         # Текст лежит на залитой плашке: цвет считается от заливки, а не от фона слайда.
         return code.on_accent(code.accent_at(card.accent_index))
     wanted = {"accent": code.accent, "muted": code.muted_color}.get(
-        slot.color_role, code.text_color
+        slot.color_role,
+        code.title_color if slot.text_role == "title" and code.title_color else code.text_color,
     )
     if slot.on_card and card is not None and card.fill == "surface":
         surface = _tint(code.accent_at(card.accent_index), code.background)

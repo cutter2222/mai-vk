@@ -34,7 +34,7 @@ log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 
-STORY_VERSION = "0.1.4"
+STORY_VERSION = "0.1.5"
 STORY_SCHEMA_VERSION = "1.2"
 THESIS_KINDS = ("section", "claim", "evidence", "conclusion", "call_to_action", "context")
 VISUALS = (
@@ -243,6 +243,16 @@ def normalize_package(package: JsonDict) -> JsonDict:
     }
 
 
+WEB_POLICY = (
+    "Режим: пользователь дал только тему; материалы найдены в открытых источниках в интернете "
+    "(у блоков указан сайт). Раскрой тему через них: конкретные исследования, числа, "
+    "рекомендации организаций, реальные примеры и неожиданные факты — это и есть содержание "
+    "слайдов, а не общие рассуждения. Числа бери только из фактов, называй, кто это установил "
+    "(«по данным ВОЗ», «эксперимент на 180 участниках»). Если источники расходятся, покажи обе "
+    "стороны. Ничего сверх материалов не выдумывай; чего не хватает — перечисли в assumptions."
+)
+
+
 def story_key(
     package: JsonDict,
     settings: JsonDict | None,
@@ -302,8 +312,17 @@ def story_digest(package: JsonDict, brief: JsonDict, *, max_chars: int = 14000) 
     if brief.get("avoid"):
         lines.append("Избегать: " + "; ".join(brief["avoid"]) + ".")
     mode = package.get("mode")
+    web = {
+        str(src.get("source_id")): str(src.get("domain") or src.get("name") or "")
+        for src in package.get("sources", [])
+        if src.get("kind") == "url"
+    }
     if topic_only(package):
         lines.append(CONCEPT_POLICY)
+    elif web and not any(
+        src.get("file_id") for src in package.get("sources", []) if src.get("kind") != "url"
+    ):
+        lines.append(WEB_POLICY)
     else:
         lines.append(
             {
@@ -358,6 +377,9 @@ def story_digest(package: JsonDict, brief: JsonDict, *, max_chars: int = 14000) 
             )
         else:
             text = f"{b['block_id']} · {kind} · {str(b.get('text', ''))[:500]}"
+        site = web.get(str(b.get("source_id")))
+        if site:
+            text += f" [источник: {site}]"
         refs = facts_by_block.get(b["block_id"])
         if refs:
             text += f" [факты: {', '.join(refs[:10])}]"

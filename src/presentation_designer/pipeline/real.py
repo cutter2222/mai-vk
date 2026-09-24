@@ -270,6 +270,7 @@ class RealLayers(StubLayers):
                 settings=self.settings,
                 llm_client=self.llm_client(),
                 skill=self.skill("content_importer"),
+                research=True,
             )
         except ValueError as e:
             raise StageError("import_invalid", str(e), stage="import") from e

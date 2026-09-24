@@ -514,3 +514,13 @@ def test_запертый_слайд_полировка_не_трогает():
     by_id = {s["slide_id"]: s for s in fixed["slides"]}
     assert by_id["s7"] == plan["slides"][0], "запертый слайд вернулся нетронутым"
     assert len(by_id["s8"]["blocks"]) == 4, "соседний слайд починен"
+
+
+def test_сокращение_не_берёт_обрывок_придаточного():
+    """«…, что после Второй мировой войны…» давало подпись «что после Второй»."""
+    slot = _slot("body_1", "body", 0.15, 0.05, 16.0, sample="Заголовок карточки")
+    short = feedback.condense(
+        "Доступность сахара составляла 15 кг, что после Второй мировой войны резко упало", slot
+    )
+    assert short is None or not short.lower().startswith("что")
+    assert short != "что после Второй"

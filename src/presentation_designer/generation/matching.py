@@ -459,8 +459,71 @@ def ordinal_slots(raw: JsonDict) -> set[str]:
     return set()
 
 
+def _single_file(members: list[SlotInfo]) -> bool:
+    """Элементы стоят в один ряд, каждый в своей колонке (маршрут, лента шагов), хотя по
+    высоте могут расходиться зигзагом. Порядок чтения «по строкам» такой ряд перемешивает:
+    у маршрута обложки ЛЦТ-подобного шаблона номера и подписи разных групп, сопоставляемые
+    по индексу, расходились — «04» оказывался под подписью с другого конца слайда."""
+    if len(members) < 3:
+        return False
+    for i, a in enumerate(members):
+        for b in members[i + 1 :]:
+            ca, cb = a.bbox[0] + a.bbox[2] / 2, b.bbox[0] + b.bbox[2] / 2
+            if abs(ca - cb) < min(a.bbox[2], b.bbox[2]) / 2:
+                return False
+    return True
+
+
+def _follow_numbering(groups: list[CardGroup]) -> None:
+    """Карточки идут в порядке номеров, которые поставил автор образца.
+
+    «Змейка» из двух рядов нумеруется 01–04 слева направо и 05–08 справа налево; порядок
+    чтения по строкам поставил бы пятый пункт в левый нижний угол, против стрелки маршрута.
+    Если номера группы — перестановка 1…N, все группы того же размера (подписи, тексты)
+    переставляются так же: карточка остаётся карточкой, меняется только очередь заполнения."""
+    for group in groups:
+        numbers = group.by_kind.get("number") or []
+        if len(numbers) < 3 or len(numbers) != group.count:
+            continue
+        values = []
+        for slot in numbers:
+            text = slot.sample_text.strip()
+            if not re.fullmatch(r"\d{1,2}", text):
+                break
+            values.append(int(text))
+        if sorted(values) != list(range(1, len(numbers) + 1)) or values == sorted(values):
+            continue
+        order = sorted(range(len(values)), key=lambda i: values[i])
+        for other in groups:
+            if other.count != group.count:
+                continue
+            for kind, members in other.by_kind.items():
+                if len(members) == len(order):
+                    other.by_kind[kind] = [members[i] for i in order]
+        return
+
+
+def _typed_page_number(slot: SlotInfo, slide_index: int) -> bool:
+    """Номер страницы, набранный на образце обычным текстом: маленькая надпись внизу, где
+    цифры совпадают с номером образца («09» на девятом). Это колонтитул, а не место под
+    показатель: планировщик клал туда «5 %»."""
+    text = slot.sample_text.strip()
+    return (
+        slot.kind == "number"
+        and slide_index > 0
+        and text.isdigit()
+        and int(text) == slide_index
+        and slot.bbox[1] >= 0.85
+        and slot.bbox[2] <= 0.12
+    )
+
+
 def pattern_info(raw: JsonDict) -> PatternInfo:
     slots = [_slot_info(s) for s in raw.get("slots", [])]
+    index = int((raw.get("source") or {}).get("slide_index") or 0)
+    for s in slots:
+        if _typed_page_number(s, index):
+            s.kind, s.group = "footer", None
     title = next((s for s in slots if s.kind == "title"), None)
     # Профили старых анализаторов могли пометить заголовками несколько надписей (номера
     # карточек тем же кеглем); заголовок в паттерне один, остальные — подписи.
@@ -481,8 +544,12 @@ def pattern_info(raw: JsonDict) -> PatternInfo:
         by_kind: dict[str, list[SlotInfo]] = collections.defaultdict(list)
         for s in members:
             by_kind[s.kind].append(s)
+        for kind, kind_members in by_kind.items():
+            if _single_file(kind_members):
+                by_kind[kind] = sorted(kind_members, key=lambda s: s.bbox[0] + s.bbox[2] / 2)
         count = max(len(v) for v in by_kind.values())
         groups.append(CardGroup(gid, count, dict(by_kind)))
+    _follow_numbering(groups)
     hints = raw.get("sequence_hints") or {}
     tone = raw.get("tone") or {}
     # A repeated sequence 1..N in small badges is navigation, not N KPI slots.

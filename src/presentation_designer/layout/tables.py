@@ -127,6 +127,12 @@ class TableStyle:
         palette = colors.get("palette") or []
         primary = next((e["hex"] for e in palette if e.get("role") == "primary"), None)
         text = next((e["hex"] for e in palette if e.get("role") == "text"), None)
+        from presentation_designer.library.tokens import DesignCode
+
+        code = DesignCode.from_profile(profile)
+        if code.accents_from_slides:
+            # Тема файла с оформлением не связана: шапка и текст — цветами слайдов шаблона.
+            primary, text = code.primary or code.accent, code.text_color
         return cls(
             font_family=family,
             font_size_pt=min(size, 14.0),

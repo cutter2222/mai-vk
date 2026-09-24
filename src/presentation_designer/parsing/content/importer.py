@@ -25,6 +25,7 @@ from presentation_designer.contracts import CONTRACTS_VERSION, ContentPackage
 from presentation_designer.contracts.validators import check_content_package
 from presentation_designer.parsing.content import datasets as datasets_mod
 from presentation_designer.parsing.content import facts as facts_mod
+from presentation_designer.parsing.content import research as research_mod
 from presentation_designer.parsing.content.parsers import (
     PARSER_VERSIONS,
     SUPPORTED_FORMATS,
@@ -42,7 +43,7 @@ log = logging.getLogger(__name__)
 JsonDict = dict[str, Any]
 
 IMPORTER_NAME = "content_importer"
-IMPORTER_VERSION = "0.3.2"
+IMPORTER_VERSION = "0.3.3"
 BRIEF_PARSER_VERSION = "0.1.0"
 PURPOSES = ("feature", "product", "project", "initiative", "report", "other")
 _EXT_BY_MIME = {
@@ -198,7 +199,8 @@ def import_key(files: list[MaterialFile], settings: Settings) -> str:
 def import_version() -> str:
     """Версия импортёра для идемпотентности пакета в pipeline."""
     parsers = ",".join(f"{k}={v}" for k, v in sorted(PARSER_VERSIONS.items()))
-    return f"{IMPORTER_VERSION}/{CONTRACTS_VERSION}/{parsers}"
+    web = f"web={research_mod.RESEARCH_VERSION}"
+    return f"{IMPORTER_VERSION}/{CONTRACTS_VERSION}/{parsers},{web}"
 
 
 # ---------- сборка ----------
@@ -234,7 +236,11 @@ def import_content(
     skill: Any = None,
     cache: ParseCache | None = None,
     use_model: bool | None = None,
+    research: bool = False,
 ) -> ImportResult:
+    """Контент-пакет из файлов и брифа. `research` — если кроме темы ничего нет, найти
+    материалы в интернете (`parsing/content/research`); включает рабочий конвейер, тесты и
+    CLI без него в сеть не ходят."""
     settings = settings or get_settings()
     ci = settings.content_import
     started = time.perf_counter()
@@ -363,6 +369,38 @@ def import_content(
         sources.append({"source_id": source_id, **source})
         if doc is not None:
             documents.append((source_id, doc))
+    research_report: JsonDict | None = None
+    web_sources: set[str] = set()
+    if research and _topic_only_input(brief, parsed) and settings.research.enabled:
+        # Кроме темы ничего нет: без материалов модель пишет общие слова, поэтому до плана
+        # ищутся открытые источники. Сбой сети не роняет импорт — пакет остаётся темой.
+        t0 = time.perf_counter()
+        researcher = None
+        if llm_client is not None and use_model is not False:
+            try:
+                from presentation_designer.llm.skills import get_skill
+
+                researcher = get_skill("web_researcher")
+            except Exception as e:  # скилл не найден — запросы из темы без модели
+                log.warning("скилл web_researcher недоступен: %s", e)
+        try:
+            found = research_mod.research(
+                package_brief,
+                settings.research,
+                cache_dir=settings.import_cache_dir,
+                llm_client=llm_client if researcher is not None else None,
+                skill=researcher,
+            )
+            research_report = found.report
+            for i, (source, doc) in enumerate(found.documents, start=1):
+                source_id = f"src_web_{i}"
+                sources.append({"source_id": source_id, **source})
+                documents.append((source_id, doc))
+                web_sources.add(source_id)
+        except Exception as e:
+            log.warning("поиск материалов в интернете не удался: %s", e)
+            research_report = {"errors": [f"{type(e).__name__}: {e}"[:200]]}
+        timings["research_ms"] = int((time.perf_counter() - t0) * 1000)
     for source_id, doc in documents:
         heading: str | None = None
         for pb in doc.blocks:
@@ -533,6 +571,11 @@ def import_content(
                 "message": f"фактов больше {ci.max_facts}: остальные не включены",
             }
         )
+    for fact in facts:
+        if fact.source_id in web_sources:
+            # Число со страницы из интернета — опора, а не обязательство: колода не обязана
+            # показать каждое из десятков чисел выдачи.
+            fact.must_keep = False
     fact_blocks = {f.block_id for f in facts if f.must_keep}
     vision_blocks = {d.block_id for d in datasets if d.source_chart}
     for fact in facts:
@@ -647,10 +690,22 @@ def import_content(
         "cache": {"files_hit": hits, "files_missed": missed},
         "model": model_summary,
         "chart_images": chart_summary,
+        **({"research": research_report} if research_report is not None else {}),
         "warnings": warnings + [w for s in sources for w in s.get("warnings", [])],
         "total_ms": import_meta["duration_ms"],
     }
     return ImportResult(package=package, assets=asset_bytes, report=report, warnings=warnings)
+
+
+def _topic_only_input(
+    brief: JsonDict | None, parsed: list[tuple[MaterialFile, ParsedDocument | None, JsonDict]]
+) -> bool:
+    """Есть тема и нет ни заметок, ни текста в файлах: материалы нужно искать самим."""
+    if brief is None or not str(brief.get("title") or "").strip():
+        return False
+    if str(brief.get("notes") or "").strip():
+        return False
+    return not any(doc is not None and doc.text_chars > 0 for _m, doc, _s in parsed)
 
 
 def find_missing_data(

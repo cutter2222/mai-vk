@@ -129,6 +129,12 @@ class ChartStyle:
         accents = [a for a in accents if luminance(a) < 0.85]
         text = next((e["hex"] for e in palette if e.get("role") == "text"), None)
         text = text or theme.get("dk1") or "#000000"
+        from presentation_designer.library.tokens import DesignCode
+
+        code = DesignCode.from_profile(profile)
+        if code.accents_from_slides:
+            # Тема файла с оформлением не связана: ряды — цветами слайдов шаблона.
+            accents, text = list(code.accents), code.text_color
         gridlines = not any(
             any(w in str(g.get("text", "")).lower() for w in ("сетк", "grid"))
             for g in profile.get("guidelines") or []

@@ -205,3 +205,12 @@ def test_model_refinement_survives_provider_error(make_client: Any, stub: Any) -
     summary = refine_facts_with_model(facts, client, get_skill("content_importer"), budget_s=3)
     assert summary["accepted"] == 0 and summary["errors"]
     assert facts[0].uncertainty["extracted_by"] == "regex"
+
+
+def test_unit_is_a_whole_word() -> None:
+    """«Диабет 2 типа» — не две тонны, «5 мая» — не пять метров."""
+    from presentation_designer.parsing.content.numbers import find_numbers
+
+    assert not [n for n in find_numbers("диабет 2 типа") if n.unit == "т"]
+    assert not [n for n in find_numbers("5 мая") if n.unit == "м"]
+    assert [(n.raw, n.unit) for n in find_numbers("3 т груза")] == [("3 т", "т")]

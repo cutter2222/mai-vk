@@ -97,6 +97,20 @@ class ContentImport(BaseModel):
     chart_image_max_images: int = Field(default=8, ge=0, le=40)
 
 
+class Research(BaseModel):
+    """Материалы из интернета для темы без материалов (parsing/content/research): выдача
+    DuckDuckGo и статья Википедии, абзацы по теме входят в пакет блоками с адресом страницы."""
+
+    enabled: bool = True
+    max_pages: int = Field(default=6, ge=1, le=12)
+    paragraphs_per_page: int = Field(default=4, ge=1, le=10)
+    max_chars: int = Field(default=7000, ge=500, le=20000)
+    search_timeout_s: float = Field(default=8.0, gt=0, le=30)
+    page_timeout_s: float = Field(default=7.0, gt=0, le=30)
+    budget_s: float = Field(default=25.0, gt=0, le=90)
+    wikipedia: bool = True
+
+
 class Plan(BaseModel):
     """Планы вариантов (generation/variants): кэш готовых планов, пакеты тезисов, лестница
     ёмкости (минимальный кегль по роли текста и допустимое уменьшение), политика стилей
@@ -260,6 +274,7 @@ class Settings(BaseModel):
     queue: Queue = Field(default_factory=Queue)
     execution: Execution = Field(default_factory=Execution)
     content_import: ContentImport = Field(default_factory=ContentImport)
+    research: Research = Field(default_factory=Research)
     plan: Plan = Field(default_factory=Plan)
     layout: Layout = Field(default_factory=Layout)
     render: Render = Field(default_factory=Render)

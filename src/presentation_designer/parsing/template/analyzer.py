@@ -55,7 +55,7 @@ from presentation_designer.shared.settings import Settings, get_settings
 log = logging.getLogger(__name__)
 
 ANALYZER_NAME = "template_analyzer"
-ANALYZER_VERSION = "0.4.4"
+ANALYZER_VERSION = "0.4.5"
 # Версия схемы профиля: пишется в документ и входит в ключ кэша разбора.
 PROFILE_SCHEMA_VERSION = "1.4"
 PREVIEW_DIR = "previews"

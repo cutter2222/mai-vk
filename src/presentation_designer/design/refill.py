@@ -365,6 +365,14 @@ def apply_answer(
         slots = {s.get("slot_id"): s for s in content_slots(pattern)}
         seen = {_norm(b.get("text", "")) for b in slide.get("blocks", [])}
         filled = {b.get("slot_id") for b in slide.get("blocks", [])}
+        # Тексты образца этого слайда: модель получает их в `like` как мерку длины и жанра и
+        # охотно возвращает дословно («Наблюдение / Объяснение / Вывод», «Методы, Анализ,
+        # Выводы» на финале) — на слайде остаётся содержание шаблона, а не колоды.
+        samples = {
+            _norm(str(s.get("sample_text") or ""))
+            for s in pattern.get("slots") or []
+            if str(s.get("sample_text") or "").strip()
+        }
 
         for slot_id, text in per_slide.items():
             slot = slots.get(slot_id)
@@ -415,7 +423,7 @@ def apply_answer(
                     slot_id,
                 )
                 continue
-            if norm in sample_marks or norm in seen:
+            if norm in sample_marks or norm in seen or norm in samples:
                 log.info(
                     "отвергнут %s/%s: образец шаблона или повтор",
                     slide.get("slide_id"),

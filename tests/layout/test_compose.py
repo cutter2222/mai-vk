@@ -1174,3 +1174,49 @@ def test_card_frame_contains_wider_caption() -> None:
     assert _contains(frame, (0.048, 0.587, 0.071, 0.042))
     assert not _contains(frame, (0.100, 0.587, 0.300, 0.042))
     assert not _contains(frame, (0.055, 0.557, 0.0, 0.0))
+
+
+def test_overflowing_text_keeps_whole_sentences_and_spills_rest_to_notes(
+    rich_profile: dict[str, Any],
+    rich_template_path: pathlib.Path,
+    example_package: dict[str, Any],
+    tmp_path: pathlib.Path,
+) -> None:
+    """План отметил текст как не помещающийся: на слайде остаются целые предложения, которые
+    входят в рамку, остальное — в заметках докладчика. Раньше абзац лез на заголовок."""
+    first = "Короткая мысль помещается."
+    rest = " ".join(
+        f"Длинное пояснение номер {i} с подробностями, которые в рамку уже не входят."
+        for i in range(12)
+    )
+    block = {
+        "slot_id": "subtitle_1",
+        "kind": "body",
+        "text": f"{first} {rest}",
+        "fit": {
+            "size_pt": 32.0,
+            "slot_size_pt": 32.0,
+            "lines": 20,
+            "max_lines": 2,
+            "action": "overflow",
+        },
+    }
+    plan = _plan_with(
+        rich_profile, [{"pattern_id": "pat_s3", "title": "Показатели", "blocks": [block]}]
+    )
+    result = _compose(
+        plan, rich_profile, rich_template_path, example_package, tmp_path / "spill.pptx"
+    )
+    slide = Presentation(result.pptx_path).slides[0]
+    texts = _slide_texts(slide)
+    assert any(t.startswith(first) for t in texts), "начало текста на слайде"
+    assert not any("номер 11" in t for t in texts), "хвост не на слайде"
+    notes = slide.notes_slide.notes_text_frame.text
+    assert "номер 11" in notes, "остаток сохранён в заметках"
+    fit = next(
+        o["fit"]
+        for s in result.deck["slides"]
+        for o in s["objects"]
+        if o.get("slot_id") == "subtitle_1"
+    )
+    assert fit["action"] == "shortened"

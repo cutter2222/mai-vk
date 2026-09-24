@@ -63,6 +63,12 @@ class DiagramStyle:
         if primary:
             accents.insert(0, primary)
         text = next((e["hex"] for e in palette if e.get("role") == "text"), None)
+        from presentation_designer.library.tokens import DesignCode
+
+        code = DesignCode.from_profile(profile)
+        if code.accents_from_slides:
+            # Тема файла с оформлением не связана: цвета — те, что на слайдах шаблона.
+            accents, text = list(code.accents), code.text_color
         return cls(
             font_family=family,
             font_size_pt=max(18.0, min(size, 24.0)),

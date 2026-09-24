@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 from presentation_designer.library.spec import Composition, load_families
-from presentation_designer.library.tokens import DesignCode
+from presentation_designer.library.tokens import DesignCode, content_tone
 from presentation_designer.parsing.template.layouts import layout_family
 from presentation_designer.parsing.template.tone import LIGHT_THRESHOLD, relative_luminance
 from presentation_designer.shared import text_metrics
@@ -50,10 +50,13 @@ def builtin_patterns(
         ),
         "",
     )
+    tone = content_tone(profile)
     out: list[JsonDict] = []
     for family in load_families():
         for composition in family.expand():
-            out.append(_as_pattern(composition, design, width_emu, height_emu, layout, layout_name))
+            out.append(
+                _as_pattern(composition, design, width_emu, height_emu, layout, layout_name, tone)
+            )
     return out
 
 
@@ -119,6 +122,7 @@ def _as_pattern(
     height_emu: int,
     layout_id: str,
     layout_name: str = "",
+    content_tone: JsonDict | None = None,
 ) -> JsonDict:
     slots: list[JsonDict] = []
     for slot in composition.slots:
@@ -133,14 +137,26 @@ def _as_pattern(
             "size_pt": round(size_pt, 1),
             "color": _slot_color(slot.color_role, code),
         }
-        if slot.bold:
+        if slot.bold or (slot.text_role == "title" and code.title_bold):
             raw["font"]["bold"] = True
-        raw["capacity"] = _capacity(slot.bbox, size_pt, family, width_emu, height_emu, slot.kind)
+        raw["capacity"] = _capacity(
+            slot.bbox,
+            size_pt,
+            family,
+            width_emu,
+            height_emu,
+            slot.kind,
+            bool(raw["font"].get("bold")),
+        )
         slots.append(raw)
     # Тон и стиль — как у паттернов шаблона: по ним планировщик держит служебные слайды
     # (титул, разделители, финал) в одном стиле внутри колоды и разводит варианты. Фон
-    # композиции — фон дизайн-кода, под него подобраны цвета текста.
+    # композиции — фон содержательных образцов (его ставит `library.skin`), без них — фон
+    # дизайн-кода, под него подобраны цвета текста.
     luminance = relative_luminance(code.background)
+    content = content_tone or {}
+    if content.get("luminance") is not None:
+        luminance = float(content["luminance"])
     tone = {
         "background": "light" if luminance >= LIGHT_THRESHOLD else "dark",
         "luminance": round(luminance, 3),
@@ -182,9 +198,10 @@ def _capacity(
     width_emu: int,
     height_emu: int,
     kind: str,
+    bold: bool = False,
 ) -> JsonDict:
     _, _, width, height = bbox
-    font = text_metrics.resolve_font(family)
+    font = text_metrics.resolve_font(family, bold=bold)
     cap = text_metrics.capacity(
         width_emu=int(width * width_emu),
         height_emu=int(height * height_emu),

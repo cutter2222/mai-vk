@@ -251,3 +251,23 @@ def test_служебные_слова_не_делают_текст_переск
         plan, {"cards_3": PATTERN}, {"s7": {"body_2": "Плюс 18% за полгода"}}, set()
     )
     assert taken == [("s7", "body_2")]
+
+
+def test_текст_образца_этого_слайда_отвергается():
+    """Модель получает текст образца как мерку длины и возвращала его дословно:
+    «Наблюдение / Объяснение / Вывод» оставались на слайде про другое."""
+    pattern = {
+        **PATTERN,
+        "slots": [
+            {**slot, "sample_text": "Наблюдение"} if slot["slot_id"] == "body_2" else slot
+            for slot in PATTERN["slots"]
+        ],
+    }
+    plan = _plan()
+    taken = apply_answer(
+        plan,
+        {"cards_3": pattern},
+        {"s7": {"body_2": "Наблюдение", "body_3": "Сон и энергия"}},
+        set(),
+    )
+    assert taken == [("s7", "body_3")]

@@ -66,7 +66,7 @@ log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 
-PLAN_VERSION = "0.4.4"
+PLAN_VERSION = "0.4.6"
 PLAN_SCHEMA_VERSION = "1.3"
 # Версии плана, отличающиеся от текущей только добавленными необязательными полями: план
 # прежней ревизии (правки из чата и редактора читают его с диска) поднимается до текущей.
@@ -967,7 +967,20 @@ def _stems(text: str) -> set[str]:
 
 
 def _clean(text: Any, limit: int = 600) -> str:
-    return re.sub(r"\s+", " ", str(text or "")).strip()[:limit]
+    """Текст одной строкой не длиннее `limit`. Длинный режется по концу предложения, а если
+    его нет в последних трёх пятых — по границе слова с многоточием: обрубок «цикл зависим»
+    на слайде хуже, чем на предложение короче."""
+    value = re.sub(r"\s+", " ", str(text or "")).strip()
+    if len(value) <= limit:
+        return value
+    head = value[: limit + 1]
+    ends = [m.end() for m in re.finditer(r"[.!?…](?=\s|$)", head) if m.end() <= limit]
+    if ends and ends[-1] >= limit * 0.4:
+        return head[: ends[-1]].strip()
+    cut = head.rfind(" ", 0, limit)
+    if cut <= limit * 0.4:
+        return value[:limit]
+    return head[:cut].rstrip(" ,;:—–-") + "…"
 
 
 def drafts_from_answer(
@@ -2312,6 +2325,7 @@ def measure_blocks(ctx: Context, draft: Draft, blocks: list[JsonDict]) -> list[J
                 ctx.scale,
                 min_ratio=min(ratio or plan_cfg.min_font_ratio, plan_cfg.min_font_ratio),
                 min_pt=min_pt,
+                fill_below=ratio is not None,
             ):
                 m2 = cap.measure(
                     text,

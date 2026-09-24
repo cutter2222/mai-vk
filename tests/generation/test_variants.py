@@ -1172,3 +1172,99 @@ def test_title_falls_back_to_speaker_or_any_titled_pattern(mini_profile: dict[st
     title = mt.fixed_pattern(patterns, "title")
     assert title is not None and title.title is not None and title.role == "bullets"
     assert mt.fixed_pattern(patterns, "thanks") is None
+
+
+def test_clean_cuts_at_sentence_or_word_not_mid_word() -> None:
+    """Пояснение раздела резалось ровно на 200 знаках: «Это формирует цикл зависим»."""
+    text = (
+        "Сладкие продукты вызывают выброс дофамина, создавая быстрый эффект удовольствия. "
+        "Часто мы едим сладкое не из-за голода, а из-за эмоционального состояния. "
+        "Это формирует цикл зависимости, из которого трудно выйти без плана и поддержки."
+    )
+    cut = vr._clean(text, 200)
+    assert cut.endswith("эмоционального состояния.")
+    words = "слово " * 60
+    clipped = vr._clean(words, 100)
+    assert clipped.endswith("слово…") and len(clipped) <= 100
+    assert vr._clean("коротко", 200) == "коротко"
+
+
+def test_service_font_steps_go_below_template_scale() -> None:
+    """Шкала обложки 54 → 43,5 → 36: тема в 60 знаков не входила ни в одну ступень и
+    наезжала на подзаголовок. Для служебных слайдов лестница идёт дальше шагами по 2 пт."""
+    slot = SimpleNamespace(size_pt=54.0)
+    scale = [54.0, 43.5, 36.0, 24.0]
+    plain = cap.font_steps(slot, scale, min_ratio=0.5, min_pt=20.0)
+    assert plain == [43.5, 36.0]
+    service = cap.font_steps(slot, scale, min_ratio=0.5, min_pt=20.0, fill_below=True)
+    assert service[:2] == [43.5, 36.0] and service[-1] == 28.0 and 30.0 in service
+
+
+def test_route_cards_pair_left_to_right_and_follow_author_numbers() -> None:
+    """Маршрут-зигзаг: номера и подписи в разных группах шли «по строкам» и расходились;
+    змейка из двух рядов нумеруется справа налево во втором ряду."""
+
+    def slot(slot_id: str, kind: str, x: float, y: float, text: str, group: str) -> dict:
+        return {
+            "slot_id": slot_id,
+            "kind": kind,
+            "bbox": {"x": x, "y": y, "width": 0.05, "height": 0.04},
+            "sample_text": text,
+            "repeat_group": group,
+        }
+
+    zigzag = [0.72, 0.78, 0.71, 0.79]
+    route = {
+        "pattern_id": "p",
+        "role": "title",
+        "slots": [
+            slot(f"n{i}", "number", 0.1 + i * 0.2, y, f"0{i + 1}", "g1")
+            for i, y in sorted(enumerate(zigzag), key=lambda p: p[1])
+        ]
+        + [
+            slot(f"b{i}", "body", 0.09 + i * 0.2, y + 0.07, f"Шаг {i + 1}", "g2")
+            for i, y in sorted(enumerate(zigzag), key=lambda p: -p[1])
+        ],
+    }
+    info = mt.pattern_info(route)
+    numbers = next(g for g in info.groups if "number" in g.by_kind).by_kind["number"]
+    bodies = next(g for g in info.groups if "body" in g.by_kind).by_kind["body"]
+    assert [s.sample_text for s in numbers] == ["01", "02", "03", "04"]
+    assert [s.sample_text for s in bodies] == ["Шаг 1", "Шаг 2", "Шаг 3", "Шаг 4"]
+    snake = {
+        "pattern_id": "s",
+        "role": "process",
+        "slots": [
+            slot(f"n{r}{c}", "number", 0.1 + c * 0.25, 0.3 + r * 0.3, f"0{n}", "g1")
+            for r, row in enumerate(([1, 2, 3], [6, 5, 4]))
+            for c, n in enumerate(row)
+        ],
+    }
+    order = [s.sample_text for s in mt.pattern_info(snake).groups[0].by_kind["number"]]
+    assert order == ["01", "02", "03", "04", "05", "06"]
+
+
+def test_typed_page_number_is_a_footer_not_a_number_slot() -> None:
+    """«09» внизу девятого образца — номер страницы: планировщик клал туда «5 %»."""
+    raw = {
+        "pattern_id": "pat_s9",
+        "role": "process",
+        "source": {"kind": "sample_slide", "slide_index": 9},
+        "slots": [
+            {
+                "slot_id": "number_1",
+                "kind": "number",
+                "sample_text": "01",
+                "bbox": {"x": 0.1, "y": 0.4, "width": 0.05, "height": 0.05},
+            },
+            {
+                "slot_id": "number_4",
+                "kind": "number",
+                "sample_text": "09",
+                "bbox": {"x": 0.895, "y": 0.933, "width": 0.05, "height": 0.03},
+            },
+        ],
+    }
+    info = mt.pattern_info(raw)
+    assert info.slots["number_4"].kind == "footer"
+    assert info.slots["number_1"].kind == "number"
