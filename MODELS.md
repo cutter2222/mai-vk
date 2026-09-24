@@ -64,7 +64,7 @@
 | `chart_extractor` 0.1.0 | import | vlm | `import.chart_image` 0.1.0 | выключено, до 9000 | json_schema |
 | `chart_reader` 0.1.0 | analyze | vlm | `rebuild.chart_image` 0.1.0 | выключено, до 6000 | json_schema |
 | `content_importer` 0.2.0 | import | llm | `import.fact_context` 0.2.0 | выключено, до 6000 | json_schema |
-| `project_assistant` 0.1.0 | import | llm | `chat.reply` 0.1.0 | выключено, до 1000 | json_schema |
+| `project_assistant` 0.1.1 | import | llm | `chat.reply` 0.1.1 | выключено, до 1000 | json_schema |
 | `repairer` 0.1.0 | repair | llm | `repair.rewrite_block` 0.1.0 | короткое, до 10000 | json_schema |
 | `slide_editor` 0.1.0 | plan | llm | `edit.slide` 0.1.0 | выключено, до 8000 | json_schema |
 | `slot_filler` 0.2.0 | plan | llm | `fill.slots` 0.2.0 | выключено, до 6000 | json_object |

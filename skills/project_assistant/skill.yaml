@@ -1,6 +1,6 @@
 schema_version: '1.1'
 name: project_assistant
-version: 0.1.0
+version: 0.1.1
 stage: import
 description: 'Контекстные ответы в чате проекта без выполнения действий'
 model_role: llm
@@ -10,7 +10,7 @@ reasoning:
   max_output_tokens: 1000
 prompts:
 - id: chat.reply
-  path: prompts/chat.reply.v0.1.0.md
-  version: 0.1.0
+  path: prompts/chat.reply.v0.1.1.md
+  version: 0.1.1
 params:
   temperature: 0.0
