@@ -2,8 +2,11 @@
 
 import { ActionIcon, Badge, Button, CloseButton, FileButton, Group, Stack, Text, Textarea, Tooltip } from "@mantine/core";
 import { Dropzone } from "@mantine/dropzone";
-import { IconArrowUp, IconFile, IconPaperclip, IconSlideshow } from "@tabler/icons-react";
-import { useEffect, useRef, useState } from "react";
+import { notifications } from "@mantine/notifications";
+import { IconArrowUp, IconFile, IconMicrophone, IconPaperclip, IconPlayerStopFilled, IconSlideshow } from "@tabler/icons-react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+
+import { dictationSupported, useDictation } from "@/lib/hooks/useDictation";
 
 import { formatBytes, VARIANT_LABELS } from "@/lib/format";
 import type { OfficeSelection } from "@/lib/api/client";
@@ -18,6 +21,8 @@ import { AssistantTyping } from "./AssistantTyping";
 import { useAssistantTyping } from "./useAssistantTyping";
 
 interface Props {
+  /** Голосовой ввод доступен (сервис распознавания отвечает, модель на месте). */
+  speech?: boolean;
   officeSelection?: OfficeSelection | null;
   onDismissOfficeSelection?: () => void;
   suggestions?: string[];
@@ -29,6 +34,9 @@ interface Props {
   onAnswerStaged: (localId: string, answer: PptxAnswer) => void;
 }
 
+/** Наличие микрофона не меняется за жизнь страницы: подписываться не на что. */
+const noSubscription = () => () => {};
+
 /** Первое сообщение ленты: шаблон выбирается в правом углу шапки, в чате — задача и материалы. */
 export const CHAT_GREETING = "Опишите, какая нужна презентация, или перетащите сюда материалы. Шаблон оформления выберите вверху справа.";
 
@@ -36,7 +44,7 @@ export const CHAT_GREETING = "Опишите, какая нужна презен
  * Чат проекта: лента сообщений и карточек шагов, внизу поле ввода с вложениями; файлы можно бросать в любое место панели.
  * PPTX не ждёт отправки: вопрос «шаблон, готовая презентация или материал» появляется в ленте в момент броска, пока файл грузится.
  */
-export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onAnswerStaged, officeSelection, onDismissOfficeSelection }: Props) {
+export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onAnswerStaged, officeSelection, onDismissOfficeSelection, speech = false }: Props) {
   const { project, session } = ctx;
   // Выбранный справа слайд — адресат сообщения: чип над полем ввода, крестик снимает адресацию.
   const target = session.slideTarget;
@@ -78,6 +86,27 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
   }, [count, session.result?.status, settledEdits, typing.progress, typing.activeIndex, showTyping]);
 
   const blocked = session.editorDirty;
+  // Надиктованная фраза дописывается в конец поля через пробел: дальше это обычный текст.
+  const appendDictated = useCallback((phrase: string) => {
+    setText((current) => (current.trim() ? `${current.replace(/\s+$/, "")} ${phrase}` : phrase));
+  }, []);
+  const dictationError = useCallback((message: string) => {
+    notifications.show({ color: "red", title: "Голосовой ввод", message });
+  }, []);
+  const dictation = useDictation({ onText: appendDictated, onError: dictationError });
+  // Кнопка — только если сервис распознавания есть и браузер даёт микрофон (HTTPS или localhost).
+  const micAvailable = useSyncExternalStore(noSubscription, dictationSupported, () => false);
+  const showMic = speech && micAvailable;
+  const toggleMic = () => {
+    if (dictation.recording) void dictation.stop();
+    else if (dictation.state === "idle") void dictation.start();
+  };
+  useEffect(() => {
+    if (!dictation.recording) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") void dictation.stop(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [dictation]);
   const dispatch = async (t: string, f: File[], to: SlideTarget | null) => {
     setSending(t.trim() ? "text" : "files");
     try {
@@ -88,6 +117,8 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
   };
   const submit = async () => {
     if (sending || blocked || (!text.trim() && pending.length === 0)) return;
+    // Отправка выключает запись: уходит то, что в поле, недослушанное не дописывается.
+    if (dictation.state !== "idle") dictation.cancel();
     const t = text;
     const f = pending;
     const to = t.trim() ? target : null;
@@ -199,6 +230,26 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
             style={{ flex: 1 }}
             data-testid="chat-input"
           />
+          {dictation.pending > 0 && <Text size="sm" c="dimmed" className="chat-mic-pending" aria-label="Распознаю фразу" data-testid="chat-mic-pending">…</Text>}
+          {showMic && (
+            <Tooltip label={dictation.recording ? "Остановить запись" : "Надиктовать (русский)"}>
+              <ActionIcon
+                variant={dictation.recording ? "filled" : "subtle"}
+                color={dictation.recording ? "red" : "gray"}
+                size="lg"
+                className="chat-mic"
+                data-recording={dictation.recording || undefined}
+                onClick={toggleMic}
+                loading={dictation.state === "starting" || dictation.state === "stopping"}
+                disabled={blocked}
+                aria-pressed={dictation.recording}
+                aria-label={dictation.recording ? "Остановить запись" : "Надиктовать (русский)"}
+                data-testid="chat-mic"
+              >
+                {dictation.recording ? <IconPlayerStopFilled size={16} /> : <IconMicrophone size={18} />}
+              </ActionIcon>
+            </Tooltip>
+          )}
           <ActionIcon variant="filled" size="lg" onClick={submit} loading={Boolean(sending)} disabled={blocked || (!text.trim() && pending.length === 0)} aria-label="Отправить" data-testid="chat-send"><IconArrowUp size={18} /></ActionIcon>
         </div>
         {blocked ? (

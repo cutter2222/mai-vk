@@ -299,7 +299,10 @@ export function useGenerationSession(jobId: string | null, onNewJob: (jobId: str
   const terminal = Boolean(result && TERMINAL_STATES.has(result.status));
 
   // Адрес правки: выбранный слайд собранного варианта, пока задание завершено и чип не снят.
-  const editable = terminal && viewRevision === currentRevision && variant !== null && (variant.status === "ready" || variant.status === "needs_review") && Boolean(thumb);
+  // Готовая презентация показана раньше, чем разобрана: её слайд можно адресовать сразу —
+  // сервер поставит правку за разбором и скажет, когда применит.
+  const deckShown = variant?.variant_id === "original" && variant.status === "running" && Boolean(variant.artifacts?.pptx);
+  const editable = (terminal || deckShown) && viewRevision === currentRevision && variant !== null && (variant.status === "ready" || variant.status === "needs_review" || deckShown) && Boolean(thumb);
   const slideTarget: SlideTarget | null =
     jobId && variant && editable && dismissedTarget !== slideIndex ? { jobId, variantId: variant.variant_id, revision: currentRevision, slideIndex } : null;
   const dismissTarget = useCallback(() => setDismissedTarget(slideIndex), [slideIndex]);

@@ -46,6 +46,7 @@ queue:
   analysis_queue: analysis
   repair_queue: repair
   generation_queue: generation
+  interactive_queue: interactive  # фон открытой презентации: воркеры генерации берут её первой
   generation_workers: 3
   result_ttl_s: 86400
   failure_ttl_s: 604800
@@ -170,3 +171,15 @@ design:
     compact:  { min_fill: 0.25, max_fill: 0.65, max_slots_ratio: 1.6 }
     balanced: { min_fill: 0.35, max_fill: 0.72, max_slots_ratio: 1.5 }
     detailed: { min_fill: 0.45, max_fill: 0.75, max_slots_ratio: 1.4 }
+
+speech:                     # голосовой ввод в чате: сервис asr (GigaAM, ONNX Runtime), docs/speech.md
+  enabled: true
+  url: http://asr:8010      # API пересылает фразы сюда; PD_SPEECH__URL переопределяет
+  timeout_s: 20
+  max_seconds: 25           # модель без нарезки принимает до 25 с; фразы режет браузер
+  max_bytes: 1000000        # 25 с PCM16 моно 16 кГц — 800 КБ
+  health_cache_s: 30
+  model_dir: models/gigaam/v3_e2e_ctc   # в контейнере /app/models/…, на сервер — make asr-model
+  idle_unload_s: 600        # модель выгружается после 10 минут простоя
+  threads: 1
+  port: 8010

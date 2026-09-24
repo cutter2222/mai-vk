@@ -60,6 +60,15 @@ services:
   worker-generation:
     <<: *worker-prod
 
+  # Модель GigaAM int8 — 320 МБ; с загруженной моделью процесс держится в пределах 768 МБ.
+  asr:
+    logging: *logging
+    deploy:
+      resources:
+        limits:
+          memory: ${PD_ASR_MEMORY:-768M}
+          cpus: "1.0"
+
   onlyoffice:
     logging: *logging
     stop_grace_period: 60s

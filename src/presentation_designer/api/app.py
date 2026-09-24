@@ -28,6 +28,7 @@ from presentation_designer.api.routes import (
     jobs,
     onlyoffice,
     projects,
+    speech,
     templates,
 )
 from presentation_designer.pipeline.files import UploadError
@@ -149,6 +150,7 @@ def create_app(orchestrator: Orchestrator | None = None, *, reconcile: bool = Tr
         generations.router,
         jobs.router,
         onlyoffice.router,
+        speech.router,
     ):
         app.include_router(router, prefix="/api")
     return app

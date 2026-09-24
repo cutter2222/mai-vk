@@ -881,3 +881,58 @@ def test_original_deck_generation(client: TestClient, pptx_bytes: bytes) -> None
     names = set(result["artifacts_manifest"])
     assert {"original/r1/deck.pptx", "original/r1/deck.pdf", "original/r1/plan.json"} <= names
     assert any(n.startswith("original/r1/thumbs/") for n in names)
+
+
+def test_original_copy_is_published_by_the_request(
+    client: TestClient, orchestrator: Orchestrator, pptx_bytes: bytes, monkeypatch: Any
+) -> None:
+    """«Открыть как презентацию»: задание приходит с уже опубликованной r1 — файл, ready_at,
+    число слайдов, — ещё до того, как очередь выполнила хоть одну задачу. Ошибка копии запрос
+    не роняет: 202, а копию делает фоновая задача."""
+    from presentation_designer.pipeline import jobs
+    from tests.pipeline.helpers import Recorder
+
+    project_id = _project(client)
+    tpl = _upload(client, project_id, "deck.pptx", pptx_bytes, PPTX_MIME)
+    template_id = client.post("/api/templates", json={"file_id": tpl["file_id"]}).json()[
+        "template_id"
+    ]
+    package_id = client.post("/api/content", json={"file_ids": [tpl["file_id"]]}).json()[
+        "package_id"
+    ]
+    body = {
+        "schema_version": "1.2",
+        "template_id": template_id,
+        "package_id": package_id,
+        "settings": {"variants": ["original"], "run_contextual_audit": False},
+    }
+    recorder = Recorder()
+    orchestrator.executor = recorder  # type: ignore[assignment]
+    r = client.post("/api/generations", json=body)
+    assert r.status_code == 202, r.text
+    result = client.get(f"/api/generations/{r.json()['job_id']}").json()
+    m.GenerationResult.model_validate(result)
+    variant = result["variants"][0]
+    assert variant["artifacts"]["pptx"] == "original/r1/deck.pptx"
+    assert variant["ready_at"] and variant["slide_count"] == 4 and variant["status"] == "running"
+    assert result["status"] == "running"
+    assert result["progress"]["message"].startswith("Разбираю презентацию в фоне")
+    deck = client.get(f"/api/generations/{r.json()['job_id']}/artifacts/original/r1/deck.pptx")
+    assert deck.content == pptx_bytes
+    # Сборка ещё не шла: плана у показанной ревизии нет, задачи только поставлены.
+    assert "plan_artifact" not in variant
+    assert any(c["func"] is jobs.task_original_preview for c in recorder.calls)
+
+    # Копия не удалась в запросе: задание всё равно создано, r1 делает фоновая задача.
+    def broken(*args: Any, **kwargs: Any) -> None:
+        raise OSError("диск занят")
+
+    monkeypatch.setattr(jobs.shutil, "copyfile", broken)
+    again = client.post("/api/generations", json={**body, "idempotency_key": "copy-fails"})
+    assert again.status_code == 202, again.text
+    job_id = again.json()["job_id"]
+    assert "pptx" not in client.get(f"/api/generations/{job_id}").json()["variants"][0]["artifacts"]
+    monkeypatch.undo()
+    jobs.task_original_preview(job_id)
+    later = client.get(f"/api/generations/{job_id}").json()["variants"][0]
+    assert later["artifacts"]["pptx"] == "original/r1/deck.pptx" and later["ready_at"]

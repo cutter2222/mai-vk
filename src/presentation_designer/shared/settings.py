@@ -66,6 +66,9 @@ class Queue(BaseModel):
     analysis_queue: str = "analysis"
     repair_queue: str = "repair"
     generation_queue: str = "generation"
+    # Фоновые шаги уже открытой презентации (диаграммы-картинки, рендер PDF и миниатюр):
+    # воркеры генерации берут её раньше очереди generation (порядок в --queues).
+    interactive_queue: str = "interactive"
     generation_workers: int = 3
     result_ttl_s: int = 86400
     failure_ttl_s: int = 604800
@@ -216,6 +219,24 @@ class App(BaseModel):
     language_default: str = "ru"
 
 
+class Speech(BaseModel):
+    """Голосовой ввод в чате. API проверяет фразу и пересылает её в сервис `asr` (`url`); сервис
+    держит модель GigaAM из `model_dir`, грузит её по первому запросу и выгружает после
+    `idle_unload_s` простоя. `enabled: false` прячет кнопку микрофона."""
+
+    enabled: bool = True
+    url: str = "http://asr:8010"
+    timeout_s: float = Field(default=20.0, gt=0)
+    max_seconds: float = Field(default=25.0, gt=0)
+    max_bytes: int = Field(default=1_000_000, gt=0)
+    # /api/capabilities спрашивает сервис о здоровье не чаще этого.
+    health_cache_s: float = Field(default=30.0, ge=0)
+    model_dir: pathlib.Path = pathlib.Path("models/gigaam/v3_e2e_ctc")
+    idle_unload_s: float = Field(default=600.0, ge=0)
+    threads: int = Field(default=1, ge=1)
+    port: int = 8010
+
+
 class OnlyOffice(BaseModel):
     max_pdf_mb: int = Field(default=200, ge=1, le=1024)
     enabled: bool = False
@@ -227,6 +248,7 @@ class OnlyOffice(BaseModel):
 
 class Settings(BaseModel):
     onlyoffice: OnlyOffice = Field(default_factory=OnlyOffice)
+    speech: Speech = Field(default_factory=Speech)
     app: App = Field(default_factory=App)
     paths: Paths = Field(default_factory=Paths)
     limits: Limits = Field(default_factory=Limits)
@@ -310,6 +332,8 @@ class ModelRole(BaseModel):
     reasoning: Reasoning = Field(default_factory=Reasoning)
     temperature: float | None = None
     verified: Verified = Field(default_factory=Verified)
+    # Требования к машине своими словами — для ролей, чьи веса сервис держит сам (asr).
+    requirements: str | None = None
 
 
 class ProviderSupports(BaseModel):
@@ -328,8 +352,13 @@ class ProviderLimits(BaseModel):
 
 class Provider(BaseModel):
     kind: str = "openai_compatible"
-    env_base_url: str
-    env_api_key: str
+    # Адрес и ключ — имена переменных окружения. У локального провайдера (`kind: local_onnx`:
+    # веса лежат у сервиса, распознавание речи) их нет.
+    env_base_url: str | None = None
+    env_api_key: str | None = None
+    runtime: str | None = None
+    quantization: str | None = None
+    model_dir: str | None = None
     note: str | None = None
     # Как endpoint принимает режим рассуждения: qwen_enable_thinking (extra_body с
     # enable_thinking / thinking_budget), openai_reasoning_effort (reasoning_effort) или none.
@@ -340,10 +369,10 @@ class Provider(BaseModel):
     limits: ProviderLimits = Field(default_factory=ProviderLimits)
 
     def base_url(self) -> str | None:
-        return os.environ.get(self.env_base_url) or None
+        return (os.environ.get(self.env_base_url) or None) if self.env_base_url else None
 
     def api_key(self) -> str | None:
-        return os.environ.get(self.env_api_key) or None
+        return (os.environ.get(self.env_api_key) or None) if self.env_api_key else None
 
     def configured(self) -> bool:
         """Есть адрес и ключ, и это не значения-образцы из .env.example."""

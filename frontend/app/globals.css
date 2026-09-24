@@ -1139,6 +1139,33 @@ body {
   flex: 0 0 auto;
 }
 
+/* Голосовой ввод: пока идёт запись, кнопка красная и мягко пульсирует; «…» — фраза ещё
+   распознаётся и допишется в поле. */
+.chat-mic[data-recording] {
+  animation: chat-mic-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes chat-mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(224, 49, 49, 0.45); }
+  50% { box-shadow: 0 0 0 6px rgba(224, 49, 49, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-mic[data-recording] { animation: none; }
+}
+
+.chat-mic-pending {
+  flex: 0 0 auto;
+  letter-spacing: 1px;
+  animation: chat-mic-pending 1s steps(3, end) infinite;
+}
+
+@keyframes chat-mic-pending {
+  0% { opacity: 0.35; }
+  50% { opacity: 1; }
+  100% { opacity: 0.35; }
+}
+
 .mantine-Dropzone-root[data-accept] .chat-list {
   outline: 2px dashed var(--accent);
   outline-offset: -8px;

@@ -39,6 +39,14 @@ providers:
       concurrency: null    # умолчаниям llm.* из app.yaml; зонд при одновременности 4 ошибок 429 не получил
       rpm: null
       tpm: null
+  gigaam-local:
+    # Веса у самого сервиса: распознавание речи для голосового ввода в чате (сервис asr).
+    # Экспорт в ONNX и квантование int8 — scripts/export_gigaam_onnx.py, на сервер — make asr-model.
+    kind: local_onnx
+    runtime: onnxruntime
+    quantization: int8
+    model_dir: models/gigaam/v3_e2e_ctc
+    note: "Модель в сервисе asr: грузится по первой фразе, выгружается после 10 минут простоя; только русский язык, фразы до 25 с."
   vk-inference:
     kind: openai_compatible
     env_base_url: PD_VK_BASE_URL
@@ -75,6 +83,17 @@ roles:
     reasoning: { mode: "off", max_output_tokens: 6000 }
     temperature: 0.0
     verified: { by: probe, date: "2026-09-20", source: "runs/llm-capabilities.md; одно и два изображения прочитаны" }
+  asr:
+    # Голосовой ввод в чате: GigaAM-v3 (Сбер), линия e2e_ctc — единственная со знаками
+    # препинания и нормализацией текста. Контрольные фразы int8 и fp32 совпадают (manifest.json
+    # экспорта). Только русский язык.
+    provider: gigaam-local
+    model: gigaam-v3-e2e-ctc
+    hf_url: https://huggingface.co/ai-sage/GigaAM-v3/tree/e2e_ctc
+    license: MIT
+    params_b: 0.22
+    requirements: "ONNX int8 — 320 МБ на диске; процесс с загруженной моделью около 0,5 ГБ (предел контейнера 768 МБ), одно ядро CPU; видеокарта не нужна"
+    verified: { by: smoke, date: "2026-09-24", source: "izbox.ru: POST /api/speech/transcribe, запись-пример 11,3 с → текст со знаками препинания за 1,6 с, фраза 5 с — 0,5 с; контейнер 497 МБ из 768" }
   text_to_image:
     enabled: false           # задача со звёздочкой, только топ-10 (этап 13)
     provider: null

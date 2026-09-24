@@ -27,6 +27,15 @@ dependencies = [
     "python-multipart>=0.0.12",
 ]
 
+[project.optional-dependencies]
+# Сервис распознавания речи (голосовой ввод в чате): GigaAM в ONNX Runtime, признаки на numpy.
+# torch здесь нет — он нужен только скрипту экспорта модели на машине разработчика.
+speech = [
+    "numpy>=2.0",
+    "onnxruntime>=1.20",
+    "sentencepiece>=0.2",
+]
+
 [project.scripts]
 presentation-designer = "presentation_designer.cli.main:main"
 
@@ -41,6 +50,10 @@ dev = [
     "referencing>=0.35",
     "types-pyyaml",
     "types-redis",
+    # Тесты сервиса распознавания (tests/speech) — те же пакеты, что в экстре speech.
+    "numpy>=2.0",
+    "onnxruntime>=1.20",
+    "sentencepiece>=0.2",
 ]
 
 [build-system]
@@ -75,7 +88,7 @@ module = "presentation_designer.contracts.models"
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-module = ["pptx.*", "lxml.*", "pdfplumber.*", "pypdfium2.*", "docx.*", "openpyxl.*", "markdown_it.*", "fontTools.*", "rq.*"]
+module = ["pptx.*", "lxml.*", "pdfplumber.*", "pypdfium2.*", "docx.*", "openpyxl.*", "markdown_it.*", "fontTools.*", "rq.*", "onnxruntime.*", "sentencepiece.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
@@ -83,4 +96,5 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "organizer_data: тесты на закрытых шаблонах организаторов; пропускаются без data/organizers, обязательны при REQUIRE_ORGANIZER_DATA=1",
+    "model: тесты с весами модели распознавания речи (models/gigaam); пропускаются без каталога весов",
 ]

@@ -1,6 +1,6 @@
 "use client";
 
-import { Anchor, Button, ColorSwatch, Group, Progress, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
+import { Anchor, Button, ColorSwatch, Group, Loader, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
 import { IconCircleCheck, IconClock, IconRocket } from "@tabler/icons-react";
 import { useState } from "react";
 
@@ -48,6 +48,8 @@ export interface CardContext {
   deckStart?: DeckStart | null;
   /** Когда слайды готовой презентации стали видны в редакторе (без редактора — файл опубликован). */
   deckShownAt?: string | null;
+  /** Готовая презентация: то же задание с контекстным аудитом (он выключен при открытии). */
+  onRecheckDeck?: () => void;
 }
 
 /** Реплика ассистента: обычный текст ленты. */
@@ -137,7 +139,12 @@ export function TemplateQuestionCard({ m, ctx }: { m: Msg<"template_question">; 
       testId={`template-question-${m.event_id}`}
       progress={deck?.kind === "opening"
         ? <DeckProgress session={ctx.session} since={deck.since} />
-        : deck?.kind === "opened" ? <DeckOpened ms={deck.ms} /> : null}
+        : deck?.kind === "opened" ? <>
+          <DeckOpened ms={deck.ms} />
+          <DeckCharts session={ctx.session} />
+          {!ctx.session.terminal && <DeckBackground session={ctx.session} />}
+          {ctx.session.terminal && <DeckDetails ctx={ctx} />}
+        </> : null}
     />
   );
 }
@@ -178,31 +185,21 @@ function clock(ms: number | null): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-/** Ход открытия готовой презентации под репликой: время, этап и процент одной строкой. */
+/**
+ * Открытие готовой презентации под репликой: таймер и «Открываю…» до сигнала редактора.
+ * Копию сервер публикует прямо в ответе на создание задания, поэтому этапов и процентов
+ * здесь нет: всё, что осталось, — открыть файл в редакторе. Разбор идёт потом, в фоне.
+ */
 function DeckProgress({ session, since }: { session: GenerationSession; since?: string }) {
-  const result = session.result;
-  const elapsed = useElapsed(since ?? result?.created_at ?? null);
-  const raw = result?.progress?.percent;
-  const current = typeof raw === "number" && Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : null;
-  // Процент не откатывается: после показа файла разбор в фоне начинает свою шкалу заново.
-  const [top, setTop] = useState<number | null>(null);
-  const rising = current != null && (top == null || current > top);
-  if (rising) setTop(current);
-  const percent = rising ? current : top;
-  const shown = Boolean(session.variant?.ready_at);
-  const message = shown ? "Открываю слайды в редакторе"
-    : result?.progress?.message || (result ? STAGE_LABELS[result.stage] : "Загружаю презентацию");
+  const elapsed = useElapsed(since ?? session.result?.created_at ?? null);
   return (
     <div className="deck-progress" data-testid="deck-progress" aria-busy="true">
       <Group gap={6} wrap="nowrap">
         <IconClock size={14} stroke={1.8} className="deck-progress-time" aria-hidden />
         <Text size="xs" fw={600} className="deck-progress-time" data-testid="deck-progress-timer">{clock(elapsed)}</Text>
-        <Text size="xs" c="dimmed" truncate style={{ flex: 1 }} role="status" aria-live="polite">{message}</Text>
-        {percent != null && <Text size="xs" fw={600} data-testid="deck-progress-percent">{Math.round(percent)}%</Text>}
+        <Text size="xs" c="dimmed" truncate style={{ flex: 1 }} role="status" aria-live="polite">Открываю презентацию</Text>
       </Group>
-      {percent != null
-        ? <Progress size={4} value={percent} aria-label="Открытие презентации" aria-valuenow={percent} />
-        : <div className={progressStyles.track} style={{ height: 4 }} role="progressbar" aria-label="Открытие презентации"><div className={progressStyles.shimmer} /></div>}
+      <div className={progressStyles.track} style={{ height: 4 }} role="progressbar" aria-label="Открытие презентации"><div className={progressStyles.shimmer} /></div>
     </div>
   );
 }
@@ -215,6 +212,47 @@ function DeckOpened({ ms }: { ms: number }) {
       <Text size="xs" c="dimmed">Презентация открыта за {formatMs(Math.max(1000, ms))}</Text>
     </Group>
   );
+}
+
+/**
+ * Разбор открытой презентации в фоне — тихой строкой: без полосы над слайдами и без
+ * блокировки. Сервер говорит, когда станут доступны правки из чата; процент — задания.
+ */
+function DeckBackground({ session }: { session: GenerationSession }) {
+  const progress = session.result?.progress;
+  if (!progress?.message) return null;
+  return (
+    <Group gap={6} wrap="nowrap" data-testid="deck-background" role="status" aria-live="polite">
+      <Loader size={10} color="gray" aria-hidden />
+      <Text size="xs" c="dimmed" style={{ flex: 1 }}>{progress.message}</Text>
+      {typeof progress.percent === "number" && <Text size="xs" c="dimmed" data-testid="deck-background-percent">{Math.round(progress.percent)}%</Text>}
+    </Group>
+  );
+}
+
+/**
+ * Подробности задания готовой презентации: этапы и метрики, а если контекстный аудит при
+ * открытии был выключен (по умолчанию), — кнопка проверить слайды моделью.
+ */
+function DeckDetails({ ctx }: { ctx: CardContext }) {
+  const result = ctx.session.result;
+  if (!result) return null;
+  const audited = result.request?.settings?.run_contextual_audit === true;
+  return (
+    <Details label="подробности задания" testId="deck-details">
+      <JobDetails result={result} />
+      {!audited && result.status !== "failed" && ctx.onRecheckDeck && <>
+        <Aside>Проверка слайдов моделью по Приложению 1 при открытии выключена: она занимает пару минут.</Aside>
+        <Options options={[{ label: "Проверить слайды моделью", onClick: ctx.onRecheckDeck, testId: "deck-recheck" }]} />
+      </>}
+    </Details>
+  );
+}
+
+/** Диаграммы-картинки стали редактируемыми ревизией r2: фраза появляется сразу, а не в конце разбора. */
+function DeckCharts({ session }: { session: GenerationSession }) {
+  const warning = session.result?.warnings?.find((w) => w.code === "chart_images");
+  return warning ? <Say testId="deck-charts">{warning.message}</Say> : null;
 }
 
 export function TemplateCard({ m, ctx }: { m: Msg<"template_card">; ctx: CardContext }) {
@@ -433,16 +471,23 @@ export function JobCard({ m, ctx }: { m: Msg<"job_card">; ctx: CardContext }) {
   // Содержания меньше, чем просили: варианты собраны короче, и это говорится обычной фразой.
   const short = result.warnings?.find((w) => w.code === "slide_count_short");
 
-  // Готовая презентация: в ленте уже сказано «открываю как есть», прогресс — над слайдами.
-  // Лента показывает сборку, только если открыть не вышло или в слайдах что-то изменилось.
+  // Готовая презентация: в ленте уже сказано «открываю как есть», ход — строкой под ней.
+  // Лента показывает сборку, только если разбор не удался, в слайдах что-то изменилось или
+  // закончилась проверка моделью; о диаграммах говорит строка под «Открываю…».
   if (ctx.deckJob) {
+    const audited = result.request?.settings?.run_contextual_audit === true;
+    const issues = session.variant?.audit?.issues_total;
     if (!deckJobHasNews(result)) return null;
     return (
       <Stack gap={6} data-testid="job-card" data-state={result.status}>
-        {result.status === "failed" && (session.variant?.ready_at
-          ? <Say testId="job-summary">Слайды открыты, но разбор презентации не завершился: {failMessage}. Править можно в редакторе.</Say>
-          : <Say testId="job-summary">Не открыл презентацию: {failMessage}.{result.error?.retryable ? " Можно повторить." : ""}</Say>)}
-        {warnings.map((w) => <Say key={w.code} testId={w.code === "chart_images" ? "job-charts" : "job-warning"}>{w.message}</Say>)}
+        {result.status === "failed" && (session.variant?.ready_at ? <>
+          <Say testId="job-summary">Слайды открыты, но разбор презентации не завершился: {failMessage}. Правки из чата недоступны — редактор и скачивание работают.</Say>
+          <Options options={[{ label: "Повторить разбор", onClick: session.retry, testId: "deck-retry" }]} />
+        </> : <Say testId="job-summary">Не открыл презентацию: {failMessage}.{result.error?.retryable ? " Можно повторить." : ""}</Say>)}
+        {audited && terminal && result.status !== "failed" && typeof issues === "number" && (
+          <Say testId="deck-audit">{issues === 0 ? "Проверил слайды моделью — замечаний нет." : `Проверил слайды моделью: ${issues} ${plural(issues, "замечание", "замечания", "замечаний")}.`}</Say>
+        )}
+        {warnings.filter((w) => w.code !== "chart_images").map((w) => <Say key={w.code} testId="job-warning">{w.message}</Say>)}
       </Stack>
     );
   }
@@ -678,6 +723,7 @@ export function EditCard({ m, ctx }: { m: Msg<"edit_card">; ctx: CardContext }) 
       </Stack>
     );
   }
-  const message = status.data?.progress?.message ?? (manual ? "Применяю правки" : `Переделываю слайд ${m.slide_index + 1}`);
+  // Пока сервер не ответил, ход неизвестен: правка могла встать за разбором презентации.
+  const message = status.data?.progress?.message ?? (manual ? "Применяю правки" : `Принял правку слайда ${m.slide_index + 1}`);
   return <Doing testId="edit-card">{status.error ? status.error.message : message}</Doing>;
 }

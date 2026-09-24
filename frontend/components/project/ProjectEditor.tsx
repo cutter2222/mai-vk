@@ -17,6 +17,7 @@ import type { GenerationRequest } from "@/lib/api/types";
 import { useGenerationSession } from "@/lib/hooks/useGenerationSession";
 import { setPanelOpen, usePanelOpen } from "@/lib/state/panel";
 import { plural } from "@/lib/format";
+import { slideRequest } from "@/lib/slideRequest";
 import { addProjectFiles, appendMessage, getProject, patchProjectFile, slideCountAsked, updateProject, type Project } from "@/lib/state/projects";
 
 import { ChatPanel } from "./chat/ChatPanel";
@@ -127,19 +128,28 @@ export function ProjectEditor({ project }: { project: Project }) {
   const deckOpening = deckJob ? jobRunning : Boolean(chat.deckStart?.preparing);
   const editorSlot = officePresent || deckOpening;
   // Редактор прогревается, как только презентация готовится или уже есть: скрипты ONLYOFFICE
-  // грузятся параллельно с подготовкой файла, а не после неё.
-  const needsEditor = Boolean(chat.deckStart || starting || project.job_id);
+  // грузятся параллельно с подготовкой файла, а не после неё. «Открыть как презентацию» —
+  // сразу по ответу, пока файл ещё едет на сервер.
+  const deckAnswered = chat.staged.some((s) => s.answer === "deck");
+  const needsEditor = Boolean(chat.deckStart || deckAnswered || starting || project.job_id);
   useEffect(() => {
     if (officeScript && needsEditor) warmUpOffice(officeScript);
   }, [officeScript, needsEditor]);
   // Готовая презентация открыта, когда её слайды видны: в редакторе — по его сигналу, без
-  // редактора — когда файл опубликован.
+  // редактора — когда файл опубликован. Секундомер — первого открытия в этой вкладке: повтор
+  // разбора или проверка моделью создают новое задание, но презентация уже была открыта.
+  const deckSince = chat.deckStart?.since;
+  const [prevDeckSince, setPrevDeckSince] = useState(deckSince);
+  if (prevDeckSince !== deckSince) {
+    setPrevDeckSince(deckSince);
+    setEditorReady(null);
+  }
   const deckShownAt = !deckJob || !session.jobId ? null
-    : officeEnabled ? (editorReady?.jobId === session.jobId ? editorReady.at : null)
+    : officeEnabled ? (chat.deckStart ? editorReady?.at ?? null : editorReady?.jobId === session.jobId ? editorReady.at : null)
       : (session.variant?.ready_at ?? null);
   const onEditorReady = () => {
     const jobId = session.jobId;
-    if (jobId) setEditorReady((old) => (old?.jobId === jobId ? old : { jobId, at: new Date().toISOString() }));
+    if (jobId) setEditorReady((old) => (old && (old.jobId === jobId || chat.deckStart) ? old : { jobId, at: new Date().toISOString() }));
   };
   const pendingSlides = session.variant?.slide_count ?? 0;
 
@@ -150,6 +160,21 @@ export function ProjectEditor({ project }: { project: Project }) {
     const logo = officePresent ? logoRequest(text) : null;
     if (logo) {
       await changeLogo(logo, text, files);
+      return;
+    }
+    // В редакторе слайд для чата не выделить: номер берётся из фразы («на слайде 3 …»), и
+    // правка идёт в задание ревизии, как с выбранным слайдом. Пока презентация разбирается в
+    // фоне, сервер ставит правку за разбором и говорит, когда применит.
+    const slide = officePresent && !officeSelection && !target && !files.length && !/^\/edit\s+/i.test(text.trim()) ? slideRequest(text) : null;
+    const variant = session.variant;
+    if (slide && session.jobId && variant?.artifacts?.pptx && variant.status !== "failed") {
+      const count = variant.slide_count ?? 0;
+      if (count && slide > count) {
+        appendMessage(project.project_id, { role: "user", kind: "message", text, file_ids: [] });
+        appendMessage(project.project_id, { role: "assistant", kind: "text", text: `В презентации ${count} ${plural(count, "слайд", "слайда", "слайдов")}, слайда ${slide} нет.` });
+        return;
+      }
+      await chat.send(text, files, { jobId: session.jobId, variantId: variant.variant_id, revision: variant.revision, slideIndex: slide - 1 });
       return;
     }
     if (officePresent && (officeSelection || /^\/edit\s+/i.test(text.trim()))) {
@@ -227,6 +252,7 @@ export function ProjectEditor({ project }: { project: Project }) {
     deckJob,
     deckStart: chat.deckStart,
     deckShownAt,
+    onRecheckDeck: () => void chat.recheckDeck(),
   };
 
   // Две вкладки: разговор целиком и загруженные файлы. Шаги работы — реплики той же ленты.
@@ -290,7 +316,7 @@ export function ProjectEditor({ project }: { project: Project }) {
               </Tooltip>
             </div>
             {tab === "chat" ? (
-              <ChatPanel ctx={ctx} onSend={send} officeSelection={officeSelection} onDismissOfficeSelection={() => setOfficeSelection(null)} suggestions={chat.suggestions} onAttach={attach} staged={chat.staged} onAnswerStaged={chat.answerStaged} />
+              <ChatPanel ctx={ctx} onSend={send} officeSelection={officeSelection} onDismissOfficeSelection={() => setOfficeSelection(null)} suggestions={chat.suggestions} onAttach={attach} staged={chat.staged} onAnswerStaged={chat.answerStaged} speech={Boolean(caps?.features.speech)} />
             ) : (
               <FilesPanel project={project} onAdd={(files) => { const rest = attach(files); if (rest.length) void chat.send("", rest); }} onRemove={(fid) => void chat.removeFile(fid)} onSelectTemplate={chat.selectTemplate} />
             )}

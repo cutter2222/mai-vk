@@ -206,7 +206,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
       const code = e instanceof ApiError ? e.code : "";
       if (code === "revision_stale") say("Ревизия слайда устарела: справа уже новая. Обновил результат — повторите просьбу к актуальному слайду.");
       else if (code === "repair_in_progress") say("Предыдущая правка этого варианта ещё применяется. Дождитесь её и повторите просьбу.");
-      else if (code === "variant_failed") say("Этот вариант не собран, править в нём нечего. Выберите другой вариант.");
+      else if (code === "variant_failed") say(target.variantId === "original" && e instanceof ApiError ? `${e.message.replace(/\.\s*$/, "")}.` : "Этот вариант не собран, править в нём нечего. Выберите другой вариант.");
       else say(`Не удалось запустить правку: ${e instanceof ApiError ? e.message : "неизвестная ошибка"}.`);
     }
   }, [id, say, session]);
@@ -327,6 +327,26 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     else say(`Выбрал шаблон «${title}». Загрузите материалы или опишите задачу для дальнейшей работы.`);
   }, [id, current, proceed, say]);
 
+  /**
+   * Готовая презентация, проверенная моделью: то же задание с контекстным аудитом. Копия и
+   * диаграммы берутся из кэша, презентация остаётся открытой, итог проверки скажет лента.
+   */
+  const recheckDeck = useCallback(async () => {
+    const request = session.result?.request;
+    if (!request) return;
+    try {
+      const job = await api.generations.create({
+        ...request,
+        idempotency_key: `deck-audit-${id}-${Date.now().toString(36)}`,
+        settings: { ...request.settings, run_contextual_audit: true },
+      });
+      updateProject(id, { job_id: job.job_id, chosen_variant: null });
+      say("Проверяю слайды моделью по Приложению 1 — это пара минут, презентация остаётся открытой.");
+    } catch (e) {
+      say(`Не удалось запустить проверку: ${e instanceof ApiError ? e.message : "неизвестная ошибка"}.`);
+    }
+  }, [id, say, session.result?.request]);
+
   /** Действие по ответу на вопрос о PPTX: разбор как шаблона или импорт как материала. */
   /**
    * Готовая презентация: тот же файл разбирается как шаблон (композиции слайдов) и импортируется
@@ -346,12 +366,15 @@ export function useChat(project: Project, session: GenerationSession, generate: 
       const briefFilled = p.brief.title.trim().length > 0;
       const pkg = await api.content.create([fileId], briefFilled ? { ...p.brief } : undefined);
       patchProjectFile(id, fileId, { package_id: pkg.package_id });
+      // Контекстный аудит (модель по картинкам слайдов, около двух минут) для готовой
+      // презентации выключен: его не просили, а держал он воркер. Включить — «Проверить
+      // слайды моделью» в подробностях задания.
       const req: GenerationRequest = {
         schema_version: "1.2",
         template_id: tpl.template_id,
         package_id: pkg.package_id,
         idempotency_key: `deck-${id}-${fileId}-${Date.now().toString(36)}`,
-        settings: { variants: ["original"], language: p.brief.language || "ru", run_contextual_audit: p.settings.contextual, generate_images: false },
+        settings: { variants: ["original"], language: p.brief.language || "ru", run_contextual_audit: false, generate_images: false },
       };
       const job = await api.generations.create(req);
       updateProject(id, { template_id: tpl.template_id, package_id: pkg.package_id, job_id: job.job_id, chosen_variant: null });
@@ -478,7 +501,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
 
   const notifyError = (title: string, e: unknown) => notifications.show({ color: "red", title, message: e instanceof ApiError ? e.message : "Неизвестная ошибка" });
 
-  return { send, suggestions, attach, staged, answerStaged, resolveTemplateQuestion, setPurpose, removeFile, importMaterials, selectTemplate, addTemplate, notifyError, deckStart };
+  return { send, suggestions, attach, staged, answerStaged, resolveTemplateQuestion, setPurpose, removeFile, importMaterials, selectTemplate, addTemplate, notifyError, deckStart, recheckDeck };
 }
 
 export type Chat = ReturnType<typeof useChat>;

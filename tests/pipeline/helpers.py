@@ -52,3 +52,46 @@ def run_generation(
         "data_sha": data["sha256"],
         "result": result,
     }
+
+
+class Recorder:
+    """Исполнитель, который только записывает постановки: задачи не выполняются, пока тест
+    не позовёт их сам. Статус записанной задачи — «queued», чужой — неизвестен."""
+
+    name = "record"
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def enqueue(self, queue: str, func: Any, args: tuple[Any, ...], **kw: Any) -> str:
+        rq_id = f"rq{len(self.calls)}"
+        self.calls.append(
+            {
+                "id": rq_id,
+                "queue": queue,
+                "func": func,
+                "args": args,
+                "depends_on": kw["depends_on"],
+            }
+        )
+        return rq_id
+
+    def status(self, rq_id: str) -> str | None:
+        return "queued" if any(c["id"] == rq_id for c in self.calls) else None
+
+    def workers(self) -> dict[str, int]:
+        return {"analysis": 1, "generation": 1}
+
+    def renderer_ok(self) -> bool | None:
+        return None
+
+    def ping(self) -> bool:
+        return True
+
+    def try_lock(self, key: str, ttl_s: int) -> bool:
+        return True
+
+    def run(self, func: Any) -> None:
+        """Выполняет записанные задачи этой функции в порядке постановки."""
+        for call in [c for c in self.calls if c["func"] is func]:
+            func(*call["args"])

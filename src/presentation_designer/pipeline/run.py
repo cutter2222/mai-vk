@@ -579,6 +579,9 @@ class EditContext:
     patch: JsonDict | None = None
     base_deck: JsonDict | None = None
     extra_assets: dict[str, pathlib.Path] = field(default_factory=dict)
+    # Вариант original: charts.json базовой ревизии — правка повторяет её замены диаграмм,
+    # а не читает картинки моделью заново.
+    chart_report: JsonDict | None = None
 
 
 @dataclass
@@ -664,6 +667,7 @@ def run_edit(layers: Layers, ctx: EditContext, emit: Emit) -> EditOutcome:
                 extra_assets=dict(ctx.extra_assets),
                 polish=not is_patch,
                 settings=ctx.settings,
+                chart_report=ctx.chart_report,
             )
         )
         outcome.slide_count = composed.slide_count

@@ -23,8 +23,11 @@ SKILLS = ROOT / "skills"
 ROLE_TITLES = {
     "llm": "текст (llm)",
     "vlm": "текст и изображения (vlm)",
+    "asr": "распознавание речи (asr)",
     "text_to_image": "картинки по описанию (text_to_image)",
 }
+# Провайдеры, чьи веса сервис держит сам: у них нет адреса и ключа, а память — замер, не расчёт.
+LOCAL_KINDS = {"local_onnx"}
 REASONING_TITLES = {"off": "выключено", "low": "короткое", "medium": "среднее", "high": "полное"}
 
 
@@ -68,9 +71,11 @@ def build() -> str:
         "Документ собран из кода: `uv run scripts/gen_models_md.py` по `config/models.yaml` и",
         "манифестам скиллов. Правки руками перезаписываются следующим запуском.",
         "",
-        "Сервис не хостит веса: он ходит в OpenAI-совместимый endpoint провайдера, а роль",
-        "решает, какая модель отвечает за какой этап. Ключи и адреса живут только в",
-        "окружении — в конфиге записаны имена переменных.",
+        "Языковые модели сервис не хостит: он ходит в OpenAI-совместимый endpoint провайдера,",
+        "а роль решает, какая модель отвечает за какой этап. Ключи и адреса живут только в",
+        "окружении — в конфиге записаны имена переменных. Исключение — распознавание речи для",
+        "голосового ввода в чате (роль `asr`): небольшая модель GigaAM работает у самого",
+        "сервиса, в контейнере `asr`, её веса доставляет `make asr-model`.",
         "",
         "## Роли",
         "",
@@ -81,7 +86,12 @@ def build() -> str:
         if data.get("enabled") is False or not data.get("model"):
             continue
         reasoning = data.get("reasoning") or {}
-        mode = REASONING_TITLES.get(str(reasoning.get("mode")), str(reasoning.get("mode") or "—"))
+        local = (providers.get(data.get("provider")) or {}).get("kind") in LOCAL_KINDS
+        mode = (
+            "—"
+            if local
+            else REASONING_TITLES.get(str(reasoning.get("mode")), str(reasoning.get("mode") or "—"))
+        )
         budget = reasoning.get("max_output_tokens")
         verified = data.get("verified") or {}
         by, date = verified.get("by"), verified.get("date")
@@ -116,12 +126,13 @@ def build() -> str:
             continue
         lines.append(
             f"| {ROLE_TITLES.get(role, role)} | `{data['model']}` | "
-            f"{_memory_estimate(data.get('params_b'))} |"
+            f"{data.get('requirements') or _memory_estimate(data.get('params_b'))} |"
         )
     lines += [
         "",
-        "Это расчёт по числу параметров (2 байта на параметр в bf16), а не замер: сервису",
-        "хватает доступа к endpoint, и своей видеокарты он не требует. Машина, на которой",
+        "Для языковых моделей это расчёт по числу параметров (2 байта на параметр в bf16), а",
+        "не замер: сервису хватает доступа к endpoint, и своей видеокарты он не требует; для",
+        "распознавания речи — требования модели, которую сервис держит сам. Машина, на которой",
         "работает сам сервис, считает вёрстку и рендер на CPU. ONLYOFFICE — отдельный сервис",
         "с бюджетом от 4 ГБ; для полного стека ориентир от 8 ГБ с нагрузочной проверкой.",
         "",
@@ -132,6 +143,18 @@ def build() -> str:
         supports = data.get("supports") or {}
         limits = data.get("limits") or {}
         mark = " (активный)" if name == active else ""
+        if data.get("kind") in LOCAL_KINDS:
+            lines += [
+                f"### `{name}`",
+                "",
+                f"* Вид: {data.get('kind')}; движок {data.get('runtime')}, квантование"
+                f" {data.get('quantization')}; веса — `{data.get('model_dir')}` (вне Git, на"
+                " сервер — `make asr-model`). Адреса и ключа нет: модель работает у сервиса.",
+            ]
+            if data.get("note"):
+                lines.append(f"* {data['note']}")
+            lines.append("")
+            continue
         lines += [
             f"### `{name}`{mark}",
             "",

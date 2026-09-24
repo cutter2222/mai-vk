@@ -85,8 +85,18 @@ export interface HealthResponse {
 export interface CapabilitiesResponse {
   contracts_version: string;
   execution_mode: { mode: "real" | "mixed" | "stub"; layers: Record<string, string> };
-  features: { generate_images: boolean; contextual_audit: boolean; html_export: boolean };
+  /** speech — голосовой ввод в чате: сервис распознавания отвечает и модель на месте. */
+  features: { generate_images: boolean; contextual_audit: boolean; html_export: boolean; speech?: boolean };
+  speech?: { language: string; max_seconds: number };
   limits: { max_upload_mb: number; max_content_files: number; slide_count_max: number };
+}
+
+/** Распознанная фраза голосового ввода. */
+export interface SpeechTranscript {
+  text: string;
+  duration_ms: number;
+  infer_ms: number;
+  model: string;
 }
 
 export interface TemplateListItem {
@@ -208,6 +218,15 @@ export const api = {
   },
   health: () => request<HealthResponse>("/health"),
   capabilities: () => request<CapabilitiesResponse>("/capabilities"),
+
+  /** Голосовой ввод: фраза (WAV PCM16 моно 16 кГц, до 25 с) → текст; аудио сервер не хранит. */
+  speech: {
+    transcribe: (wav: Blob, signal?: AbortSignal) => {
+      const form = new FormData();
+      form.append("audio", wav, "phrase.wav");
+      return request<SpeechTranscript>("/speech/transcribe", { method: "POST", body: form, signal });
+    },
+  },
 
   /** Проекты живут на сервере: список, проект по идентификатору, лента событий и файлы. */
   projects: {

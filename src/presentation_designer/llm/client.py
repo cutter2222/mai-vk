@@ -517,7 +517,8 @@ def describe_provider(models: ModelsConfig | None = None) -> JsonDict:
     provider = models.providers[name]
     roles: JsonDict = {}
     for role_name, role in models.roles.items():
-        if not role.enabled:
+        # Роли других провайдеров (распознавание речи на своих весах) в сводку шлюза не входят.
+        if not role.enabled or (role.provider and role.provider != name):
             continue
         roles[role_name] = {
             "model": role.model,
@@ -538,12 +539,17 @@ def describe_provider(models: ModelsConfig | None = None) -> JsonDict:
     }
 
 
+# Роли, которые участвуют в генерации (перечисление `model_ref.role` в контракте). Голосовой
+# ввод (`asr`) — отдельный сервис чата: в результат генерации его модель не попадает.
+GENERATION_ROLES = frozenset({"llm", "vlm", "text_to_image", "embedding"})
+
+
 def model_refs(models: ModelsConfig | None = None) -> list[JsonDict]:
     """Ссылки на модели для GenerationResult.versions.models."""
     models = models or get_models_config()
     out: list[JsonDict] = []
     for role_name, role in models.roles.items():
-        if not role.enabled or not role.model:
+        if not role.enabled or not role.model or role_name not in GENERATION_ROLES:
             continue
         ref: JsonDict = {"role": role_name, "name": role.model}
         if role.provider:

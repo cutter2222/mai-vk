@@ -2,7 +2,7 @@
 #   docker compose -f docker/compose.yaml --env-file .env up -d
 # На сервере добавляется прод-надстройка: -f docker/compose.yaml -f docker/compose.prod.yaml.
 # Пути ниже относительны каталогу docker/. Вход Caddy, статический интерфейс, API, воркер анализа
-# и исправлений, воркеры генерации, Valkey. Данные — в каталогах PD_DATA_DIR, PD_ARTIFACTS_DIR,
+# и исправлений, воркеры генерации, распознавание речи, Valkey. Данные — в каталогах PD_DATA_DIR, PD_ARTIFACTS_DIR,
 # PD_RUNS_DIR, PD_BACKUPS_DIR (на сервере вне репозитория), файл окружения контейнеров — PD_ENV_FILE.
 # Тег образов PD_IMAGE_TAG (deploy.sh: commit и время) и PD_BUILD_COMMIT попадают в /api/health.
 name: presentation-designer
@@ -28,6 +28,8 @@ x-app: &app
     PD_ONLYOFFICE__PUBLIC_URL: ${PD_ONLYOFFICE__PUBLIC_URL:-${PD_PUBLIC_URL:-http://localhost:8080}/onlyoffice}
     PD_ONLYOFFICE__INTERNAL_URL: http://onlyoffice
     PD_ONLYOFFICE__STORAGE_URL: http://api:8000
+    # Голосовой ввод: API пересылает фразы во внутренний сервис распознавания.
+    PD_SPEECH__URL: http://asr:8010
   volumes:
     # Каталог данных с SQLite: на сервере — путь на диске (PD_DATA_DIR), локально — том Docker:
     # WAL SQLite требует разделяемой памяти, которой нет у bind-mount Docker Desktop.
@@ -132,13 +134,40 @@ services:
       dockerfile: docker/app.Dockerfile
       target: worker
     image: presentation-designer/worker:${PD_IMAGE_TAG:-latest}
-    command: ["python", "-m", "presentation_designer.cli.worker", "--queues", "generation"]
+    # interactive — фон уже открытой презентации (диаграммы-картинки, рендер): порядок очередей —
+    # приоритет, поэтому освободившийся воркер берёт её раньше чужих сборок.
+    command: ["python", "-m", "presentation_designer.cli.worker", "--queues", "interactive", "generation"]
     depends_on: *render-dependencies
     healthcheck:
       <<: *worker-health
-      test: ["CMD", "python", "-m", "presentation_designer.cli.worker", "--healthcheck", "--queues", "generation"]
+      test: ["CMD", "python", "-m", "presentation_designer.cli.worker", "--healthcheck", "--queues", "interactive", "generation"]
     deploy:
       replicas: ${PD_GENERATION_WORKERS:-3}
+
+  # Распознавание речи для голосового ввода в чате (GigaAM, ONNX Runtime). Модель грузится по
+  # первой фразе и выгружается после простоя; без весов сервис жив, а кнопки микрофона нет.
+  asr:
+    image: presentation-designer/asr:${PD_IMAGE_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: docker/app.Dockerfile
+      target: asr
+    restart: unless-stopped
+    user: "${PD_UID:-1000}:${PD_GID:-1000}"
+    env_file:
+      - path: ${PD_ENV_FILE:-../.env}
+        required: false
+    environment:
+      PD_IMAGE_TAG: ${PD_IMAGE_TAG:-latest}
+    volumes:
+      # Веса: на сервере — $SERVER_DIR/models (make asr-model), локально — том Docker.
+      - ${PD_MODELS_DIR:-asr_models}:/app/models:ro
+    healthcheck:
+      test: ["CMD", "python", "-m", "presentation_designer.cli.asr", "--healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
   onlyoffice:
     image: presentation-designer/onlyoffice:${PD_IMAGE_TAG:-latest}
@@ -186,6 +215,7 @@ volumes:
   caddy_config:
   valkey_data:
   app_data:
+  asr_models:
   onlyoffice_data:
   onlyoffice_lib:
   onlyoffice_db:

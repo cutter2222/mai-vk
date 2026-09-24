@@ -66,7 +66,7 @@ declare global {
   }
 }
 
-export function OfficeEditor({ id, title, embedded = false, onActiveChange, documentActions, editRef, actionsTarget, returnHref = "/", onSaved, onReady }: {
+export function OfficeEditor({ id, title, embedded = false, onActiveChange, documentActions, editRef, actionsTarget, returnHref = "/", onSaved, onReady, onModifiedChange }: {
   id: string;
   title?: string;
   embedded?: boolean;
@@ -78,6 +78,8 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
   onSaved?: (document: OfficeDocument) => void;
   /** Документ открыт и слайды видны. */
   onReady?: () => void;
+  /** Редактор сообщил о несохранённых правках (или что их больше нет). */
+  onModifiedChange?: (modified: boolean) => void;
 }) {
   const [doc, setDoc] = useState<OfficeDocument | null>(null);
   const [error, setError] = useState("");
@@ -101,6 +103,8 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
   const pollEpoch = useRef(0);
   const readyRef = useRef(onReady);
   useEffect(() => { readyRef.current = onReady; }, [onReady]);
+  const modifiedRef = useRef(onModifiedChange);
+  useEffect(() => { modifiedRef.current = onModifiedChange; }, [onModifiedChange]);
   const returnedAfterSave = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; saveAbort.current?.abort(); }; }, []);
 
@@ -265,7 +269,7 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
         ...response.config,
         events: {
           onDocumentReady: () => { if (!cancelled) { setReady(true); readyRef.current?.(); } },
-          onDocumentStateChange: (event: { data: boolean }) => { if (!cancelled) { dirty.current = event.data; setModified(event.data); } },
+          onDocumentStateChange: (event: { data: boolean }) => { if (!cancelled) { dirty.current = event.data; setModified(event.data); modifiedRef.current?.(event.data); } },
           onRequestClose: () => { if (!cancelled) closeRequested.current?.(); },
           onError: () => { if (!cancelled) setError("Ошибка ONLYOFFICE. Не закрывайте вкладку до подтверждения сохранения на сервере."); },
         },

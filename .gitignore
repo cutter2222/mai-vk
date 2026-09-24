@@ -46,6 +46,10 @@ test-results/
 /artifacts/
 /runs/
 /backups/
+# Веса моделей (GigaAM для голосового ввода): на сервер их доставляет make asr-model.
+/models/
+# Пример записи из репозитория GigaAM: скачивает scripts/export_gigaam_onnx.py.
+/tests/fixtures/speech/example.wav
 /logs/
 /tmp/
 .cache/

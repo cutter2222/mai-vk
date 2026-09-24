@@ -14,6 +14,12 @@ import { VARIANT_LABELS } from "@/lib/format";
 import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
 import { SlideViewer } from "../preview/SlideViewer";
 
+/** «balanced/r2/deck.pptx» → вариант и номер ревизии артефакта. */
+function revisionOf(artifact: string): { variant: string; revision: number } | null {
+  const match = /^([^/]+)\/r(\d+)\//.exec(artifact);
+  return match ? { variant: match[1], revision: Number(match[2]) } : null;
+}
+
 /** Saved office bytes are the source of previews and AI edits, not stale generation artifacts. */
 export function ProjectOffice({ session, title, projectId, editRef, actionsTarget, selection, onSelectionChange, template, onEditorReady }: {
   session: GenerationSession; title: string; projectId: string;
@@ -58,7 +64,34 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
   const [objectAttempt, setObjectAttempt] = useState(0);
   const busy = useRef(false);
   const changed = latest && (source.jobId !== latest.jobId || source.artifact !== latest.artifact);
+  // Правил ли человек открытый документ. Пока нет — новая версия (диаграммы готовой
+  // презентации стали редактируемыми, правка из чата, повтор сборки) открывается сама: терять
+  // нечего. После любой правки остаётся баннер «Доступна другая версия». Сохранённые версии
+  // документа (revision > 0) — тоже правки; ключ открытой сессии ONLYOFFICE ставит всегда,
+  // поэтому признаком правки служит сигнал редактора о несохранённых изменениях.
+  const [touched, setTouched] = useState(false);
+  const onModified = useCallback((value: boolean) => { if (value) setTouched(true); }, []);
+  const [prevSource, setPrevSource] = useState(source);
+  if (prevSource !== source) {
+    setPrevSource(source);
+    setTouched(false);
+  }
   const templateId = template?.id;
+  const latestJob = latest?.jobId;
+  const latestArtifact = latest?.artifact;
+  const docRevision = doc?.revision;
+  // Сама открывается только новая версия того, что уже открыто: следующая ревизия того же
+  // варианта или новое задание. Другой вариант той же сборки — выбор человека (переключатель,
+  // закреплённый адрес), его не подменяем. Документ должен быть загружен и без правок.
+  const opened = revisionOf(source.artifact);
+  const next = latestArtifact ? revisionOf(latestArtifact) : null;
+  const newer = Boolean(changed && latestJob && latestArtifact) && (latestJob !== source.jobId
+    || Boolean(opened && next && opened.variant === next.variant && next.revision > opened.revision));
+  // Переключение — прямо при рендере, как и сброс выше: иначе один кадр показывал бы баннер.
+  if (newer && latestJob && latestArtifact && !templateId && !editing && !error && !touched && docRevision === 0) {
+    setDoc(null); setPreview(null); setPreviewError(""); setIndex(0);
+    setSource({ jobId: latestJob, artifact: latestArtifact });
+  }
   const templatePreviews = (template?.detail.previews ?? []).filter((path) => /(^|\/)slide-\d+\.png$/.test(path))
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
@@ -214,7 +247,7 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
       {selection && <Button size="xs" variant="subtle" onClick={() => onSelectionChange(null)}>Снять выделение ({selection.objects.length})</Button>}
     </Group>}
     {!manual && previewError && <Alert color="red">{previewError}<Button ml="sm" size="xs" onClick={() => { setPreviewError(""); setPreviewAttempt((n) => n + 1); }}>Повторить превью</Button></Alert>}
-    {manual ? (doc ? <OfficeEditor key={doc.id} id={doc.id} title={title} embedded editRef={manualEdit} actionsTarget={actionsTarget} onSaved={saved} onReady={onEditorReady} />
+    {manual ? (doc ? <OfficeEditor key={doc.id} id={doc.id} title={title} embedded editRef={manualEdit} actionsTarget={actionsTarget} onSaved={saved} onReady={onEditorReady} onModifiedChange={onModified} />
       : !error && <Stack align="center" justify="center" flex={1}><Loader size="sm" /><Text size="sm">Открываем редактор слайдов…</Text></Stack>) : doc && visiblePreview ? <>
       {visiblePreview.revision !== doc.revision && <Text p="xs" size="sm" role="status">Обновляем превью v{doc.revision}; пока показана v{visiblePreview.revision}.</Text>}
       <SlideViewer index={index} onIndex={setIndex} ratio={visiblePreview.ratio} caption={<Text size="xs">Превью · v{visiblePreview.revision}</Text>}

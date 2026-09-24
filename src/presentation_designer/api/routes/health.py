@@ -79,12 +79,21 @@ def _provider_summary() -> dict[str, Any] | None:
 
 @router.get("/capabilities")
 def capabilities(orch: Orch) -> dict[str, Any]:
+    from presentation_designer.api.routes.speech import speech_available
+
     limits = orch.settings.limits
     return {
         "contracts_version": CONTRACTS_VERSION,
         "execution_mode": orch.layers.execution_mode(),
         "provider": _provider_summary(),
-        "features": {"generate_images": False, "contextual_audit": True, "html_export": True},
+        "features": {
+            "generate_images": False,
+            "contextual_audit": True,
+            "html_export": True,
+            # Голосовой ввод: сервис asr отвечает и модель на месте (в заглушках — всегда).
+            "speech": speech_available(orch),
+        },
+        "speech": {"language": "ru", "max_seconds": orch.settings.speech.max_seconds},
         "limits": {
             "max_upload_mb": limits.max_upload_mb,
             "max_content_files": limits.max_content_files,

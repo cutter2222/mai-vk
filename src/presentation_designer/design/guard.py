@@ -56,7 +56,8 @@ def drop_placeholders(slide: JsonDict, pattern: JsonDict, markers: set[str]) -> 
 
     service = pattern.get("role") in ("title", "thanks", "qr", "section_divider", "agenda")
     kinds = {s.get("slot_id"): s.get("kind") for s in pattern.get("slots", [])}
-    kept, dropped = [], []
+    kept: list[JsonDict] = []
+    dropped: list[str] = []
     for block in slide.get("blocks", []):
         text = _norm(block.get("text", ""))
         if text and text in samples:

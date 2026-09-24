@@ -77,7 +77,8 @@
 | Операция | Назначение | Ответ |
 | --- | --- | --- |
 | `GET /api/health` | готовность api, воркеров и рендерера; `checks` по частям: база, хранилище, Valkey, воркеры, пробный рендер на воркере | `{status: ok|degraded|down, workers: {analysis, generation}, valkey_ok, renderer_ok, version, execution_mode, checks}` |
-| `GET /api/capabilities` | возможности сервиса и режим слоёв, включая слой `brief` | `{contracts_version, execution_mode, features: {generate_images, contextual_audit, html_export}, limits: {max_upload_mb, max_content_files, slide_count_max, max_project_files, max_project_mb}}` |
+| `GET /api/capabilities` | возможности сервиса и режим слоёв, включая слой `brief`; `features.speech` — голосовой ввод в чате (сервис распознавания отвечает и модель на месте, в заглушках — всегда) | `{contracts_version, execution_mode, features: {generate_images, contextual_audit, html_export, speech}, speech: {language, max_seconds}, limits: {max_upload_mb, max_content_files, slide_count_max, max_project_files, max_project_mb}}` |
+| `POST /api/speech/transcribe` | голосовой ввод: multipart `audio` — WAV PCM16 моно 16 кГц до `max_seconds` (25 с) и 1 МБ; аудио не хранится; `415 audio_format`, `413 audio_too_long`, `503 speech_unavailable` | `{text, duration_ms, infer_ms, model}` |
 | `GET /api/projects` | список проектов с состоянием для карточек | `[{project_id, title, created_at, updated_at, template_id, package_id, job_id, chosen_variant, files_count, template_name, job_status, thumbnail_url, slide_count}]` |
 | `POST /api/projects` | новый проект: `{title?, job_id?}` | `201` Project |
 | `GET /api/projects/{id}` | проект с файлами и лентой; открывается по ссылке из любого браузера | Project |

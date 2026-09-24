@@ -1,5 +1,6 @@
-# Образы API и воркера из одного Dockerfile: общая база с зависимостями Python,
-# цель api и цель worker со шрифтами для измерения текста. Рендер — в ONLYOFFICE.
+# Образы API, воркера и распознавания речи из одного Dockerfile: общая база с зависимостями
+# Python, цель api, цель worker со шрифтами для измерения текста и цель asr (голосовой ввод).
+# Рендер — в ONLYOFFICE.
 # Контекст сборки — корень репозитория (см. .dockerignore). Сборка: docker compose build.
 # Без директивы syntax: встроенный frontend BuildKit покрывает нужное, а лишний образ
 # docker/dockerfile с Docker Hub считается в лимит анонимных запросов (10 в час на IP).
@@ -42,6 +43,15 @@ RUN uv sync --frozen --no-dev \
     && mkdir -p /app/data /app/artifacts /app/runs \
     && chmod -R a+rwX /app/data /app/artifacts /app/runs
 
+FROM base AS asr
+# Распознавание речи для голосового ввода в чате: onnxruntime и sentencepiece из экстры speech,
+# без шрифтов, рендера и torch. Веса GigaAM — том /app/models (make asr-model), в образ не входят.
+RUN uv sync --frozen --no-dev --extra speech --no-cache
+# Меньше арен malloc: после выгрузки модели процесс отдаёт память, а не держит пик.
+ENV MALLOC_ARENA_MAX=2
+EXPOSE 8010
+CMD ["python", "-m", "presentation_designer.cli.asr"]
+
 FROM base AS api
 EXPOSE 8000
 CMD ["python", "-m", "presentation_designer.api", "--host", "0.0.0.0", "--port", "8000"]
@@ -62,4 +72,4 @@ RUN sed -i 's/^Components: main$/Components: main contrib/' /etc/apt/sources.lis
     && rm -rf /var/lib/apt/lists/*
 COPY docker/fonts /usr/local/share/fonts/project
 RUN fc-cache -f
-CMD ["python", "-m", "presentation_designer.cli.worker", "--queues", "generation"]
+CMD ["python", "-m", "presentation_designer.cli.worker", "--queues", "interactive", "generation"]

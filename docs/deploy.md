@@ -10,7 +10,8 @@
 | `frontend` | `presentation-designer/frontend:<тег>` | статический экспорт Next.js в рабочем режиме | 64 МБ |
 | `api` | `presentation-designer/api:<тег>` | FastAPI: проекты, файлы, шаблоны, содержание, задания, артефакты; SQLite в `data/`; CLI обслуживания | 512 МБ |
 | `worker-analysis` | `presentation-designer/worker:<тег>` | очереди `analysis` и `repair`: анализ шаблонов (ONLYOFFICE/PDFium для миниатюр, VLM для ролей образцов и тегов иконок), исправления, периодическая сборка мусора | 1,5 ГБ |
-| `worker-generation` ×3 | `presentation-designer/worker:<тег>` | очередь `generation`: импорт, смысловой план, варианты; шрифты для измерения текста; число реплик — `PD_GENERATION_WORKERS` | 1,5 ГБ каждый |
+| `worker-generation` ×3 | `presentation-designer/worker:<тег>` | очереди `interactive generation` (порядок — приоритет): фон открытой презентации, импорт, смысловой план, варианты; шрифты для измерения текста; число реплик — `PD_GENERATION_WORKERS` | 1,5 ГБ каждый |
+| `asr` | `presentation-designer/asr:<тег>` | распознавание речи для голосового ввода (GigaAM int8, ONNX Runtime, одно ядро); веса — `$SERVER_DIR/models` (`PD_MODELS_DIR`, доставляет `make asr-model`), без них сервис жив, а кнопки микрофона нет; модель грузится по первой фразе и выгружается после 10 минут простоя | 768 МБ (`PD_ASR_MEMORY`) |
 | `onlyoffice` | `presentation-designer/onlyoffice:<тег>` | редактор и PPTX → PDF; Docs 9.3.1 со шрифтами проекта | 4 ГБ |
 | `valkey` | `valkey/valkey:8.1-alpine` | очередь RQ, лимитер запросов к провайдеру моделей (общий для всех воркеров), блокировки; AOF раз в секунду, `maxmemory 128mb noeviction` | 256 МБ |
 

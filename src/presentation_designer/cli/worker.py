@@ -1,7 +1,8 @@
 """Воркер очереди: слушает заданные очереди RQ и перед стартом проверяет рендерер.
 
-Роли задаются списком очередей: анализ и исправления — `analysis repair`,
-генерация — `generation`. Запуск: python -m presentation_designer.cli.worker --queues generation
+Роли задаются списком очередей в порядке приоритета: анализ и исправления — `analysis repair`,
+генерация — `interactive generation` (фон уже открытой презентации идёт раньше чужих сборок).
+Запуск: python -m presentation_designer.cli.worker --queues interactive generation
 `--healthcheck` для Docker: воркер этого контейнера зарегистрирован в Valkey и его
 отметка жива (RQ продлевает ключ воркера при каждом heartbeat).
 """

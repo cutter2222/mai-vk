@@ -27,6 +27,9 @@ managed_env() {
   set_env_key "$env_file" PD_ARTIFACTS_DIR "$server_dir/artifacts"
   set_env_key "$env_file" PD_RUNS_DIR "$server_dir/runs"
   set_env_key "$env_file" PD_BACKUPS_DIR "$server_dir/backups"
+  # Веса моделей, которые сервис держит сам (GigaAM для голосового ввода): make asr-model.
+  set_env_key "$env_file" PD_MODELS_DIR "$server_dir/models"
+  mkdir -p "$server_dir/models"
   set_env_key "$env_file" PD_ENV_FILE "$env_file"
 }
 

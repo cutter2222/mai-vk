@@ -16,18 +16,21 @@ import hashlib
 import json
 import logging
 import pathlib
+import shutil
 import socket
 import threading
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
 from presentation_designer import __version__
 from presentation_designer.contracts import CONTRACTS_VERSION
+from presentation_designer.generation.original import VARIANT_ID as ORIGINAL_VARIANT
 from presentation_designer.generation.original import original_story
 from presentation_designer.generation.variants import upgrade_plan_schema
 from presentation_designer.llm import model_refs, version_refs
-from presentation_designer.pipeline.artifacts import ArtifactStore
+from presentation_designer.pipeline.artifacts import ArtifactStore, Staging
 from presentation_designer.pipeline.files import FileStore, format_for
 from presentation_designer.pipeline.run import (
     VARIANT_AXIS,
@@ -508,6 +511,14 @@ class Orchestrator:
                 for v in variant_ids
             ],
         )
+        if variant_ids == ["original"]:
+            # Готовая презентация показывается сразу: редактору нужны только байты PPTX, поэтому
+            # копия файла публикуется ревизией r1 здесь же, без очереди и без модели. Ошибка
+            # копии запрос не роняет: копию сделает фоновая задача.
+            try:
+                _publish_original_copy(self, job_id, template)
+            except Exception:
+                log.exception("копия презентации %s не опубликована в запросе", job_id)
         self.enqueue_generation(job_id, template, package, variant_ids)
         return self.state.get_job(job_id)
 
@@ -517,12 +528,20 @@ class Orchestrator:
         q = self.settings.queue
         t = self.settings.timeouts
         rq_ids: list[str] = []
+        original = variant_ids == ["original"]
+        # Разбор готовой презентации без проверки моделью — смысловой план по профилю и сборка
+        # «как есть», вместе около 8 с на 55 слайдов и без модели. Это фон уже открытой
+        # презентации: в очереди generation он ждал бы чужих сборок до десяти минут, а правки
+        # из чата — вместе с ним. С контекстным аудитом (минуты модели) — очередь generation.
+        request_settings = self.state.get_generation(job_id)["request"].get("settings") or {}
+        light = original and not bool(request_settings.get("run_contextual_audit", True))
+        parse_queue = q.interactive_queue if light else q.generation_queue
         deps_story = self._pending_rq_ids(package["job_id"])
-        if variant_ids == ["original"]:
+        if original:
             # Смысловой план исходной презентации строится по профилю: ждём и анализ.
             deps_story = [*deps_story, *self._pending_rq_ids(template["job_id"])]
         story_id = self.executor.enqueue(
-            q.generation_queue,
+            parse_queue,
             task_story,
             (job_id,),
             depends_on=deps_story,
@@ -531,16 +550,16 @@ class Orchestrator:
         )
         rq_ids.append(story_id)
         deps_variant = [story_id, *self._pending_rq_ids(template["job_id"])]
-        if variant_ids == ["original"]:
-            # Исходная презентация показывается сразу: файл рендерится предварительной
-            # ревизией, не дожидаясь анализа и импорта; полная сборка идёт следом и рендер
-            # не повторяет. Вариант ждёт предварительную ревизию, чтобы не спорить за r1.
+        if original:
+            # Копия уже показана (r1 опубликовал запрос). Подписи, диаграммы-картинки и рендер
+            # открытой презентации идут в очереди interactive — воркеры генерации берут её
+            # раньше чужих сборок; полная сборка ждёт эту задачу и рендер не повторяет.
             preview_id = self.executor.enqueue(
-                q.generation_queue,
+                q.interactive_queue,
                 task_original_preview,
                 (job_id,),
                 depends_on=[],
-                timeout=t.stage_export_s,
+                timeout=t.stage_export_s + int(self.settings.layout.chart_images.budget_s) + 60,
                 description=f"preview {job_id}",
             )
             rq_ids.append(preview_id)
@@ -551,7 +570,7 @@ class Orchestrator:
         variant_rq: list[str] = []
         for variant_id in ordered_variants(variant_ids):
             vid = self.executor.enqueue(
-                q.generation_queue,
+                parse_queue,
                 task_variant,
                 (job_id, variant_id),
                 depends_on=deps_variant if not variant_rq else [variant_rq[0]],
@@ -560,8 +579,10 @@ class Orchestrator:
             )
             variant_rq.append(vid)
         rq_ids.extend(variant_rq)
+        # Итог готовой презентации — мгновенная запись статуса: в очереди generation он ждал бы
+        # чужих сборок минутами, и открытая презентация числилась бы «в работе».
         fin = self.executor.enqueue(
-            q.generation_queue,
+            q.interactive_queue if original else q.generation_queue,
             task_finalize,
             (job_id,),
             depends_on=variant_rq,
@@ -674,15 +695,22 @@ class Orchestrator:
         instruction: str,
     ) -> JsonDict:
         """Правка одного слайда варианта по инструкции: то же задание ревизии, что и
-        исправление, с видом `edit`; одна правка ревизии за раз."""
+        исправление, с видом `edit`; одна правка ревизии за раз.
+
+        Готовая презентация открыта раньше, чем разобрана: пока у последней ревизии нет
+        плана, правка принимается и ждёт разбора — задача ставится за заданиями генерации,
+        а база перед запуском переносится на последнюю ревизию (`task_edit`)."""
         variant = self.state.get_variant(job_id, variant_id)
-        if variant["revision"] != base_revision:
+        waiting = self._edit_waits_for_plan(job_id, variant)
+        if waiting is None and variant["revision"] != base_revision:
             raise ConflictError(
                 "revision_stale",
                 f"Ревизия {base_revision} устарела: текущая ревизия {variant['revision']}. Обновите результат и повторите просьбу.",  # noqa: E501
                 {"current_revision": variant["revision"]},
             )
-        if variant["status"] in {"failed", "pending", "running"}:
+        if variant["status"] == "failed" and variant_id == "original":
+            raise ConflictError("variant_failed", PARSE_FAILED)
+        if waiting is None and variant["status"] in {"failed", "pending", "running"}:
             raise ConflictError("variant_failed", "Вариант ещё не собран, править нечего")
         active = self.state.active_repair(job_id, variant_id)
         if active:
@@ -698,19 +726,27 @@ class Orchestrator:
                 f"В варианте {count} слайдов, слайда с номером {slide_index + 1} нет",
             )
         edit_id = new_id("edit")
+        message = f"Правка слайда {slide_index + 1}"
+        if waiting is not None:
+            from presentation_designer.pipeline.results import deferred_edit_message
+
+            message = deferred_edit_message(self.state, job_id)
         self.state.create_job(
             kind="slide_edit",
             job_id=edit_id,
             stage="queued",
             parent_job_id=job_id,
+            # Правка ждёт разбора: задание генерации в зависимостях — и знак для task_edit
+            # перенести базу на последнюю ревизию.
+            depends_on=[job_id] if waiting is not None else None,
             result={"generation_result_url": f"/api/generations/{job_id}"},
-            progress={"percent": 0, "message": f"Правка слайда {slide_index + 1}"},
+            progress={"percent": 0, "message": message},
         )
         self.state.create_repair(
             repair_job_id=edit_id,
             job_id=job_id,
             variant_id=variant_id,
-            base_revision=base_revision,
+            base_revision=variant["revision"] if waiting is not None else base_revision,
             issue_ids=[],
             kind="edit",
             slide_index=slide_index,
@@ -720,7 +756,7 @@ class Orchestrator:
             self.settings.queue.repair_queue,
             task_edit,
             (edit_id,),
-            depends_on=[],
+            depends_on=waiting or [],
             timeout=self.settings.timeouts.stage_plan_s
             + self.settings.timeouts.stage_compose_s
             + self.settings.timeouts.stage_export_s
@@ -729,6 +765,27 @@ class Orchestrator:
         )
         self.state.update_job(edit_id, rq_ids=[rq_id])
         return self.state.get_job(edit_id)
+
+    def _edit_waits_for_plan(self, job_id: str, variant: JsonDict) -> list[str] | None:
+        """Задачи генерации, за которыми встаёт правка, если ревизия уже показана, а плана у
+        неё ещё нет (разбор готовой презентации идёт в фоне); None — ждать нечего, правка
+        проверяется как обычно."""
+        if variant["status"] not in {"pending", "running"}:
+            return None
+        try:
+            job = self.state.get_job(job_id)
+            self.state.get_revision(job_id, variant["variant_id"], int(variant["revision"]))
+        except NotFound:
+            return None
+        if job["status"] in TERMINAL:
+            return None
+        plan = self.artifacts.revision_dir(job_id, variant["variant_id"], int(variant["revision"]))
+        if (plan / "plan.json").is_file():
+            return None
+        # Итог задания (последняя задача, см. enqueue_generation) правке не нужен: план готов,
+        # как только собран вариант.
+        final = job["rq_ids"][-1:] if job["rq_ids"] else []
+        return [rid for rid in self._pending_rq_ids(job_id) if rid not in final]
 
     def submit_patch(
         self,
@@ -1086,6 +1143,12 @@ def get_orchestrator() -> Orchestrator:
 # Вариант, который собирается первым: средняя плотность — то, что человек видит по умолчанию.
 PRIMARY_VARIANT = "balanced"
 
+# Готовая презентация открыта, а разбор в фоне не удался: правки из чата ждать нечего.
+PARSE_FAILED = (
+    "Разбор презентации не удался: правки из чата недоступны, редактор и скачивание работают. "
+    "Повторите разбор кнопкой в чате"
+)
+
 
 def ordered_variants(variant_ids: list[str]) -> list[str]:
     """Порядок сборки: основной вариант первым, остальные в порядке запроса."""
@@ -1374,135 +1437,231 @@ def task_story(job_id: str) -> None:
     )
 
 
+def _publish_original_copy(o: Orchestrator, job_id: str, template: JsonDict) -> bool:
+    """Копия загруженной презентации — ревизия r1 варианта original, байт в байт. Редактору
+    нужен только файл, поэтому копия публикуется сразу: без очереди, без модели и без разбора
+    пакета (число слайдов — по списку в presentation.xml). True — r1 есть."""
+    variant_id, revision = ORIGINAL_VARIANT, 1
+    try:
+        o.state.get_revision(job_id, variant_id, revision)
+        return True
+    except NotFound:
+        pass
+    source = o.files.path_for(str(template["sha256"]))
+    if not source.is_file():
+        log.warning("копия презентации %s: файл %s не найден", job_id, template["sha256"])
+        return False
+    started = time.perf_counter()
+    prefix = o.artifacts.prefix(variant_id, revision)
+    with o.artifacts.stage_revision(job_id, variant_id, revision) as staging:
+        shutil.copyfile(source, staging.path("deck.pptx"))
+    manifest = staging.manifest
+    o.state.add_revision(
+        job_id=job_id,
+        variant_id=variant_id,
+        revision=revision,
+        artifacts_prefix=prefix,
+        manifest=manifest,
+        pptx_hash=_pptx_hash(manifest, prefix),
+    )
+    # ready_at — первая публикация: дальше его не переписывает никто (полная сборка тоже).
+    o.state.update_variant(
+        job_id,
+        variant_id,
+        status="running",
+        slide_count=_slide_count(source) or None,
+        ready_at=now_iso(),
+    )
+    o.state.job_started(job_id)
+    o.state.update_job(
+        job_id, stage="analyze", progress={"percent": 5, "message": "Открываю презентацию"}
+    )
+    log.info(
+        "копия презентации %s опубликована за %d мс",
+        job_id,
+        int((time.perf_counter() - started) * 1000),
+    )
+    return True
+
+
 def task_original_preview(job_id: str) -> None:
-    """Предварительная ревизия исходной презентации: копия загруженного файла публикуется как
-    r1 варианта original, пока анализ и импорт ещё идут. Редактору нужен только PPTX, поэтому
-    он публикуется сразу, а PDF и миниатюры рендерятся следом в ту же ревизию — слайды видны
-    на рендер раньше. Полная сборка потом переписывает r1 планом, описанием и аудитом, а рендер
-    переиспользует."""
+    """Фон уже открытой презентации (очередь interactive): подписи пустых плейсхолдеров и
+    диаграммы-картинки делают ревизию r2, если в копии что-то изменилось, затем PDF и
+    миниатюры последней ревизии — их переиспользует полная сборка. r1 публикует сам запрос
+    создания задания; здесь копия делается, только если её там не вышло."""
     o = get_orchestrator()
     job = o.state.get_job(job_id)
     gen = o.state.get_generation(job_id)
     if gen["canceled"] or job["status"] in TERMINAL:
         return
     template = o.state.get_template(gen["template_id"])
-    source = o.files.path_for(template["sha256"])
-    if not source.is_file():
-        log.warning("предварительная ревизия %s: файл презентации не найден", job_id)
+    try:
+        if not _publish_original_copy(o, job_id, template):
+            return
+    except Exception:
+        log.exception("копия презентации %s не опубликована", job_id)
         return
-    variant_id, revision = "original", 1
-    started = now_iso()
     o.state.job_started(job_id)
-    # Число слайдов известно сразу: интерфейс держит место под каждый, пока копия готовится.
-    o.state.update_variant(
-        job_id, variant_id, status="running", slide_count=_slide_count(source) or None
+    started = time.perf_counter()
+    settings = gen["request"].get("settings") or {}
+    try:
+        revision = _refine_original(o, job_id, settings)
+    except Exception:  # подписи и диаграммы необязательны: остаётся показанная копия
+        log.exception("подписи и диаграммы копии %s не обработаны", job_id)
+        revision = 1
+    refined_ms = int((time.perf_counter() - started) * 1000)
+    try:
+        pages = _render_revision(o, job_id, ORIGINAL_VARIANT, revision, template)
+    except Exception:  # без рендера полная сборка отрендерит сама
+        log.exception("рендер копии %s r%d не удался", job_id, revision)
+        return
+    log.info(
+        "фон копии %s: r%d, подписи и диаграммы %d мс, с рендером %d мс, %d страниц",
+        job_id,
+        revision,
+        refined_ms,
+        int((time.perf_counter() - started) * 1000),
+        pages,
     )
-    o.state.update_job(
-        job_id, stage="export", progress={"percent": 5, "message": "Готовлю презентацию к показу"}
+
+
+def _refine_original(o: Orchestrator, job_id: str, settings: JsonDict) -> int:
+    """Подписи пустых плейсхолдеров и диаграммы-картинки копии → ревизия r2; номер ревизии,
+    которую теперь показывать. r1 не переписывается: офисная копия r1 создаётся один раз по
+    своему source, и её байты менять бессмысленно. Ничего не изменилось — r2 нет, отчёт о
+    чтении диаграмм (если было что читать) дописывается в r1."""
+    variant_id = ORIGINAL_VARIANT
+    latest = int(o.state.get_variant(job_id, variant_id)["revision"] or 1)
+    if latest > 1:  # повторный запуск задачи: r2 уже опубликована
+        return latest
+    shown = o.artifacts.revision_dir(job_id, variant_id, 1)
+    out: Any = None
+    with o.artifacts.stage_revision(job_id, variant_id, 2) as staging:
+        deck = staging.path("deck.pptx")
+        shutil.copyfile(shown / "deck.pptx", deck)
+        prompted = _preview_prompts(deck, settings)
+        out = _preview_charts(o, job_id, deck)
+        if prompted or (out is not None and out.replaced):
+            if out is not None and out.report:
+                staging.write_json("charts.json", out.report)
+        else:
+            staging.discard = True
+    if staging.published:
+        prefix = o.artifacts.prefix(variant_id, 2)
+        o.state.add_revision(
+            job_id=job_id,
+            variant_id=variant_id,
+            revision=2,
+            artifacts_prefix=prefix,
+            manifest=staging.manifest,
+            pptx_hash=_pptx_hash(staging.manifest, prefix),
+        )
+        _chart_warning(o, job_id, out)
+        log.info(
+            "копия %s: r2 — подписей %d, диаграмм заменено %d",
+            job_id,
+            prompted,
+            out.replaced if out is not None else 0,
+        )
+        return 2
+    if out is not None and out.report:
+        prefix = o.artifacts.prefix(variant_id, 1)
+        republish = Staging(dir=shown, final=shown, prefix=prefix)
+        republish.write_json("charts.json", out.report)
+        manifest = o.artifacts.publish(republish)
+        o.state.update_revision(job_id, variant_id, 1, manifest=manifest)
+    _chart_warning(o, job_id, out)
+    return 1
+
+
+def _chart_warning(o: Orchestrator, job_id: str, out: Any) -> None:
+    """Фраза о диаграммах-картинках — в предупреждения задания в момент публикации ревизии:
+    чат говорит её сразу, а не в конце разбора."""
+    if out is None or not out.message:
+        return
+    current = o.state.get_generation(job_id)["warnings"]
+    if any(w.get("code") == "chart_images" for w in current):
+        return
+    o.state.update_generation(
+        job_id, warnings=[*current, {"code": "chart_images", "message": out.message}]
     )
+
+
+def _render_revision(
+    o: Orchestrator, job_id: str, variant_id: str, revision: int, template: JsonDict
+) -> int:
+    """PDF и миниатюры опубликованной ревизии: файлы дописываются в её каталог, манифест
+    переписывается атомарно. Возвращает число страниц."""
+    final = o.artifacts.revision_dir(job_id, variant_id, revision)
+    prefix = o.artifacts.prefix(variant_id, revision)
+    staging = Staging(dir=final, final=final, prefix=prefix)
+    titles = _slide_titles(final / "deck.pptx")
+    exported = o.layers.export(
+        ExportInput(
+            job_id,
+            variant_id,
+            revision,
+            staging,
+            titles or [f"Слайд {i + 1}" for i in range(_slide_count(final / "deck.pptx"))],
+            str(template["name"]).rsplit(".", 1)[0] or "Презентация",
+        )
+    )
+    manifest = o.artifacts.publish(staging)
+    o.state.update_revision(
+        job_id, variant_id, revision, manifest=manifest, pptx_hash=_pptx_hash(manifest, prefix)
+    )
+    o.state.update_variant(job_id, variant_id, slide_count=len(exported.thumbnails))
+    return len(exported.thumbnails)
+
+
+def _slide_titles(path: pathlib.Path) -> list[str]:
     try:
         from pptx import Presentation
 
         titles: list[str] = []
-        try:
-            for slide in Presentation(str(source)).slides:
-                title = slide.shapes.title.text if slide.shapes.title is not None else ""
-                titles.append(" ".join(title.split())[:120])
-        except Exception:
-            titles = []
-        with o.artifacts.stage_revision(job_id, variant_id, revision) as staging:
-            import shutil
-
-            shutil.copyfile(source, staging.path("deck.pptx"))
-            _preview_prompts(staging.path("deck.pptx"), gen["request"].get("settings") or {})
-            _preview_charts(o, job_id, staging)
-            prefix = o.artifacts.prefix(variant_id, revision)
-            manifest = o.artifacts.publish(staging)
-            o.state.add_revision(
-                job_id=job_id,
-                variant_id=variant_id,
-                revision=revision,
-                artifacts_prefix=prefix,
-                manifest=manifest,
-                pptx_hash=_pptx_hash(manifest, prefix),
-            )
-            o.state.update_variant(job_id, variant_id, ready_at=now_iso())
-            o.state.update_job(
-                job_id, progress={"percent": 40, "message": "Открываю презентацию в редакторе"}
-            )
-            shown_ms = _ms_since(started)
-            exported = o.layers.export(
-                ExportInput(
-                    job_id,
-                    variant_id,
-                    revision,
-                    staging,
-                    titles or [f"Слайд {i + 1}" for i in range(_slide_count(source))],
-                    str(template["name"]).rsplit(".", 1)[0] or "Презентация",
-                )
-            )
-            manifest = o.artifacts.publish(staging)
-            o.state.update_revision(
-                job_id,
-                variant_id,
-                revision,
-                manifest=manifest,
-                pptx_hash=_pptx_hash(manifest, prefix),
-            )
-            o.state.update_variant(job_id, variant_id, slide_count=len(exported.thumbnails))
-            o.state.update_job(
-                job_id, progress={"percent": 50, "message": "Разбираю презентацию в фоне"}
-            )
+        for slide in Presentation(str(path)).slides:
+            title = slide.shapes.title.text if slide.shapes.title is not None else ""
+            titles.append(" ".join(title.split())[:120])
+        return titles
     except Exception:
-        # Предварительный показ не обязателен: без него презентация появится после полной сборки.
-        log.exception("предварительная ревизия %s не собрана", job_id)
-        return
-    log.info(
-        "предварительная ревизия %s: %d слайдов, PPTX показан через %d мс, с рендером %d мс",
-        job_id,
-        len(exported.thumbnails),
-        shown_ms,
-        _ms_since(started),
-    )
+        return []
 
 
-def _preview_prompts(path: pathlib.Path, settings: JsonDict) -> None:
+def _preview_prompts(path: pathlib.Path, settings: JsonDict) -> int:
     """Пустые плейсхолдеры копии получают текст подсказки, как в полной сборке: ONLYOFFICE
-    открывает эту копию, и «Заголовок слайда» должен быть текстом, а не подсказкой, которая
-    исчезает по щелчку и не видна в миниатюрах."""
+    показывает эту копию, и «Заголовок слайда» должен быть текстом, а не подсказкой, которая
+    исчезает по щелчку и не видна в миниатюрах. Возвращает число заполненных плейсхолдеров.
+
+    В синхронный путь не входит: сохранение пакета на 55 слайдах на сервере — 0,7 с, с разбором
+    около секунды (замер 24.09.2026), а копия должна публиковаться мгновенно."""
     from pptx import Presentation
 
     from presentation_designer.layout.text import fill_empty_placeholders
 
     prs = Presentation(str(path))
-    if fill_empty_placeholders(prs.slides, str(settings.get("language") or "ru")):
+    filled = int(fill_empty_placeholders(prs.slides, str(settings.get("language") or "ru")) or 0)
+    if filled:
         prs.save(str(path))
+    return filled
 
 
-def _preview_charts(o: Orchestrator, job_id: str, staging: Any) -> None:
-    """Диаграммы-картинки копии → нативные диаграммы до первого показа: ONLYOFFICE откроет
-    копию уже с редактируемыми диаграммами, а полная сборка повторит те же замены по
-    charts.json. Отчёт — в предупреждения задания, его показывает карточка сборки в чате."""
+def _preview_charts(o: Orchestrator, job_id: str, deck: pathlib.Path) -> Any:
+    """Диаграммы-картинки копии → нативные диаграммы на месте; полная сборка повторит те же
+    замены по charts.json. None — чтение сломалось: остаётся копия как есть."""
 
     def progress(message: str, share: float) -> None:
         percent = 10 + round(25 * max(0.0, min(1.0, share)))
         o.state.update_job(job_id, progress={"percent": percent, "message": message})
 
     try:
-        out = o.layers.chart_images(staging.path("deck.pptx"), progress)
+        out = o.layers.chart_images(deck, progress)
     except Exception:  # замена необязательна: покажется исходная презентация
         log.exception("диаграммы-картинки %s не заменены", job_id)
-        return
+        return None
     finally:
         _record_llm(o, job_id)
-    if out.report:
-        staging.write_json("charts.json", out.report)
-    if out.message:
-        current = o.state.get_generation(job_id)["warnings"]
-        o.state.update_generation(
-            job_id, warnings=[*current, {"code": "chart_images", "message": out.message}]
-        )
     log.info("диаграммы-картинки %s: заменено %d; %s", job_id, out.replaced, out.message or "—")
+    return out
 
 
 def _preview_chart_report(preview_dir: pathlib.Path | None) -> JsonDict | None:
@@ -1519,12 +1678,23 @@ def _preview_chart_report(preview_dir: pathlib.Path | None) -> JsonDict | None:
 
 
 def _slide_count(path: pathlib.Path) -> int:
-    try:
-        from pptx import Presentation
+    """Число слайдов по списку sldIdLst в ppt/presentation.xml: без разбора всего пакета,
+    который на 55 слайдах стоит десятые доли секунды."""
+    import zipfile
 
-        return len(Presentation(str(path)).slides)
+    from lxml import etree
+
+    try:
+        with zipfile.ZipFile(path) as zf:
+            root = etree.fromstring(zf.read("ppt/presentation.xml"))
+        return sum(1 for el in root.iter() if etree.QName(el).localname == "sldId")
     except Exception:
-        return 0
+        try:
+            from pptx import Presentation
+
+            return len(Presentation(str(path)).slides)
+        except Exception:
+            return 0
 
 
 def task_variant(job_id: str, variant_id: str) -> None:
@@ -1561,17 +1731,19 @@ def task_variant(job_id: str, variant_id: str) -> None:
     o.state.add_stage(job_id, {"stage": "analyze", "status": "done", "cache_hit": True})
     template_path = o.files.path_for(template["sha256"])
     revision = 1
-    prefix = o.artifacts.prefix(variant_id, revision)
-    # Предварительная ревизия исходной презентации: запись r1 обновляется, а не создаётся
-    # заново, замены диаграмм повторяются по её charts.json, рендер переиспользуется, если
-    # успел (PPTX публикуется раньше PDF, и рендер мог не дойти до конца).
+    # Готовая презентация уже показана: сборка пишет в последнюю её ревизию (r2 с диаграммами,
+    # если она есть, иначе r1) — запись обновляется, а не создаётся заново, замены диаграмм
+    # повторяются по charts.json этой ревизии, рендер переиспользуется, если успел.
     shown_dir: pathlib.Path | None = None
-    if variant_id == "original":
+    if variant_id == ORIGINAL_VARIANT:
+        latest = int(o.state.get_variant(job_id, variant_id)["revision"] or 1)
         try:
-            o.state.get_revision(job_id, variant_id, revision)
+            o.state.get_revision(job_id, variant_id, latest)
+            revision = latest
             shown_dir = o.artifacts.revision_dir(job_id, variant_id, revision)
         except NotFound:
             shown_dir = None
+    prefix = o.artifacts.prefix(variant_id, revision)
     preview_dir = shown_dir if shown_dir and (shown_dir / "deck.pdf").is_file() else None
 
     def emit(event: str, data: JsonDict) -> None:
@@ -1582,7 +1754,7 @@ def task_variant(job_id: str, variant_id: str) -> None:
         elif event == "files_ready":
             manifest = o.artifacts.publish(staging)
             if shown_dir is not None:
-                # r1 уже опубликована предварительной ревизией: запись обновляется.
+                # Ревизия уже опубликована копией: запись обновляется.
                 o.state.update_revision(
                     job_id,
                     variant_id,
@@ -1599,12 +1771,19 @@ def task_variant(job_id: str, variant_id: str) -> None:
                     manifest=manifest,
                     pptx_hash=_pptx_hash(manifest, prefix),
                 )
+            # ready_at — первая публикация файла; у готовой презентации это копия в запросе,
+            # и сборка его не переписывает (иначе first_file_ready_ms врёт).
+            first = (
+                {}
+                if o.state.get_variant(job_id, variant_id).get("ready_at")
+                else {"ready_at": now_iso()}
+            )
             o.state.update_variant(
                 job_id,
                 variant_id,
                 status="ready",
                 slide_count=data.get("slide_count"),
-                ready_at=now_iso(),
+                **first,
                 audit={
                     "status": "running",
                     "coverage_complete": False,
@@ -1995,6 +2174,20 @@ def task_edit(edit_job_id: str) -> None:
     try:
         variant = o.state.get_variant(job_id, variant_id)
         base = edit["base_revision"]
+        if o.state.get_job(edit_job_id).get("depends_on"):
+            # Правка ждала разбора готовой презентации: за это время копия могла получить r2,
+            # а сборка — записать план в последнюю ревизию. База — она.
+            latest = int(variant["revision"])
+            if (
+                variant["status"] == "failed"
+                or not (
+                    o.artifacts.revision_dir(job_id, variant_id, latest) / "plan.json"
+                ).is_file()
+            ):
+                raise StageError("plan_unavailable", PARSE_FAILED, stage="plan")
+            if latest != base:
+                base = latest
+                o.state.update_repair(edit_job_id, base_revision=base)
         if variant["revision"] != base:
             raise ConflictError("revision_stale", "Ревизия устарела до начала правки")
         base_dir = o.artifacts.revision_dir(job_id, variant_id, base)
@@ -2056,6 +2249,9 @@ def task_edit(edit_job_id: str) -> None:
                 patch=patch,
                 base_deck=base_deck,
                 extra_assets=extra_assets,
+                chart_report=_preview_chart_report(base_dir)
+                if variant_id == ORIGINAL_VARIANT
+                else None,
             )
             outcome = run_edit(o.layers, ctx, emit)
             if outcome.status == "failed":

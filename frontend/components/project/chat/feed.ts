@@ -59,11 +59,12 @@ export function isDeckJob(project: Project, result: GenerationResult | null): bo
 export const JOB_WARNINGS = new Set(["original_slides_skipped", "chart_images", "slide_count_short"]);
 
 /**
- * Готовая презентация открывается с полосой прогресса над слайдами, а в чате уже сказано
- * «открываю как есть». Ход сборки в ленте её не дублирует: сообщение появляется, только если
- * открыть не вышло или в слайдах что-то изменилось.
+ * Готовая презентация открывается строкой под «Открываю…», там же тихо идёт разбор в фоне и
+ * появляется фраза о диаграммах. Ход сборки в ленте это не дублирует: сообщение появляется,
+ * только если разбор не удался, в слайдах что-то изменилось или закончилась проверка моделью.
  */
 export function deckJobHasNews(result: GenerationResult | null): boolean {
   if (!result || !TERMINAL_STATES.has(result.status) || result.status === "canceled") return false;
-  return result.status === "failed" || Boolean(result.warnings?.some((w) => JOB_WARNINGS.has(w.code)));
+  if (result.status === "failed" || result.request?.settings?.run_contextual_audit === true) return true;
+  return Boolean(result.warnings?.some((w) => JOB_WARNINGS.has(w.code) && w.code !== "chart_images"));
 }

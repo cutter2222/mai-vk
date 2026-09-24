@@ -34,6 +34,10 @@ const base = (path: string) => `${API_BASE}${path}`;
 
 /** Сколько «едет» файл проекта; тесты растягивают загрузку через mock_upload_ms, чтобы проверить экран в это время. */
 const UPLOAD_MS = Number(typeof window !== "undefined" ? window.localStorage.getItem("mock_upload_ms") ?? "150" : "150") || 150;
+const SPEECH = typeof window === "undefined" || window.localStorage.getItem("mock_speech") !== "off";
+const SPEECH_MS = Number(typeof window !== "undefined" ? window.localStorage.getItem("mock_speech_ms") ?? "300" : "300") || 300;
+const SPEECH_PHRASES = ["Сделай заголовок короче.", "Добавь вывод на последний слайд.", "Проверка голосового ввода."];
+let speechCalls = 0;
 
 interface FileMeta {
   name: string;
@@ -90,10 +94,24 @@ export const handlers = [
     HttpResponse.json({
       contracts_version: "1.9",
       execution_mode: { mode: "stub", layers: { "parsing.template": "stub", "parsing.content": "stub", brief: "stub", "generation.story": "stub", "generation.plan": "stub", layout: "stub", export: "stub", "audit.deterministic": "stub", "audit.contextual": "stub" } },
-      features: { generate_images: false, contextual_audit: true, html_export: true },
+      // Голосовой ввод в заглушке есть всегда, кроме mock_speech=off (проверка «кнопки нет»).
+      features: { generate_images: false, contextual_audit: true, html_export: true, speech: SPEECH },
+      speech: { language: "ru", max_seconds: 25 },
       limits: { max_upload_mb: 100, max_content_files: 20, slide_count_max: 60, max_project_files: 50, max_project_mb: 1024 },
     }),
   ),
+
+  // ---------- голосовой ввод ----------
+  // Модели в заглушке нет: каждая фраза «распознаётся» очередной строкой из списка.
+  http.post(base("/speech/transcribe"), async ({ request }) => {
+    await delay(SPEECH_MS);
+    // Прогрев модели при включении микрофона — полсекунды тишины: фразой не считается.
+    const audio = (await request.formData()).get("audio");
+    if (audio instanceof File && audio.size < 20000) return HttpResponse.json({ text: "", duration_ms: 500, infer_ms: SPEECH_MS, model: "stub" });
+    const text = SPEECH_PHRASES[speechCalls % SPEECH_PHRASES.length];
+    speechCalls += 1;
+    return HttpResponse.json({ text, duration_ms: 1500, infer_ms: SPEECH_MS, model: "stub" });
+  }),
 
   // ---------- проекты ----------
   http.get(base("/projects"), () => {

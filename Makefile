@@ -1,5 +1,5 @@
 # Цели проекта. Запуск из корня репозитория.
-.PHONY: setup gen-contracts docs check test lint typecheck fixtures organizer-data dev dev-real api build build-mock e2e test-server up down deploy rollback backup restore-verify cold-start llm-probe llm-smoke llm-limiter-check llm-test-valkey clean
+.PHONY: setup gen-contracts docs check test lint typecheck fixtures organizer-data dev dev-real api build build-mock e2e test-server up down deploy rollback backup restore-verify cold-start asr-model llm-probe llm-smoke llm-limiter-check llm-test-valkey clean
 
 setup: ## установить зависимости Python и frontend
 	uv sync
@@ -81,6 +81,9 @@ backup: ## резервная копия сервера в $SERVER_DIR/backups (
 
 restore-verify: ## проверить последнюю (или ARCHIVE=имя) копию на сервере в отдельном каталоге
 	./deploy/restore.sh --target server --verify-only $(if $(ARCHIVE),--archive $(ARCHIVE))
+
+asr-model: ## веса GigaAM для голосового ввода на сервер: $SERVER_DIR/models, том сервиса asr (сначала scripts/export_gigaam_onnx.py)
+	./deploy/asr-model.sh $(ASR_MODEL_DIR)
 
 cold-start: ## замер холодного запуска на сервере (MODE=down-up|restart, RUNS=N)
 	./scripts/measure_cold_start.sh --target server --mode $(or $(MODE),down-up) --runs $(or $(RUNS),1)

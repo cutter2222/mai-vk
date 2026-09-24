@@ -733,16 +733,9 @@ def swap_summary(swaps: list[ChartSwap], unread: list[tuple[int, str]]) -> str |
     parts = []
     if replaced:
         slides = sorted({s.slide for s in replaced})
-        n = len(replaced)
-        became = plural(
-            n,
-            "диаграмма-картинка стала редактируемой",
-            "диаграммы-картинки стали редактируемыми",
-            "диаграмм-картинок стали редактируемыми",
-        )
-        parts.append(f"{n} {became} ({_slides(slides)})")
+        parts.append(f"Сделал диаграммы редактируемыми: {len(replaced)} ({_slides(slides)})")
         if any(s.measured for s in replaced):
-            parts[-1] += ": значения сняты по картинке, проверьте их"
+            parts[-1] += "; значения сняты по картинке — проверьте их"
     if kept:
         n = len(kept)
         reasons = "; ".join(f"слайд {slide} — {reason}" for slide, reason in sorted(set(kept))[:4])
@@ -751,9 +744,18 @@ def swap_summary(swaps: list[ChartSwap], unread: list[tuple[int, str]]) -> str |
 
 
 def _slides(numbers: list[int]) -> str:
+    """[45, 46, 47, 49] → «слайды 45–47, 49»: подряд идущие номера — диапазоном."""
     if len(numbers) == 1:
         return f"слайд {numbers[0]}"
-    return "слайды " + ", ".join(str(n) for n in numbers)
+    runs: list[list[int]] = []
+    for n in numbers:
+        if runs and n == runs[-1][-1] + 1:
+            runs[-1].append(n)
+        else:
+            runs.append([n])
+    return "слайды " + ", ".join(
+        f"{r[0]}–{r[-1]}" if len(r) > 2 else ", ".join(str(n) for n in r) for r in runs
+    )
 
 
 __all__ = [
