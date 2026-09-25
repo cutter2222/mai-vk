@@ -1043,6 +1043,8 @@ class RealLayers(StubLayers):
                 skill=skill,
                 settings=inp.settings,
                 app_settings=self.settings,
+                # Нет данных в материалах — поиск в интернете, а не «пришлите цифры».
+                web_search=self.settings.research.enabled,
                 deadline_s=min(
                     float((skill.manifest.params or {}).get("time_budget_s", 60)),
                     float(self.settings.timeouts.stage_plan_s) - 10,

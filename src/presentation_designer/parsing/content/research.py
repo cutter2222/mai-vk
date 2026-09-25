@@ -675,6 +675,86 @@ def _documents(
 # ---------- кэш ----------
 
 
+# ---------- данные для правки слайда ----------
+
+# Служебные слова просьбы из чата: поиску нужен предмет, а не «добавь на слайд».
+_REQUEST_NOISE = re.compile(
+    r"(?i)\b(добавь|добавьте|вставь|вставьте|покажи|покажите|приведи|приведите|дай|дайте|"
+    r"найди|найдите|напиши|напишите|укажи|укажите|поставь|поставьте|сделай|сделайте|"
+    r"пожалуйста|сюда|на\s+слайд\w*|в\s+слайд\w*|этот|эту|это)\b"
+)
+
+
+def evidence_query(request: str, topic: str = "") -> str:
+    """Запрос поиска из просьбы: предмет без служебных слов; слишком общий — с темой."""
+    query = re.sub(r"\s+", " ", _REQUEST_NOISE.sub(" ", request)).strip(" ,.:;—-")
+    if len(stems(query)) < 2 and topic:
+        query = f"{query} {topic}".strip()
+    return query[:200]
+
+
+def evidence(
+    request: str,
+    settings: Any = None,
+    *,
+    topic: str = "",
+    language: str = "ru",
+    cache_dir: pathlib.Path | None = None,
+    budget_s: float = 12.0,
+    limit: int = 6,
+    client: Any = None,
+) -> list[JsonDict]:
+    """Абзацы с числами из интернета по просьбе пользователя — для правки слайда из чата:
+    просят статистику, которой нет в материалах, и вместо «пришлите цифры» система ищет сама.
+    Каждый абзац — с адресом и заголовком страницы: на слайд цифра идёт с источником."""
+    if settings is not None and not getattr(settings, "enabled", True):
+        return []
+    query = evidence_query(request, topic)
+    if not stems(query):
+        return []
+    light = ResearchSettings(
+        max_pages=4,
+        paragraphs_per_page=3,
+        search_timeout_s=float(getattr(settings, "search_timeout_s", 8.0)),
+        page_timeout_s=float(getattr(settings, "page_timeout_s", 7.0)),
+        budget_s=budget_s,
+        wikipedia=False,
+    )
+    key = hashlib.sha256(
+        json.dumps(
+            {"v": RESEARCH_VERSION, "evidence": query, "lang": language},
+            sort_keys=True,
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    cached = _cache_get(cache_dir, key)
+    if cached is not None:
+        pages = [WebPage(**p) for p in cached]
+    else:
+        report: JsonDict = {"errors": []}
+        own = client is None
+        client = client or _client(light.page_timeout_s)
+        try:
+            pages = _collect(client, [query], language, light, report, time.perf_counter())
+        except Exception as e:
+            log.warning("поиск данных для правки не удался: %s", e)
+            pages = []
+        finally:
+            if own:
+                client.close()
+        if pages:
+            _cache_put(cache_dir, key, [p.as_dict() for p in pages])
+    topic_stems = stems(query)
+    found: list[JsonDict] = []
+    for page in pages:
+        for paragraph in select(page, topic_stems, limit=2, max_len=400):
+            if _NUMBER.search(paragraph):
+                found.append(
+                    {"text": paragraph, "url": page.url, "title": page.title or page.domain}
+                )
+    return found[:limit]
+
+
 def _cache_get(cache_dir: pathlib.Path | None, key: str) -> list[JsonDict] | None:
     if cache_dir is None:
         return None
@@ -707,6 +787,8 @@ __all__ = [
     "ResearchResult",
     "ResearchSettings",
     "WebPage",
+    "evidence",
+    "evidence_query",
     "queries_for",
     "research",
     "score",

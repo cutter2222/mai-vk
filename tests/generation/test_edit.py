@@ -157,7 +157,7 @@ def test_edit_replaces_only_the_slide(
         s["pattern_id"] for s in ed.ordered_slides(result.plan)
     ]
     assert result.plan["coverage"]["missing"] == []
-    assert {"name": "slide_editor", "version": "0.2.0"} in result.plan["generation_meta"]["skills"]
+    assert {"name": "slide_editor", "version": "0.2.1"} in result.plan["generation_meta"]["skills"]
     assert (
         result.report["llm"]["calls"] == 1
         and result.report["pattern_before"] == slide["pattern_id"]
@@ -785,3 +785,86 @@ def test_edit_without_visible_change_makes_no_revision(
     second = _edit(first.plan, index, "добавь выручку за 2025 год", make_client(stub), **kw)
     assert not second.changed and second.plan is None
     assert second.reason == "Цифры за 2025 год нет — пришлите, подставлю"
+
+
+FOUND = [
+    {
+        "text": "По данным InfoWatch, в 2025 году зарегистрировано 739 утечек данных.",
+        "url": "https://www.infowatch.ru/news/2025",
+        "title": "InfoWatch",
+    }
+]
+
+
+def test_data_request_searches_the_web_first(
+    base_plan: dict[str, Any],
+    example_story: dict[str, Any],  # noqa: F811
+    mini_profile: dict[str, Any],  # noqa: F811
+    example_package: dict[str, Any],  # noqa: F811
+    make_client: Any,
+    stub: Any,
+    monkeypatch: Any,
+) -> None:
+    """Просят статистику, которой нет в материалах: поиск до запроса, найденное с адресом."""
+    monkeypatch.setattr(ed, "find_evidence", lambda *a, **k: FOUND)
+    index = _content_index(base_plan)
+    stub.answer(_answer(ed.ordered_slides(base_plan)[index]))
+    result = _edit(
+        base_plan,
+        index,
+        "добавь статистику утечек паролей за 2025 год",
+        make_client(stub),
+        story=example_story,
+        profile=mini_profile,
+        package=example_package,
+        web_search=True,
+    )
+    assert result.changed
+    text = stub.calls[0].messages[-1].text
+    assert "Найдено в интернете" in text and "https://www.infowatch.ru/news/2025" in text
+    assert result.report["web_evidence"] == ["https://www.infowatch.ru/news/2025"]
+
+
+def test_refusal_for_missing_data_searches_and_retries(
+    base_plan: dict[str, Any],
+    example_story: dict[str, Any],  # noqa: F811
+    mini_profile: dict[str, Any],  # noqa: F811
+    example_package: dict[str, Any],  # noqa: F811
+    make_client: Any,
+    stub: Any,
+    monkeypatch: Any,
+) -> None:
+    """Модель упёрлась в нехватку данных — поиск и повтор с найденным, а не «пришлите»."""
+    monkeypatch.setattr(ed, "find_evidence", lambda *a, **k: FOUND)
+    index = _content_index(base_plan)
+    refusal = {
+        "unchanged": True,
+        "reason": "Нет данных — пришлите",
+        "change_note": "",
+        "slides": [],
+    }
+    stub.answer(refusal, times=2)
+    stub.answer(_answer(ed.ordered_slides(base_plan)[index]))
+    result = _edit(
+        base_plan,
+        index,
+        "дополни слайд",
+        make_client(stub),
+        story=example_story,
+        profile=mini_profile,
+        package=example_package,
+        web_search=True,
+    )
+    assert result.changed and len(stub.calls) == 3
+    assert "Найдено в интернете" in stub.calls[2].messages[-1].text
+    assert "Найдено в интернете" not in stub.calls[0].messages[-1].text
+
+
+def test_evidence_query_keeps_the_subject() -> None:
+    from presentation_designer.parsing.content.research import evidence_query
+
+    assert evidence_query("добавь на слайд статистику утечек паролей за 2025 год") == (
+        "статистику утечек паролей за 2025 год"
+    )
+    assert ed.wants_data("добавь статистику утечек паролей")
+    assert not ed.wants_data("по данным Verizon 81% утечек связаны с паролями — добавь")

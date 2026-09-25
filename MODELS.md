@@ -73,7 +73,7 @@
 | `content_importer` 0.2.0 | import | llm | `import.fact_context` 0.2.0 | выключено, до 6000 | json_schema |
 | `project_assistant` 0.1.3 | import | llm | `chat.reply` 0.1.3 | выключено, до 1000 | json_schema |
 | `repairer` 0.1.0 | repair | llm | `repair.rewrite_block` 0.1.0 | короткое, до 10000 | json_schema |
-| `slide_editor` 0.2.0 | plan | llm | `edit.slide` 0.2.0 | выключено, до 8000 | json_schema |
+| `slide_editor` 0.2.1 | plan | llm | `edit.slide` 0.2.1 | выключено, до 8000 | json_schema |
 | `slot_filler` 0.2.0 | plan | llm | `fill.slots` 0.2.0 | выключено, до 6000 | json_object |
 | `story_planner` 0.3.2 | story | llm | `story.outline` 0.3.2 | выключено, до 14000 | json_schema |
 | `template_analyzer` 0.2.0 | analyze | vlm | `analyze.classify_samples` 0.3.0, `analyze.tag_assets` 0.1.0 | выключено, до 6000 | json_schema |

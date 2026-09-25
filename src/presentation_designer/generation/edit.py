@@ -996,6 +996,55 @@ def apply_slide(
     return doc
 
 
+# Просьба о данных: статистика, цифры, доли — то, чего может не быть в материалах.
+_DATA_REQUEST = re.compile(
+    r"(?i)статисти|цифр|данны|показател|сколько|процент|дол[юияей]\b|исследован|опрос|"
+    r"по данным|факт[ыаов]|количеств|рейтинг|динамик|тренд"
+)
+# Отказ модели из-за нехватки данных («нет цифры — пришлите»).
+_MISSING_DATA = re.compile(
+    r"(?i)пришлите|нет (данных|цифр|статистик|информац)|не хватает|нет в материалах"
+)
+
+
+def wants_data(instruction: str) -> bool:
+    """Просят данные и своих чисел в просьбе не дали. Год («за 2025 год») — не данные, а
+    уточнение того, что искать."""
+    numbers = re.sub(r"\b(19|20)\d{2}\b", " ", instruction)
+    return bool(_DATA_REQUEST.search(instruction)) and not re.search(r"\d{2,}|\d+[.,]\d", numbers)
+
+
+def find_evidence(instruction: str, topic: str, app: Settings) -> list[JsonDict]:
+    """Абзацы с числами из интернета по просьбе; сбой поиска — пустой список."""
+    from presentation_designer.parsing.content.research import evidence
+
+    try:
+        found = evidence(
+            instruction, app.research, topic=topic, cache_dir=app.import_cache_dir, budget_s=12.0
+        )
+        log.info("поиск данных для правки «%s»: абзацев %d", instruction[:60], len(found))
+        return found
+    except Exception as e:
+        log.warning("поиск данных для правки не удался: %s", e)
+        return []
+
+
+def evidence_block(found: list[JsonDict]) -> str:
+    """Найденное в интернете — в запрос модели, с адресами страниц."""
+    if not found:
+        return ""
+    lines = [
+        "",
+        "Найдено в интернете по просьбе (данные с источником: ставь на слайд дословно, в тексте "
+        "— «по данным <издание или компания>», адреса страниц — в notes; бери самое свежее и "
+        "близкое к просьбе, цифры разных источников не смешивай; если то же есть среди фактов "
+        "материалов — бери факты):",
+    ]
+    for i, item in enumerate(found, start=1):
+        lines.append(f"{i}. «{item['text']}» — {item['title']}, {item['url']}")
+    return "\n".join(lines)
+
+
 def _visible(slide: JsonDict) -> tuple[Any, ...]:
     """Что видно на слайде: композиция, заголовок, тексты и пункты блоков."""
     blocks = tuple(
@@ -1075,6 +1124,7 @@ def edit_slide(
     app_settings: Settings | None = None,
     deadline_s: float | None = None,
     nonce: str | None = None,
+    web_search: bool = False,
 ) -> EditResult:
     """Правка слайда `slide_index` (с нуля, по порядку) плана по инструкции. Модель обязательна:
     без неё — `edit_llm_not_configured`; отказ модели — `changed=False` с причиной."""
@@ -1136,6 +1186,13 @@ def edit_slide(
     )
     params = skill.manifest.params or {}
     budget = float(deadline_s if deadline_s is not None else params.get("time_budget_s", 60))
+    topic = str((story.get("effective_brief") or {}).get("title") or "")
+    found: list[JsonDict] = []
+    if web_search and wants_data(instruction):
+        # Просят данные, которых нет ни в материалах, ни в просьбе: сначала поиск в
+        # интернете, а не «пришлите цифры».
+        found = find_evidence(instruction, topic, app)
+        digest += evidence_block(found)
     req = skill.request("edit.slide", digest, schema=EDIT_MODEL_SCHEMA, stage="plan")
     req.schema_name = "edit_slide"
     req.deadline = Deadline.after(budget)
@@ -1165,10 +1222,34 @@ def edit_slide(
     }
 
     async def run() -> tuple[Any, list[Any]]:
+        nonlocal found
         responses: list[Any] = []
         resp = await client.complete(req, validator=validator)
         responses.append(resp)
         parsed = resp.parsed
+        if (
+            web_search
+            and parsed.get("unchanged")
+            and not found
+            and _MISSING_DATA.search(parsed["reason"])
+        ):
+            # Модель упёрлась в нехватку данных: ищем их и просим ещё раз.
+            found = await asyncio.to_thread(find_evidence, instruction, topic, app)
+            if found:
+                retry = skill.request(
+                    "edit.slide",
+                    digest + evidence_block(found),
+                    schema=EDIT_MODEL_SCHEMA,
+                    stage="plan",
+                )
+                retry.schema_name = req.schema_name
+                retry.deadline = req.deadline
+                retry.variant_id = req.variant_id
+                retry.slide_ids = req.slide_ids
+                retry.seed = req.seed
+                resp = await client.complete(retry, validator=validator)
+                responses.append(resp)
+                parsed = resp.parsed
         if parsed.get("unchanged"):
             return parsed, responses
         draft = _fit_edit(ctx, parsed["draft"], places)
@@ -1199,6 +1280,8 @@ def edit_slide(
     from presentation_designer.generation.story import llm_model_ref
 
     model_ref = llm_model_ref(client, skill)
+    if found:
+        report["web_evidence"] = [f["url"] for f in found]
     report["llm"] = {
         "latency_ms": sum(r.latency_ms for r in responses),
         "quota_wait_ms": sum(r.quota_wait_ms for r in responses),
