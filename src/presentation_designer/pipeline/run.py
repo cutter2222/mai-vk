@@ -671,6 +671,14 @@ def _review_and_fix(
             continue
         _restore(ctx.staging.dir, backup)
         break
+    log.info(
+        "проверка вёрстки %s/%s: дефектов %s → %s, запрещено композиций %s",
+        ctx.job_id,
+        ctx.variant_id,
+        first,
+        review.defects,
+        len(avoid_all),
+    )
     message = (
         f"проверка вёрстки по картинке: дефектов {first}"
         + (f" → {review.defects} после перестройки" if review.defects != first else "")

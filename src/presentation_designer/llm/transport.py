@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -212,9 +213,35 @@ class OpenAITransport:
             raise ConfigError(f"у провайдера {provider} не заданы адрес или ключ в окружении")
         self.provider = provider
         self.reasoning_style = reasoning_style
-        self.client = AsyncOpenAI(
-            base_url=base_url, api_key=api_key, max_retries=0, timeout=timeout_s
-        )
+        self._settings: JsonDict = {
+            "base_url": base_url,
+            "api_key": api_key,
+            "max_retries": 0,
+            "timeout": timeout_s,
+        }
+        self._client: Any = AsyncOpenAI(**self._settings)
+        self._loop: Any = None
+
+    def _make(self) -> Any:
+        from openai import AsyncOpenAI
+
+        return AsyncOpenAI(**self._settings)
+
+    @property
+    def client(self) -> Any:
+        """Клиент текущего цикла событий. Конвейер зовёт модель из разных `asyncio.run`
+        (план, дозаполнение, проверка вёрстки): соединения пула привязаны к циклу, в котором
+        открыты, и в новом цикле первый запрос падал «Event loop is closed» — повтор
+        спасал, но терял секунды, а перестройка слайдов после проверки падала целиком."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return self._client
+        if self._loop is not loop:
+            if self._loop is not None:
+                self._client = self._make()
+            self._loop = loop
+        return self._client
 
     async def complete(
         self, req: Request, *, model: str, timeout_s: float, **hints: Any
@@ -270,7 +297,7 @@ class OpenAITransport:
         finish: str | None = None
         try:
             stream = await self.client.chat.completions.create(timeout=timeout_s, **params)
-            async for chunk in stream:  # type: ignore[attr-defined]  # stream=True в **params
+            async for chunk in stream:  # stream=True в **params
                 if getattr(chunk, "usage", None) is not None:
                     usage = usage_from(chunk.usage)
                 if chunk.model:
