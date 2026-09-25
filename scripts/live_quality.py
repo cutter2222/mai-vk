@@ -358,7 +358,7 @@ def report_job(
 
 
 def zoo_specs(
-    api: Api, directory: pathlib.Path, out: pathlib.Path
+    api: Api, directory: pathlib.Path, out: pathlib.Path, topic_order: pathlib.Path | None = None
 ) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
     """Загрузка и анализ шаблонов из папки: сценарии «тема без материалов» и отказы."""
     out.mkdir(parents=True, exist_ok=True)
@@ -394,7 +394,10 @@ def zoo_specs(
                 }
             )
             continue
-        topic = ZOO_TOPICS[n % len(ZOO_TOPICS)]
+        # Тема по месту шаблона в полной папке: подмножество сравнимо с прогоном всей папки.
+        order = sorted(p.name for p in (topic_order or directory).glob("*.pptx"))
+        position = order.index(path.name) if path.name in order else n
+        topic = ZOO_TOPICS[position % len(ZOO_TOPICS)]
         brief = {
             **topic,
             "language": "ru",
@@ -427,6 +430,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("scenario", choices=[*SCENARIOS, "all", "zoo"])
     parser.add_argument("--dir", default=str(ROOT / "test_pptx"), help="папка шаблонов для zoo")
+    parser.add_argument(
+        "--topic-order", default=None, help="папка, по порядку файлов которой выбираются темы"
+    )
     parser.add_argument("--label", default=time.strftime("%Y%m%d-%H%M%S"))
     parser.add_argument("--api", default="http://localhost:8080")
     parser.add_argument("--variants", default="compact,balanced,detailed")
@@ -445,7 +451,12 @@ def main() -> int:
     jobs = dict(item.split("=", 1) for item in args.job)
     specs: dict[str, dict[str, Any]] = {}
     if args.scenario == "zoo":
-        specs, rejected = zoo_specs(api, pathlib.Path(args.dir), base)
+        specs, rejected = zoo_specs(
+            api,
+            pathlib.Path(args.dir),
+            base,
+            pathlib.Path(args.topic_order) if args.topic_order else None,
+        )
         for item in rejected:
             print(f"ОТКАЗ {item['template']} ({item['stage']}): {item['error'][:160]}")
         names = list(specs)

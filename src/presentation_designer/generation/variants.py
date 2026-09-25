@@ -339,7 +339,9 @@ def build_context(
         app=app,
         spec=slide_spec(settings or {}, story, variant_id, slide_count),
     )
-    ctx.patterns = profile_patterns(profile)
+    ctx.patterns = _without_avoided(
+        profile_patterns(profile), (settings or {}).get("avoid_patterns") or []
+    )
     ctx.facts = {f["fact_id"]: f for f in package.get("facts", [])}
     ctx.datasets = {d["dataset_id"]: d for d in package.get("datasets", [])}
     ctx.assets = {a["asset_id"]: a for a in package.get("assets", [])}
@@ -1087,6 +1089,7 @@ def drafts_from_answer(
     packet_ids = [t.id for t in packet.theses]
     by_id = {p.pattern_id: p for p in ctx.patterns}
     drafts: list[Draft] = []
+    skipped_foreign = 0
     for raw in slides:
         if not isinstance(raw, dict):
             continue
@@ -1095,7 +1098,12 @@ def drafts_from_answer(
             raise ValueError("у каждого слайда нужен непустой title")
         theses = [str(t) for t in (raw.get("theses") or []) if str(t) in packet_ids]
         if not theses:
-            raise ValueError(f"слайд «{title[:40]}»: theses должны быть из пакета {packet_ids}")
+            # Слайд о тезисе чужого пакета (чаще вывод, сославшийся на тезис колоды):
+            # его содержание раскрывает свой пакет, а обязательное добирает проверка
+            # покрытия. Отказ всего ответа ронял вариант после повторов (25.09.2026).
+            ctx.fix("slide_foreign_theses", f"«{title[:40]}»: тезисы не из пакета")
+            skipped_foreign += 1
+            continue
         visual = str(raw.get("visual") or "text")
         if visual not in CONTENT_VISUALS:
             visual = "text"
@@ -1240,6 +1248,8 @@ def drafts_from_answer(
             )
         )
     if not drafts:
+        if skipped_foreign:
+            raise ValueError(f"theses слайдов должны быть из пакета {packet_ids}")
         raise ValueError("нужен непустой список slides")
     return drafts
 
@@ -4285,6 +4295,19 @@ def profile_digest(profile: JsonDict) -> str:
     ).hexdigest()
 
 
+def _without_avoided(patterns: list[PatternInfo], avoid: list[str]) -> list[PatternInfo]:
+    """Без композиций, на которых проверка вёрстки по картинке нашла дефекты. Обложка,
+    разделитель и финал без единого образца не остаются: для их роли запрет снимается."""
+    banned = {str(a) for a in avoid}
+    if not banned:
+        return patterns
+    kept = [p for p in patterns if p.pattern_id not in banned]
+    for role in ("title", "section_divider", "thanks"):
+        if not any(p.role == role for p in kept):
+            kept += [p for p in patterns if p.pattern_id in banned and p.role == role]
+    return kept
+
+
 def plan_key(
     story: JsonDict,
     profile: JsonDict,
@@ -4335,6 +4358,7 @@ def plan_key(
         "slide_count": spec.as_dict(),
         "language": settings.get("language"),
         "seed": settings.get("seed"),
+        "avoid_patterns": sorted(settings.get("avoid_patterns") or []),
         "plan_settings": app.plan.model_dump(mode="json", exclude={"cache_dir"}),
         "skill": list(skill.ref) if skill is not None else None,
         "prompts": sorted(p.ref for p in skill.prompts.values()) if skill is not None else None,

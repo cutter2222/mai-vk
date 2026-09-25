@@ -15,6 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from presentation_designer.audit.visual import LayoutReview
 from presentation_designer.generation.design_mode import profile_for_mode, validate_plan_mode
 from presentation_designer.pipeline.artifacts import Staging
 from presentation_designer.pipeline.state import now_iso
@@ -204,6 +205,16 @@ class AuditInput:
 
 
 @dataclass
+class ReviewInput:
+    """Проверка вёрстки варианта по картинкам слайдов, отрендеренным на экспорте."""
+
+    job_id: str
+    variant_id: str
+    staging: Staging
+    thumbnails: list[JsonDict]
+
+
+@dataclass
 class RepairInput:
     job_id: str
     variant_id: str
@@ -308,6 +319,10 @@ class Layers:
 
     def audit(self, inp: AuditInput) -> JsonDict:
         raise NotImplementedError
+
+    def review_layout(self, inp: ReviewInput) -> LayoutReview:
+        """Проверка вёрстки по картинке; без модели не выполняется (слайды не трогаются)."""
+        return LayoutReview()
 
     def repair(self, inp: RepairInput) -> RepairOutput:
         raise NotImplementedError
@@ -455,22 +470,7 @@ def run_variant(layers: Layers, ctx: VariantContext, emit: Emit) -> VariantOutco
         if ctx.variant_id != "original":
             validate_plan_mode(plan, ctx.template_profile, ctx.settings)
         timer = _Timer(emit, "compose", ctx.variant_id)
-        composed = layers.compose(
-            ComposeInput(
-                ctx.job_id,
-                ctx.variant_id,
-                ctx.revision,
-                plan,
-                ctx.template_profile,
-                ctx.template_path,
-                ctx.package,
-                ctx.story,
-                ctx.staging,
-                package_dir=ctx.package_dir,
-                settings=ctx.settings,
-                chart_report=ctx.chart_report,
-            )
-        )
+        composed = _compose(layers, ctx, plan)
         outcome.slide_count = composed.slide_count
         outcome.slide_titles = composed.slide_titles
         outcome.warnings.extend(composed.warnings)
@@ -480,18 +480,7 @@ def run_variant(layers: Layers, ctx: VariantContext, emit: Emit) -> VariantOutco
         stage = "export"
         _check_canceled(ctx, stage)
         timer = _Timer(emit, "export", ctx.variant_id)
-        exported = layers.export(
-            ExportInput(
-                ctx.job_id,
-                ctx.variant_id,
-                ctx.revision,
-                ctx.staging,
-                composed.slide_titles,
-                outcome.deck_title,
-                composed_deck=composed.composed_deck,
-                prerendered=ctx.prerendered,
-            )
-        )
+        exported = _export(layers, ctx, composed, outcome.deck_title)
         outcome.thumbnails = exported.thumbnails
         outcome.stages.append(timer.done())
         emit(
@@ -506,6 +495,17 @@ def run_variant(layers: Layers, ctx: VariantContext, emit: Emit) -> VariantOutco
         stage = "audit"
         _check_canceled(ctx, stage)
         timer = _Timer(emit, "audit", ctx.variant_id)
+        if ctx.variant_id != "original":
+            # Вёрстка по картинке: слайды с обрезанным, налезающим или мелким текстом,
+            # остатками образца и пустые перестраиваются на других композициях.
+            composed, exported, review = _review_and_fix(
+                layers, ctx, plan, composed, exported, outcome.deck_title
+            )
+            if review:
+                outcome.warnings.append({"code": "layout_review", "message": review["message"]})
+                outcome.slide_count = composed.slide_count
+                outcome.slide_titles = composed.slide_titles
+                outcome.thumbnails = exported.thumbnails
         contextual = bool((ctx.settings or {}).get("run_contextual_audit", True))
         report = layers.audit(
             AuditInput(
@@ -550,6 +550,160 @@ def run_variant(layers: Layers, ctx: VariantContext, emit: Emit) -> VariantOutco
         outcome.stages.append({"stage": later, "variant_id": ctx.variant_id, "status": "skipped"})
     emit("stage", {"stage": stage, "variant_id": ctx.variant_id, "status": "failed"})
     return outcome
+
+
+def _compose(layers: Layers, ctx: VariantContext, plan: JsonDict) -> ComposeOutput:
+    return layers.compose(
+        ComposeInput(
+            ctx.job_id,
+            ctx.variant_id,
+            ctx.revision,
+            plan,
+            ctx.template_profile,
+            ctx.template_path,
+            ctx.package,
+            ctx.story,
+            ctx.staging,
+            package_dir=ctx.package_dir,
+            settings=ctx.settings,
+            chart_report=ctx.chart_report,
+        )
+    )
+
+
+def _export(
+    layers: Layers, ctx: VariantContext, composed: ComposeOutput, deck_title: str
+) -> ExportOutput:
+    return layers.export(
+        ExportInput(
+            ctx.job_id,
+            ctx.variant_id,
+            ctx.revision,
+            ctx.staging,
+            composed.slide_titles,
+            deck_title,
+            composed_deck=composed.composed_deck,
+            prerendered=ctx.prerendered,
+        )
+    )
+
+
+# Сколько композиций одного варианта можно запретить за раунд: при дефекте почти на каждом
+# слайде причина не в композициях, а в шаблоне, и перестройка всей колоды её не исправит.
+REVIEW_MAX_AVOID_SHARE = 0.5
+_SEVERITY = {"clipped": 0, "overlap": 1, "tiny": 2, "empty": 3, "leftover": 4}
+
+
+def _review_and_fix(
+    layers: Layers,
+    ctx: VariantContext,
+    plan: JsonDict,
+    composed: ComposeOutput,
+    exported: ExportOutput,
+    deck_title: str,
+) -> tuple[ComposeOutput, ExportOutput, JsonDict | None]:
+    """Проверка вёрстки по картинке и перестройка найденных слайдов.
+
+    Композиции слайдов с дефектами запрещаются, план строится заново кодом (ответы модели на
+    те же запросы берутся из кэша), колода пересобирается и проверяется снова. Остаётся
+    вариант с меньшим числом дефектов; хуже — возвращается прежний каталог ревизии."""
+    rounds = 0
+    try:
+        from presentation_designer.shared.settings import get_settings
+
+        rounds = int(get_settings().audit.visual_fix_rounds)
+    except Exception:
+        rounds = 1
+    reviewer = getattr(layers, "review_layout", None)
+    if reviewer is None:  # слои без проверки вёрстки (утиные заглушки тестов)
+        return composed, exported, None
+    review = reviewer(ReviewInput(ctx.job_id, ctx.variant_id, ctx.staging, exported.thumbnails))
+    if not review.ran:
+        return composed, exported, None
+    first = review.defects
+    ctx.staging.write_json("layout_review.json", review.as_dict())
+    slides = sorted(plan.get("slides") or [], key=lambda s: int(s.get("order", 0)))
+    avoid_all: set[str] = set((ctx.settings or {}).get("avoid_patterns") or [])
+    for _ in range(max(rounds, 0)):
+        if not review.findings:
+            break
+        ranked = sorted(
+            review.findings.items(),
+            key=lambda kv: min(_SEVERITY.get(i["code"], 9) for i in kv[1]),
+        )
+        limit = max(1, int(len(slides) * REVIEW_MAX_AVOID_SHARE))
+        avoid = {
+            str(slides[index].get("pattern_id"))
+            for index, _issues in ranked[:limit]
+            if index < len(slides)
+        } - avoid_all
+        if not avoid:
+            break
+        backup = _snapshot(ctx.staging.dir)
+        try:
+            settings = {**(ctx.settings or {}), "avoid_patterns": sorted(avoid_all | avoid)}
+            new_plan = layers.plan(
+                PlanInput(
+                    ctx.job_id,
+                    ctx.variant_id,
+                    ctx.template_profile,
+                    ctx.package,
+                    ctx.story,
+                    settings,
+                    resolve_slide_count(ctx.variant_id, ctx.settings),
+                )
+            )
+            validate_plan_mode(new_plan, ctx.template_profile, ctx.settings)
+            new_composed = _compose(layers, ctx, new_plan)
+            new_exported = _export(layers, ctx, new_composed, deck_title)
+            new_review = layers.review_layout(
+                ReviewInput(ctx.job_id, ctx.variant_id, ctx.staging, new_exported.thumbnails)
+            )
+        except Exception:
+            log.exception("перестройка слайдов по проверке вёрстки не удалась")
+            _restore(ctx.staging.dir, backup)
+            break
+        if new_review.ran and new_review.defects < review.defects:
+            avoid_all |= avoid
+            plan, composed, exported, review = new_plan, new_composed, new_exported, new_review
+            ctx.staging.write_json("layout_review.json", review.as_dict())
+            _drop_snapshot(backup)
+            continue
+        _restore(ctx.staging.dir, backup)
+        break
+    message = (
+        f"проверка вёрстки по картинке: дефектов {first}"
+        + (f" → {review.defects} после перестройки" if review.defects != first else "")
+        + (f", композиций заменено {len(avoid_all)}" if avoid_all else "")
+    )
+    return composed, exported, {"message": message, "defects": review.defects}
+
+
+def _snapshot(directory: pathlib.Path) -> pathlib.Path:
+    import shutil
+    import tempfile
+
+    target = pathlib.Path(tempfile.mkdtemp(prefix="review-")) / "rev"
+    shutil.copytree(directory, target)
+    return target
+
+
+def _restore(directory: pathlib.Path, backup: pathlib.Path) -> None:
+    import shutil
+
+    for item in directory.iterdir():
+        if item.is_dir():
+            shutil.rmtree(item)
+        else:
+            item.unlink()
+    shutil.copytree(backup, directory, dirs_exist_ok=True)
+    _drop_snapshot(backup)
+
+
+def _drop_snapshot(backup: pathlib.Path) -> None:
+    import shutil
+
+    shutil.rmtree(backup.parent, ignore_errors=True)
 
 
 def _stages_after(stage: str) -> list[str]:

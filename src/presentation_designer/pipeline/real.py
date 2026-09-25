@@ -25,6 +25,7 @@ from typing import Any
 from presentation_designer import design
 from presentation_designer.audit.contextual import ContextualResult, run_contextual_checks
 from presentation_designer.audit.report import build_report as build_audit_report
+from presentation_designer.audit.visual import LayoutReview, review_layout
 from presentation_designer.generation.edit import EditError, edit_slide
 from presentation_designer.generation.original import VARIANT_ID as ORIGINAL_VARIANT
 from presentation_designer.generation.story import (
@@ -60,6 +61,7 @@ from presentation_designer.pipeline.run import (
     PlanInput,
     RepairInput,
     RepairOutput,
+    ReviewInput,
     StageError,
     StoryInput,
 )
@@ -965,6 +967,40 @@ class RealLayers(StubLayers):
         except Exception as e:
             log.exception("контекстный аудит не выполнен")
             return ContextualResult(missing_inputs=["vlm_error"], errors=[str(e)[:200]])
+
+    def review_layout(self, inp: ReviewInput) -> LayoutReview:
+        """Вёрстка варианта по картинкам слайдов (скилл visual_reviewer)."""
+        if not self.settings.audit.visual_review:
+            return LayoutReview()
+        client = self.llm_client()
+        skill = self.skill("visual_reviewer")
+        if client is None or skill is None:
+            return LayoutReview()
+        params = (skill.manifest.params or {}) if hasattr(skill, "manifest") else {}
+        images = self._thumbnail_images(inp.staging, inp.thumbnails)
+        try:
+            return review_layout(
+                images,
+                client=client,
+                skill=skill,
+                concurrency=int(params.get("concurrency", 8)),
+                deadline_s=float(params.get("time_budget_s", 40)),
+            )
+        except Exception as e:
+            log.exception("проверка вёрстки по картинке не выполнена")
+            return LayoutReview(errors=[str(e)[:200]])
+
+    def _thumbnail_images(self, staging: Any, thumbnails: list[JsonDict]) -> dict[int, bytes]:
+        images: dict[int, bytes] = {}
+        for thumb in thumbnails:
+            name = str(thumb.get("name") or "").removeprefix(staging.prefix)
+            if not name:
+                continue
+            try:
+                images[int(thumb.get("slide_index", 0))] = (staging.dir / name).read_bytes()
+            except OSError:
+                log.warning("миниатюра %s недоступна для проверки вёрстки", name)
+        return images
 
     def _slide_images(self, inp: AuditInput) -> dict[int, bytes]:
         """Миниатюры страниц, отрендеренные на экспорте: по ним модель и смотрит слайд."""

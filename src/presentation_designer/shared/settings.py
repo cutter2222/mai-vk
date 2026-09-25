@@ -186,6 +186,9 @@ class Backup(BaseModel):
 class Audit(BaseModel):
     contextual_enabled: bool = True
     contextual_concurrency: int = 4
+    # Проверка вёрстки по картинке (скилл visual_reviewer) и перестройка найденных слайдов.
+    visual_review: bool = True
+    visual_fix_rounds: int = 1
     thresholds: AuditThresholds = Field(default_factory=AuditThresholds)
 
 

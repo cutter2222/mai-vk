@@ -124,6 +124,8 @@ backup:
 audit:
   contextual_enabled: true
   contextual_concurrency: 4
+  visual_review: true       # вёрстка по картинке: обрезка, наложение, мелкий текст, остатки образца,
+  visual_fix_rounds: 1      # пустой слайд; найденные слайды перестраиваются на других композициях
   thresholds:
     max_bullets: 6
     max_words_per_bullet: 15

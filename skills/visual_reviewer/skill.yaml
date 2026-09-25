@@ -1,0 +1,29 @@
+# Манифест скилла по contracts/schemas/skill_manifest.schema.json
+schema_version: '1.1'
+name: visual_reviewer
+version: 0.1.0
+stage: audit
+description: 'Проверка вёрстки готовых слайдов по картинке: обрезанный, налезающий и
+  нечитаемо мелкий текст, остатки образца шаблона, пустой слайд; по найденному слайд
+  перестраивается на другой композиции'
+model_role: vlm
+response_format: json_schema
+reasoning:
+  mode: 'off'
+  max_output_tokens: 600
+prompts:
+- id: review.layout
+  path: prompts/review.layout.v0.1.0.md
+  version: 0.1.0
+params:
+  temperature: 0.0
+  time_budget_s: 40      # все слайды варианта параллельно; укладывается в 5 минут на три варианта
+  concurrency: 8
+input_schema: composed_deck
+output_schema: audit_report
+changelog:
+- version: 0.1.0
+  date: '2026-09-25'
+  note: 'проверка вёрстки по картинке (приём визуальной проверки DeepPresenter): на 16
+    размеченных слайдах незнакомых шаблонов qwen3.8-27b верно отличила слайд с дефектом от
+    чистого в 15 случаях, 2–8 с на слайд'
