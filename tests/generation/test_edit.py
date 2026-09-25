@@ -157,7 +157,7 @@ def test_edit_replaces_only_the_slide(
         s["pattern_id"] for s in ed.ordered_slides(result.plan)
     ]
     assert result.plan["coverage"]["missing"] == []
-    assert {"name": "slide_editor", "version": "0.1.0"} in result.plan["generation_meta"]["skills"]
+    assert {"name": "slide_editor", "version": "0.2.0"} in result.plan["generation_meta"]["skills"]
     assert (
         result.report["llm"]["calls"] == 1
         and result.report["pattern_before"] == slide["pattern_id"]
@@ -255,6 +255,41 @@ def test_unchanged_keeps_plan(
     assert not result.changed and result.plan is None
     assert result.reason == "В материалах нет выручки за 2025 год"
     assert result.slide_id == ed.ordered_slides(base_plan)[index]["slide_id"]
+    # Первый отказ возвращается модели: сделать ближайшую выполнимую правку; повторный — принят.
+    assert len(stub.calls) == 2
+    assert "не отказывай" in stub.calls[1].messages[-1].text
+
+
+def test_first_refusal_turns_into_best_effort_edit(
+    base_plan: dict[str, Any],
+    example_story: dict[str, Any],  # noqa: F811
+    mini_profile: dict[str, Any],  # noqa: F811
+    example_package: dict[str, Any],  # noqa: F811
+    make_client: Any,
+    stub: Any,
+) -> None:
+    """Модель отказала («нет данных»), после подсказки сделала правку без недостающего числа
+    и сказала, что прислать: пользователь получает слайд, а не просьбу ввести данные."""
+    index = _content_index(base_plan)
+    slide = ed.ordered_slides(base_plan)[index]
+    stub.answer(
+        {"unchanged": True, "reason": "Нет выручки за 2025 год", "change_note": "", "slides": []},
+        times=1,
+    )
+    answer = _answer(slide)
+    answer["change_note"] = "Добавил пункт о выручке; пришлите цифру за 2025 год — подставлю"
+    stub.answer(answer)
+    result = _edit(
+        base_plan,
+        index,
+        "добавь выручку за 2025 год",
+        make_client(stub),
+        story=example_story,
+        profile=mini_profile,
+        package=example_package,
+    )
+    assert result.changed and result.plan is not None
+    assert "пришлите цифру" in result.change_note
 
 
 def test_unchanged_without_reason_is_rejected_then_accepted(
@@ -278,7 +313,8 @@ def test_unchanged_without_reason_is_rejected_then_accepted(
         profile=mini_profile,
         package=example_package,
     )
-    assert not result.changed and result.reason == "Нет данных" and len(stub.calls) == 2
+    # Без причины — повтор; первый отказ с причиной — ещё повтор с подсказкой; второй принят.
+    assert not result.changed and result.reason == "Нет данных" and len(stub.calls) == 3
 
 
 def test_service_slide_uses_role_pool(
@@ -725,3 +761,27 @@ def test_section_thesis_stays_on_the_edited_slide(
     assert result.changed and result.plan is not None
     assert ed.ordered_slides(result.plan)[index]["thesis_refs"] == [*theses, sid]
     assert sid not in result.plan["coverage"]["missing"]
+
+
+def test_edit_without_visible_change_makes_no_revision(
+    base_plan: dict[str, Any],
+    example_story: dict[str, Any],  # noqa: F811
+    mini_profile: dict[str, Any],  # noqa: F811
+    example_package: dict[str, Any],  # noqa: F811
+    make_client: Any,
+    stub: Any,
+) -> None:
+    """Модель вернула тот же слайд («цифры нет — пришлите»): ревизии без изменений нет, а её
+    пояснение уходит пользователю ответом."""
+    index = _content_index(base_plan)
+    slide = ed.ordered_slides(base_plan)[index]
+    stub.answer(_answer(slide), times=1)
+    kw = {"story": example_story, "profile": mini_profile, "package": example_package}
+    first = _edit(base_plan, index, "сократи", make_client(stub), **kw)
+    assert first.changed and first.plan is not None
+    same = _answer(slide)
+    same["change_note"] = "Цифры за 2025 год нет — пришлите, подставлю"
+    stub.answer(same)
+    second = _edit(first.plan, index, "добавь выручку за 2025 год", make_client(stub), **kw)
+    assert not second.changed and second.plan is None
+    assert second.reason == "Цифры за 2025 год нет — пришлите, подставлю"

@@ -1,7 +1,7 @@
 # Манифест скилла по contracts/schemas/skill_manifest.schema.json
 schema_version: '1.1'
 name: slide_editor
-version: 0.1.0
+version: 0.2.0
 stage: plan
 description: 'Переделывает один слайд готового плана по инструкции из чата: модель получает
   инструкцию, текущий слайд, соседей, тезисы и факты пакета и список композиций шаблона с
@@ -14,14 +14,19 @@ reasoning:
   max_output_tokens: 8000
 prompts:
 - id: edit.slide
-  path: prompts/edit.slide.v0.1.0.md
-  version: 0.1.0
+  path: prompts/edit.slide.v0.2.0.md
+  version: 0.2.0
 params:
   temperature: 0.2
   time_budget_s: 180     # запрос и один повтор по переполнению; ответ с рассуждением дольше
 input_schema: slide_plan
 output_schema: slide_plan
 changelog:
+- version: 0.2.0
+  date: '2026-09-25'
+  note: 'правка из чата делает максимум сразу: неоднозначное — самым вероятным образом,
+    без данных — всё остальное и что прислать; числа и названия из просьбы — данные; отказ
+    только когда изменить нечего'
 - version: 0.1.0
   date: '2026-09-17'
   note: 'этап 20: правка слайда по запросу из чата — один слайд, композиции из списка,

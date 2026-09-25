@@ -686,8 +686,8 @@ export function EditCard({ m, ctx }: { m: Msg<"edit_card">; ctx: CardContext }) 
     const reason = entry?.change_note ?? status.data?.result?.change_note ?? "";
     return (
       <Stack gap={2} data-testid="edit-card">
-        <Say testId="edit-reason">Оставил слайд {m.slide_index + 1} как есть: {reason || "просьбу выполнить нельзя"}</Say>
-        {DATA_REFUSAL.test(reason) && <Aside>Данные не выдумываю: добавьте материалы или уточните просьбу.</Aside>}
+        <Say testId="edit-reason">{reason ? `Слайд ${m.slide_index + 1}: ${reason}` : `Слайд ${m.slide_index + 1} оставил как есть — уточните, что поменять.`}</Say>
+        {DATA_REFUSAL.test(reason) && <Aside>Напишите данные прямо в чат — доделаю этот слайд.</Aside>}
       </Stack>
     );
   }

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import logging
 import math
 import re
@@ -548,7 +549,8 @@ def edit_digest(
                 f"Подходят композиции ровно на {places}: {', '.join(fit)} — выбери одну из них "
                 f"и {spread}; заголовок меняй, только если о нём просили."
                 if fit
-                else f"Композиции ровно на {places} в шаблоне нет — ответь unchanged с причиной."
+                else f"Композиции ровно на {places} в шаблоне нет — выбери из списка ближайшую по "
+                "числу мест, разложи на неё прежнее содержание и скажи об этом в change_note."
             )
         )
     lines.append(f"Вариант: {ctx.variant_id}. {VARIANT_RULES.get(ctx.variant_id, '')}")
@@ -796,8 +798,13 @@ def make_edit_validator(
     )
     keep_title = bool(count) and bool(old_title) and not _TITLE.search(instruction)
     must_move = back_to_template and packet is not None and (bool(fit) or not count)
+    # Первый отказ не принимается: пользователь ждёт правку, а модель отказывала там, где
+    # можно сделать большую часть просьбы («нет выручки за 2025» — пункт без числа и просьба
+    # прислать цифру). Повторный отказ с причиной принимается: менять действительно нечего.
+    refusals = 0
 
     def validate(value: Any) -> Any:
+        nonlocal refusals
         if not isinstance(value, dict):
             raise ValueError("ответ должен быть объектом")
         if value.get("unchanged"):
@@ -809,6 +816,15 @@ def make_edit_validator(
             reason = _clean(value.get("reason"), 300)
             if not reason:
                 raise ValueError("при unchanged нужна причина в reason")
+            refusals += 1
+            if refusals == 1:
+                raise ValueError(
+                    "не отказывай сразу: сделай ту часть просьбы, которая выполнима на этом "
+                    "слайде, остальные тексты не трогай. Данных не хватает — сделай остальное "
+                    "без них и скажи в change_note, что прислать. Выполнимой части нет совсем "
+                    "— верни unchanged снова, а в reason одной фразой, что прислать или как "
+                    "переформулировать"
+                )
             return {"unchanged": True, "reason": reason}
         slides = value.get("slides")
         if not isinstance(slides, list) or len(slides) != 1 or not isinstance(slides[0], dict):
@@ -978,6 +994,20 @@ def apply_slide(
         meta["created_at"] = now_iso()
         doc["generation_meta"] = meta
     return doc
+
+
+def _visible(slide: JsonDict) -> tuple[Any, ...]:
+    """Что видно на слайде: композиция, заголовок, тексты и пункты блоков."""
+    blocks = tuple(
+        (
+            str(b.get("slot_id")),
+            str(b.get("text") or ""),
+            tuple(str(i.get("text") or "") for i in b.get("items") or []),
+            json.dumps(b.get("chart") or b.get("table") or b.get("image") or "", sort_keys=True),
+        )
+        for b in slide.get("blocks") or []
+    )
+    return (str(slide.get("pattern_id")), str(slide.get("title") or ""), blocks)
 
 
 def validate_plan(
@@ -1152,7 +1182,13 @@ def edit_slide(
                 draft2 = _fit_edit(ctx, parsed2["draft"], places)
                 if len(draft2.overflow) <= len(draft.overflow):
                     draft = draft2
-                    parsed = parsed2
+                    # Повтор по переполнению знает только о подгонке («заголовок сокращён»):
+                    # суть правки («добавил статистику Verizon») — в первом пояснении.
+                    notes = [str(p.get("change_note") or "").strip(" .") for p in (parsed, parsed2)]
+                    parsed = {
+                        **parsed2,
+                        "change_note": "; ".join(dict.fromkeys(n for n in notes if n)),
+                    }
             ctx.fix("edit_retried", "повтор из-за переполнения")
         return {**parsed, "draft": draft}, responses
 
@@ -1201,6 +1237,19 @@ def edit_slide(
         keep_icons=keep_icons,
     )
     validate_plan(doc, profile, package, story, before=plan)
+    edited = next((s for s in ordered_slides(doc) if s["slide_id"] == slide["slide_id"]), None)
+    if edited is not None and _visible(edited) == _visible(slide):
+        # Модель вернула тот же слайд («цифры нет — пришлите»): новая ревизия без изменений
+        # только путает, а её пояснение — и есть ответ пользователю.
+        report["fixes"] = list(ctx.fixes)
+        report["total_ms"] = int((time.perf_counter() - started) * 1000)
+        return EditResult(
+            plan=None,
+            changed=False,
+            slide_id=str(slide["slide_id"]),
+            reason=change_note,
+            report=report,
+        )
     report["pattern_after"] = draft.pattern.pattern_id
     report["actions"] = list(draft.actions)
     report["overflow"] = list(draft.overflow)
