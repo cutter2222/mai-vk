@@ -62,6 +62,13 @@
 * Умеет: json_schema — да, json_object — да, images — да, multi_image — да, usage — да.
 * Квоты: concurrency = 8.
 
+### `claude-bridge`
+
+* Вид: openai_compatible; адрес и ключ — переменные `PD_CLAUDE_BRIDGE_URL`, `PD_CLAUDE_BRIDGE_KEY`.
+* Рассуждение: стиль `none`.
+* Умеет: json_schema — да, json_object — да, images — да, multi_image — да, usage — да.
+* Квоты: concurrency = 8.
+
 ## Кто из скиллов какую роль зовёт
 
 | скилл | этап | роль | промпты | рассуждение | формат ответа |

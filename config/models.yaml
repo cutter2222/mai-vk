@@ -72,6 +72,19 @@ providers:
     supports: { json_schema: true, json_object: true, images: true, multi_image: true, usage: true }
     limits: { concurrency: 8, rpm: null, tpm: null }
 
+  claude-bridge:
+    # Только для разработки: быстрые прогоны вёрстки на слабой модели Claude (Haiku) через
+    # CLI Claude Code на машине разработчика (scripts/claude_bridge.py). В решение не входит —
+    # не открытые веса; итоговая проверка качества — на qwen. Включается из .env:
+    # PD_MODELS__ROLES__LLM__PROVIDER=claude-bridge, PD_MODELS__ROLES__LLM__MODEL=claude-haiku-4-5.
+    kind: openai_compatible
+    env_base_url: PD_CLAUDE_BRIDGE_URL
+    env_api_key: PD_CLAUDE_BRIDGE_KEY
+    reasoning_style: none
+    model_revision: null
+    supports: { json_schema: true, json_object: true, images: true, multi_image: true, usage: true }
+    limits: { concurrency: 8, rpm: null, tpm: null }
+
 active_provider: qwen-api
 
 roles:

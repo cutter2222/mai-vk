@@ -46,6 +46,14 @@ uv run scripts/gen_models_md.py --check && uv run scripts/gen_audit_md.py --chec
   переключены на OpenRouter строками `PD_MODELS__ROLES__{LLM,VLM}__{PROVIDER,MODEL}` в `.env`
   (`openrouter`, `qwen/qwen3.8-27b`); убрать строки — вернуться к `qwen-api`. Баланс
   OpenRouter ≈ $0,7; бесплатная линия `:free` перегружена.
+- Для частых прогонов без qwen: мост к Claude Haiku через CLI Claude Code на хосте —
+  `uv run python scripts/claude_bridge.py --port 8765` (фоном) и в `.env` провайдер
+  `claude-bridge`, модель `claude-haiku-4-5` (+ `PD_CLAUDE_BRIDGE_URL`, `PD_CLAUDE_BRIDGE_KEY`).
+  Замер 25.09.2026: три варианта ≈8,5 мин (qwen на OpenRouter — 2–4 мин), зато бесплатно.
+  Итоговая проверка качества и времени — только на qwen.
+- Оформление без модели: `uv run python scripts/rerender.py <job…> --label <метка>` —
+  пересборка готовых заданий по сохранённым планам текущим кодом вёрстки (≈4 с на колоду);
+  набор заданий на разных шаблонах — `runs/rerender-set.txt`.
 - ONLYOFFICE иногда отдаёт PDF с перепутанными картинками макета сразу после перезапуска
   API — повторный экспорт того же PPTX чистый; сначала перерендерить, потом искать в коде.
 
