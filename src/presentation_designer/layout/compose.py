@@ -39,6 +39,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from pptx import Presentation
+from pptx.util import Pt
 
 from presentation_designer.generation import reflow
 from presentation_designer.generation.matching import SlotInfo, pattern_info
@@ -2100,6 +2101,179 @@ def _build_builtin(
     return slide, patched, meta
 
 
+# Роли текста, которые растут до заполнения места в образце шаблона, и потолок роста:
+# доля кегля образца и доля основного кегля дизайн-кода.
+GROW_ROLES = {
+    "body": (2.0, 1.6),
+    "bullets": (2.0, 1.6),
+    "caption": (1.5, 1.15),
+    "label": (1.4, 1.15),
+    "subtitle": (1.3, 1.6),
+}
+GROW_FILL = 0.9  # текст занимает не больше этой доли высоты рамки слота
+GROW_MIN_STEP = 1.08  # меньший рост незаметен и не стоит правки файла
+
+
+def _grow_template_text(ctx: _Context, slide: Any, record: SlideRecord, pinfo: Any) -> None:
+    """Текст в слоте образца растёт, пока занимает мало места: кегль образца рассчитан на его
+    текст-рыбу, и короткая подпись в большой карточке выходит мелкой, а карточка — пустой.
+
+    Кегль растёт до заполнения рамки слота (не выше потолка роли); у карточек одной группы
+    повторов кегль общий — ряд выглядит ровно. Заголовки, числа и даты не трогаются: их кегль —
+    часть рисунка шаблона. Режим «По шаблону» и готовая презентация не меняются."""
+    if ctx.preserve or not ctx.reflow_cards:
+        return
+    from presentation_designer.library.dress import text_height
+
+    if ctx.design_code is None:
+        ctx.design_code = DesignCode.from_profile(ctx.profile)
+    code = ctx.design_code
+    top_level = {str(s.shape_id): s for s in slide.shapes}
+    others = [
+        s
+        for s in slide.shapes
+        if (getattr(s, "has_text_frame", False) and s.text_frame.text.strip())
+        or getattr(s, "shape_type", None) == 13
+    ]
+    plates = [s for s in slide.shapes if _is_plate(s)]
+    plans: dict[str, list[tuple[Any, float, float, int]]] = {}
+    for fill in record.fills:
+        slot = pinfo.slots.get(fill.slot_id)
+        shape = top_level.get(str(fill.element_id))
+        if slot is None or shape is None or slot.kind not in GROW_ROLES or not fill.text:
+            continue
+        if not getattr(shape, "has_text_frame", False):
+            continue
+        runs = [r for p in shape.text_frame.paragraphs for r in p.runs]
+        sizes = [float(r.font.size.pt) for r in runs if r.font.size is not None]
+        current = min(sizes) if sizes else float(fill.size_pt or slot.size_pt or 0)
+        if current <= 0:
+            continue
+        frame = shape.text_frame
+        box_w = max(int(shape.width), int(slot.bbox[2] * ctx.slide_w))
+        box_h = max(int(shape.height), int(slot.bbox[3] * ctx.slide_h))
+        width = box_w - int(frame.margin_left or 0) - int(frame.margin_right or 0)
+        width -= int(slot.indent_emu or 0)
+        # Рамки слотов у образцов часто заходят друг на друга: растущий текст не должен
+        # доходить до объекта под ним (текст карточки под её заголовком, картинка).
+        below = _room_below(shape, others)
+        # Текст в карточке образца может занять её свободную высоту: рамка образца
+        # рассчитана на рыбу в одну-две строки, а плашка под ней — на весь блок.
+        plate_room = _room_in_plate(shape, plates)
+        if plate_room is not None:
+            box_h = max(box_h, plate_room)
+        box_h = min(box_h, below) if below is not None else box_h
+        height = box_h - int(frame.margin_top or 0) - int(frame.margin_bottom or 0)
+        text = shape.text_frame.text.replace("\v", "\n")
+        family = slot.family or code.body_font
+        spacing = float(slot.line_spacing or 1.0)
+        gap = float(slot.space_before_pt or 0) + float(slot.space_after_pt or 0)
+        of_sample, of_body = GROW_ROLES[slot.kind]
+        cap = max(current, min(current * of_sample, code.body_pt * of_body))
+
+        # Заголовок карточки и подпись растут без новых строк: вторая строка у короткой
+        # подписи ломает ряд карточек.
+        keep_lines = slot.kind in ("label", "caption", "subtitle")
+        lines = _line_count(text, family, current, width) if keep_lines else 0
+        best = current
+        while best * 1.05 <= cap:
+            trial = best * 1.05
+            need = text_height(text, family, trial, width, spacing=spacing, para_gap_pt=gap)
+            if need > height * GROW_FILL:
+                break
+            if keep_lines and _line_count(text, family, trial, width) > lines:
+                break
+            best = trial
+        # Ряд — слоты одного вида на одной высоте (колонки текста, карточки), даже если
+        # у образца они разнесены по разным группам повторов.
+        key = f"{slot.kind}@{slot.bbox[1]:.2f}"
+        need_h = int(
+            text_height(text, family, best, width, spacing=spacing, para_gap_pt=gap)
+            + int(frame.margin_top or 0)
+            + int(frame.margin_bottom or 0)
+        )
+        plans.setdefault(key, []).append((shape, current, best, need_h))
+    for items in plans.values():
+        # Общий кегль ряда — самый осторожный из его слотов: ряд выглядит ровно, и тот, что
+        # крупнее соседей, уменьшается до них.
+        size = min(best for _, _, best, _ in items)
+        for shape, current, _, need_h in items:
+            if abs(size - current) < current * (GROW_MIN_STEP - 1):
+                continue
+            if size > current and need_h > int(shape.height):
+                shape.height = need_h
+            ratio = size / current
+            body_pr = shape.text_frame._txBody.find(f"{{{NS_A}}}bodyPr")
+            autofit = body_pr.find(f"{{{NS_A}}}normAutofit") if body_pr is not None else None
+            if autofit is not None:
+                # Сжатие рендерера отменило бы рост: текст измерен и помещается и так.
+                for attr in ("fontScale", "lnSpcReduction"):
+                    autofit.attrib.pop(attr, None)
+            for paragraph in shape.text_frame.paragraphs:
+                for run in paragraph.runs:
+                    if run.font.size is not None:
+                        run.font.size = Pt(round(float(run.font.size.pt) * ratio, 1))
+                    else:
+                        run.font.size = Pt(round(current * ratio, 1))
+            ctx.count("text_grown")
+
+
+def _room_below(shape: Any, others: list[Any]) -> int | None:
+    """Высота от верха рамки до ближайшего объекта под ней, перекрывающего её по ширине."""
+    left, top = int(shape.left), int(shape.top)
+    right = left + int(shape.width)
+    room: int | None = None
+    for other in others:
+        if other is shape or other.shape_id == shape.shape_id:
+            continue
+        o_left, o_top = int(other.left), int(other.top)
+        o_right = o_left + int(other.width)
+        overlap = min(right, o_right) - max(left, o_left)
+        if overlap <= 0.3 * min(int(shape.width), int(other.width)) or o_top <= top + 12700:
+            continue
+        gap = o_top - top - 38100
+        room = gap if room is None else min(room, gap)
+    return room
+
+
+def _is_plate(shape: Any) -> bool:
+    """Плашка образца: фигура с заливкой без текста (карточка, подложка)."""
+    if getattr(shape, "shape_type", None) not in (1, 5):  # AUTO_SHAPE, FREEFORM
+        return False
+    if getattr(shape, "has_text_frame", False) and shape.text_frame.text.strip():
+        return False
+    try:
+        return shape.fill.type is not None and shape.fill.type != 5  # 5 — BACKGROUND
+    except Exception:
+        return False
+
+
+def _room_in_plate(shape: Any, plates: list[Any]) -> int | None:
+    """Высота от верха рамки до низа плашки, внутри которой она стоит (с полем снизу)."""
+    left, top = int(shape.left), int(shape.top)
+    right = left + int(shape.width)
+    best: int | None = None
+    for plate in plates:
+        p_left, p_top = int(plate.left), int(plate.top)
+        p_right, p_bottom = p_left + int(plate.width), p_top + int(plate.height)
+        if not (p_left - 12700 <= left and right <= p_right + 12700 and p_top <= top < p_bottom):
+            continue
+        room = p_bottom - top - int(0.06 * int(plate.height))
+        if room > 0 and (best is None or room < best):
+            best = room
+    return best
+
+
+def _line_count(text: str, family: str | None, size: float, width: int) -> int:
+    from presentation_designer.generation.capacity import wrap_lines
+    from presentation_designer.shared import text_metrics
+
+    font = text_metrics.resolve_font(family)
+    return sum(
+        wrap_lines(p, width / 12700 * 0.96, font, size) for p in text.split("\n") if p.strip()
+    )
+
+
 def _dress_builtin(ctx: _Context, slide: Any, meta: _BuiltinSlide, plan_slide: JsonDict) -> None:
     """Отделка собственной композиции по заполненному тексту: кегль, высота карточек по
     тексту, значки с иконками, маркеры списка, акценты (`library/dress.py`)."""
@@ -2299,6 +2473,8 @@ def compose_deck(
         records.append(
             _fill_slide(ctx, clone, plan_slide, pattern_raw, pinfos[pattern_id], layout, index)
         )
+        if source.get("kind") == "sample_slide":
+            _grow_template_text(ctx, clone, records[-1], pinfos[pattern_id])
     timings["clone_fill_ms"] = int((time.perf_counter() - t0) * 1000)
     if not new_slides:
         raise ComposeError("compose_plan_empty", "в плане нет слайдов")
