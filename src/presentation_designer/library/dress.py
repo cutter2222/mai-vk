@@ -384,9 +384,21 @@ def _text_colors(frame: Frame, fill: str | None) -> tuple[str, str]:
 
     surface = fill or frame.backdrop
     code = frame.code
-    title = legible(code.title_color or code.text_color, surface, code, 4.5, accent=False)
-    body = legible(code.muted_color, surface, code, 4.5, accent=False)
+    # Фон тёмного слайда часто градиент: средний цвет светлее или темнее места под текстом,
+    # поэтому запас по контрасту больше, чем требует аудит (4,5:1).
+    need = 6.0 if fill is None and frame.dark else 4.5
+    title = legible(code.title_color or code.text_color, surface, code, need, accent=False)
+    body = legible(code.muted_color, surface, code, need, accent=False)
     return title, body
+
+
+def _accent_text(frame: Frame) -> str:
+    """Акцент для знаков в строке текста (маркеры списка): аудит мерит их как текст."""
+    from presentation_designer.library.build import legible
+
+    code = frame.code
+    need = 6.0 if frame.dark else 4.5
+    return legible(code.accent, frame.backdrop, code, need, accent=True)
 
 
 def _accent(frame: Frame, index: int) -> str:
@@ -875,7 +887,6 @@ def _dress_bullets(frame: Frame, composition: Composition, refs: dict[str, str])
     para_gap = 0.55
     size, block = _list_size(frame, items_all, text_w, avail)
     y = top + max(0, int((avail - block) * TOP_SHARE))
-    accent = _accent(frame, 0)
     title_color, body_color = _text_colors(frame, None)
     for box in boxes:
         x = left if single else int(box.left)
@@ -884,7 +895,7 @@ def _dress_bullets(frame: Frame, composition: Composition, refs: dict[str, str])
             box, size=size, color=body_color, spacing=1.1, para_gap_pt=size * para_gap,
             align=PP_ALIGN.LEFT, family=family,
         )  # fmt: skip
-        _bullets_with_leads(box, accent, title_color, size)
+        _bullets_with_leads(box, _accent_text(frame), title_color, size)
     if single and panel_w > 0:
         _topic_panel(frame, (right - panel_w, y, panel_w, max(block, int(avail * 0.62))), title)
     return True
@@ -1145,7 +1156,7 @@ def _dress_statement(frame: Frame, composition: Composition, refs: dict[str, str
         _place(main, (x, y, width + indent, h + int(frame.height * 0.02)))
         _style_text(main, size=size, color=body_color, spacing=1.1, para_gap_pt=size * 0.55,
                     align=PP_ALIGN.LEFT, family=code.font_for("body"))  # fmt: skip
-        _bullets_with_leads(main, accent, title_color, size)
+        _bullets_with_leads(main, _accent_text(frame), title_color, size)
         end = y + h
     else:
         family = code.font_for("subtitle")
@@ -1282,7 +1293,6 @@ def _dress_image_split(frame: Frame, composition: Composition, refs: dict[str, s
     x, width = int(bx * frame.width), int(bw * frame.width)
     split_breaks(body)
     paragraphs = [p for p in frame.text_of(str(body.shape_id)).split("\n") if p.strip()]
-    accent = _accent(frame, 0)
     title_color, body_color = _text_colors(frame, None)
     if body_slot.kind == "bullets" or len(paragraphs) >= 3:
         size, h = _list_size(frame, [paragraphs], width, avail)
@@ -1290,7 +1300,7 @@ def _dress_image_split(frame: Frame, composition: Composition, refs: dict[str, s
         _place(body, (x, y, width, h + int(frame.height * 0.02)))
         _style_text(body, size=size, color=body_color, spacing=1.1, para_gap_pt=size * 0.55,
                     align=PP_ALIGN.LEFT, family=code.font_for("body"))  # fmt: skip
-        _bullets_with_leads(body, accent, title_color, size)
+        _bullets_with_leads(body, _accent_text(frame), title_color, size)
         return True
     text = "\n".join(paragraphs)
     family = code.font_for("subtitle")
