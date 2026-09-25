@@ -965,9 +965,12 @@ def test_image_icon_recolor_and_diagrams(
     icon_obj = objs[icons[1]["element_ref"]]
     assert icon_obj["picture"]["recolored"] is True
     assert icon_obj["picture"]["asset_id"] == template_icon["asset_id"] + ":recolored"
-    query_obj = objs[icons[2]["element_ref"]]
-    assert query_obj["content_source"] == "sample"
-    assert any(w["code"] == "icon_query_unsupported" for w in result.warnings)
+    # Иконка по запросу — векторная фигура из набора library/iconset на месте слота.
+    query_obj = next(o for o in deck_first["objects"] if o.get("slot_id") == icons[2]["slot_id"])
+    assert query_obj["content_source"] == "plan"
+    assert by_id[query_obj["object_id"]].name == "Icon rocket"
+    assert icons[2]["element_ref"] not in by_id
+    assert not any(w["code"] == "icon_query_unsupported" for w in result.warnings)
     # Перекрашенная иконка — отдельная медиа-часть нужного цвета.
     pic = by_id[icons[1]["element_ref"]]
     from PIL import Image

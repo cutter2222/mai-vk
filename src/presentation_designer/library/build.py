@@ -93,6 +93,16 @@ def build_slide(
     return slide, refs, card_ids + anchor_ids
 
 
+def slide_backdrop(
+    layout: Any, code: DesignCode, skin: Skin | None, width: int, height: int
+) -> str:
+    """Цвет, на котором лежит содержание слайда композиции: фон образцов, если кожа его
+    даёт, иначе фон макета или дизайн-кода — как считает `build_slide`."""
+    if skin is not None and skin.background:
+        return skin.background
+    return layout_background(layout, code, width, height) or code.background
+
+
 def _decor_fits(composition: Composition, skin: Skin) -> list[Box] | None:
     """Места декора, если он не задевает ничего, кроме заголовка (тот поднимается над ним);
     None — декор мешает содержанию, и слайд обходится одним фоном."""

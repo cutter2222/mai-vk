@@ -87,7 +87,10 @@ from presentation_designer.layout.shapes import (
     shape_element,
     shape_map,
 )
+from presentation_designer.library import iconset
 from presentation_designer.library.build import build_slide as build_builtin_slide
+from presentation_designer.library.build import slide_backdrop
+from presentation_designer.library.dress import dress_slide, look_for
 from presentation_designer.library.skin import Skin, template_skin
 from presentation_designer.library.spec import find_composition
 from presentation_designer.library.tokens import DesignCode
@@ -921,6 +924,10 @@ def _apply_icon(
     icon = block.get("icon") or {}
     asset_id = str(icon.get("asset_id") or "")
     asset = ctx.profile_assets.get(asset_id)
+    if asset is None and icon.get("query"):
+        placed = _library_icon(ctx, slide, slot, element, icon, fill)
+        if placed is not None:
+            return placed
     if asset is None:
         code = "icon_query_unsupported" if icon.get("query") else "asset_unknown"
         ctx.warn(
@@ -974,6 +981,30 @@ def _apply_icon(
         "fit": "contain" if result.recolored else "as_is",
         "recolored": result.recolored,
     }
+    ctx.count("icons")
+    return fill
+
+
+def _library_icon(
+    ctx: _Context, slide: Any, slot: SlotInfo, element: Any, icon: JsonDict, fill: SlotFill
+) -> SlotFill | None:
+    """Иконка по запросу модели из набора `library.iconset`: векторная фигура цвета иконки
+    образца (или акцента) на месте слота. None — в наборе ничего не нашлось."""
+    name = iconset.find_icon(str(icon.get("query") or ""))
+    if name is None:
+        return None
+    if ctx.design_code is None:
+        ctx.design_code = DesignCode.from_profile(ctx.profile)
+    color = str(icon.get("color") or _sample_icon_color(slide, element) or ctx.design_code.accent)
+    box = _slot_box(ctx, slot, element)
+    side = min(box[2], box[3])
+    remove_shape(slide, element)
+    shape = iconset.add_icon(
+        slide, name, box[0] + (box[2] - side) // 2, box[1] + (box[3] - side) // 2, side, color
+    )
+    fill.element_id = _renumbered(ctx, shape._element)
+    fill.source_object_id = None
+    fill.content_source = "plan"
     ctx.count("icons")
     return fill
 
@@ -2001,9 +2032,20 @@ def _distance(center: tuple[float, float], box: tuple[float, float, float, float
 # ---------- сборка колоды ----------
 
 
+@dataclass
+class _BuiltinSlide:
+    """Что нужно отделке собственной композиции после заполнения (`library.dress`)."""
+
+    composition: Any
+    refs: dict[str, str]
+    card_ids: list[str]
+    backdrop: str
+    title_decor: bool
+
+
 def _build_builtin(
     ctx: _Context, pattern_id: str, pattern_raw: JsonDict, source: JsonDict
-) -> tuple[Any, JsonDict]:
+) -> tuple[Any, JsonDict, _BuiltinSlide]:
     """Строит слайд собственной композиции и проставляет слотам ссылки на созданные объекты.
 
     Дальше паттерн неотличим от образца шаблона: у каждого слота есть `element_ref`, и текст,
@@ -2045,7 +2087,46 @@ def _build_builtin(
         if slot.get("repeat_group") and str(slot.get("slot_id")) in refs
     ]
     ctx.count("builtin_slides")
-    return slide, patched
+    skin = ctx.skins[layout_id]
+    meta = _BuiltinSlide(
+        composition=composition,
+        refs=dict(refs),
+        card_ids=list(card_ids),
+        backdrop=slide_backdrop(
+            layout, ctx.design_code, skin, int(ctx.prs.slide_width), int(ctx.prs.slide_height)
+        ),
+        title_decor=bool(skin.decor),
+    )
+    return slide, patched, meta
+
+
+def _dress_builtin(ctx: _Context, slide: Any, meta: _BuiltinSlide, plan_slide: JsonDict) -> None:
+    """Отделка собственной композиции по заполненному тексту: кегль, высота карточек по
+    тексту, значки с иконками, маркеры списка, акценты (`library/dress.py`)."""
+    if not ctx.reflow_cards or ctx.design_code is None:
+        return
+    variant = str((ctx.plan.get("variant") or {}).get("variant_id") or "balanced")
+    # Сами элементы, а не id(): прокси lxml живут, пока на них есть ссылка.
+    before = set(slide.shapes._spTree)
+    done = dress_slide(
+        slide,
+        meta.composition,
+        meta.refs,
+        meta.card_ids,
+        ctx.design_code,
+        look_for(variant, ctx.design_code),
+        width=int(ctx.prs.slide_width),
+        height=int(ctx.prs.slide_height),
+        backdrop=meta.backdrop,
+        blocks=list(plan_slide.get("blocks") or []),
+        title_decor=meta.title_decor,
+    )
+    # Новые фигуры отделки не занимают id удалённых объектов (python-pptx заполняет пропуски).
+    for element in list(slide.shapes._spTree):
+        if element not in before:
+            ctx.fresh_ids(element)
+    for item in done:
+        ctx.count(f"dressed_{item}")
 
 
 def compose_deck(
@@ -2174,12 +2255,13 @@ def compose_deck(
             unchanged = False
             # Собственная композиция: слайд строится на макете шаблона из его дизайн-кода,
             # а заполняется дальше тем же путём, что и клон образца.
-            clone, pattern_raw = _build_builtin(ctx, pattern_id, pattern_raw, source)
+            clone, pattern_raw, meta = _build_builtin(ctx, pattern_id, pattern_raw, source)
             new_slides.append(clone)
             pinfos[pattern_id] = pattern_info(pattern_raw)
             records.append(
                 _fill_slide(ctx, clone, plan_slide, pattern_raw, pinfos[pattern_id], None, index)
             )
+            _dress_builtin(ctx, clone, meta, plan_slide)
             continue
         sample_index = int(source.get("slide_index") or 0)
         if not 1 <= sample_index <= len(samples):
