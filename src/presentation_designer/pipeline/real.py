@@ -798,7 +798,10 @@ class RealLayers(StubLayers):
                 request = filler.request("fill.slots", user, stage="plan")
                 return str(client.complete_sync(request).text)
 
-        start_plan = self._with_photos(inp, inp.plan, locked)
+        from presentation_designer.design.labels import trim_repeated_values
+
+        start_plan, _trimmed = trim_repeated_values(inp.plan, locked)
+        start_plan = self._with_photos(inp, start_plan, locked)
         try:
             plan, report = design.polish(
                 start_plan,

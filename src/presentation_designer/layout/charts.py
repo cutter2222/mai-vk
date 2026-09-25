@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from dataclasses import dataclass, field
 from typing import Any
@@ -85,6 +86,7 @@ BOOLEAN_TAGS = frozenset(
     }
 )
 _C_NS = "{http://schemas.openxmlformats.org/drawingml/2006/chart}"
+_A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 
 @dataclass
@@ -97,6 +99,13 @@ class ChartStyle:
     text_color: str = "#000000"
     accents: list[str] = field(default_factory=lambda: list(DEFAULT_ACCENTS))
     gridlines: bool = False
+    # Диаграмма на тёмном фоне слайда: светлые подписи, оси и сетка полупрозрачным белым.
+    dark: bool = False
+
+    def on_dark(self) -> ChartStyle:
+        """Тот же стиль для тёмного слайда: тёмный текст темы там не читается."""
+        text = self.text_color if luminance(self.text_color) >= 0.7 else "#FFFFFF"
+        return dataclasses.replace(self, text_color=text, dark=True)
 
     @classmethod
     def from_profile(cls, profile: dict[str, Any]) -> ChartStyle:
@@ -353,11 +362,20 @@ def _style_axes(chart: Any, spec: ChartSpec, style: ChartStyle) -> None:
     for axis in (category_axis, value_axis):
         axis.visible = spec.show_axis_labels
         _apply_font(axis.tick_labels.font, style)
-        axis.format.line.color.rgb = _rgb("#BFBFBF")
+        if style.dark:
+            axis.format.line.color.rgb = _rgb("#FFFFFF")
+            _line_alpha(axis.format.line, 0.35)
+        else:
+            axis.format.line.color.rgb = _rgb("#BFBFBF")
     category_axis.has_major_gridlines = False
     value_axis.has_major_gridlines = style.gridlines and spec.show_axis_labels
     if value_axis.has_major_gridlines:
-        value_axis.major_gridlines.format.line.color.rgb = _rgb("#E0E0E0")
+        line = value_axis.major_gridlines.format.line
+        if style.dark:
+            line.color.rgb = _rgb("#FFFFFF")
+            _line_alpha(line, 0.15)
+        else:
+            line.color.rgb = _rgb("#E0E0E0")
     value_axis.tick_labels.number_format = "General"
     value_axis.tick_labels.number_format_is_linked = False
     if spec.axis_minimum is not None:
@@ -380,8 +398,44 @@ def add_chart(
     x, y, cx, cy = box
     frame = slide.shapes.add_chart(CHART_TYPES[spec.chart_type], x, y, cx, cy, chart_data(spec))
     style_chart(frame.chart, spec, style, restyle_series=True)
+    transparent(frame.chart)
     explicit_booleans(frame.chart)
     return frame
+
+
+def _line_alpha(line: Any, alpha: float) -> None:
+    """Прозрачность линии оси или сетки (python-pptx умеет только цвет)."""
+    ln = line._get_or_add_ln()
+    clr = ln.find(f"{{{_A_NS}}}solidFill/{{{_A_NS}}}srgbClr")
+    if clr is None:
+        return
+    for old in clr.findall(f"{{{_A_NS}}}alpha"):
+        clr.remove(old)
+    alpha_el = clr.makeelement(f"{{{_A_NS}}}alpha", {"val": str(round(alpha * 100000))})
+    clr.append(alpha_el)
+
+
+def transparent(chart: Any) -> None:
+    """Фон диаграммы и области построения прозрачные: на слайде видно фон шаблона, а не
+    белую плашку (на тёмном слайде она выглядела заплаткой)."""
+    space = chart._chartSpace
+    plot_area = space.find(f"{_C_NS}chart/{_C_NS}plotArea")
+    after_space = ("txPr", "externalData", "printSettings", "userShapes", "extLst")
+    for owner, before in ((space, after_space), (plot_area, ("extLst",))):
+        if owner is None:
+            continue
+        for old in owner.findall(f"{_C_NS}spPr"):
+            owner.remove(old)
+        sp_pr = owner.makeelement(f"{_C_NS}spPr", {})
+        sp_pr.append(sp_pr.makeelement(f"{{{_A_NS}}}noFill", {}))
+        ln = sp_pr.makeelement(f"{{{_A_NS}}}ln", {})
+        ln.append(ln.makeelement(f"{{{_A_NS}}}noFill", {}))
+        sp_pr.append(ln)
+        anchor = next((c for c in owner if c.tag.split("}")[-1] in before), None)
+        if anchor is not None:
+            anchor.addprevious(sp_pr)
+        else:
+            owner.append(sp_pr)
 
 
 def explicit_booleans(chart: Any) -> None:

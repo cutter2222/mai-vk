@@ -1083,7 +1083,11 @@ def _dress_numbers(
         x = int(shape.left)
         if align == PP_ALIGN.CENTER:
             x = int(shape.left + (shape.width - bar_w) / 2)
-        y = int(shape.top) - bar_h - int(frame.height * 0.012)
+        # Число прижато к низу рамки: черта — над самим числом, а не над рамкой.
+        text_top = (
+            int(shape.top) + int(shape.height) - int(_line_pt(number_font, size, True) * EMU_PT)
+        )
+        y = max(int(shape.top), text_top) - bar_h - int(frame.height * 0.012)
         bar = _shape(frame, MSO_SHAPE.RECTANGLE, (x, max(y, 0), bar_w, bar_h), "Accent bar")
         _set_fill(bar, accent)
         _set_line(bar, None)
@@ -1100,6 +1104,8 @@ def _dress_numbers(
                 for run in runs:
                     run.font.size = Pt(size)
                     run.font.color.rgb = _rgb(body_color)
+    if composition.family == "hero_number":
+        _hero_body(frame, composition, refs)
     for card_id in card_ids:
         plate = frame.get(card_id)
         if plate is not None:
@@ -1108,6 +1114,26 @@ def _dress_numbers(
             _set_line(plate, "#FFFFFF" if frame.dark else None, 0.75, 0.14)
             _set_shadow(plate, code.shadow and not frame.dark)
     return True
+
+
+def _hero_body(frame: Frame, composition: Composition, refs: dict[str, str]) -> None:
+    """Текст рядом с главным числом — основным кеглем, пункты — списком с маркерами."""
+    slot = next((s for s in composition.slots if s.slot_id == "body"), None)
+    body = frame.get(refs.get(slot.slot_id)) if slot is not None else None
+    if body is None or not frame.text_of(str(body.shape_id)):
+        return
+    split_breaks(body)
+    paragraphs = [p for p in frame.text_of(str(body.shape_id)).split("\n") if p.strip()]
+    top = int(body.top)
+    bottom = int(frame.height * (1 - max(frame.code.margins.get("bottom", 0.08), 0.07)))
+    width = int(body.width)
+    size, h = _list_size(frame, [paragraphs], width, max(bottom - top, int(body.height)))
+    title_color, body_color = _text_colors(frame, None)
+    _place(body, (int(body.left), top, width, h + int(frame.height * 0.02)))
+    _style_text(body, size=size, color=body_color, spacing=1.1, para_gap_pt=size * 0.55,
+                align=PP_ALIGN.LEFT, family=frame.code.font_for("body"))  # fmt: skip
+    if len(paragraphs) > 1:
+        _bullets_with_leads(body, _accent_text(frame), title_color, size)
 
 
 # ---------- одна мысль ----------

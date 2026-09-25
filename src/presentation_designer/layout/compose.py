@@ -80,6 +80,7 @@ from presentation_designer.layout.shapes import (
     emu_box,
     ensure_xfrm,
     in_group,
+    iter_shapes,
     next_shape_id,
     part_by_name,
     remove_shape,
@@ -98,6 +99,7 @@ from presentation_designer.library.tokens import DesignCode
 from presentation_designer.parsing.content.stock import load_assets as load_stock_assets
 from presentation_designer.parsing.raster_charts.model import ChartReading
 from presentation_designer.parsing.template.geometry import walk_shapes
+from presentation_designer.parsing.template.tone import relative_luminance
 from presentation_designer.shared import text_metrics
 
 log = logging.getLogger(__name__)
@@ -200,6 +202,11 @@ class _Context:
     # Оставшиеся карточки однорядной сетки расходятся на всю ширину ряда (`_reflow_cards`);
     # режим «По шаблону» обещает не двигать блоки и выключает это.
     reflow_cards: bool = True
+    # Фон текущего слайда тёмный (тон паттерна): новые диаграммы — светлыми подписями.
+    slide_dark: bool = False
+    # Фон следующего слайда собственной композиции, вычисленный по макету и коже: у неё тон
+    # профиля — тон образцов шаблона, а не того макета, на котором она стоит.
+    next_backdrop: str | None = None
 
     def fresh_ids(self, element: Any) -> dict[str, str]:
         """Перенумеровывает cNvPr новых объектов (python-pptx заполняет пропуски id)."""
@@ -307,6 +314,11 @@ def _fill_slide(
         static_object_ids=[str(i) for i in pattern_raw.get("static_object_ids") or []],
     )
     from_layout = pattern_raw["source"].get("kind") == "layout"
+    if ctx.next_backdrop:
+        ctx.slide_dark = relative_luminance(ctx.next_backdrop) < 0.35
+        ctx.next_backdrop = None
+    else:
+        ctx.slide_dark = str((pattern_raw.get("tone") or {}).get("background") or "") == "dark"
     slots: dict[str, SlotInfo] = pinfo.slots
     filled: dict[str, SlotFill] = {}
     ctx.next_id = next_shape_id(slide)
@@ -796,6 +808,11 @@ def _chart_area(
     return emu_box({"x": x, "y": y, "width": w, "height": h}, ctx.slide_w, ctx.slide_h)
 
 
+def _chart_style(ctx: _Context) -> Any:
+    """Стиль диаграммы под фон текущего слайда: на тёмном — светлые подписи и оси."""
+    return ctx.chart_style.on_dark() if ctx.slide_dark else ctx.chart_style
+
+
 def _apply_chart(
     ctx: _Context,
     slide: Any,
@@ -823,14 +840,14 @@ def _apply_chart(
     shapes = shape_map(slide)
     proxy = shapes.get(_element_id(element))
     if proxy is not None and getattr(proxy, "has_chart", False):
-        frame, how = charts.replace_or_add_chart(slide, proxy, box, spec, ctx.chart_style)
+        frame, how = charts.replace_or_add_chart(slide, proxy, box, spec, _chart_style(ctx))
         fill.built = how
         fill.content_source = "plan" if how == "replaced" else "generated"
     else:
         # Картинка диаграммы образца (паттерн роли chart) или плейсхолдер: на её месте
         # строится нативная диаграмма, картинка удаляется вместе с осиротевшей связью.
         remove_shape(slide, element)
-        frame = charts.add_chart(slide, box, spec, ctx.chart_style)
+        frame = charts.add_chart(slide, box, spec, _chart_style(ctx))
         fill.built = "added"
         fill.content_source = "generated"
     fill.element_id = (
@@ -2130,14 +2147,14 @@ def _grow_template_text(ctx: _Context, slide: Any, record: SlideRecord, pinfo: A
         ctx.design_code = DesignCode.from_profile(ctx.profile)
     code = ctx.design_code
     top_level = {str(s.shape_id): s for s in slide.shapes}
-    others = [
-        s
-        for s in slide.shapes
-        if (getattr(s, "has_text_frame", False) and s.text_frame.text.strip())
-        or getattr(s, "shape_type", None) == 13
-    ]
+    # Препятствия снизу — любые объекты слайда: текст, картинки, линии-разделители.
+    others = list(slide.shapes)
     plates = [s for s in slide.shapes if _is_plate(s)]
     plans: dict[str, list[tuple[Any, float, float, int]]] = {}
+    keys: dict[str, tuple[str, tuple[float, float, float, float]]] = {}
+    centered: list[tuple[Any, int]] = []
+    # Текст слайда не крупнее его заголовка: иначе иерархия переворачивается.
+    title_pt = _title_size(record, top_level, pinfo)
     for fill in record.fills:
         slot = pinfo.slots.get(fill.slot_id)
         shape = top_level.get(str(fill.element_id))
@@ -2163,6 +2180,11 @@ def _grow_template_text(ctx: _Context, slide: Any, record: SlideRecord, pinfo: A
         plate_room = _room_in_plate(shape, plates)
         if plate_room is not None:
             box_h = max(box_h, plate_room)
+        elif _grows_down(shape):
+            # Рамка, прижатая к верху, может занять свободное место под собой до
+            # ближайшего объекта или нижнего поля слайда.
+            floor = int(ctx.slide_h * 0.9) - int(shape.top)
+            box_h = max(box_h, below if below is not None else floor)
         box_h = min(box_h, below) if below is not None else box_h
         height = box_h - int(frame.margin_top or 0) - int(frame.margin_bottom or 0)
         text = shape.text_frame.text.replace("\v", "\n")
@@ -2171,6 +2193,16 @@ def _grow_template_text(ctx: _Context, slide: Any, record: SlideRecord, pinfo: A
         gap = float(slot.space_before_pt or 0) + float(slot.space_after_pt or 0)
         of_sample, of_body = GROW_ROLES[slot.kind]
         cap = max(current, min(current * of_sample, code.body_pt * of_body))
+        lone = plate_room is not None and slot.kind in ("body", "bullets") and sum(
+            1 for f in record.fills if f.text and pinfo.slots.get(f.slot_id) is not None
+            and pinfo.slots[f.slot_id].kind not in ("title", "number")
+        ) == 1  # fmt: skip
+        if lone:
+            # Единственный текст слайда в большой карточке: он главный, и может быть
+            # крупным — до кегля заголовка.
+            cap = max(cap, min(current * 2.4, code.title_pt))
+        if title_pt:
+            cap = max(current, min(cap, title_pt * (1.0 if lone else 0.9)))
 
         # Заголовок карточки и подпись растут без новых строк: вторая строка у короткой
         # подписи ломает ряд карточек.
@@ -2185,18 +2217,19 @@ def _grow_template_text(ctx: _Context, slide: Any, record: SlideRecord, pinfo: A
             if keep_lines and _line_count(text, family, trial, width) > lines:
                 break
             best = trial
-        # Ряд — слоты одного вида на одной высоте (колонки текста, карточки), даже если
-        # у образца они разнесены по разным группам повторов.
-        key = f"{slot.kind}@{slot.bbox[1]:.2f}"
+        key = str(fill.slot_id)
+        keys[key] = (slot.kind, slot.bbox)
         need_h = int(
             text_height(text, family, best, width, spacing=spacing, para_gap_pt=gap)
             + int(frame.margin_top or 0)
             + int(frame.margin_bottom or 0)
         )
         plans.setdefault(key, []).append((shape, current, best, need_h))
-    for items in plans.values():
-        # Общий кегль ряда — самый осторожный из его слотов: ряд выглядит ровно, и тот, что
-        # крупнее соседей, уменьшается до них.
+        if lone and need_h < box_h * 0.5:
+            centered.append((shape, box_h))
+    for items in _aligned_groups(plans, keys):
+        # Общий кегль ряда или столбца — самый осторожный из его слотов: ряд выглядит ровно,
+        # и тот, что крупнее соседей, уменьшается до них.
         size = min(best for _, _, best, _ in items)
         for shape, current, _, need_h in items:
             if abs(size - current) < current * (GROW_MIN_STEP - 1):
@@ -2217,6 +2250,163 @@ def _grow_template_text(ctx: _Context, slide: Any, record: SlideRecord, pinfo: A
                     else:
                         run.font.size = Pt(round(current * ratio, 1))
             ctx.count("text_grown")
+    for shape, box_h in centered:
+        # Короткий единственный текст в большой карточке — по центру её высоты, а не
+        # строкой у верхнего края над пустотой.
+        shape.height = box_h
+        body_pr = shape.text_frame._txBody.find(f"{{{NS_A}}}bodyPr")
+        if body_pr is not None:
+            body_pr.set("anchor", "ctr")
+            ctx.count("text_centered")
+
+
+def _even_indents(ctx: _Context, slide: Any, record: SlideRecord) -> None:
+    """Отступ первой строки абзаца без маркера → отступ всего абзаца.
+
+    Образец рассчитан на свою строку-рыбу: рамка стоит у края слайда, а текст выровнен
+    отступом первой строки. Наш текст длиннее и переносится — вторая строка уходила к краю
+    слайда, левее заголовка."""
+    if ctx.preserve:
+        return
+    shapes = shape_map(slide)
+    for fill in record.fills:
+        shape = shapes.get(str(fill.element_id))
+        if shape is None or not getattr(shape, "has_text_frame", False) or not fill.text:
+            continue
+        for paragraph in shape.text_frame.paragraphs:
+            p_pr = paragraph._p.pPr
+            if p_pr is None:
+                continue
+            indent = int(p_pr.get("indent") or 0)
+            if indent <= 0:
+                continue
+            if (
+                p_pr.find(f"{{{NS_A}}}buChar") is not None
+                or p_pr.find(f"{{{NS_A}}}buAutoNum") is not None
+            ):
+                continue
+            p_pr.set("marL", str(int(p_pr.get("marL") or 0) + indent))
+            p_pr.set("indent", "0")
+            ctx.count("indents_evened")
+
+
+# Иконка-декор образца: доля ширины слайда и допуск квадратности.
+ICON_SIDE = (0.025, 0.11)
+ICON_ASPECT = (0.6, 1.6)
+
+
+def _sample_icons(ctx: _Context, slide: Any, record: SlideRecord, pinfo: Any) -> None:
+    """Иконки образца, не связанные с нашим текстом, — иконками по смыслу колонок.
+
+    У образца над колонками текста часто стоят иконки-декор (группы векторных фигур или
+    картинки без слота): монитор с долларом над «Вандализмом» выглядит ошибкой. Если
+    таких иконок столько же, сколько колонок заполненного текста, и для каждой колонки
+    нашлась иконка по смыслу, они заменяются векторными иконками набора того же размера и
+    цвета; рамки и подложки образца остаются. Иначе остаются иконки образца."""
+    if ctx.preserve or not ctx.reflow_cards:
+        return
+    texts: list[tuple[float, float, str]] = []  # центр x, верх, текст колонки
+    top_level = {str(s.shape_id): s for s in slide.shapes}
+    for fill in record.fills:
+        slot = pinfo.slots.get(fill.slot_id)
+        shape = top_level.get(str(fill.element_id))
+        if slot is None or shape is None or slot.kind in ("title", "number") or not fill.text:
+            continue
+        cx = (int(shape.left) + int(shape.width) / 2) / ctx.slide_w
+        texts.append((cx, int(shape.top) / ctx.slide_h, str(fill.text)))
+    if len(texts) < 2:
+        return
+    candidates: list[Any] = []
+    for shape in slide.shapes:
+        kind = getattr(shape, "shape_type", None)
+        if kind not in (6, 13):  # GROUP, PICTURE
+            continue
+        if kind == 6 and any(
+            getattr(s, "has_text_frame", False) and s.text_frame.text.strip()
+            for s in iter_shapes(shape)
+        ):
+            continue
+        w, h = int(shape.width) / ctx.slide_w, int(shape.height) / ctx.slide_w
+        if not (
+            ICON_SIDE[0] <= w <= ICON_SIDE[1]
+            and ICON_ASPECT[0] <= w / max(h, 1e-6) <= ICON_ASPECT[1]
+        ):
+            continue
+        candidates.append(shape)
+    if len(candidates) < 2:
+        return
+    # Ряд иконок: одна высота, по одной над каждой колонкой текста ниже.
+    rows: dict[int, list[Any]] = {}
+    for shape in candidates:
+        rows.setdefault(round(int(shape.top) / ctx.slide_h * 50), []).append(shape)
+    for row in rows.values():
+        if len(row) < 2:
+            continue
+        row.sort(key=lambda s: int(s.left))
+        icon_top = int(row[0].top) / ctx.slide_h
+        below = [t for t in texts if t[1] > icon_top]
+        if len(below) < len(row):
+            continue
+        pairs: list[tuple[Any, str]] = []
+        for shape in row:
+            cx = (int(shape.left) + int(shape.width) / 2) / ctx.slide_w
+            nearest = min(below, key=lambda t: abs(t[0] - cx) + (t[1] - icon_top) * 0.2)
+            if abs(nearest[0] - cx) > 0.12:
+                break
+            pairs.append((shape, nearest[2]))
+        if len(pairs) != len(row) or len({p[1] for p in pairs}) != len(pairs):
+            continue
+        names = iconset.pick_icons([text for _, text in pairs])
+        if not all(names):
+            continue
+        for (shape, _text), name in zip(pairs, names, strict=True):
+            color = _shape_color(shape) or (
+                ctx.design_code.accent if ctx.design_code is not None else "#0077FF"
+            )
+            left, top, width, height = (
+                int(v) for v in (shape.left, shape.top, shape.width, shape.height)
+            )
+            side = min(width, height)
+            removed = remove_shape(slide, shape._element)
+            icon = iconset.add_icon(
+                slide,
+                str(name),
+                left + (width - side) // 2,
+                top + (height - side) // 2,
+                side,
+                color,
+            )
+            ctx.fresh_ids(icon._element)
+            record.static_object_ids = [i for i in record.static_object_ids if i not in removed]
+            record.removed_object_ids.extend(i for i in removed if i)
+            ctx.count("sample_icons_replaced")
+
+
+def _shape_color(shape: Any) -> str | None:
+    """Основной цвет иконки-образца: самая частая явная заливка или линия её фигур;
+    у картинки — цвет одноцветной маски."""
+    if getattr(shape, "shape_type", None) == 13:
+        return None
+    import colorsys
+
+    counts: dict[str, int] = {}
+    for clr in shape._element.iter(f"{{{NS_A}}}srgbClr"):
+        value = str(clr.get("val") or "").upper()
+        if len(value) == 6 and value not in ("FFFFFF", "000000"):
+            counts[value] = counts.get(value, 0) + 1
+    if not counts:
+        return None
+
+    def saturation(value: str) -> float:
+        r, g, b = (int(value[i : i + 2], 16) / 255 for i in (0, 2, 4))
+        return colorsys.rgb_to_hsv(r, g, b)[1]
+
+    # Цвет рисунка иконки — самый насыщенный: светлые заливки мелких деталей бывают
+    # многочисленнее, но иконку видят по цветной линии.
+    vivid = max(counts, key=lambda k: (saturation(k), counts[k]))
+    if saturation(vivid) >= 0.3:
+        return "#" + vivid
+    return "#" + max(counts, key=lambda k: counts[k])
 
 
 def _room_below(shape: Any, others: list[Any]) -> int | None:
@@ -2235,6 +2425,79 @@ def _room_below(shape: Any, others: list[Any]) -> int | None:
         gap = o_top - top - 38100
         room = gap if room is None else min(room, gap)
     return room
+
+
+def _title_size(record: SlideRecord, shapes: dict[str, Any], pinfo: Any) -> float | None:
+    """Кегль заголовка слайда после заполнения (самый крупный прогон)."""
+    for fill in record.fills:
+        slot = pinfo.slots.get(fill.slot_id)
+        shape = shapes.get(str(fill.element_id))
+        if slot is None or slot.kind != "title" or shape is None:
+            continue
+        if not getattr(shape, "has_text_frame", False):
+            continue
+        sizes = [
+            float(r.font.size.pt)
+            for p in shape.text_frame.paragraphs
+            for r in p.runs
+            if r.font.size is not None
+        ]
+        if sizes:
+            return max(sizes)
+        if fill.size_pt:
+            return float(fill.size_pt)
+    return None
+
+
+def _aligned_groups(
+    plans: dict[str, list[tuple[Any, float, float, int]]],
+    keys: dict[str, tuple[str, tuple[float, float, float, float]]],
+) -> list[list[tuple[Any, float, float, int]]]:
+    """Слоты одного вида, стоящие в ряд (одна высота) или столбцом (один край и ширина),
+    — одна группа с общим кеглем, даже если у образца они в разных группах повторов."""
+    ids = list(plans)
+    parent = {i: i for i in ids}
+
+    def root(i: str) -> str:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for a_index, a in enumerate(ids):
+        kind_a, (xa, ya, wa, _ha) = keys[a]
+        for b in ids[a_index + 1 :]:
+            kind_b, (xb, yb, wb, _hb) = keys[b]
+            if kind_a != kind_b:
+                continue
+            row = abs(ya - yb) < 0.015
+            column = abs(xa - xb) < 0.01 and abs(wa - wb) < 0.01
+            if row or column:
+                parent[root(a)] = root(b)
+    groups: dict[str, list[tuple[Any, float, float, int]]] = {}
+    for i in ids:
+        groups.setdefault(root(i), []).extend(plans[i])
+    return list(groups.values())
+
+
+def _grows_down(shape: Any) -> bool:
+    """Текст прижат к верху: рамку можно удлинить вниз, и текст останется на месте.
+    У плейсхолдера привязка наследуется — от макета, затем от мастера; не задана нигде —
+    верх (умолчание PowerPoint)."""
+    owner: Any = shape
+    for _ in range(3):
+        body_pr = owner.text_frame._txBody.find(f"{{{NS_A}}}bodyPr") if owner is not None else None
+        if body_pr is not None and body_pr.get("anchor"):
+            return str(body_pr.get("anchor")) == "t"
+        if not getattr(owner, "is_placeholder", False):
+            return True
+        try:
+            owner = owner._base_placeholder
+        except Exception:
+            return False
+        if owner is None:
+            return True
+    return True
 
 
 def _is_plate(shape: Any) -> bool:
@@ -2443,6 +2706,7 @@ def compose_deck(
             # Собственная композиция: слайд строится на макете шаблона из его дизайн-кода,
             # а заполняется дальше тем же путём, что и клон образца.
             clone, pattern_raw, meta = _build_builtin(ctx, pattern_id, pattern_raw, source)
+            ctx.next_backdrop = meta.backdrop
             new_slides.append(clone)
             pinfos[pattern_id] = pattern_info(pattern_raw)
             records.append(
@@ -2486,7 +2750,9 @@ def compose_deck(
         records.append(
             _fill_slide(ctx, clone, plan_slide, pattern_raw, pinfos[pattern_id], layout, index)
         )
+        _even_indents(ctx, clone, records[-1])
         if source.get("kind") == "sample_slide":
+            _sample_icons(ctx, clone, records[-1], pinfos[pattern_id])
             _grow_template_text(ctx, clone, records[-1], pinfos[pattern_id])
     timings["clone_fill_ms"] = int((time.perf_counter() - t0) * 1000)
     if not new_slides:

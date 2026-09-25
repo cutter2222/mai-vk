@@ -50,6 +50,9 @@ def inside(job_id: str, variants: list[str], out: pathlib.Path, photos: bool = F
             print(f"{job_id}/{variant}: плана нет", file=sys.stderr)
             continue
         plan = json.loads(revisions[-1].read_text(encoding="utf-8"))
+        from presentation_designer.design.labels import trim_repeated_values
+
+        plan, _trimmed = trim_repeated_values(plan)
         if photos:
             # Подбор фото слоя design (скилл visual_picker и фотобанк) на сохранённом плане.
             import logging
