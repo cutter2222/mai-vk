@@ -1,0 +1,26 @@
+# Манифест скилла по contracts/schemas/skill_manifest.schema.json
+schema_version: '1.1'
+name: visual_picker
+version: 0.1.0
+stage: compose
+description: 'Запросы стоковых фотографий к слайдам: по заголовку и сути слайда — короткий
+  английский запрос к фотобанку CC0 (предмет или сцена) либо отказ, если тема абстрактная'
+model_role: llm
+response_format: json_schema
+reasoning:
+  mode: 'off'
+  max_output_tokens: 800
+prompts:
+- id: photo.queries
+  path: prompts/photo.queries.v0.1.0.md
+  version: 0.1.0
+params:
+  temperature: 0.0
+  time_budget_s: 20      # один вызов на вариант, запросы всех кандидатов пачкой
+input_schema: slide_plan
+output_schema: photo_queries
+changelog:
+- version: 0.1.0
+  date: '2026-09-26'
+  note: 'фото к текстовым слайдам: модель переводит тему слайда в запрос к фотобанку
+    (Openverse, только CC0-стоки); код ищет, скачивает и ставит фото рядом с текстом'

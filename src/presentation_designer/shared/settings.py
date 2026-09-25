@@ -210,9 +210,17 @@ class DesignFeedback(BaseModel):
     pattern_swap: bool = False  # менять композицию по фактам: см. комментарий в app.yaml
 
 
+class DesignPhotos(BaseModel):
+    """Фото к текстовым слайдам из CC0-фотобанков (design/photos.py)."""
+
+    enabled: bool = True
+    budget_s: float = 20.0  # поиск и загрузка на вариант; по истечении — без фото
+
+
 class Design(BaseModel):
     variants: dict[str, DesignVariant] = Field(default_factory=dict)
     feedback: DesignFeedback = Field(default_factory=DesignFeedback)
+    photos: DesignPhotos = Field(default_factory=DesignPhotos)
 
 
 class Llm(BaseModel):

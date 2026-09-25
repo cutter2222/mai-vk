@@ -22,7 +22,7 @@ CONTAINER = "presentation-designer-worker-generation-1"
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
-def inside(job_id: str, variants: list[str], out: pathlib.Path) -> None:
+def inside(job_id: str, variants: list[str], out: pathlib.Path, photos: bool = False) -> None:
     """Сборка и PDF внутри воркера: там шаблоны, пакеты и ONLYOFFICE."""
     from presentation_designer.export.pdf import convert_to_pdf
     from presentation_designer.layout.compose import compose_deck
@@ -50,6 +50,23 @@ def inside(job_id: str, variants: list[str], out: pathlib.Path) -> None:
             print(f"{job_id}/{variant}: плана нет", file=sys.stderr)
             continue
         plan = json.loads(revisions[-1].read_text(encoding="utf-8"))
+        if photos:
+            # Подбор фото слоя design (скилл visual_picker и фотобанк) на сохранённом плане.
+            import logging
+            import types
+
+            from presentation_designer.pipeline.real import RealLayers
+
+            logging.basicConfig(level=logging.WARNING, format="    %(message)s")
+            logging.getLogger("presentation_designer.pipeline.real").setLevel(logging.INFO)
+            layers = RealLayers(settings)
+            inp = types.SimpleNamespace(
+                package_dir=o.artifacts.package_dir(gen["package_id"]),
+                template_profile=profile,
+                variant_id=variant,
+                job_id=job_id,
+            )
+            plan = layers._with_photos(inp, plan, set())  # type: ignore[arg-type]
         target = out / job_id / variant
         target.mkdir(parents=True, exist_ok=True)
         started = time.monotonic()
@@ -87,6 +104,7 @@ def outside(args: argparse.Namespace) -> int:
         cmd = [
             "docker", "exec", "-w", "/app", CONTAINER, "python", "/app/scripts/rerender.py",
             job_id, "--variants", args.variants, "--inside", remote,
+            *(["--photos"] if args.photos else []),
         ]  # fmt: skip
         if subprocess.run(cmd).returncode:
             return 1
@@ -112,11 +130,12 @@ def main() -> int:
     ap.add_argument("jobs", nargs="+")
     ap.add_argument("--variants", default="balanced")
     ap.add_argument("--label", default="look")
+    ap.add_argument("--photos", action="store_true", help="подобрать фото к слайдам (модель)")
     ap.add_argument("--inside", default=None, help=argparse.SUPPRESS)
     args = ap.parse_args()
     if args.inside:
         for job_id in args.jobs:
-            inside(job_id, args.variants.split(","), pathlib.Path(args.inside))
+            inside(job_id, args.variants.split(","), pathlib.Path(args.inside), args.photos)
         return 0
     return outside(args)
 

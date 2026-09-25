@@ -180,6 +180,13 @@ design:
     # клал пункты в заголовки карточек, и дозапрос дописывал в опустевший текст обрывки
     # «Гео», «Ванд». Счёт дефектов такую подмену не видит.
     pattern_swap: false
+  # Фото к текстовым слайдам (design/photos.py): до трети слайдов «список» и «одна мысль»
+  # получают фото из CC0-фотобанков (Openverse: StockSnap, rawpixel, Nappy, WordPress).
+  # Запрос к фотобанку пишет модель (скилл visual_picker), поиск кэшируется в пакете.
+  # Без ключа Openverse — 20 запросов в минуту и 200 в день (ключ: PD_OPENVERSE_TOKEN).
+  photos:
+    enabled: true
+    budget_s: 20
   variants:
     compact:  { min_fill: 0.25, max_fill: 0.65, max_slots_ratio: 1.6 }
     balanced: { min_fill: 0.35, max_fill: 0.72, max_slots_ratio: 1.5 }

@@ -145,6 +145,9 @@ def dress_slide(
     elif family in ("statement", "quote"):
         if _dress_statement(frame, composition, refs):
             done.append("statement")
+    elif family == "image_split":
+        if _dress_image_split(frame, composition, refs):
+            done.append("image_split")
     service = family in ("title_slide", "section", "closing", "agenda")
     if (
         look.title_mark
@@ -1240,6 +1243,89 @@ def _list_size(frame: Frame, lists: list[list[str]], width: int, avail: int) -> 
     while height_at(size) > avail and size > code.caption_pt:
         size *= 0.94
     return size, height_at(size)
+
+
+def _dress_image_split(frame: Frame, composition: Composition, refs: dict[str, str]) -> bool:
+    """Картинка и текст: фото на всю высоту рабочей области со скруглением шаблона, текст
+    рядом — списком с маркерами или крупной мыслью, по центру высоты фото."""
+    image_slot = next((s for s in composition.slots if s.kind == "image"), None)
+    body_slot = next((s for s in composition.slots if s.slot_id == "body"), None)
+    if image_slot is None or body_slot is None:
+        return False
+    top, bottom = _body_area(frame, refs)
+    avail = bottom - top
+    ix, _iy, iw, _ih = image_slot.bbox
+    x0, x1 = int(ix * frame.width), int((ix + iw) * frame.width)
+    picture = next(
+        (
+            s
+            for s in frame.slide.shapes
+            if getattr(s, "shape_type", None) == 13
+            and x0 - 12700 <= int(s.left) + int(s.width) / 2 <= x1 + 12700
+        ),
+        None,
+    )
+    if picture is not None:
+        from presentation_designer.layout import images
+        from presentation_designer.layout.shapes import set_element_box
+
+        box = (x0, top, x1 - x0, avail)
+        blob = picture.image.blob
+        set_element_box(picture._element, box)
+        images.place_image(frame.slide, picture._element, blob, fit="cover", box=box)
+        _round_picture(picture, frame.code)
+    body = frame.get(refs.get("body"))
+    if body is None or not frame.text_of(str(body.shape_id)):
+        return picture is not None
+    code = frame.code
+    bx, _by, bw, _bh = body_slot.bbox
+    x, width = int(bx * frame.width), int(bw * frame.width)
+    split_breaks(body)
+    paragraphs = [p for p in frame.text_of(str(body.shape_id)).split("\n") if p.strip()]
+    accent = _accent(frame, 0)
+    title_color, body_color = _text_colors(frame, None)
+    if body_slot.kind == "bullets" or len(paragraphs) >= 3:
+        size, h = _list_size(frame, [paragraphs], width, avail)
+        y = top + max(0, (avail - h) // 2)
+        _place(body, (x, y, width, h + int(frame.height * 0.02)))
+        _style_text(body, size=size, color=body_color, spacing=1.1, para_gap_pt=size * 0.55,
+                    align=PP_ALIGN.LEFT, family=code.font_for("body"))  # fmt: skip
+        _bullets_with_leads(body, accent, title_color, size)
+        return True
+    text = "\n".join(paragraphs)
+    family = code.font_for("subtitle")
+    size = code.subtitle_pt
+    while (
+        text_height(text, family, size * 1.06, width, spacing=1.05) < avail * 0.5
+        and size < code.title_pt
+    ):
+        size *= 1.06
+    while text_height(text, family, size, width, spacing=1.05) > avail and size > code.body_pt:
+        size *= 0.94
+    h = text_height(text, family, size, width, spacing=1.05)
+    y = top + max(0, (avail - h) // 2)
+    _place(body, (x, y, width, h + int(frame.height * 0.02)))
+    _style_text(body, size=size, color=title_color, spacing=1.05, family=family,
+                align=PP_ALIGN.LEFT)  # fmt: skip
+    return True
+
+
+def _round_picture(picture: Any, code: DesignCode) -> None:
+    """Скругление фото по пластике шаблона (прямые углы шаблона — без скругления)."""
+    if code.card_geometry != "roundRect" or code.corner_ratio <= 0:
+        return
+    sp_pr = picture._element.spPr
+    geom = sp_pr.find(f"{{{NS_A}}}prstGeom")
+    if geom is None:
+        return
+    geom.set("prst", "roundRect")
+    av = geom.find(f"{{{NS_A}}}avLst")
+    if av is None:
+        av = etree.SubElement(geom, f"{{{NS_A}}}avLst")
+    for old in list(av):
+        av.remove(old)
+    ratio = min(code.corner_ratio, 0.5) * 0.5
+    etree.SubElement(av, f"{{{NS_A}}}gd", name="adj", fmla=f"val {round(ratio * 100000)}")
 
 
 # ---------- заголовок ----------

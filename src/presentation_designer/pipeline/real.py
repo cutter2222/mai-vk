@@ -798,9 +798,10 @@ class RealLayers(StubLayers):
                 request = filler.request("fill.slots", user, stage="plan")
                 return str(client.complete_sync(request).text)
 
+        start_plan = self._with_photos(inp, inp.plan, locked)
         try:
             plan, report = design.polish(
-                inp.plan,
+                start_plan,
                 inp.template_profile,
                 inp.story,
                 compose=compose_draft,
@@ -817,7 +818,7 @@ class RealLayers(StubLayers):
                 inp.variant_id,
                 exc_info=True,
             )
-            return inp.plan
+            return start_plan
         finally:
             draft.unlink(missing_ok=True)
 
@@ -829,6 +830,43 @@ class RealLayers(StubLayers):
             {k: v for k, v in report.items() if k not in ("decisions", "refilled")},
         )
         return plan
+
+    def _with_photos(self, inp: ComposeInput, plan: JsonDict, locked: set[str]) -> JsonDict:
+        """Фото к части текстовых слайдов (design/photos.py): запросы — скилл visual_picker,
+        поиск и загрузка — parsing/content/stock.py. Любая неудача — план без фото."""
+        settings = self.settings.design.photos
+        client = self.llm_client()
+        picker = self.skill("visual_picker")
+        if not settings.enabled or client is None or picker is None or inp.package_dir is None:
+            return plan
+        from presentation_designer.design import photos
+        from presentation_designer.parsing.content import stock
+
+        package_dir = pathlib.Path(inp.package_dir)
+
+        def ask(user: str) -> str:
+            request = picker.request("photo.queries", user, schema=photos.QUERY_SCHEMA)
+            return str(client.complete_sync(request).text)
+
+        def find(query: str, exclude: set[str]) -> Any:
+            return stock.find_photo(query, package_dir, exclude=exclude)
+
+        try:
+            out, report = photos.attach_photos(
+                plan,
+                inp.template_profile,
+                variant=inp.variant_id,
+                ask=ask,
+                find=find,
+                locked=locked,
+                budget_s=settings.budget_s,
+            )
+        except Exception:  # фото — украшение, сборку оно не роняет
+            log.warning("фото к слайдам не подобраны %s/%s", inp.job_id, inp.variant_id,
+                        exc_info=True)  # fmt: skip
+            return plan
+        log.info("фото %s/%s: %s", inp.job_id, inp.variant_id, report)
+        return out
 
     # ----- экспорт -----
 

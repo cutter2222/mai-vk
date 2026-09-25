@@ -95,6 +95,7 @@ from presentation_designer.library.dress import dress_slide, look_for
 from presentation_designer.library.skin import Skin, template_skin
 from presentation_designer.library.spec import find_composition
 from presentation_designer.library.tokens import DesignCode
+from presentation_designer.parsing.content.stock import load_assets as load_stock_assets
 from presentation_designer.parsing.raster_charts.model import ChartReading
 from presentation_designer.parsing.template.geometry import walk_shapes
 from presentation_designer.shared import text_metrics
@@ -2355,6 +2356,18 @@ def compose_deck(
     except Exception as e:
         raise ComposeError("compose_template_unreadable", f"шаблон не открывается: {e}") from e
     slide_w, slide_h = int(prs.slide_width or 0), int(prs.slide_height or 0)
+    stock_assets = load_stock_assets(package_dir)
+    if stock_assets:
+        # Фото из фотобанков, загруженные слоем design в каталог пакета (design/photos.py):
+        # для вёрстки и ComposedDeck это такие же ресурсы пакета, как картинки материалов.
+        own = {str(a.get("asset_id")) for a in package.get("assets") or []}
+        package = {
+            **package,
+            "assets": [
+                *(package.get("assets") or []),
+                *(a for asset_id, a in stock_assets.items() if asset_id not in own),
+            ],
+        }
     ctx = _Context(
         plan=plan,
         profile=profile,
