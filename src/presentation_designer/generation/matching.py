@@ -578,8 +578,30 @@ def pattern_info(raw: JsonDict) -> PatternInfo:
     )
 
 
+# Служебные слайды автора шаблона: благодарности сервису, откуда шаблон, инструкции «как
+# пользоваться», список бесплатных шрифтов. Это не композиции для содержания: финал на
+# образце «Credits» SlidesCarnival выходил с логотипом сервиса и фото Pexels.
+_VENDOR_META = re.compile(
+    r"(?i)(slidescarnival|slidesgo|freepik|pexels|unsplash|slidemania|presentationgo|"
+    r"this (presentation )?template|free for everyone|how to use this|free fonts?\b|"
+    r"\bcredits\b|инструкци[яи] по (использованию|работе)|бесплатн\w* шаблон)"
+)
+_META_SLOT_KINDS = ("title", "subtitle", "body", "bullets")
+
+
+def vendor_meta(pattern: JsonDict) -> bool:
+    """Образец — служебный слайд автора шаблона (подписи колонтитула не в счёт: адрес сервиса
+    внизу обычного слайда убирается при вёрстке, а сам слайд годится)."""
+    text = " ".join(
+        str(s.get("sample_text") or "")
+        for s in pattern.get("slots") or []
+        if s.get("kind") in _META_SLOT_KINDS
+    )
+    return bool(_VENDOR_META.search(text))
+
+
 def profile_patterns(profile: JsonDict) -> list[PatternInfo]:
-    return [pattern_info(p) for p in profile.get("patterns", [])]
+    return [pattern_info(p) for p in profile.get("patterns", []) if not vendor_meta(p)]
 
 
 # ---------- фиксированные слайды по ролям ----------

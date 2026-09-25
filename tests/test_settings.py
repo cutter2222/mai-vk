@@ -40,3 +40,16 @@ def test_models_config_roles_and_provider(monkeypatch: pytest.MonkeyPatch) -> No
     assert provider.base_url() == "https://example.invalid/v1"
     assert models.role("text_to_image").enabled is False
     s.reset_cache()
+
+
+def test_models_config_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Роль переключается на другой шлюз из окружения; настройки приложения этих ключей не видят."""
+    monkeypatch.setenv("PD_MODELS__ROLES__LLM__PROVIDER", "openrouter")
+    monkeypatch.setenv("PD_MODELS__ROLES__LLM__MODEL", "qwen/qwen3.8-27b")
+    s.reset_cache()
+    models = s.get_models_config()
+    assert models.role("llm").model == "qwen/qwen3.8-27b"
+    assert models.provider_for("llm").reasoning_style == "openrouter_reasoning"
+    assert models.role("vlm").model == "qwen3.8-27b"
+    s.get_settings()  # ключи PD_MODELS__ не ломают проверку настроек
+    s.reset_cache()

@@ -14,6 +14,8 @@ from presentation_designer.audit.deterministic import (
     check_empty_slide,
     check_fill_ratio,
     check_fixed_elements,
+    check_out_of_bounds,
+    check_overlap,
 )
 
 JsonDict = dict[str, Any]
@@ -338,3 +340,46 @@ def test_report_marks_deck_checks_and_package(tmp_path: Any) -> None:
     )
     assert outcome(report, "integrity.package") == "passed"
     assert "pptx_file" not in report["coverage"].get("missing_inputs", [])
+
+
+def _text_obj(
+    oid: str, text: str, bbox: tuple[float, float, float, float], size: float
+) -> JsonDict:
+    x, y, w, h = bbox
+    return {
+        "object_id": oid,
+        "kind": "text",
+        "role": "content",
+        "bbox": {"x": x, "y": y, "width": w, "height": h},
+        "text": {
+            "plain": text,
+            "paragraphs": [{"text": text, "align": "left", "style": {"font": {"size_pt": size}}}],
+        },
+    }
+
+
+def test_template_decor_beyond_edge_is_not_an_error() -> None:
+    """Строки таблицы «от края» — замысел шаблона; наш текст за краем — ошибка."""
+    ctx = Context({"slides": [], "slide_size": {"width_emu": 9144000}}, _profile())
+    decor = {
+        "object_id": "412",
+        "kind": "group",
+        "role": "decoration",
+        "content_source": "template",
+        "bbox": {"x": -0.02, "y": 0.4, "width": 0.74, "height": 0.2},
+    }
+    moved = {**decor, "object_id": "7", "role": "content", "content_source": "plan"}
+    issues = check_out_of_bounds({"index": 0, "objects": [decor, moved]}, ctx)
+    assert [i.element_ids for i in issues] == [["7"]]
+
+
+def test_short_label_beside_text_is_not_an_overlap() -> None:
+    """Рамки подписи и пояснения образца перекрываются пустыми краями: текст не налезает."""
+    ctx = Context({"slides": [], "slide_size": {"width_emu": 9144000}}, _profile())
+    label = _text_obj("416", "Энергия", (0.044, 0.45, 0.213, 0.049), 13)
+    body = _text_obj("417", "Временное ограничение кофеина", (0.228, 0.42, 0.463, 0.109), 11)
+    assert not check_overlap({"index": 0, "objects": [label, body]}, ctx)
+    long_label = _text_obj(
+        "416", "Временное ограничение кофеина до обеда", (0.044, 0.45, 0.213, 0.049), 13
+    )
+    assert check_overlap({"index": 0, "objects": [long_label, body]}, ctx)

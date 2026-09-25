@@ -15,6 +15,13 @@
     uv run python scripts/live_quality.py all --label after-fix
     uv run python scripts/live_quality.py lct --label lct-check --variants balanced
 
+Режим ``zoo`` проверяет незнакомые шаблоны: все PPTX из папки (по умолчанию ``test_pptx``)
+загружаются и анализируются, на каждом генерируется презентация на свою тему без материалов
+(темы — ``ZOO_TOPICS`` по кругу). Шаблон, который система не приняла, попадает в сводку
+с причиной.
+
+    uv run python scripts/live_quality.py zoo --label zoo-1 --variants balanced
+
 Нужен запущенный стек (``make up``) с настроенной моделью и загруженными шаблонами
 организаторов (``make organizer-data`` и загрузка через интерфейс или API).
 """
@@ -109,6 +116,81 @@ SCENARIOS: dict[str, dict[str, Any]] = {
         "slides": {"min": 9, "max": 11},
     },
 }
+# Темы для незнакомых шаблонов: разные жанры и аудитории, без материалов.
+ZOO_TOPICS: list[dict[str, Any]] = [
+    {
+        "purpose": "initiative",
+        "title": "Четырёхдневная рабочая неделя в IT-компании",
+        "audience": "Совет директоров",
+        "goal": "Решить, запускать ли пилот на один отдел",
+    },
+    {
+        "purpose": "project",
+        "title": "Вертикальные фермы в городе: урожай круглый год",
+        "audience": "Городские инвесторы",
+        "goal": "Показать экономику и риски проекта",
+    },
+    {
+        "purpose": "initiative",
+        "title": "Кибергигиена для сотрудников офиса",
+        "audience": "Все сотрудники компании",
+        "goal": "Научить пяти простым правилам защиты",
+    },
+    {
+        "purpose": "project",
+        "title": "Школьный кружок робототехники с нуля",
+        "audience": "Директор школы и родители",
+        "goal": "Получить помещение и бюджет на набор",
+    },
+    {
+        "purpose": "initiative",
+        "title": "Как ресторану сократить пищевые отходы",
+        "audience": "Владельцы ресторанов",
+        "goal": "Внедрить учёт и перераспределение остатков",
+    },
+    {
+        "purpose": "initiative",
+        "title": "Профессиональное выгорание: признаки и профилактика",
+        "audience": "Руководители команд",
+        "goal": "Договориться о мерах поддержки сотрудников",
+    },
+    {
+        "purpose": "product",
+        "title": "Экономика подписок: как зарабатывают стриминги",
+        "audience": "Студенты экономического факультета",
+        "goal": "Объяснить модель и её метрики",
+    },
+    {
+        "purpose": "initiative",
+        "title": "Здоровый сон: мифы и факты",
+        "audience": "Слушатели научно-популярной лекции",
+        "goal": "Развеять пять популярных мифов",
+    },
+    {
+        "purpose": "product",
+        "title": "Мобильное приложение для учёта семейного бюджета",
+        "audience": "Инвесторы посевной стадии",
+        "goal": "Привлечь 15 млн рублей на запуск",
+    },
+    {
+        "purpose": "project",
+        "title": "Велодорожки в спальном районе",
+        "audience": "Жители района и администрация",
+        "goal": "Согласовать схему маршрутов",
+    },
+    {
+        "purpose": "initiative",
+        "title": "Переход отдела продаж на CRM",
+        "audience": "Менеджеры по продажам",
+        "goal": "Объяснить зачем и как пройдёт переход",
+    },
+    {
+        "purpose": "project",
+        "title": "История и будущее электромобилей",
+        "audience": "Школьники старших классов",
+        "goal": "Рассказать о технологиях и профессиях",
+    },
+]
 FINAL = {"succeeded", "failed", "cancelled", "partial", "needs_review"}
 # PDFium не потокобезопасен: листы сценариев из параллельных потоков роняли процесс (SIGSEGV).
 PDFIUM = threading.Lock()
@@ -172,15 +254,22 @@ def contact_sheet(pdf_path: pathlib.Path, out: pathlib.Path, label: str) -> dict
     return report
 
 
-def run(api: Api, name: str, out: pathlib.Path, variants: list[str], seed: int) -> dict[str, Any]:
-    spec = SCENARIOS[name]
+def run(
+    api: Api,
+    name: str,
+    out: pathlib.Path,
+    variants: list[str],
+    seed: int,
+    spec: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    spec = spec or SCENARIOS[name]
     out.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
     brief = spec["brief"]
     if isinstance(brief, str):
         brief = json.loads((ROOT / brief).read_text())
     brief = {k: v for k, v in brief.items() if k != "slide_count"}
-    template = api.template_id(TEMPLATE_NAMES[spec["template"]])
+    template = spec.get("template_id") or api.template_id(TEMPLATE_NAMES[spec["template"]])
     project = api.call("POST", "/projects", json={"title": f"QA {name}", "brief": brief})
     pid = project["project_id"]
     file_ids: list[str] = []
@@ -231,7 +320,7 @@ def report_job(
     """Листы, аудит и сводка по заданию генерации (новому или уже готовому)."""
     out.mkdir(parents=True, exist_ok=True)
     started = time.monotonic() if started is None else started
-    job = api.wait(job_id)
+    job = api.wait(job_id, limit=3600)
     result = api.call("GET", f"/generations/{job_id}")
     reports = []
     for variant in variants:
@@ -268,6 +357,62 @@ def report_job(
     return summary
 
 
+def zoo_specs(
+    api: Api, directory: pathlib.Path, out: pathlib.Path
+) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
+    """Загрузка и анализ шаблонов из папки: сценарии «тема без материалов» и отказы."""
+    out.mkdir(parents=True, exist_ok=True)
+    uploads: list[tuple[pathlib.Path, str, str]] = []
+    rejected: list[dict[str, Any]] = []
+    for path in sorted(directory.glob("*.pptx")):
+        with path.open("rb") as fh:
+            response = api.client.post("/templates", files={"file": (path.name, fh)})
+        if response.is_error:
+            rejected.append(
+                {
+                    "template": path.name,
+                    "stage": "upload",
+                    "status": response.status_code,
+                    "error": response.text[:300],
+                }
+            )
+            continue
+        body = response.json()
+        uploads.append((path, str(body["template_id"]), str(body["job_id"])))
+        print(f"загружен {path.name}", flush=True)
+    specs: dict[str, dict[str, Any]] = {}
+    for n, (path, template_id, job_id) in enumerate(uploads):
+        job = api.wait(job_id, limit=3600)
+        info = api.call("GET", f"/templates/{template_id}")
+        if job["status"] not in ("succeeded", "needs_review") or info.get("status") != "succeeded":
+            rejected.append(
+                {
+                    "template": path.name,
+                    "stage": "analysis",
+                    "status": job["status"],
+                    "error": json.dumps(job.get("error") or info.get("error"), ensure_ascii=False),
+                }
+            )
+            continue
+        topic = ZOO_TOPICS[n % len(ZOO_TOPICS)]
+        brief = {
+            **topic,
+            "language": "ru",
+            "tone": "деловой, понятный",
+            "must_include": [],
+            "avoid": [],
+        }
+        specs[path.stem] = {
+            "template_id": template_id,
+            "files": [],
+            "brief": brief,
+            "slides": {"min": 8, "max": 10},
+        }
+        print(f"проанализирован {path.name}: «{topic['title']}»", flush=True)
+    (out / "rejected.json").write_text(json.dumps(rejected, ensure_ascii=False, indent=2))
+    return specs, rejected
+
+
 def _span_s(job: dict[str, Any]) -> int | None:
     """Длительность задания генерации по его отметкам времени."""
     try:
@@ -280,7 +425,8 @@ def _span_s(job: dict[str, Any]) -> int | None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("scenario", choices=[*SCENARIOS, "all"])
+    parser.add_argument("scenario", choices=[*SCENARIOS, "all", "zoo"])
+    parser.add_argument("--dir", default=str(ROOT / "test_pptx"), help="папка шаблонов для zoo")
     parser.add_argument("--label", default=time.strftime("%Y%m%d-%H%M%S"))
     parser.add_argument("--api", default="http://localhost:8080")
     parser.add_argument("--variants", default="compact,balanced,detailed")
@@ -294,30 +440,49 @@ def main() -> int:
     )
     args = parser.parse_args()
     api = Api(args.api)
-    names = list(SCENARIOS) if args.scenario == "all" else [args.scenario]
     base = ROOT / "runs" / "quality" / args.label
     variants = args.variants.split(",")
     jobs = dict(item.split("=", 1) for item in args.job)
+    specs: dict[str, dict[str, Any]] = {}
+    if args.scenario == "zoo":
+        specs, rejected = zoo_specs(api, pathlib.Path(args.dir), base)
+        for item in rejected:
+            print(f"ОТКАЗ {item['template']} ({item['stage']}): {item['error'][:160]}")
+        names = list(specs)
+    else:
+        names = list(SCENARIOS) if args.scenario == "all" else [args.scenario]
 
     def one(name: str) -> dict[str, Any]:
         if name in jobs:
             return report_job(api, name, base / name, variants, jobs[name])
-        return run(api, name, base / name, variants, args.seed)
+        return run(api, name, base / name, variants, args.seed, specs.get(name))
 
-    with ThreadPoolExecutor(max_workers=len(names)) as pool:
+    with ThreadPoolExecutor(max_workers=min(len(names), 6) or 1) as pool:
         summaries = list(pool.map(one, names))
     total: collections.Counter[str] = collections.Counter()
     for summary in summaries:
         for report in summary["variants"]:
             total.update(report.get("errors") or {})
             print(
-                f"{summary['scenario']:>7} {report['variant']:>9} "
+                f"{summary['scenario'][:40]:>40} {report['variant']:>9} "
                 f"слайдов {report.get('pages', '—')!s:>3} "
                 f"обрезано {len(report.get('clipped') or [])} "
                 f"ошибок {sum((report.get('errors') or {}).values())}"
                 + (f" ОШИБКА {report['error'].get('code')}" if report.get("error") else "")
             )
     print("находки аудита (ошибки):", dict(total.most_common()))
+    # Одна цифра качества: дефекты вёрстки на слайд. Контраст и шрифты — выбор автора
+    # шаблона (фирменные цвета, гарнитуры), обрезанная страница — дефект сама по себе.
+    brand = {"template.contrast", "template.font_not_in_template"}
+    defects = sum(n for k, n in total.items() if k not in brand) + sum(
+        len(r.get("clipped") or []) for s in summaries for r in s["variants"]
+    )
+    slides = sum(r.get("pages") or 0 for s in summaries for r in s["variants"])
+    failed = sum(1 for s in summaries for r in s["variants"] if r.get("error"))
+    print(
+        f"дефектов вёрстки: {defects} на {slides} слайдов "
+        f"({defects / max(slides, 1):.2f} на слайд), вариантов с отказом: {failed}"
+    )
     print("листы:", base)
     return 0
 

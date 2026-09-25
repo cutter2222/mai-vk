@@ -120,6 +120,8 @@ def test_build_params_formats_and_reasoning() -> None:
     assert build_reasoning(off, "qwen_enable_thinking") == ({}, {"enable_thinking": False})
     assert build_reasoning(off, "openai_reasoning_effort") == ({}, {})
     assert build_reasoning(off, "none") == ({}, {})
+    assert build_reasoning(off, "openrouter_reasoning") == ({}, {"reasoning": {"enabled": False}})
+    assert build_reasoning(req, "openrouter_reasoning") == ({}, {"reasoning": {"effort": "low"}})
     plain = build_params(off, model="m", reasoning_style="none", stream=True)
     assert plain["stream"] is True and plain["stream_options"] == {"include_usage": True}
     assert "response_format" not in plain

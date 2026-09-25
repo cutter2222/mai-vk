@@ -379,7 +379,8 @@ class Provider(BaseModel):
     model_dir: str | None = None
     note: str | None = None
     # Как endpoint принимает режим рассуждения: qwen_enable_thinking (extra_body с
-    # enable_thinking / thinking_budget), openai_reasoning_effort (reasoning_effort) или none.
+    # enable_thinking / thinking_budget), openai_reasoning_effort (reasoning_effort),
+    # vllm_chat_template, openrouter_reasoning (reasoning.enabled/effort) или none.
     reasoning_style: str = "none"
     # Ревизия или checkpoint по данным зонда; входит в ключ кэша, чтобы смена весов сбросила кэш.
     model_revision: str | None = None
@@ -430,6 +431,8 @@ def _apply_env(data: dict[str, Any], prefix: str = ENV_PREFIX) -> dict[str, Any]
     for key, value in os.environ.items():
         if not key.startswith(prefix) or "__" not in key:
             continue
+        if prefix == ENV_PREFIX and key.startswith(MODELS_ENV_PREFIX):
+            continue  # это переопределения конфига моделей, не настроек
         path = key[len(prefix) :].lower().split("__")
         node = data
         for part in path[:-1]:
@@ -456,9 +459,15 @@ def get_settings() -> Settings:
     return Settings.model_validate(_apply_env(data))
 
 
+# Переопределение config/models.yaml из окружения для локальной работы на другом шлюзе:
+# PD_MODELS__ROLES__LLM__PROVIDER=openrouter, PD_MODELS__ROLES__LLM__MODEL=qwen/qwen3.8-27b:free.
+MODELS_ENV_PREFIX = "PD_MODELS__"
+
+
 @lru_cache(maxsize=1)
 def get_models_config() -> ModelsConfig:
-    return ModelsConfig.model_validate(_read_yaml(CONFIG_DIR / "models.yaml"))
+    data = _read_yaml(CONFIG_DIR / "models.yaml")
+    return ModelsConfig.model_validate(_apply_env(data, MODELS_ENV_PREFIX))
 
 
 def reset_cache() -> None:

@@ -228,7 +228,7 @@ def check_out_of_bounds(slide: JsonDict, ctx: Context) -> list[Issue]:
     tol = float(threshold("layout.out_of_bounds", "tolerance", 0.005))
     out: list[Issue] = []
     for obj in slide.get("objects") or []:
-        if not _is_content(obj) or _area(obj) < TINY_AREA:
+        if not _is_content(obj) or _area(obj) < TINY_AREA or _template_decor(obj):
             continue
         x, y, w, h = _box(obj)
         over = max(-x, -y, x + w - 1.0, y + h - 1.0)
@@ -246,6 +246,40 @@ def check_out_of_bounds(slide: JsonDict, ctx: Context) -> list[Issue]:
     return out
 
 
+def _template_decor(obj: JsonDict) -> bool:
+    """Декор шаблона на своём месте: подложки и картинки, которые автор вынес за край
+    слайда (строки таблицы «от края», фото в обрез), — замысел, а не ошибка вёрстки."""
+    return obj.get("role") == "decoration" and obj.get("content_source") == "template"
+
+
+# Средняя ширина знака в долях кегля (латиница и кириллица без моноширинных гарнитур).
+_CHAR_EM = 0.55
+
+
+def _ink_box(obj: JsonDict, ctx: Context) -> tuple[float, float, float, float]:
+    """Рамка, которую занимает сам текст: у однострочной подписи короче рамки слота текст
+    занимает её часть, и соседние рамки образца (подпись слева, пояснение справа) могут
+    пересекаться пустыми краями, не накладывая текста."""
+    x, y, w, h = _box(obj)
+    paragraphs = (obj.get("text") or {}).get("paragraphs") or []
+    if len(paragraphs) != 1:
+        return x, y, w, h
+    first = paragraphs[0]
+    size = ((first.get("style") or {}).get("font") or {}).get("size_pt")
+    width_emu = float((ctx.deck.get("slide_size") or {}).get("width_emu") or 12192000)
+    if not size or "\n" in str(first.get("text") or ""):
+        return x, y, w, h
+    ink = len(str(first.get("text") or "")) * _CHAR_EM * float(size) * 12700 / width_emu
+    if ink >= w:
+        return x, y, w, h
+    align = str(first.get("align") or "left")
+    if align == "center":
+        x += (w - ink) / 2
+    elif align == "right":
+        x += w - ink
+    return x, y, ink, h
+
+
 def check_overlap(slide: JsonDict, ctx: Context) -> list[Issue]:
     ratio_limit = float(threshold("layout.overlap", "min_overlap_ratio", 0.12))
     objects = [
@@ -255,9 +289,9 @@ def check_overlap(slide: JsonDict, ctx: Context) -> list[Issue]:
     ]
     out: list[Issue] = []
     for i, a in enumerate(objects):
-        ax, ay, aw, ah = _box(a)
+        ax, ay, aw, ah = _ink_box(a, ctx)
         for b in objects[i + 1 :]:
-            bx, by, bw, bh = _box(b)
+            bx, by, bw, bh = _ink_box(b, ctx)
             ow = min(ax + aw, bx + bw) - max(ax, bx)
             oh = min(ay + ah, by + bh) - max(ay, by)
             if ow <= 0 or oh <= 0:

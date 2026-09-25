@@ -2159,7 +2159,12 @@ def _fits_slot(ctx: Context, slot: SlotInfo, text: str) -> bool:
     plan_cfg = ctx.app.plan
     if cap.measure(text, slot, ctx.slide_w, ctx.slide_h, margin_ratio=plan_cfg.margin_ratio).fits:
         return True
-    min_pt = cap.min_pt_for(slot.kind, body_pt=plan_cfg.min_body_pt, title_pt=plan_cfg.min_title_pt)
+    min_pt = cap.min_pt_for(
+        slot.kind,
+        body_pt=plan_cfg.min_body_pt,
+        title_pt=plan_cfg.min_title_pt,
+        slide_w_emu=ctx.slide_w,
+    )
     return any(
         cap.measure(
             text, slot, ctx.slide_w, ctx.slide_h, size_pt=size, margin_ratio=plan_cfg.margin_ratio
@@ -2410,7 +2415,10 @@ def measure_blocks(ctx: Context, draft: Draft, blocks: list[JsonDict]) -> list[J
         note = None
         if not m.fits:
             min_pt = cap.min_pt_for(
-                slot.kind, body_pt=plan_cfg.min_body_pt, title_pt=plan_cfg.min_title_pt
+                slot.kind,
+                body_pt=plan_cfg.min_body_pt,
+                title_pt=plan_cfg.min_title_pt,
+                slide_w_emu=ctx.slide_w,
             )
             # Обложку, разделитель и финал шаблон рисует под короткое имя («VK Tech» в 48 pt):
             # тема презентации длиннее, и ей можно уменьшить кегль вдвое, а не на четверть.

@@ -244,12 +244,24 @@ def font_steps(
     return steps
 
 
-def min_pt_for(kind: str, *, body_pt: float, title_pt: float) -> float:
+# Ширина, для которой заданы пределы кеглей (слайд 16:9 PowerPoint, 13,33 дюйма).
+FLOOR_SLIDE_W_EMU = 12192000
+
+
+def min_pt_for(
+    kind: str, *, body_pt: float, title_pt: float, slide_w_emu: int | None = None
+) -> float:
+    """Нижний кегль по роли текста. Пределы заданы для слайда 13,33 дюйма; на холсте шире
+    (Canva и Google Slides экспортируют 20 дюймов) они растут пропорционально: 12 pt на
+    слайде в 20 дюймов выглядят как 8 pt на обычном — мелкий текст, который не прочесть.
+    Меньше исходного предел не становится: узкие шаблоны организаторов (10 дюймов) держат
+    прежние 12 и 20 pt."""
+    scale = max(1.0, (slide_w_emu or FLOOR_SLIDE_W_EMU) / FLOOR_SLIDE_W_EMU)
     if kind in ("title",):
-        return title_pt
+        return title_pt * scale
     if kind in ("subtitle", "number"):
-        return max(body_pt, 14.0)
-    return body_pt
+        return max(body_pt, 14.0) * scale
+    return body_pt * scale
 
 
 # ---------- сокращение без потери обязательного ----------

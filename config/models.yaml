@@ -57,6 +57,21 @@ providers:
     supports: { json_schema: null, json_object: null, images: null, multi_image: null, usage: null }
     limits: { concurrency: null, rpm: null, tpm: null }
 
+  openrouter:
+    # Запасной шлюз для локальной проверки, когда у qwen-api кончилась квота: та же модель
+    # qwen/qwen3.8-27b (бесплатная линия :free). Включается из .env без правки этого файла:
+    # PD_MODELS__ROLES__LLM__PROVIDER=openrouter, PD_MODELS__ROLES__LLM__MODEL=qwen/qwen3.8-27b:free
+    # (и то же для VLM). Бесплатная линия ограничена: около 20 запросов в минуту и перегружена
+    # у поставщика (25.09.2026 прошёл 1 запрос из 6); платная qwen/qwen3.8-27b лимитов в минуту
+    # не показывает, поэтому ограничена только одновременность.
+    kind: openai_compatible
+    env_base_url: PD_OPENROUTER_BASE_URL
+    env_api_key: PD_OPENROUTER_API_KEY
+    reasoning_style: openrouter_reasoning
+    model_revision: null
+    supports: { json_schema: true, json_object: true, images: true, multi_image: true, usage: true }
+    limits: { concurrency: 8, rpm: null, tpm: null }
+
 active_provider: qwen-api
 
 roles:

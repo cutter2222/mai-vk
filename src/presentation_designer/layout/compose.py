@@ -571,9 +571,18 @@ def _spill_overflow(
 
     kind = str(block.get("kind"))
     scale = [float(t["size_pt"]) for t in ctx.profile["design_tokens"]["typography"]["scale"]]
-    min_pt = min_pt_for(slot.kind, body_pt=ctx.fit_min_body_pt, title_pt=ctx.fit_min_title_pt)
-    ratio = 0.5 if kind == "title" else ctx.fit_min_ratio
+    min_pt = min_pt_for(
+        slot.kind,
+        body_pt=ctx.fit_min_body_pt,
+        title_pt=ctx.fit_min_title_pt,
+        slide_w_emu=ctx.slide_w,
+    )
     base = float(size or slot.size_pt or 18.0)
+    # Заголовок, который не встал в план: образец бывает нарисован под одно крупное слово
+    # («STEPS» в 62 pt), а тезис — 40 знаков. Половина кегля такой заголовок не спасает —
+    # он расползается на пять строк поверх соседних блоков. Заголовку можно уменьшаться до
+    # нижнего предела по роли: мелковатый заголовок лучше налезающего.
+    ratio = min(0.5, min_pt / base) if kind == "title" else ctx.fit_min_ratio
     sizes = [base, *font_steps(slot, scale, min_ratio=ratio, min_pt=min_pt, fill_below=True)]
 
     def fitting(value: str | list[str]) -> tuple[float, Any] | None:
@@ -1121,7 +1130,12 @@ def _avoid_side_decor(
     new_slot = dataclasses.replace(slot, bbox=narrowed)
     base = float(size or slot.size_pt or 18.0)
     scale = [float(t["size_pt"]) for t in ctx.profile["design_tokens"]["typography"]["scale"]]
-    min_pt = min_pt_for(slot.kind, body_pt=ctx.fit_min_body_pt, title_pt=ctx.fit_min_title_pt)
+    min_pt = min_pt_for(
+        slot.kind,
+        body_pt=ctx.fit_min_body_pt,
+        title_pt=ctx.fit_min_title_pt,
+        slide_w_emu=ctx.slide_w,
+    )
     ratio = min(ctx.fit_min_ratio, DECOR_MIN_FONT_RATIO)
     steps = [base, *font_steps(new_slot, scale, min_ratio=ratio, min_pt=min_pt)]
     chosen = steps[-1]
@@ -1362,7 +1376,7 @@ def _cleanup(
             )
             continue
         if _is_textual(slot) or slot.kind in ("qr", "footer"):
-            if slot.kind == "footer" or (
+            if (slot.kind == "footer" and not _placeholder_text(ctx, sample)) or (
                 _is_tiny(slot)
                 and sample
                 and sample not in ctx.markers
@@ -1564,6 +1578,21 @@ def _cleanup(
         if oid not in fixed_refs_qr and oid not in removed and _looks_like_qr(slide, oid):
             drop(oid)
             ctx.count("sample_qr_removed")
+    # 3е. Колонтитул автора шаблона на самом слайде: «JOHN DOE», «NEW YORK», «2023»,
+    #     «SLIDESCARNIVAL.COM» — анализ отметил их заготовками, но как постоянные элементы
+    #     они иначе остаются на каждом слайде колоды.
+    for fixed in ctx.profile.get("fixed_elements") or []:
+        oid = str(fixed.get("element_ref"))
+        if (
+            str(fixed.get("source_part")) != record.source_slide_part
+            or fixed.get("kind") not in ("footer", "date")
+            or oid in removed
+        ):
+            continue
+        info = infos_before.get(oid)
+        if info is not None and _placeholder_text(ctx, info.text):
+            drop(oid)
+            ctx.count("sample_footer_removed")
     # 4. Пустые рамки карточек: статичная фигура без текста, внутри которой были только
     #    удалённые слоты и не осталось ни одного заполненного или сохранённого объекта,
     #    убирается вместе с содержимым карточки (подложка без содержания — не декор).
@@ -1718,6 +1747,18 @@ def _reflow_cards(
             (round(box[0] * ctx.slide_w), info.top_emu, round(box[2] * ctx.slide_w), height),
         )
     ctx.count("cards_reflowed")
+
+
+# Адреса сервисов бесплатных шаблонов в колонтитулах образцов.
+_VENDOR_SITE = re.compile(
+    r"(?i)slidescarnival|slidesgo|freepik|slidemania|presentationgo|poweredtemplate|showeet"
+)
+
+
+def _placeholder_text(ctx: _Context, text: str | None) -> bool:
+    """Текст образца — заготовка автора шаблона: отмечен анализом или адрес сервиса."""
+    plain = " ".join(str(text or "").split())
+    return bool(plain) and (plain in ctx.markers or bool(_VENDOR_SITE.search(plain)))
 
 
 def _beside(info: Any, box: tuple[float, float, float, float]) -> bool:
@@ -2084,7 +2125,14 @@ def compose_deck(
         reflow_cards=reflow_cards,
     )
     samples = list(prs.slides)
-    if not samples:
+    needs_samples = any(
+        (patterns_raw.get(str(s.get("pattern_id")), {}).get("source") or {}).get("kind")
+        == "sample_slide"
+        for s in plan.get("slides") or []
+    )
+    if not samples and needs_samples:
+        # Шаблон из одних макетов (так часто выглядят корпоративные .potx) собирается
+        # собственными композициями на его макетах; образцы нужны только их клонам.
         raise ComposeError("compose_template_empty", "в шаблоне нет слайдов")
     ctx.samples = samples
     timings: dict[str, int] = {}

@@ -109,7 +109,8 @@ def build_reasoning(req: Request, style: str) -> tuple[JsonDict, JsonDict]:
     Стили: openai_reasoning_effort — параметр reasoning_effort; qwen_enable_thinking —
     enable_thinking/thinking_budget в теле (DashScope); vllm_chat_template —
     chat_template_kwargs.enable_thinking (vLLM и прокси над ним, бюджет не задаётся:
-    рассуждение и ответ делят max_completion_tokens); none — ничего не передаётся.
+    рассуждение и ответ делят max_completion_tokens); openrouter_reasoning — reasoning.enabled
+    или reasoning.effort в теле (OpenRouter); none — ничего не передаётся.
     """
     mode = req.reasoning
     if mode is None or mode == "provider_default" or style == "none":
@@ -124,6 +125,10 @@ def build_reasoning(req: Request, style: str) -> tuple[JsonDict, JsonDict]:
         return {}, {"enable_thinking": True, "thinking_budget": THINKING_BUDGET[mode]}
     if style == "vllm_chat_template":
         return {}, {"chat_template_kwargs": {"enable_thinking": mode != "off"}}
+    if style == "openrouter_reasoning":
+        if mode == "off":
+            return {}, {"reasoning": {"enabled": False}}
+        return {}, {"reasoning": {"effort": REASONING_EFFORT[mode]}}
     raise ConfigError(f"неизвестный стиль рассуждения провайдера: {style}")
 
 

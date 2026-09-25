@@ -164,3 +164,31 @@ def test_chart_keeps_series_of_one_scale() -> None:
     assert vr._one_scale(ds, ["Активные пользователи", "Открываемость"]) == [
         "Активные пользователи"
     ]
+
+
+def test_font_floor_grows_with_wide_canvas() -> None:
+    """Canva и Google Slides экспортируют слайд в 20 дюймов: 12 pt там — мелкий текст."""
+    from presentation_designer.generation.capacity import min_pt_for
+
+    assert min_pt_for("body", body_pt=12, title_pt=20, slide_w_emu=9144000) == 12
+    assert min_pt_for("body", body_pt=12, title_pt=20, slide_w_emu=12192000) == 12
+    assert min_pt_for("body", body_pt=12, title_pt=20, slide_w_emu=18288000) == 18
+    assert min_pt_for("title", body_pt=12, title_pt=20, slide_w_emu=18288000) == 30
+
+
+def test_vendor_meta_slides_are_not_compositions() -> None:
+    """«Credits» и «How to use this presentation» автора шаблона в подбор не идут, а слайд
+    с адресом сервиса только в колонтитуле — идёт."""
+    credits = {
+        "slots": [
+            {"kind": "title", "sample_text": "Credits"},
+            {"kind": "body", "sample_text": "SlidesCarnival for the presentation template"},
+        ]
+    }
+    content = {
+        "slots": [
+            {"kind": "title", "sample_text": "Who we are?"},
+            {"kind": "caption", "sample_text": "SLIDESCARNIVAL.COM"},
+        ]
+    }
+    assert mt.vendor_meta(credits) and not mt.vendor_meta(content)
