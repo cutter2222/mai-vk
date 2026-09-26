@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-26T09:10:26Z",
+ "entry_version": 1,
+ "key": "55e5b32111a465b2fd6226a91c4461116833a6f00c6f6e0671d8da6b48a41b6c",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4643,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 745,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"message\": \"удали подзаголовок на первом слайде\", \"normalized\": \"удали подзаголовок на 1-й слайде\", \"slide_count\": 8, \"can_rebuild\": true, \"outline\": [\"1. «Цифровая платформа для школ» — текст\", \"2. ",
+  "prompt": [
+   "chat.route",
+   "0.1.3"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "chat_router",
+   "0.1.3"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 1473,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\"kind\": \"run\", \"steps\": [{\"action\": \"object_edit\", \"slides\": [1], \"object_id\": \"3\", \"instruction\": \"Удалить подзаголовок\"}], \"text\": \"Удаляю подзаголовок на титульном слайде.\" , \"options\": []}",
+  "usage": {
+   "completion_tokens": 68,
+   "prompt_tokens": 1671,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

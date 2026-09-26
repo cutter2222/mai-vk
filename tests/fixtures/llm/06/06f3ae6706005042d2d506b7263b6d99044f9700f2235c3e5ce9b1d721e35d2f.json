@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-26T09:10:32Z",
+ "entry_version": 1,
+ "key": "06f3ae6706005042d2d506b7263b6d99044f9700f2235c3e5ce9b1d721e35d2f",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4643,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 836,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"message\": \"подпиши картинку на слайде 2: «Фото: пресс-служба»\", \"slide_count\": 8, \"can_rebuild\": true, \"outline\": [\"1. «Цифровая платформа для школ» — текст\", \"2. «Проблема» — картинки, текст\", \"3. ",
+  "prompt": [
+   "chat.route",
+   "0.1.3"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "chat_router",
+   "0.1.3"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 1512,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\"kind\": \"run\", \"steps\": [{\"action\": \"object_edit\", \"slides\": [2], \"object_id\": \"5\", \"instruction\": \"Добавить подпись под картинкой: «Фото: пресс-служба»\"}], \"text\": \"Подписал картинку на слайде 2.\" , \"options\": []}",
+  "usage": {
+   "completion_tokens": 74,
+   "prompt_tokens": 1715,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

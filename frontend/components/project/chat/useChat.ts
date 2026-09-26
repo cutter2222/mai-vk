@@ -209,18 +209,21 @@ export function useChat(project: Project, session: GenerationSession, generate: 
   }, [current, say, proceed]);
 
   /** Сообщение, адресованное слайду: событие с адресом, запрос правки, карточка хода и результата. */
-  const editSlide = useCallback(async (text: string, target: SlideTarget) => {
+  const editSlide = useCallback(async (text: string, target: SlideTarget, { silent = false }: { silent?: boolean } = {}): Promise<string | null> => {
     const slideRef = { job_id: target.jobId, variant_id: target.variantId, revision: target.revision, slide_index: target.slideIndex };
-    appendMessage(id, { role: "user", kind: "message", text, file_ids: [], slide_ref: slideRef });
+    // Роутер уже записал сообщение человека: повторять его не нужно.
+    if (!silent) appendMessage(id, { role: "user", kind: "message", text, file_ids: [], slide_ref: slideRef });
     try {
       const editJobId = await session.requestEdit(target, text);
       appendMessage(id, { role: "assistant", kind: "edit_card", job_id: target.jobId, variant_id: target.variantId, edit_job_id: editJobId, slide_index: target.slideIndex });
+      return editJobId;
     } catch (e) {
       const code = e instanceof ApiError ? e.code : "";
       if (code === "revision_stale") say("Ревизия слайда устарела: справа уже новая. Обновил результат — повторите просьбу к актуальному слайду.");
       else if (code === "repair_in_progress") say("Предыдущая правка этого варианта ещё применяется. Дождитесь её и повторите просьбу.");
       else if (code === "variant_failed") say(target.variantId === "original" && e instanceof ApiError ? `${e.message.replace(/\.\s*$/, "")}.` : "Этот вариант не собран, править в нём нечего. Выберите другой вариант.");
       else say(`Не удалось запустить правку: ${e instanceof ApiError ? e.message : "неизвестная ошибка"}.`);
+      return null;
     }
   }, [id, say, session]);
 
@@ -531,7 +534,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
 
   const notifyError = (title: string, e: unknown) => notifications.show({ color: "red", title, message: e instanceof ApiError ? e.message : "Неизвестная ошибка" });
 
-  return { send, suggestions, attach, staged, answerStaged, resolveTemplateQuestion, setPurpose, removeFile, importMaterials, selectTemplate, addTemplate, notifyError, deckStart, recheckDeck };
+  return { send, respond, suggest: setSuggestions, say, editSlide, suggestions, attach, staged, answerStaged, resolveTemplateQuestion, setPurpose, removeFile, importMaterials, selectTemplate, addTemplate, notifyError, deckStart, recheckDeck };
 }
 
 export type Chat = ReturnType<typeof useChat>;

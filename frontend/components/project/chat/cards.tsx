@@ -50,6 +50,8 @@ export interface CardContext {
   deckShownAt?: string | null;
   /** Готовая презентация: то же задание с контекстным аудитом (он выключен при открытии). */
   onRecheckDeck?: () => void;
+  /** «Отменить» в карточке правки: событие ленты, чью правку откатить. */
+  onUndo?: (eventId: string) => void;
 }
 
 /** Реплика ассистента: обычный текст ленты. */
@@ -723,11 +725,30 @@ export function EditCard({ m, ctx }: { m: Msg<"edit_card">; ctx: CardContext }) 
           initial={compare ?? "after"}
           onShow={show}
         />
-        <Options options={[{ label: "Показать слайд", onClick: show, testId: "edit-show" }]} />
+        {m.undone ? <Aside>Отменено.</Aside> : (
+          <Options options={[
+            { label: "Показать слайд", onClick: show, testId: "edit-show" },
+            // Отменяется только последняя правка варианта: после неё ревизия не менялась.
+            ...(ctx.onUndo && session.variant?.variant_id === m.variant_id && session.variant.revision === entry.new_revision
+              ? [{ label: "Отменить", onClick: () => ctx.onUndo?.(m.event_id), testId: "edit-undo" }] : []),
+          ]} />
+        )}
       </Stack>
     );
   }
   // Пока сервер не ответил, ход неизвестен: правка могла встать за разбором презентации.
   const message = status.data?.progress?.message ?? (manual ? "Применяю правки" : `Принял правку слайда ${m.slide_index + 1}`);
   return <Doing testId="edit-card">{status.error ? status.error.message : message}</Doing>;
+}
+
+/** Итог правки открытой копии из чата: что сделано и «Отменить» (после отмены — «Отменено»). */
+export function EditResultCard({ m, ctx }: { m: Msg<"edit_result">; ctx: CardContext }) {
+  return (
+    <Stack gap={4} data-testid="edit-result" data-undone={m.undone ? "true" : "false"}>
+      <Say testId="edit-result-text">{m.text}</Say>
+      {m.undone ? <Aside>Отменено.</Aside> : ctx.onUndo && (
+        <Options options={[{ label: "Отменить", onClick: () => ctx.onUndo?.(m.event_id), testId: "edit-result-undo" }]} />
+      )}
+    </Stack>
+  );
 }

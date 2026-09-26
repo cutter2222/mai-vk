@@ -98,7 +98,14 @@ async def test_invalid_object_plan_is_repaired_before_acceptance(
             await propose()
     else:
         plan = await propose()
-        assert plan.model_dump(exclude_none=True) == good
+        # Пустой список операций этапа 38 — значение по умолчанию.
+        dumped = plan.model_dump(exclude_none=True)
+        if scope == "object":
+            dumped.pop("ops", None)
+        else:
+            for item in dumped["edits"]:
+                item["plan"].pop("ops", None)
+        assert dumped == good
         updated = (
             edit.patch_object(deck_bytes, target, plan)
             if scope == "object"

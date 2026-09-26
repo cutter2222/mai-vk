@@ -2,7 +2,7 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 
-import { api, type EventInput, type OpenOfficeDocument, type ProjectListItem, type ProjectPatch } from "@/lib/api/client";
+import { api, type EventInput, type OpenOfficeDocument, type ProjectListItem, type ProjectPatch, type RouteChip, type RouteDecision } from "@/lib/api/client";
 import type { BriefDraft, Event, Project as ProjectDoc, ProjectFile, SettingsDraft } from "@/lib/api/types";
 
 /**
@@ -30,7 +30,8 @@ export type ChatMessage =
   | { event_id: string; at: string; role: "assistant"; kind: "brief_card"; understood: string[]; missing_purpose: boolean; brief_source?: "model" | "heuristic" }
   | { event_id: string; at: string; role: "assistant"; kind: "job_card"; job_id: string }
   | { event_id: string; at: string; role: "assistant"; kind: "audit_card"; job_id: string }
-  | { event_id: string; at: string; role: "assistant"; kind: "edit_card"; job_id: string; variant_id: string; edit_job_id: string; slide_index: number };
+  | { event_id: string; at: string; role: "assistant"; kind: "edit_card"; job_id: string; variant_id: string; edit_job_id: string; slide_index: number; undone?: boolean }
+  | { event_id: string; at: string; role: "assistant"; kind: "edit_result"; text: string; document_id: string; revision: number; base_revision: number; slides?: number[]; undone?: boolean };
 
 export type Project = Omit<ProjectDoc, "events" | "template_id" | "package_id" | "job_id" | "chosen_variant"> & {
   template_id: string | null;
@@ -137,7 +138,7 @@ export function startDraft(): Project {
   const id = `${DRAFT_PREFIX}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const now = new Date().toISOString();
   const project: Project = {
-    schema_version: "1.5",
+    schema_version: "1.6",
     project_id: id,
     title: DEFAULT_TITLE,
     created_at: now,
@@ -432,6 +433,20 @@ export async function askAssistant(projectId: string, messageId: string) {
   updateProject(real, (p) => ({ events: p.events.some((e) => e.event_id === result.event.event_id)
     ? p.events : [...p.events, result.event as ChatMessage] }));
   return result;
+}
+
+/** Роутер чата (этап 37): что сделать с сохранённым сообщением к открытой презентации.
+ * Вопрос и отказ сервер пишет в ленту сам — событие добавляется в кэш. */
+export async function routeMessage(projectId: string, messageId: string, chip: RouteChip | null, currentSlide: number | null, echo?: { text: string; file_ids: string[] }): Promise<RouteDecision> {
+  const eventId = (await tempIds.get(messageId)) ?? savedEventIds.get(messageId) ?? messageId;
+  if (eventId.startsWith("tmp_")) throw new Error("Сообщение не сохранилось. Повторите отправку.");
+  const real = await serverId(projectId);
+  const decision = await api.chatRoute(real, eventId, openDocuments.get(real) ?? openDocuments.get(projectId), chip, currentSlide, echo);
+  const event = decision.event;
+  if (event) {
+    updateProject(real, (p) => ({ events: p.events.some((e) => e.event_id === event.event_id) ? p.events : [...p.events, event as ChatMessage] }));
+  }
+  return decision;
 }
 
 // ---------- файлы проекта ----------

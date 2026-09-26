@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { mockRouter } from "./helpers";
+
 test("template-only project stays empty without an editor session", async ({ page }) => {
   await page.route("**/api/projects/template-view-test", (r) => r.fulfill({ json: {
     project_id: "template-view-test", title: "Тест", template_id: "tpl-view", brief: {}, settings: {}, files: [], events: [],
@@ -24,6 +26,7 @@ test("template-only project stays empty without an editor session", async ({ pag
 });
 
 test("questions about a generated deck call chat, not office edit, and survive reload", async ({ page }) => {
+  await mockRouter(page);
   const events: Record<string, unknown>[] = [];
   await page.route("**/api/projects/assistant-test", (r) => r.fulfill({ json: {
     project_id: "assistant-test", title: "Тест", job_id: "job_chat", brief: {}, settings: {}, files: [], events,
@@ -93,9 +96,9 @@ test("first published variant opens while other variants generate, without reope
   ` }));
   await page.goto("/project?id=async-test");
   await expect(page.getByTestId("preview-pane").locator("iframe")).toBeVisible();
-  await expect(page.getByText("Готовый вариант уже доступен.", { exact: false })).toBeVisible();
+  await expect(page.getByText("Остальные варианты ещё собираются", { exact: false })).toBeVisible();
   finished = true;
-  await expect(page.getByText("Готовый вариант уже доступен.", { exact: false })).toHaveCount(0, { timeout: 20000 });
+  await expect(page.getByText("Остальные варианты ещё собираются", { exact: false })).toHaveCount(0, { timeout: 20000 });
   await expect(page.getByTestId("preview-pane").locator("iframe")).toBeVisible();
   await expect(page.locator("iframe")).toHaveCount(1);
   expect(opens).toBe(1);

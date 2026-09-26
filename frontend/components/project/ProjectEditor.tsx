@@ -12,17 +12,17 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { warmUpOffice, type OfficeEditHandle } from "@/components/office/OfficeEditor";
 
-import { api, ApiError, type CapabilitiesResponse, type OfficeLogoAction, type OfficeSelection } from "@/lib/api/client";
+import { api, ApiError, type CapabilitiesResponse, type OfficeSelection, type RouteChip, type RouteDecision } from "@/lib/api/client";
 import type { GenerationRequest } from "@/lib/api/types";
 import { useGenerationSession } from "@/lib/hooks/useGenerationSession";
 import { setPanelOpen, usePanelOpen } from "@/lib/state/panel";
 import { plural, VARIANT_LABELS } from "@/lib/format";
 import type { LiveSelection } from "@/lib/editor/officeLive";
-import { isQuestion, slideRequest } from "@/lib/slideRequest";
-import { addProjectFiles, appendMessage, getProject, patchProjectFile, slideCountAsked, updateProject, type Project } from "@/lib/state/projects";
+import { addProjectFiles, appendMessage, getProject, patchProjectFile, routeMessage, slideCountAsked, updateProject, type Project } from "@/lib/state/projects";
 
 import { ChatPanel } from "./chat/ChatPanel";
 import { isDeckJob } from "./chat/feed";
+import { runSteps, undo, type RunContext } from "./chat/routeRunner";
 import type { CardContext } from "./chat/cards";
 import { useChat } from "./chat/useChat";
 import { FilesPanel } from "./files/FilesPanel";
@@ -36,6 +36,16 @@ import { TemplatePicker } from "./TemplatePicker";
 
 /** Что показывает левая панель: разговор или загруженные файлы проекта. */
 type Tab = "chat" | "files";
+
+/** Картинка, которую можно поставить на слайд: растр, который читает сервер. */
+function isPicture(file: File): boolean {
+  return /\.(png|jpe?g|gif|bmp|webp)$/i.test(file.name);
+}
+
+/** Таблица, которую можно поставить на слайд (этап 39): первый лист xlsx или csv. */
+function isSheet(file: File): boolean {
+  return /\.(xlsx|xlsm|csv|tsv)$/i.test(file.name);
+}
 
 /** Проект: слева чат/файлы, справа редактор слайдов и сохранённое превью. */
 export function ProjectEditor({ project }: { project: Project }) {
@@ -171,95 +181,77 @@ export function ProjectEditor({ project }: { project: Project }) {
       : { kind: "slide" as const, slide: liveSelection.slide, label: VARIANT_LABELS[editVariant?.variant_id ?? ""] ?? editVariant?.variant_id ?? "" }
     : null;
 
+  // Исполнение решений роутера: правки копии, перестройка слайдов, починка, отмена.
+  const runContext = (): RunContext => ({
+    projectId: project.project_id,
+    session,
+    office: officeEdit.current,
+    liveCount: liveSelection?.count ?? null,
+    say: chat.say,
+    rebuild: (instruction, target) => chat.editSlide(instruction, target, { silent: true }),
+  });
+
   // Человек написал в чат — панель возвращается к разговору: из «Файлов» его же сообщение и
-  // ответ на него были бы не видны.
+  // ответ на него были бы не видны. При готовой презентации сообщение разбирает сервер
+  // (роутер, этап 37): правила и модель выбирают исполнителя, вопрос или отказ приходят в
+  // ленту кнопками. До презентации — прежний путь: бриф, материалы, сборка.
   const send: typeof chat.send = async (text, files, target) => {
     setTab("chat");
-    const logo = officePresent ? logoRequest(text) : null;
-    if (logo) {
-      await changeLogo(logo, text, files);
+    const deckReady = Boolean(session.jobId && session.variant?.artifacts?.pptx);
+    // Документы во вложении — материалы (этап 44); выделение в превью — прежняя правка объектов.
+    if (!deckReady || !text.trim() || files.some((f) => !isPicture(f) && !isSheet(f))) {
+      await chat.send(text, files, target);
       return;
     }
-    // Выделенный в редакторе объект: правка только его, в самой копии (сервер находит фигуру
-    // по имени и положению после сохранения).
-    if (liveTarget?.kind === "object" && liveObject && liveSelection && !files.length && !/^\/edit\s+/i.test(text.trim())) {
-      appendMessage(project.project_id, { role: "user", kind: "message", text: `Слайд ${liveTarget.slide} · ${liveTarget.label}\n${text}`, file_ids: [] });
-      try {
-        if (!officeEdit.current) throw new Error("Дождитесь открытия презентации.");
-        const message = await officeEdit.current.edit(text.trim(), { slide: liveSelection.slide, name: liveObject.name, ...(liveObject.box ? { box: liveObject.box } : {}), ...(liveObject.inGroup ? { in_group: true } : {}) });
-        appendMessage(project.project_id, { role: "assistant", kind: "text", text: message });
-      } catch (e) {
-        appendMessage(project.project_id, { role: "assistant", kind: "text", text: e instanceof Error ? e.message : "Правка не применена." });
-      }
-      return;
-    }
-    // Номер слайда — из плашки выбранного в редакторе слайда или из фразы («на слайде 3 …»);
-    // правка идёт в задание ревизии, и пересобранный слайд встаёт в открытую копию. Пока
-    // презентация разбирается в фоне, сервер ставит правку за разбором и говорит, когда применит.
-    const phrase = officePresent && !officeSelection && !target && !files.length && !/^\/edit\s+/i.test(text.trim()) ? slideRequest(text) : null;
-    // Вопрос («что на этом слайде?») при плашке слайда — к ассистенту: он видит содержимое.
-    const slide = phrase ?? (liveTarget?.kind === "slide" && !target && !files.length && !isQuestion(text) ? liveTarget.slide : null);
-    const variant = session.variant;
-    if (slide && session.jobId && variant?.artifacts?.pptx && variant.status !== "failed") {
-      const count = variant.slide_count ?? 0;
-      if (count && slide > count) {
-        appendMessage(project.project_id, { role: "user", kind: "message", text, file_ids: [] });
-        appendMessage(project.project_id, { role: "assistant", kind: "text", text: `В презентации ${count} ${plural(count, "слайд", "слайда", "слайдов")}, слайда ${slide} нет.` });
-        return;
-      }
-      // Слайды в редакторе добавлены или удалены руками: номер в ленте не совпадает с планом.
-      if (!phrase && liveSelection && count && liveSelection.count !== count) {
-        appendMessage(project.project_id, { role: "user", kind: "message", text, file_ids: [] });
-        appendMessage(project.project_id, { role: "assistant", kind: "text", text: "Слайды в редакторе добавлены или удалены вручную, поэтому пересобрать слайд из чата не получится. Выделите объект на слайде и напишите, что с ним сделать." });
-        return;
-      }
-      await chat.send(text, files, { jobId: session.jobId, variantId: variant.variant_id, revision: variant.revision, slideIndex: slide - 1 });
-      return;
-    }
-    if (officePresent && (officeSelection || /^\/edit\s+/i.test(text.trim()))) {
-      const label = officeSelection ? `Слайд ${officeSelection.slide} · ${officeSelection.label} · v${officeSelection.revision}\n` : "";
+    if (officePresent && officeSelection) {
+      const label = `Слайд ${officeSelection.slide} · ${officeSelection.label} · v${officeSelection.revision}\n`;
       appendMessage(project.project_id, { role: "user", kind: "message", text: label + text, file_ids: [] });
       try {
-        if (files.length) throw new Error("Прикрепите материалы отдельно. Здесь доступны текстовые правки и перемещение выбранного объекта; замена изображений и структуры — в ONLYOFFICE.");
         if (!officeEdit.current) throw new Error("Дождитесь открытия презентации.");
-        const message = await officeEdit.current.edit(text.trim().replace(/^\/edit\s+/i, ""), officeSelection ?? undefined);
+        const message = await officeEdit.current.edit(text.trim(), officeSelection);
         appendMessage(project.project_id, { role: "assistant", kind: "text", text: message });
       } catch (e) {
         appendMessage(project.project_id, { role: "assistant", kind: "text", text: e instanceof Error ? e.message : "Правка не применена." });
       }
       return;
     }
-    await chat.send(text, files, target);
-  };
-
-  // Знак шаблона лежит на макетах, на слайде его не выделить: «замени логотип» с картинкой
-  // или «убери логотип» меняет его на всех слайдах одной правкой документа.
-  const changeLogo = async (action: OfficeLogoAction["action"], text: string, files: File[]) => {
     const pid = project.project_id;
-    const image = files.find((f) => /\.(png|jpe?g|gif|bmp)$/i.test(f.name));
-    let fileId: string | undefined;
-    let uploadError = "";
-    if (action === "replace" && image) {
+    let fileIds: string[] = [];
+    if (files.length) {
       try {
-        const [row] = await addProjectFiles(pid, [image]);
-        fileId = row?.file_id;
-        // Логотип — не материал: в содержание презентации картинка не идёт.
-        if (fileId) void patchProjectFile(pid, fileId, { kind: "other" });
+        fileIds = (await addProjectFiles(pid, files)).map((row) => row.file_id);
+        // Картинка для слайда или логотипа — не материал: в содержание презентации она не идёт.
+        fileIds.forEach((fid) => void patchProjectFile(pid, fid, { kind: "other" }));
       } catch (e) {
-        uploadError = e instanceof Error ? e.message : "картинка не загрузилась";
+        chat.say(`Не удалось загрузить картинку: ${e instanceof Error ? e.message : "ошибка сервера"}.`);
+        return;
       }
     }
-    appendMessage(pid, { role: "user", kind: "message", text, file_ids: fileId ? [fileId] : [] });
+    const chip: RouteChip | null = liveTarget && liveSelection
+      ? { slide: liveSelection.slide, ...(liveTarget.kind === "object" && liveObject ? { object: { name: liveObject.name, label: liveTarget.label, ...(liveObject.box ? { box: liveObject.box } : {}), ...(liveObject.inGroup ? { in_group: true } : {}) } } : {}) }
+      : null;
+    // Плашка выделенного объекта — строкой над текстом сообщения, как и раньше.
+    const shown = chip?.object ? `Слайд ${chip.slide} · ${liveTarget?.label}\n${text}` : text;
+    const message = appendMessage(pid, { role: "user", kind: "message", text: shown, file_ids: fileIds });
+    let decision: RouteDecision;
     try {
-      if (uploadError) throw new Error(`Не удалось загрузить логотип: ${uploadError}.`);
-      if (action === "replace" && !fileId) throw new Error("Прикрепите картинку нового логотипа (PNG или JPG) — заменю его на всех слайдах сразу.");
-      if (!officeEdit.current) throw new Error("Дождитесь открытия презентации.");
-      const message = await officeEdit.current.edit(text.trim(), undefined, { action, ...(fileId ? { file_id: fileId } : {}) });
-      appendMessage(pid, { role: "assistant", kind: "text", text: message });
+      decision = await routeMessage(pid, message.event_id, chip, liveSelection?.slide ?? null, { text, file_ids: fileIds });
     } catch (e) {
-      appendMessage(pid, { role: "assistant", kind: "text", text: e instanceof Error ? e.message : "Логотип не изменён." });
+      chat.say(`Не удалось разобрать просьбу: ${e instanceof Error ? e.message : "ошибка сервера"}.`);
+      return;
     }
+    if (decision.kind === "answer") {
+      await chat.respond(message.event_id);
+      return;
+    }
+    if (decision.kind !== "run") {
+      chat.suggest(decision.options);
+      return;
+    }
+    await runSteps(runContext(), decision.steps);
   };
+
+  const undoEdit = (eventId: string) => { void undo(runContext(), eventId); };
 
   // Вопрос о брошенной презентации задаётся в ленте чата: из «Файлов» панель возвращается к
   // разговору, иначе вопрос висит невидимым, пока файл грузится.
@@ -292,6 +284,7 @@ export function ProjectEditor({ project }: { project: Project }) {
     deckStart: chat.deckStart,
     deckShownAt,
     onRecheckDeck: () => void chat.recheckDeck(),
+    onUndo: undoEdit,
   };
 
   // Две вкладки: разговор целиком и загруженные файлы. Шаги работы — реплики той же ленты.
@@ -307,6 +300,7 @@ export function ProjectEditor({ project }: { project: Project }) {
         session={session}
         onTitle={(title) => patch({ title })}
         officeActionsRef={setOfficeActionsTarget}
+        deck={deckJob}
         templatePicker={<TemplatePicker project={project} onSelectTemplate={chat.selectTemplate} onUploadTemplate={chat.addTemplate} />}
       />
       <div className="editor-body">
@@ -408,16 +402,6 @@ export function ProjectEditor({ project }: { project: Project }) {
       </Modal>
     </div>
   );
-}
-
-/** Просьба про знак шаблона: «замени логотип на наш», «убери лого». Остальное — обычный разговор. */
-function logoRequest(text: string): OfficeLogoAction["action"] | null {
-  const t = text.toLowerCase();
-  // \b в JavaScript не видит границ кириллических слов: «лого», за которым не идёт буква.
-  if (!/(логотип|лого(?![а-яё])|logo)/.test(t)) return null;
-  if (/(убер|убра|удал|сним|скрой|спрячь|без\s+логотип)/.test(t)) return "remove";
-  if (/(замен|помен|постав|вставь|обнови|сделай|наш|свой|друг)/.test(t)) return "replace";
-  return null;
 }
 
 /** Подпись выделенного объекта без текста. */

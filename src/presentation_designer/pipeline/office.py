@@ -117,6 +117,12 @@ class OfficeStore:
             )
         return self.get(document_id)
 
+    def find(self, source: str) -> dict[str, Any] | None:
+        """Копия по источнику, если она уже есть."""
+        with self.connect() as db:
+            row = db.execute("SELECT id FROM documents WHERE source=?", (source,)).fetchone()
+        return self.get(row[0]) if row else None
+
     def get(self, document_id: str) -> dict[str, Any]:
         with self.connect() as db:
             row = db.execute("SELECT * FROM documents WHERE id=?", (document_id,)).fetchone()

@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-26T09:10:10Z",
+ "entry_version": 1,
+ "key": "797501d7c8a4e207ef807a809ec85ea6660bc6cd2e34741f17c47dd392003bab",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4643,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 349,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"message\": \"поменяй шаблон на VK Tech\", \"slide_count\": 8, \"can_rebuild\": true, \"outline\": [\"1. «Цифровая платформа для школ» — текст\", \"2. «Проблема» — картинки, текст\", \"3. «Решение» — текст\", \"4. «",
+  "prompt": [
+   "chat.route",
+   "0.1.3"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "chat_router",
+   "0.1.3"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 1310,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\"kind\": \"refusal\", \"steps\": [], \"text\": \"Сменить шаблон нельзя — это делается в редакторе: в правом верхнем углу выберите «VK Tech».\" , \"options\": []}",
+  "usage": {
+   "completion_tokens": 47,
+   "prompt_tokens": 1537,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

@@ -11,7 +11,8 @@ async function setup(page: Page, { slides = 5, editorSlides = 5 } = {}) {
   const state = {
     revision: 1, docRevision: 1, edits: [] as Record<string, unknown>[], editBodies: [] as Record<string, unknown>[],
     applied: [] as Record<string, unknown>[], objectEdits: [] as Record<string, unknown>[], editDone: false,
-    chats: [] as Record<string, unknown>[],
+    chats: [] as Record<string, unknown>[], routes: [] as Record<string, unknown>[], undos: [] as Record<string, unknown>[],
+    texts: {} as Record<string, string>,
   };
   const createdAt = new Date().toISOString();
   const doc = () => ({ id: "live-doc", revision: state.docRevision, active_key: null, error: null });
@@ -55,7 +56,28 @@ async function setup(page: Page, { slides = 5, editorSlides = 5 } = {}) {
   } }));
   await page.route("**/api/projects/live-test/events", (r) => {
     const body = r.request().postDataJSON() as Record<string, unknown>;
-    return r.fulfill({ json: { ...body, event_id: `evt_${Date.now()}`, created_at: createdAt } });
+    const eventId = `evt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    if (body.role === "user") state.texts[eventId] = String(body.text ?? "");
+    return r.fulfill({ json: { ...body, event_id: eventId, created_at: createdAt } });
+  });
+  await page.route(/\/api\/projects\/live-test\/events\/[^/]+$/, (r) => r.fulfill({ json: { event_id: "patched", ...(r.request().postDataJSON() as object) } }));
+  // Роутер (этап 37) — те же правила, что на сервере, для этих сценариев: плашка объекта —
+  // правка объекта, плашка слайда — перестройка, вопрос — ассистенту, «отмени» — отмена.
+  await page.route("**/api/chat/route", (r) => {
+    const body = r.request().postDataJSON() as { event_id: string; chip?: { slide: number; object?: Record<string, unknown> } };
+    state.routes.push(body);
+    const text = (state.texts[body.event_id] ?? "").replace(/^Слайд \d+ · [^\n]*\n/, "");
+    const decision = (kind: string, steps: unknown[] = []) => r.fulfill({ json: { kind, steps, text: "", options: [], source: "rules", normalized: text } });
+    if (/^отмени/i.test(text)) return decision("run", [{ action: "undo", slides: [] }]);
+    if (/\?\s*$|^что/i.test(text)) return decision("answer");
+    if (body.chip?.object) return decision("run", [{ action: "object_edit", slides: [body.chip.slide], instruction: text, target: { slide: body.chip.slide, ...body.chip.object } }]);
+    if (body.chip) return decision("run", [{ action: "slide_rebuild", slides: [body.chip.slide], instruction: text }]);
+    return decision("answer");
+  });
+  await page.route("**/api/office/documents/live-doc/undo", (r) => {
+    state.undos.push(r.request().postDataJSON());
+    state.docRevision++;
+    return r.fulfill({ json: { document: doc(), changed: true, message: "Правка отменена." } });
   });
   await page.route("**/api/chat", (r) => {
     state.chats.push(r.request().postDataJSON());
@@ -206,4 +228,34 @@ test("вопрос при плашке слайда уходит ассисте�
   expect(state.chats[0]).toMatchObject({ project_id: "live-test", office: { document_id: "live-doc", revision: 1 } });
   await expect(page.getByTestId("chat-list")).toContainText("Слайд 3 «Идея»: две карточки.");
   expect(state.editBodies).toHaveLength(0);
+});
+
+test("правка объекта — карточка с «Отменить»: кнопка и слово «отмени» возвращают копию", async ({ page }) => {
+  const state = await setup(page);
+  await page.goto("/project?id=live-test");
+  await expect.poll(() => live(page, "window.__live?.opened ?? 0")).toBe(1);
+  await live(page, "window.__live.selectSlide(2)");
+  await live(page, "window.__live.selectTitle()");
+  await page.getByTestId("chat-input").fill("сократи");
+  await page.getByTestId("chat-send").click();
+  const card = page.getByTestId("edit-result").last();
+  await expect(card).toContainText("Слайд 3: заголовок сокращён", { timeout: 20_000 });
+  await card.getByTestId("edit-result-undo").click();
+  await expect.poll(() => state.undos.length, { timeout: 20_000 }).toBe(1);
+  expect(state.undos[0]).toEqual({ revision: 2, to_revision: 1 });
+  await expect(card).toHaveAttribute("data-undone", "true");
+  await expect(card).toContainText("Отменено");
+
+  // Вторая правка и «отмени» словом: отменяется последняя неотменённая.
+  await expect(page.getByTestId("live-target")).toBeVisible({ timeout: 20_000 });
+  await live(page, "window.__live.selectTitle()");
+  await page.getByTestId("chat-input").fill("сократи ещё");
+  await page.getByTestId("chat-send").click();
+  await expect(page.getByTestId("edit-result")).toHaveCount(2, { timeout: 20_000 });
+  await page.getByTestId("live-target-dismiss").click();
+  await page.getByTestId("chat-input").fill("отмени");
+  await page.getByTestId("chat-send").click();
+  await expect.poll(() => state.undos.length, { timeout: 20_000 }).toBe(2);
+  expect(state.undos[1]).toEqual({ revision: 4, to_revision: 3 });
+  await expect(page.getByTestId("edit-result").last()).toHaveAttribute("data-undone", "true");
 });

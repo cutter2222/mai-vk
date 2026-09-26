@@ -70,6 +70,8 @@ from presentation_designer.layout.package import (
     drop_template_logos,
     ensure_placeholder,
     layout_by_id,
+    logo_hashes,
+    promote_logos,
     prune_unused_layouts,
     update_slide_numbers,
 )
@@ -2800,11 +2802,17 @@ def compose_deck(
     drop_logos = str(plan.get("template_logo") or "keep") == "drop"
     logos_removed = drop_template_logos(prs, profile) if drop_logos else 0
     layouts_removed = prune_unused_layouts(prs) if prune_layouts and not preserve else 0
+    # Оставшийся знак — с макетов на слайды: в редакторе его двигают и меняют на слайде.
+    logos_placed = promote_logos(
+        prs,
+        logo_hashes(profile),
+        {s.part: r.removed_object_ids for s, r in zip(new_slides, records, strict=False)},
+    )
     if not preserve:
         update_slide_numbers(prs)
     out_pptx = pathlib.Path(out_pptx)
     out_pptx.parent.mkdir(parents=True, exist_ok=True)
-    if unchanged and not drop_logos:
+    if unchanged and not drop_logos and not logos_placed:
         if template_path.resolve() != out_pptx.resolve():
             shutil.copyfile(template_path, out_pptx)
     else:
@@ -2812,6 +2820,8 @@ def compose_deck(
     timings["save_ms"] = int((time.perf_counter() - t0) * 1000)
     if logos_removed:
         ctx.count("logos_removed", logos_removed)
+    if logos_placed:
+        ctx.count("logos_placed", logos_placed)
     t0 = time.perf_counter()
     integrity = check_deck(out_pptx, expected_slides=len(new_slides))
     if not integrity.ok:

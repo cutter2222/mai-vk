@@ -11,33 +11,52 @@ from __future__ import annotations
 
 import hashlib
 import io
+import pathlib
 from typing import Any
 
 from PIL import Image
 from pptx import Presentation
 
+from presentation_designer.layout.package import logo_hashes, logo_like, promote_logos
 from presentation_designer.layout.shapes import NS, drop_unreferenced_rels, remove_shape
 
 RASTER = {"PNG", "JPEG", "GIF", "BMP"}
 R_EMBED = f"{{{NS['r']}}}embed"
 
 
-def logo_hashes(profile: dict[str, Any] | None) -> set[str]:
-    """sha256 картинок знака шаблона по профилю: только логотипы, закреплённые на макетах и
-    образцах (`fixed_elements`). Логотипы на слайдах — партнёры, соцсети — чужие знаки, их
-    замена логотипа шаблона не касается."""
-    if not profile:
-        return set()
-    wanted = {
-        str(f.get("asset_id"))
-        for f in profile.get("fixed_elements") or []
-        if f.get("kind") == "logo" and f.get("asset_id")
-    }
+def file_logo_hashes(path: pathlib.Path) -> set[str]:
+    """sha256 знака шаблона по самому файлу: то же правило анализатора (`find_fixed_elements`
+    по образцам и макетам), что и в профиле. Нужно, пока профиля ещё нет: копия презентации
+    открывается раньше, чем кончается разбор (0,2 с на 30 слайдах)."""
+    from presentation_designer.parsing.template.fixed import find_fixed_elements
+    from presentation_designer.parsing.template.package import open_template
+
+    pkg = open_template(path)
+    fixed, _ = find_fixed_elements(pkg, set(), {})
+    parts: list[Any] = [*pkg.masters, *pkg.layouts]
+    shapes = {(p.part, s.element_id): s for p in parts for s in p.shapes}
     return {
-        str(a["sha256"])
-        for a in profile.get("assets") or []
-        if a.get("sha256") and a.get("asset_id") in wanted
+        str(shape.media_sha256)
+        for f in fixed
+        if f.kind == "logo"
+        and (shape := shapes.get((f.source_part, f.element_ref))) is not None
+        and shape.media_sha256
     }
+
+
+def promote_file(path: pathlib.Path) -> tuple[bytes | None, int]:
+    """PPTX файла со знаком шаблона на самих слайдах (`promote_logos`) и число поставленных
+    картинок; (None, 0) — знака на макетах нет, файл остаётся как есть."""
+    hashes = file_logo_hashes(path)
+    if not hashes:
+        return None, 0
+    prs = Presentation(str(path))
+    placed = promote_logos(prs, hashes)
+    if not placed:
+        return None, 0
+    out = io.BytesIO()
+    prs.save(out)
+    return out.getvalue(), placed
 
 
 def _containers(prs: Any) -> list[Any]:
@@ -139,6 +158,8 @@ def replace_logo(pptx: bytes, hashes: set[str], image: bytes | None) -> tuple[by
     size = _image_size(image) if image is not None else None
     prs = Presentation(io.BytesIO(pptx))
     changed = 0
+    # Декор макета с теми же приметами, что и знак, не трогается (`logo_like`).
+    marks: dict[str, bool] = {}
     for container in _containers(prs):
         found = []
         for pic in container.shapes._spTree.iter(f"{{{NS['p']}}}pic"):
@@ -147,7 +168,8 @@ def replace_logo(pptx: bytes, hashes: set[str], image: bytes | None) -> tuple[by
             if not rid or rid not in container.part.rels:
                 continue
             blob = container.part.related_part(rid).blob
-            if hashlib.sha256(blob).hexdigest() in hashes:
+            sha = hashlib.sha256(blob).hexdigest()
+            if sha in hashes and marks.setdefault(sha, logo_like(blob)):
                 found.append((pic, blip))
         for mark in _marks(found):
             changed += 1
@@ -175,4 +197,4 @@ def replace_logo(pptx: bytes, hashes: set[str], image: bytes | None) -> tuple[by
     return out.getvalue(), changed
 
 
-__all__ = ["logo_hashes", "replace_logo"]
+__all__ = ["file_logo_hashes", "logo_hashes", "promote_file", "replace_logo"]

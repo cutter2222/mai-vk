@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-26T09:10:04Z",
+ "entry_version": 1,
+ "key": "8694db38b87603a50b689dbd6dd3ac4ffa831aed41544ad9c82a26ca267b7631",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4643,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 694,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"message\": \"везде замени «школ» на «колледжей»\", \"slide_count\": 8, \"can_rebuild\": true, \"outline\": [\"1. «Цифровая платформа для школ» — текст\", \"2. «Проблема» — картинки, текст\", \"3. «Решение» — текс",
+  "prompt": [
+   "chat.route",
+   "0.1.3"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "chat_router",
+   "0.1.3"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 1579,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\"kind\": \"run\", \"steps\": [{\"action\": \"deck_text\", \"slides\": [], \"object_id\": null, \"instruction\": \"Замени везде слово «школ» на «колледжей»\"}], \"text\": \"Заменю «школ» на «колледжей» во всей презентации.\" , \"options\": []}",
+  "usage": {
+   "completion_tokens": 75,
+   "prompt_tokens": 1654,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

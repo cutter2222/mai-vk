@@ -85,11 +85,17 @@ class EventCreate(BaseModel):
     variant_id: str | None = None
     edit_job_id: str | None = None
     slide_index: int | None = Field(None, ge=0)
+    document_id: str | None = None
+    revision: int | None = Field(None, ge=0)
+    base_revision: int | None = Field(None, ge=0)
+    slides: list[int] | None = None
+    undone: bool | None = None
 
 
 class EventPatch(BaseModel):
     resolved: str | None = None
     text: str | None = None
+    undone: bool | None = None
 
 
 class FilePatch(BaseModel):
@@ -99,7 +105,7 @@ class FilePatch(BaseModel):
 
 
 def _project_doc(project: dict[str, Any]) -> dict[str, Any]:
-    doc = {"schema_version": "1.5", **project}
+    doc = {"schema_version": "1.6", **project}
     return m.Project.model_validate(doc).model_dump(mode="json", exclude_none=True)
 
 

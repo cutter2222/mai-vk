@@ -13,7 +13,7 @@ import type { OfficeSelection } from "@/lib/api/client";
 import type { SlideTarget } from "@/lib/hooks/useGenerationSession";
 import type { ChatMessage, PptxAnswer } from "@/lib/state/projects";
 
-import { BriefCard, ContentCard, EditCard, JobCard, PptxQuestion, TemplateCard, TemplateQuestionCard, type CardContext } from "./cards";
+import { BriefCard, ContentCard, EditCard, EditResultCard, JobCard, PptxQuestion, TemplateCard, TemplateQuestionCard, type CardContext } from "./cards";
 import { deckJobHasNews, isVisibleProjectMessage } from "./feed";
 import type { StagedPptx } from "./useChat";
 import { MessageTime } from "./MessageTime";
@@ -331,6 +331,8 @@ function renderMessage(m: ChatMessage, ctx: CardContext) {
       return <JobCard m={m} ctx={ctx} />;
     case "edit_card":
       return <EditCard m={m} ctx={ctx} />;
+    case "edit_result":
+      return <EditResultCard m={m} ctx={ctx} />;
     default:
       return null;
   }

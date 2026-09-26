@@ -141,7 +141,9 @@ test("opening a deck shows compact progress with a timer in the chat, not on top
   await expect(background.getByRole("progressbar")).toHaveCount(0);
   state.status = "succeeded";
   await expect(background).toHaveCount(0);
-  await expect(page.locator(".editor-header")).toContainText("Готово");
+  // Открытая как есть презентация: в шапке нет состояния задания — ни «Готово», ни отмены.
+  await expect(page.locator(".editor-header")).not.toContainText("Готово");
+  await expect(page.getByTestId("cancel")).toHaveCount(0);
   // Итог остаётся в истории чата и после конца задания.
   await expect(opened).toBeVisible();
   await expect(page.getByTestId("job-card")).toHaveCount(0);

@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { mockRouter } from "./helpers";
+
 // Isolated API and SDK fixtures: never edit a user's deck.
 test.beforeEach(async ({ page }) => {
   // Existing preview/fullscreen regressions explicitly enter the secondary saved view.
@@ -134,6 +136,7 @@ test("pages load independently and a failed page can be retried", async ({ page 
 });
 
 async function setup(page: Page) {
+  await mockRouter(page);
   const state = { active: false, revision: 3, error: null as string | null, failPoll: false, failPreview: false, configs: 0, edits: 0, opened: [] as string[], lastEdit: null as Record<string, unknown> | null };
   const doc = () => ({ id: "preview-test", source: "test", title: "Test", revision: state.revision,
     active_key: state.active ? "key" : null, error: state.error, revisions: [{ revision: state.revision, sha256: "test", saved_at: 1 }] });

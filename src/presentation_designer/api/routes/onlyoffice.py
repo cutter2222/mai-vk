@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
 import json
+import logging
 import tempfile
 import time
 import uuid
@@ -23,7 +25,14 @@ from presentation_designer.export.office_ooxml import validate_saved_pptx
 from presentation_designer.export.office_preview import cache_path, preview_page, preview_revision
 from presentation_designer.export.office_source import saved_url, source_path
 from presentation_designer.export.pdf import ConversionError, RendererUnavailableError
-from presentation_designer.generation import office_edit, office_logo, office_object_edit
+from presentation_designer.generation import (
+    office_edit,
+    office_image,
+    office_logo,
+    office_object_edit,
+    office_objects,
+    office_ops,
+)
 from presentation_designer.generation.office_objects import (
     LiveTarget,
     ObjectTarget,
@@ -41,6 +50,7 @@ from presentation_designer.pipeline.snapshots import office_snapshot
 from presentation_designer.pipeline.state import NotFound
 from presentation_designer.shared.text import plural
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/office", tags=["onlyoffice"])
 
 
@@ -56,6 +66,29 @@ class LogoRequest(BaseModel):
     file_id: str | None = Field(default=None, max_length=100)
 
 
+class ImagePlacement(BaseModel):
+    """Картинка из сообщения — на слайд: файл проекта и номер слайда с единицы; место —
+    словами в `instruction` или выделенный объект (`live_target`)."""
+
+    file_id: str = Field(min_length=1, max_length=100)
+    slide: int = Field(ge=1)
+
+
+class ChartPlacement(BaseModel):
+    """Новая диаграмма на слайд (этап 40): из приложенного xlsx/csv (`file`), по картинке
+    графика (`image`) или «сделай редактируемой» для диаграмм из фигур и картинок слайда."""
+
+    source: Literal["file", "image", "editable"]
+    slide: int = Field(ge=1)
+    file_id: str | None = Field(default=None, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_file(self) -> ChartPlacement:
+        if (self.source == "editable") != (self.file_id is None):
+            raise ValueError("Файл нужен для диаграммы из файла или картинки, и только для неё")
+        return self
+
+
 class EditRequest(BaseModel):
     revision: int = Field(ge=0)
     instruction: str = Field(min_length=1, max_length=4000)
@@ -64,11 +97,32 @@ class EditRequest(BaseModel):
     # Объект, выделенный в живом редакторе: сервер находит его в сохранённой копии сам.
     live_target: LiveTarget | None = None
     logo: LogoRequest | None = None
+    image: ImagePlacement | None = None
+    # Таблица из приложенного xlsx или csv — на слайд, в место, названное словами.
+    table: ImagePlacement | None = None
+    chart: ChartPlacement | None = None
+    # Текстовая правка только на этих слайдах (с единицы); без объектов.
+    slides: list[int] | None = Field(default=None, min_length=1, max_length=200)
 
     @model_validator(mode="after")
     def validate_targets(self) -> EditRequest:
         if self.logo is not None and (self.target is not None or self.targets is not None):
             raise ValueError("Логотип меняется на всех слайдах: объекты не передаются")
+        if self.image is not None and (
+            self.logo is not None or self.target is not None or self.targets is not None
+        ):
+            raise ValueError("Картинка ставится по словам или в выделенный объект")
+        if self.table is not None and (
+            self.logo is not None
+            or self.image is not None
+            or self.target is not None
+            or self.targets is not None
+        ):
+            raise ValueError("Таблица из файла ставится по словам")
+        if self.chart is not None and any(
+            v is not None for v in (self.logo, self.image, self.table, self.target, self.targets)
+        ):
+            raise ValueError("Диаграмма ставится по словам, без других объектов")
         if self.live_target is not None and (
             self.logo is not None or self.target is not None or self.targets is not None
         ):
@@ -179,6 +233,12 @@ async def edit(document_id: str, body: EditRequest, orch: Orch) -> dict[str, Any
         original = office.read(document_id, body.revision)
         if body.logo is not None:
             updated, explanation = _apply_logo(orch, office.get(document_id), original, body.logo)
+        elif body.image is not None:
+            updated, explanation = await _place_image(orch, original, body)
+        elif body.table is not None:
+            updated, explanation = await _place_table(orch, office.get(document_id), original, body)
+        elif body.chart is not None:
+            updated, explanation = await _place_chart(orch, office.get(document_id), original, body)
         elif body.targets is not None:
             multi_plan = await office_object_edit.propose_many(
                 original, body.instruction, orch.settings, body.targets
@@ -187,13 +247,16 @@ async def edit(document_id: str, body: EditRequest, orch: Orch) -> dict[str, Any
             explanation = multi_plan.explanation
         elif body.target is not None or body.live_target is not None:
             target = body.target or resolve_live(original, body.live_target)  # type: ignore[arg-type]
+            tokens = _tokens(orch, office.get(document_id), original)
             object_plan = await office_object_edit.propose(
-                original, body.instruction, orch.settings, target
+                original, body.instruction, orch.settings, target, tokens
             )
-            updated = office_object_edit.patch_object(original, target, object_plan)
-            explanation = object_plan.explanation
+            updated, notes = office_object_edit.apply_plan(original, target, object_plan, tokens)
+            explanation = " ".join(
+                [object_plan.explanation.strip(), *(n[:1].upper() + n[1:] + "." for n in notes)]
+            ).strip()
         else:
-            plan = await office_edit.propose(original, body.instruction, orch.settings)
+            plan = await office_edit.propose(original, body.instruction, orch.settings, body.slides)
             updated = office_edit.patch_pptx(original, plan)
             explanation = plan.explanation
         office.commit_edit(document_id, token, body.revision, updated)
@@ -204,6 +267,37 @@ async def edit(document_id: str, body: EditRequest, orch: Orch) -> dict[str, Any
         }
     except (ValueError, LlmError) as exc:
         raise ApiError(422, "office_edit_failed", "Правка не применена: " + str(exc)) from exc
+    finally:
+        office.end_edit(document_id, token)
+
+
+class UndoRequest(BaseModel):
+    """Отмена правки копии: `revision` — ревизия, которую дала правка, `to_revision` — до неё."""
+
+    revision: int = Field(ge=1)
+    to_revision: int = Field(ge=0)
+
+
+@router.post("/documents/{document_id}/undo")
+def undo(document_id: str, body: UndoRequest, orch: Orch) -> dict[str, Any]:
+    """Прежние байты новой ревизией: история копии не переписывается, отмену можно отменить.
+    Только если после правки копию не меняли — иначе пропали бы и более поздние правки."""
+    office = store(orch)
+    if body.to_revision >= body.revision:
+        raise ApiError(422, "office_undo_invalid", "Вернуться можно только к прежней ревизии")
+    current = office.get(document_id)
+    if int(current["revision"]) != body.revision:
+        raise ApiError(
+            409,
+            "office_undo_stale",
+            "После этой правки презентацию уже меняли — отменить её отдельно нельзя. "
+            "Верните нужное в редакторе (Ctrl+Z) или попросите исправить словами.",
+        )
+    previous = office.read(document_id, body.to_revision)
+    token = office.begin_edit(document_id, body.revision)
+    try:
+        office.commit_edit(document_id, token, body.revision, previous)
+        return {"document": office.get(document_id), "changed": True, "message": "Правка отменена."}
     finally:
         office.end_edit(document_id, token)
 
@@ -303,7 +397,149 @@ def _apply_logo(
         raise ValueError("логотипа шаблона в этой презентации уже нет")
     done = "заменён" if image is not None else "убран"
     places = f"{count} {plural(count, 'место', 'места', 'мест')}"
-    return updated, f"Логотип шаблона {done} на всех слайдах ({places} в макетах)."
+    return updated, f"Логотип шаблона {done} на всех слайдах ({places})."
+
+
+async def _place_image(orch: Orch, original: bytes, body: EditRequest) -> tuple[bytes, str]:
+    """Картинка из сообщения — в выделенный объект (картинку или пустую рамку) или в место,
+    названное словами: его модель находит по снимку слайда (блок бывает нарисован фоном)."""
+    image = body.image
+    assert image is not None
+    try:
+        row = orch.state.get_file(image.file_id)
+    except NotFound as exc:
+        raise ValueError("картинка не найдена в файлах проекта") from exc
+    blob = orch.files.path_for(str(row["sha256"])).read_bytes()
+    target = None
+    if body.live_target is not None:
+        try:
+            picked = office_objects.selected(original, resolve_live(original, body.live_target))
+        except ValueError:  # выделение не нашлось в сохранённой копии — место по словам
+            picked = None
+        # Выделен текст — картинка его не закрывает: место тоже ищется по словам.
+        if picked is not None and (picked.kind == "pic" or not picked.runs):
+            target = picked
+    if target is not None:
+        placement = office_image.Placement(explanation="Поставил картинку в выделенный объект.")
+        return office_image.place_image(original, target.slide, blob, placement, target=target), (
+            placement.explanation
+        )
+    snapshot = None
+    try:
+        root, manifest = await asyncio.to_thread(preview_revision, original, orch.settings)
+        page = await asyncio.to_thread(preview_page, root, manifest["slides"][image.slide - 1])
+        snapshot = page.read_bytes()
+    except (ConversionError, RendererUnavailableError, IndexError, OSError):
+        log.warning("снимок слайда %d для картинки не получен", image.slide, exc_info=True)
+    placement = await office_image.propose(
+        original, body.instruction, orch.settings, image.slide, snapshot
+    )
+    updated = office_image.place_image(original, image.slide, blob, placement, snapshot=snapshot)
+    return updated, placement.explanation
+
+
+async def _snapshot_png(orch: Orch, original: bytes, slide: int) -> bytes | None:
+    try:
+        root, manifest = await asyncio.to_thread(preview_revision, original, orch.settings)
+        page = await asyncio.to_thread(preview_page, root, manifest["slides"][slide - 1])
+        return page.read_bytes()
+    except (ConversionError, RendererUnavailableError, IndexError, OSError):
+        log.warning("снимок слайда %d не получен", slide, exc_info=True)
+        return None
+
+
+async def _place_table(
+    orch: Orch, document: dict[str, Any], original: bytes, body: EditRequest
+) -> tuple[bytes, str]:
+    """Таблица из xlsx или csv — в место, названное словами, в стиле шаблона."""
+    from presentation_designer.generation import office_chart, office_table
+
+    table = body.table
+    assert table is not None
+    try:
+        row = orch.state.get_file(table.file_id)
+    except NotFound as exc:
+        raise ValueError("файл с таблицей не найден в проекте") from exc
+    raw = orch.files.path_for(str(row["sha256"])).read_bytes()
+    header, rows, truncated = office_table.read_table(raw, str(row.get("name") or ""))
+    style = office_chart.table_style(_tokens(orch, document, original))
+    snapshot = await _snapshot_png(orch, original, table.slide)
+    placement = await office_image.propose(
+        original, body.instruction, orch.settings, table.slide, snapshot, what="таблицу"
+    )
+    updated = office_table.place_table(
+        original, table.slide, header, rows, placement, style, snapshot=snapshot
+    )
+    note = f"Поставил таблицу: {len(rows)} строк, {len(header)} столбцов."
+    if truncated:
+        note += " В файле больше данных — взял первые строки и столбцы."
+    return updated, " ".join(_sentence(t) for t in (placement.explanation, note) if t.strip())
+
+
+async def _place_chart(
+    orch: Orch, document: dict[str, Any], original: bytes, body: EditRequest
+) -> tuple[bytes, str]:
+    """Диаграмма из xlsx/csv или по картинке графика — в место, названное словами, в стиле
+    шаблона; «сделай редактируемой» — диаграммы из фигур и картинок слайда на месте."""
+    from presentation_designer.generation import office_chart, office_table
+    from presentation_designer.layout.chart_images import describe
+
+    chart = body.chart
+    assert chart is not None
+    tokens = _tokens(orch, document, original)
+    if chart.source == "editable":
+        updated, notes = await office_chart.make_editable_all(original, chart.slide, orch.settings)
+        return updated, " ".join(n[:1].upper() + n[1:] + "." for n in notes)
+    try:
+        row = orch.state.get_file(str(chart.file_id))
+    except NotFound as exc:
+        raise ValueError("файл для диаграммы не найден в проекте") from exc
+    raw = orch.files.path_for(str(row["sha256"])).read_bytes()
+    kind = office_chart.kind_in(body.instruction)
+    note = ""
+    if chart.source == "file":
+        header, rows, truncated = office_table.read_table(raw, str(row.get("name") or ""))
+        spec = office_chart.spec_from_table(header, rows, kind)
+        if truncated:
+            note = "В файле больше данных — взял первые строки и столбцы."
+    else:
+        reading = await office_chart.read_picture(raw, orch.settings)
+        spec = office_chart.spec_from_reading(reading)
+        if kind and kind != spec.chart_type:
+            spec.chart_type = kind
+            if office_chart.FAMILY[kind] == "pie":
+                spec.series = spec.series[:1]
+                spec.show_legend = True
+        note = describe(reading)
+    snapshot = await _snapshot_png(orch, original, chart.slide)
+    placement = await office_image.propose(
+        original, body.instruction, orch.settings, chart.slide, snapshot, what="диаграмму"
+    )
+    area = office_image.area_for(original, chart.slide, placement, snapshot, what="диаграмму")
+    dark = snapshot is not None and office_chart.dark_area(snapshot, area)
+    updated = office_chart.place_chart(original, chart.slide, spec, area, tokens, dark=dark)
+    what = f"Поставил диаграмму ({office_chart.KIND_NAMES[spec.chart_type]})."
+    return updated, " ".join(_sentence(t) for t in (placement.explanation, what, note) if t.strip())
+
+
+def _sentence(text: str) -> str:
+    """Фраза для ответа: с заглавной буквы и с точкой в конце."""
+    text = text.strip()
+    if text and text[-1] not in ".!?…":
+        text += "."
+    return text[:1].upper() + text[1:]
+
+
+def _tokens(orch: Orch, document: dict[str, Any], original: bytes) -> office_ops.Tokens:
+    """Стиль правок на месте: токены профиля шаблона копии, без профиля — тема файла."""
+    template_id = _document_template(orch, str(document.get("source") or ""))
+    try:
+        template = orch.state.get_template(template_id) if template_id else None
+    except NotFound:
+        template = None
+    return office_ops.Tokens.from_profile(
+        (template or {}).get("profile")
+    ) or office_ops.Tokens.from_pptx(original)
 
 
 def store(orch: Orch) -> OfficeStore:
@@ -374,11 +610,17 @@ def project_template_copy(project_id: str, body: TemplateCopyRequest, orch: Orch
     if path.stat().st_size > orch.files.max_bytes:
         raise ApiError(413, "office_file_too_large", "PPTX превышает лимит загрузки")
     # A project-local copy: never edit the library template or another project's copy.
-    return office.create(
-        f"project/{project_id}/template/{body.template_id}/{template['sha256']}",
-        template["name"],
-        path.read_bytes(),
-    )
+    source = f"project/{project_id}/template/{body.template_id}/{template['sha256']}"
+    existing = office.find(source)
+    if existing is not None:
+        return existing
+    # Знак шаблона — с макетов на слайды, как в собранных вариантах: его двигают на слайде.
+    try:
+        promoted, _ = office_logo.promote_file(path)
+    except Exception:
+        log.exception("знак шаблона %s не перенесён на слайды копии", body.template_id)
+        promoted = None
+    return office.create(source, template["name"], promoted or path.read_bytes())
 
 
 @router.post("/templates/{template_id}/config")

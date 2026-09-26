@@ -499,9 +499,17 @@ def describe_chart(chart: Any) -> dict[str, Any]:
         has_axis_titles = bool(chart.value_axis.has_title or chart.category_axis.has_title)
     except (ValueError, AttributeError):
         pass
+    # Число категорий — по самой диаграмме: без плана (вариант original, офисная копия) его
+    # больше неоткуда взять, а аудит подписей без него считал, что подписей категорий нет.
+    categories_count = 0
+    try:
+        categories_count = max((len(list(p.categories)) for p in chart.plots), default=0)
+    except (ValueError, AttributeError, KeyError, TypeError):
+        pass
     return {
         "type": chart_type.lower(),
         "series_count": series_count,
+        "categories_count": categories_count,
         "has_legend": bool(chart.has_legend),
         "has_axis_titles": has_axis_titles,
         "has_data_labels": any(p.has_data_labels for p in chart.plots),

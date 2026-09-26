@@ -29,10 +29,10 @@ export function isStaleStep(message: ChatMessage, jobId: string | null): boolean
   return false;
 }
 
-/** Отчёты аудита и исправления по ним остаются в данных проекта, но не в ленте. */
+/** Отчёты аудита остаются в данных проекта, но не в ленте. Исправление находок теперь
+ * запускает чат («исправь замечания»), поэтому его карточка видна, как правка. */
 function isAuditStep(message: ChatMessage): boolean {
-  if (message.role !== "assistant") return false;
-  return message.kind === "audit_card" || (message.kind === "edit_card" && editOrigin(message.edit_job_id) === "audit");
+  return message.role === "assistant" && message.kind === "audit_card";
 }
 
 /** Сообщение без текста — бывшая запись о загрузке файла: файлы видны во вкладке «Файлы». */

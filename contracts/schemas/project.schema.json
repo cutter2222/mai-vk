@@ -18,7 +18,7 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "const": "1.5"
+      "const": "1.6"
     },
     "project_id": {
       "$ref": "common.schema.json#/$defs/id"
@@ -169,7 +169,11 @@
       "additionalProperties": false,
       "properties": {
         "design_mode": {
-          "enum": ["template_only", "mixed", "all_new"],
+          "enum": [
+            "template_only",
+            "mixed",
+            "all_new"
+          ],
           "description": "Выбранный режим композиций. Без выбора генерация совместима со смешанным режимом."
         },
         "mode": {
@@ -258,7 +262,8 @@
             "brief_card",
             "job_card",
             "audit_card",
-            "edit_card"
+            "edit_card",
+            "edit_result"
           ]
         },
         "text": {
@@ -341,6 +346,32 @@
         "slide_index": {
           "type": "integer",
           "minimum": 0
+        },
+        "document_id": {
+          "$ref": "common.schema.json#/$defs/id",
+          "description": "для edit_result: офисная копия, которую изменила правка"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "для edit_result: ревизия копии после правки"
+        },
+        "base_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "для edit_result: ревизия копии до правки — к ней возвращает «Отменить»"
+        },
+        "slides": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "description": "для edit_result: слайды правки (с единицы)"
+        },
+        "undone": {
+          "type": "boolean",
+          "description": "правка отменена («Отменить» в карточке или «отмени» словом)"
         }
       },
       "additionalProperties": false,
@@ -468,6 +499,23 @@
               "variant_id",
               "edit_job_id",
               "slide_index"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "edit_result"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "document_id",
+              "revision",
+              "base_revision",
+              "text"
             ]
           }
         }

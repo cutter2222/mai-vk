@@ -176,7 +176,10 @@ def test_vkedu_overrides_deterministic(
         )
         if title is None or len(edited) >= 3:
             continue
-        picture = next((o for o in deck_slide["objects"] if o["kind"] == "picture"), None)
+        picture = next(
+            (o for o in deck_slide["objects"] if o["kind"] == "picture" and o["role"] != "fixed"),
+            None,
+        )
         overrides = [
             {
                 "op": "text",
@@ -307,7 +310,8 @@ def test_vktech_drawn_chart_and_logo_removal(
     assert len(charts) == 1, "на месте нарисованного ряда одна нативная диаграмма"
     assert charts[0]["chart"]["built"] == "added"
     assert charts[0]["bbox"]["width"] >= 0.5, "диаграмма занимает область ряда, а не один столбик"
-    assert not [o for o in slide["objects"] if o["kind"] == "picture"], "столбики-картинки убраны"
+    pictures = [o for o in slide["objects"] if o["kind"] == "picture"]
+    assert all(o["role"] == "fixed" for o in pictures), "столбики-картинки убраны"
     assert len(slide["removed_object_ids"]) >= len(pattern["chart_parts"])
 
     logos = [f for f in profile["fixed_elements"] if f["kind"] == "logo"]
@@ -322,7 +326,9 @@ def test_vktech_drawn_chart_and_logo_removal(
                 found += sum(1 for sh in iter_shapes(layout) if str(sh.shape_id) in refs)
         return found
 
-    assert logo_shapes(tmp_path / "keep.pptx") > 0, "с флагом keep знак остаётся"
+    # С флагом keep знак остаётся — картинкой на самом слайде, а не на макете.
+    assert pictures, "с флагом keep знак остаётся"
+    assert kept.report["counts"].get("logos_placed", 0) == len(pictures)
     dropped = compose_deck(
         plan_with("drop"),
         profile,
@@ -334,6 +340,7 @@ def test_vktech_drawn_chart_and_logo_removal(
     assert dropped.deck["template_logo"] == "drop"
     assert dropped.report["counts"].get("logos_removed", 0) > 0
     assert logo_shapes(tmp_path / "drop.pptx") == 0, "знак снят со всех макетов"
+    assert not [o for o in dropped.deck["slides"][0]["objects"] if o["kind"] == "picture"]
 
 
 def test_vk_tech_two_of_three_text_blocks_take_the_whole_row(

@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-26T09:10:39Z",
+ "entry_version": 1,
+ "key": "45a15277c4ae10acf3518134bd4fa26416987f82e05255b88c70af9cb634fb45",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4643,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 620,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"message\": \"отсортируй тарифы по цене по убыванию\", \"slide_count\": 8, \"can_rebuild\": true, \"outline\": [\"1. «Цифровая платформа для школ» — текст\", \"2. «Проблема» — картинки, текст\", \"3. «Решение» — т",
+  "prompt": [
+   "chat.route",
+   "0.1.3"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "chat_router",
+   "0.1.3"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 1937,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\"kind\": \"run\", \"steps\": [{\"action\": \"object_edit\", \"slides\": [6], \"object_id\": \"9\", \"instruction\": \"Отсортируй строки таблицы по цене по убыванию\"}], \"text\": \"Сортирую тарифы на слайде 6 по цене от больших к малым.\" , \"options\": []}",
+  "usage": {
+   "completion_tokens": 79,
+   "prompt_tokens": 1638,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

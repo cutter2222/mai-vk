@@ -36,6 +36,14 @@ class EditRequest(BaseModel):
     instruction: str = Field("", max_length=2000)
 
 
+class RevertRequest(BaseModel):
+    """Отмена последней правки: вернуть файлы ревизии `to_revision` новой ревизией."""
+
+    base_revision: int = Field(..., ge=1)
+    to_revision: int = Field(..., ge=1)
+    slide_index: int = Field(..., ge=0)
+
+
 class PatchRequest(BaseModel):
     """Ручные правки из визуального редактора: списки overrides по слайдам (замена
     целиком), при перестановке — новый порядок всех слайдов, а `template_logo` снимает или
@@ -129,6 +137,19 @@ def create_repair(job_id: str, variant_id: str, body: RepairRequest, orch: Orch)
     except NotFound as e:
         raise ApiError(404, "variant_not_found", "Вариант не найден") from e
     return {"repair_job_id": job["job_id"]}
+
+
+@router.post("/generations/{job_id}/variants/{variant_id}/revert", status_code=202)
+def revert_edit(job_id: str, variant_id: str, body: RevertRequest, orch: Orch) -> dict[str, Any]:
+    """Отмена последней правки варианта из чата: копия прежней ревизии новой ревизией."""
+    _generation(orch, job_id)
+    try:
+        job = orch.submit_revert(
+            job_id, variant_id, body.base_revision, body.to_revision, body.slide_index
+        )
+    except NotFound as e:
+        raise ApiError(404, "variant_not_found", "Вариант не найден") from e
+    return {"edit_job_id": job["job_id"]}
 
 
 @router.post("/generations/{job_id}/variants/{variant_id}/edits", status_code=202)

@@ -71,7 +71,7 @@ def test_multiple_object_edit_is_atomic_and_revision_scoped(client, office, monk
     targets = [{"slide": obj["slide"], "shape_id": obj["shape_id"]} for obj in objects[:3]]
     invalid = True
 
-    async def propose(data, instruction, settings, selected):
+    async def propose(data, instruction, settings, selected, tokens=None):
         assert [target.model_dump() for target in selected] == targets
         assert instruction == "Все три правее"
         return ObjectsEditPlan.model_validate(
@@ -131,7 +131,7 @@ def test_object_edit_endpoint_is_revision_scoped(client, office, monkeypatch):
     assert obj["label"] == "Цель"
     target = {"slide": obj["slide"], "shape_id": obj["shape_id"]}
 
-    async def propose(data, instruction, settings, selected):
+    async def propose(data, instruction, settings, selected, tokens=None):
         assert selected.model_dump() == target
         assert data == output.getvalue()
         return ObjectEditPlan(
@@ -277,7 +277,7 @@ def test_edit_endpoint_uses_saved_pptx(client, office, monkeypatch):
     opened = store.open(doc_id)
     store.callback(doc_id, opened["active_key"], 2, output.getvalue())
 
-    async def propose(data, instruction, settings):
+    async def propose(data, instruction, settings, only=None):
         assert data == output.getvalue()
         assert instruction == "Измени заголовок"
         with pytest.raises(ApiError):
@@ -892,7 +892,7 @@ def test_live_selection_edit_finds_the_object_by_name_and_position(client, offic
     right = next(o for o in objects if o["label"] == "Правая")
     assert right["name"] == "Карточка"
 
-    async def propose(original, instruction, settings, selected):
+    async def propose(original, instruction, settings, selected, tokens=None):
         assert original == data
         assert selected.model_dump() == {"slide": 1, "shape_id": right["shape_id"]}
         return ObjectEditPlan(
@@ -1011,7 +1011,7 @@ def test_live_selection_edit_reaches_group_child_and_placeholder(
     objects = client.get(f"/api/office/documents/{doc_id}/objects/1").json()["objects"]
     wanted = next(o for o in objects if o["label"] == before)
 
-    async def propose(original, instruction, settings, selected):
+    async def propose(original, instruction, settings, selected, tokens=None):
         assert selected.model_dump() == {"slide": 1, "shape_id": wanted["shape_id"]}
         return ObjectEditPlan(
             explanation="Готово",
@@ -1052,3 +1052,106 @@ def test_snapshot_of_a_saved_copy_marks_manually_edited_slides(client, office):
     )
     missing = client.get(f"/api/office/documents/{doc_id}/snapshot/9")
     assert missing.status_code == 404
+
+
+def test_picture_from_the_message_goes_to_the_named_place(client, office, monkeypatch):
+    """«Вставь картинку в правый блок» с вложением: место называет модель, картинка встаёт
+    новой ревизией копии; без снимка слайда (рендер недоступен) — по рамке модели."""
+    from PIL import Image
+
+    from presentation_designer.export.pdf import ConversionError
+    from presentation_designer.generation.office_image import Area, Placement
+
+    store, doc_id = office
+    project = client.post("/api/projects", json={}).json()["project_id"]
+    png = io.BytesIO()
+    Image.new("RGB", (400, 300), (30, 120, 200)).save(png, format="PNG")
+    (photo,) = client.post(
+        f"/api/projects/{project}/files",
+        files=[("files", ("фото.png", png.getvalue(), "image/png"))],
+    ).json()
+    asked: list[tuple[str, int, object]] = []
+
+    async def propose(data, instruction, settings, slide, snapshot):
+        asked.append((instruction, slide, snapshot))
+        return Placement(
+            explanation="Поставил в блок справа.", area=Area(x=0.55, y=0.2, width=0.4, height=0.6)
+        )
+
+    def no_render(*args):
+        raise ConversionError("рендер недоступен в тестах")
+
+    monkeypatch.setattr(onlyoffice.office_image, "propose", propose)
+    monkeypatch.setattr(onlyoffice, "preview_revision", no_render)
+    response = client.post(
+        f"/api/office/documents/{doc_id}/edit",
+        json={
+            "revision": 0,
+            "instruction": "вставь картинку в правый блок",
+            "image": {"file_id": photo["file_id"], "slide": 1},
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["changed"] is True and body["message"] == "Поставил в блок справа."
+    assert asked == [("вставь картинку в правый блок", 1, None)]
+    prs = Presentation(io.BytesIO(store.read(doc_id, 1)))
+    pictures = [s for s in prs.slides[0].shapes if s.shape_type == 13]
+    assert [p.name for p in pictures][-1] == "Картинка из чата"
+    assert pictures[-1].left == round(0.55 * prs.slide_width)
+
+    # Картинка ставится по словам или в выделенный объект, не вместе с логотипом.
+    both = client.post(
+        f"/api/office/documents/{doc_id}/edit",
+        json={
+            "revision": 1,
+            "instruction": "замени логотип",
+            "logo": {"action": "remove"},
+            "image": {"file_id": photo["file_id"], "slide": 1},
+        },
+    )
+    assert both.status_code == 422
+
+
+def test_table_from_an_attached_file_goes_to_the_named_place(client, office, monkeypatch):
+    """«Вот таблица — на слайд справа» с xlsx: место называет модель, таблица — в стиле
+    шаблона новой ревизией копии."""
+    from openpyxl import Workbook
+
+    from presentation_designer.export.pdf import ConversionError
+    from presentation_designer.generation.office_image import Area, Placement
+
+    store, doc_id = office
+    project = client.post("/api/projects", json={}).json()["project_id"]
+    book = Workbook()
+    for row in [["Год", "Выручка"], [2023, 75], [2024, 120]]:
+        book.active.append(row)
+    buf = io.BytesIO()
+    book.save(buf)
+    (sheet,) = client.post(
+        f"/api/projects/{project}/files",
+        files=[("files", ("Выручка.xlsx", buf.getvalue(), "application/octet-stream"))],
+    ).json()
+
+    async def propose(data, instruction, settings, slide, snapshot, what="картинку"):
+        assert what == "таблицу"
+        return Placement(explanation="Справа.", area=Area(x=0.5, y=0.2, width=0.45, height=0.5))
+
+    def no_render(*args):
+        raise ConversionError("рендер недоступен в тестах")
+
+    monkeypatch.setattr(onlyoffice.office_image, "propose", propose)
+    monkeypatch.setattr(onlyoffice, "preview_revision", no_render)
+    response = client.post(
+        f"/api/office/documents/{doc_id}/edit",
+        json={
+            "revision": 0,
+            "instruction": "поставь справа",
+            "table": {"file_id": sheet["file_id"], "slide": 1},
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert "2 строк, 2 столбцов" in response.json()["message"]
+    prs = Presentation(io.BytesIO(store.read(doc_id, 1)))
+    frame = next(s for s in prs.slides[0].shapes if s.name == "Таблица из чата")
+    assert frame.table.cell(2, 0).text == "2024"

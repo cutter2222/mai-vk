@@ -196,3 +196,33 @@ export async function clickText(page: Page, object: Locator): Promise<void> {
   if (!box) throw new Error("у объекта нет абзаца текста");
   await page.mouse.click(box.x + Math.min(10, box.width / 2), box.y + Math.min(box.height / 2, 14));
 }
+
+/**
+ * Заглушка роутера чата (этап 37) — упрощённые серверные правила по тексту из запроса: отмена,
+ * логотип, `/edit`, вопрос — ассистенту, плашка объекта — правка объекта, номер слайда или
+ * плашка слайда — перестройка, картинка — на слайд. Возвращает тела запросов.
+ */
+export async function mockRouter(page: Page): Promise<Array<Record<string, unknown>>> {
+  const calls: Array<Record<string, unknown>> = [];
+  await page.route("**/api/chat/route", (r) => {
+    const body = r.request().postDataJSON() as { text?: string; file_ids?: string[]; current_slide?: number; chip?: { slide: number; object?: Record<string, unknown> } };
+    calls.push(body);
+    const text = String(body.text ?? "");
+    const files = body.file_ids ?? [];
+    const reply = (kind: string, steps: unknown[] = []) => r.fulfill({ json: { kind, steps, text: "", options: [], source: "rules", normalized: text } });
+    if (/^\s*(отмени|верни как было)/i.test(text)) return reply("run", [{ action: "undo", slides: [] }]);
+    if (/логотип|лого(?![а-яё])/i.test(text)) {
+      const remove = /(убер|удал|сним)/i.test(text);
+      return reply("run", [{ action: "logo", slides: [], instruction: text, logo: remove ? "remove" : "replace", ...(!remove && files[0] ? { file_id: files[0] } : {}) }]);
+    }
+    if (text.startsWith("/edit")) return reply("run", [{ action: "deck_text", slides: [], instruction: text.slice(5).trim() }]);
+    if (/\?\s*$|^(что|как|сколько|где)(?![а-яё])/i.test(text)) return reply("answer");
+    if (body.chip?.object) return reply("run", [{ action: "object_edit", slides: [body.chip.slide], instruction: text, target: { slide: body.chip.slide, ...body.chip.object } }]);
+    const named = /слайд\S*\s+(\d+)/i.exec(text)?.[1];
+    const slide = named ? Number(named) : body.chip?.slide;
+    if (files.length && (slide || body.current_slide)) return reply("run", [{ action: "image", slides: [slide ?? body.current_slide], instruction: text, file_id: files[0] }]);
+    if (slide) return reply("run", [{ action: "slide_rebuild", slides: [slide], instruction: text }]);
+    return reply("answer");
+  });
+  return calls;
+}

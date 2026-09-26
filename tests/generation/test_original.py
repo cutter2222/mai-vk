@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from pptx import Presentation
 from pptx.enum.shapes import PP_PLACEHOLDER as PP
+from pptx.oxml.ns import qn
 
 from presentation_designer.contracts import ContentPackage, SlidePlan, StoryPlan, TemplateProfile
 from presentation_designer.contracts.validators import check_slide_plan, check_story_plan
@@ -272,7 +273,19 @@ def test_vk_education_original_keeps_slides_and_turns_prompts_into_text(
         if not _has_empty_text_placeholder(old)
     ]
     assert len(kept) > total // 2
-    assert all(old._element.xml == new._element.xml for old, new in kept)
+    assert all(old._element.xml == _without_new_pictures(new, old) for old, new in kept)
+    # Знак шаблона перенесён с макетов на слайды: в редакторе его можно двигать.
+    assert result.report["counts"].get("logos_placed", 0) > 0
+
+
+def _without_new_pictures(new: Any, old: Any) -> str:
+    """XML слайда без картинок, которых не было в исходном: знака, перенесённого с макета."""
+    ids = {c.get("id") for c in old._element.iter(qn("p:cNvPr"))}
+    element = deepcopy(new._element)
+    for pic in list(element.iter(qn("p:pic"))):
+        if pic.find(f"{qn('p:nvPicPr')}/{qn('p:cNvPr')}").get("id") not in ids:
+            pic.getparent().remove(pic)
+    return str(element.xml)
 
 
 def test_empty_placeholders_become_the_prompt_text_the_editor_shows() -> None:

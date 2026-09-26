@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 import { createPortal } from "react-dom";
 
-import { api, type OfficeApplySlide, type OfficeDocument, type OfficeLiveTarget, type OfficeLogoAction } from "@/lib/api/client";
+import { api, type OfficeApplySlide, type OfficeChartPlacement, type OfficeDocument, type OfficeImagePlacement, type OfficeLiveTarget, type OfficeLogoAction } from "@/lib/api/client";
 import { downloadArtifact } from "@/lib/download";
 import { Logo } from "@/components/app/Logo";
 import { goToOfficeSlide, watchOfficeSelection, type LiveSelection } from "@/lib/editor/officeLive";
@@ -16,12 +16,36 @@ import { draggedImage, setDraggedImage, useDraggedImage, type DraggedImage } fro
 
 type Editor = { destroyEditor: () => void; requestClose: () => void; insertImage?: (command: Record<string, unknown>) => void };
 export type OfficeEditHandle = {
-  edit: (instruction: string, target?: import("@/lib/api/client").OfficeSelection | OfficeLiveTarget, logo?: import("@/lib/api/client").OfficeLogoAction) => Promise<string>;
+  edit: (instruction: string, target?: import("@/lib/api/client").OfficeSelection | OfficeLiveTarget, logo?: import("@/lib/api/client").OfficeLogoAction, image?: import("@/lib/api/client").OfficeImagePlacement) => Promise<string>;
   /** Слайд, пересобранный правкой из чата, — в открытую копию: остальные слайды не меняются. */
   applySlide: (body: OfficeApplySlide) => Promise<string>;
   /** Картинка из файлов проекта или шаблона — на текущий слайд открытого редактора. */
   insertImage: (image: DraggedImage) => Promise<void>;
+  /** Правка копии на сервере с итогом для карточки: ревизии до и после. */
+  run: (request: OfficeEditRequest) => Promise<OfficeEditOutcome>;
+  /** Отмена правки: `revision` — ревизия, которую она дала, `to` — ревизия до неё. */
+  undo: (revision: number, to: number) => Promise<OfficeEditOutcome>;
 };
+
+/** Правка копии из чата: объект по имени, логотип, картинка или текст на слайдах. */
+export type OfficeEditRequest = {
+  instruction: string;
+  live?: OfficeLiveTarget;
+  logo?: OfficeLogoAction;
+  image?: OfficeImagePlacement;
+  slides?: number[];
+  /** Таблица из приложенного xlsx или csv: файл проекта и слайд. */
+  table?: OfficeImagePlacement;
+  /** Диаграмма: из файла, по картинке графика или «сделай редактируемой». */
+  chart?: OfficeChartPlacement;
+};
+
+/** Итог правки копии: для ленты и для «Отменить». */
+export type OfficeEditOutcome = { changed: boolean; message: string; documentId: string; base: number; revision: number };
+
+export function outcomeOf(result: { document: OfficeDocument; changed: boolean; message: string }, base: number): OfficeEditOutcome {
+  return { changed: result.changed, message: result.message, documentId: result.document.id, base, revision: result.document.revision };
+}
 let sdkPromise: Promise<void> | undefined;
 
 export function loadSDK(url: string): Promise<void> {
@@ -100,6 +124,10 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
   const [closing, setClosing] = useState(false);
   const busy = useRef(false);
   const mounted = useRef(true);
+  // Готовность — и ссылкой: правка из чата сразу после предыдущей ждёт, пока редактор
+  // откроется заново, а не отказывает («Отменить» нажимают, пока он перезагружается).
+  const editorReady = useRef(false);
+  useEffect(() => { editorReady.current = ready; }, [ready]);
   const sdk = useRef<Editor | null>(null);
   const canvas = useRef<HTMLDivElement | null>(null);
   const saveAbort = useRef<AbortController | null>(null);
@@ -200,7 +228,10 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
     // закрывается, сервер пишет следующую ревизию, редактор открывается на ней на том же слайде.
     const serverEdit = async (run: (revision: number) => Promise<{ document: OfficeDocument; changed: boolean; message: string }>) => {
       if (busy.current) throw new Error("Предыдущая ИИ-правка ещё выполняется.");
-      if (!ready || error || pollError || doc?.error) throw new Error("Сначала дождитесь готовности редактора и устраните ошибку сохранения.");
+      for (let waited = 0; !editorReady.current && !closed && waited < 60000 && mounted.current; waited += 500) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      if (!(editorReady.current || closed) || error || pollError || doc?.error) throw new Error("Сначала дождитесь готовности редактора и устраните ошибку сохранения.");
       busy.current = true;
       setEditing(true);
       let saved = false;
@@ -243,14 +274,27 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
     };
     return {
       insertImage,
-      edit: async (instruction: string, target?: unknown, logo?: OfficeLogoAction) => {
+      edit: async (instruction: string, target?: unknown, logo?: OfficeLogoAction, image?: OfficeImagePlacement) => {
         const live = target && typeof target === "object" && "name" in target ? target as OfficeLiveTarget : undefined;
-        const result = await serverEdit((revision) => api.office.edit(id, revision, instruction, live, logo));
+        const result = await serverEdit((revision) => api.office.edit(id, revision, instruction, live, logo, image));
         return result.changed ? `Правка сохранена в этом PPTX · v${result.document.revision}. ${result.message}` : `Документ не изменён. ${result.message}`;
       },
       applySlide: async (body: OfficeApplySlide) => (await serverEdit((revision) => api.office.applySlide(id, revision, body))).message,
+      run: async (request: OfficeEditRequest) => {
+        let base = 0;
+        const result = await serverEdit((revision) => {
+          base = revision;
+          return api.office.edit(id, revision, request.instruction, request.live, request.logo, request.image, request.slides, request.table, request.chart);
+        });
+        return outcomeOf(result, base);
+      },
+      undo: async (revision: number, to: number) => {
+        // Сервер сверяет: копия всё ещё в ревизии, которую дала правка (после неё не правили).
+        const result = await serverEdit(() => api.office.undo(id, revision, to));
+        return outcomeOf(result, revision);
+      },
     };
-  }, [id, ready, error, pollError, doc?.error, closed, insertImage]);
+  }, [id, error, pollError, doc?.error, closed, insertImage]);
 
   useEffect(() => {
     onActiveChange?.(editing || !closed || !doc || Boolean(doc.active_key) || Boolean(pollError));
@@ -380,7 +424,6 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
       </Group>}
       {actionsTarget && createPortal(actions, actionsTarget)}
       {pollError && <Alert color="yellow">Не удаётся проверить сохранение: {pollError}</Alert>}
-      {!!doc?.normalizations?.length && <Alert color="yellow">Исправлено экранирование имён макетов в результате ONLYOFFICE. Исходный ответ сервера сохранён для диагностики; проверка оформления требуется отдельно.</Alert>}
       {(error || doc?.error) && <Alert color="red">
         {error || doc?.error}
         {startFailed && !closed && <Button ml="sm" size="xs" variant="light" onClick={() => { setError(""); setStartFailed(false); setAttempt((n) => n + 1); }}>Повторить загрузку редактора</Button>}

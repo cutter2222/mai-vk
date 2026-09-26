@@ -16,10 +16,14 @@ interface Props {
   officeActionsRef?: Ref<HTMLDivElement>;
   /** Выбор шаблона оформления: всегда в правом углу шапки. */
   templatePicker?: ReactNode;
+  /** «Открыть как презентацию»: в фоне только разбор для правок из чата, а проверяется
+   * загруженный файл как есть — ни «Выполняется» с отменой, ни «Требует проверки» здесь
+   * ничего не говорят. Остаётся только сбой. */
+  deck?: boolean;
 }
 
 /** Шапка проекта: возврат к списку, название, состояние задания, отмена, повтор и скачивание. */
-export function ProjectHeader({ project, session, onTitle, officeActionsRef, templatePicker }: Props) {
+export function ProjectHeader({ project, session, onTitle, officeActionsRef, templatePicker, deck }: Props) {
   const [title, setTitle] = useState(project.title);
   const [prevTitle, setPrevTitle] = useState(project.title);
   if (prevTitle !== project.title) {
@@ -33,6 +37,7 @@ export function ProjectHeader({ project, session, onTitle, officeActionsRef, tem
   };
 
   const { result } = session;
+  const shown = result && (!deck || result.status === "failed" || result.status === "canceled");
 
   return (
     <div className="editor-header">
@@ -60,11 +65,11 @@ export function ProjectHeader({ project, session, onTitle, officeActionsRef, tem
       <div style={{ flex: 1 }} />
       {/* Действия проекта одной группой у правого края: состояние, файлы и шаблон. */}
       <div className="editor-header-actions">
-        {result && <StatusBadge status={result.status} />}
-        {result?.partial && <Badge color="ink" variant="light">частичный результат</Badge>}
+        {shown && <StatusBadge status={result.status} />}
+        {shown && result.partial && <Badge color="ink" variant="light">частичный результат</Badge>}
         {/* Состояние отделено от всего, что правее: кнопок задания, редактора и шаблона. */}
-        {result && <div className="editor-header-sep" />}
-        {result && !session.terminal && (
+        {shown && <div className="editor-header-sep" />}
+        {result && !deck && !session.terminal && (
           <Button variant="light" color="red" size="xs" leftSection={<IconPlayerStop size={14} />} onClick={session.cancel} loading={session.busy} data-testid="cancel">
             Отменить
           </Button>

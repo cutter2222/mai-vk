@@ -7,7 +7,7 @@ import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref
 import { createPortal } from "react-dom";
 import { notifications } from "@mantine/notifications";
 
-import { OfficeEditor, type OfficeEditHandle } from "@/components/office/OfficeEditor";
+import { OfficeEditor, outcomeOf, type OfficeEditHandle } from "@/components/office/OfficeEditor";
 import { api, type OfficeApplySlide, type OfficeDocument, type OfficePreview, type OfficeObject, type OfficeSelection, type TemplateDetail } from "@/lib/api/client";
 import type { LiveSelection } from "@/lib/editor/officeLive";
 import { selectOfficeObject } from "@/lib/editor/officeSelection";
@@ -15,6 +15,7 @@ import { downloadArtifact } from "@/lib/download";
 import { VARIANT_LABELS } from "@/lib/format";
 import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
 import { setOpenDocument } from "@/lib/state/projects";
+import { slideNumbers } from "../chat/routeRunner";
 import { SlideViewer } from "../preview/SlideViewer";
 
 /** «balanced/r2/deck.pptx» → вариант и номер ревизии артефакта. */
@@ -81,7 +82,7 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
   const onModified = useCallback((value: boolean) => { if (value) setTouched(true); }, []);
   const [prevSource, setPrevSource] = useState(source);
   // Правки из чата, которые уже были, когда копия открылась: их слайды в ней уже есть.
-  const editIds = (session.result?.edits ?? []).map((e) => e.edit_job_id);
+  const editIds = [...(session.result?.edits ?? []).map((e) => e.edit_job_id), ...(session.result?.repairs ?? []).map((r) => r.repair_job_id)];
   const [knownEdits, setKnownEdits] = useState<string[]>(editIds);
   if (prevSource !== source) {
     setPrevSource(source);
@@ -205,30 +206,42 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
   // переключается на новую ревизию целиком (выше); правили — сюда переносится только этот
   // слайд: сохранение, перенос, открытие на том же слайде, ручные правки остальных на месте.
   const opening = opened;
-  const pending = templateId || !opening ? undefined : (session.result?.edits ?? []).find((e) =>
+  // Исправление находок (из чата — «исправь замечания») тоже новая ревизия: её слайды
+  // переносятся так же; номера слайдов — по плану ревизии (исправление знает их id).
+  const pendingEdit = templateId || !opening ? undefined : (session.result?.edits ?? []).find((e) =>
     !knownEdits.includes(e.edit_job_id) && e.result === "applied" && e.new_revision && e.variant_id === opening.variant && e.new_revision > opening.revision);
-  const pendingId = pending?.edit_job_id;
+  const pendingRepair = templateId || !opening || pendingEdit ? undefined : (session.result?.repairs ?? []).find((r) =>
+    !knownEdits.includes(r.repair_job_id) && r.result === "applied" && r.new_revision && r.variant_id === opening.variant && r.new_revision > opening.revision);
+  const pending = pendingEdit
+    ? { id: pendingEdit.edit_job_id, variant: pendingEdit.variant_id, revision: pendingEdit.new_revision, slides: [pendingEdit.slide_index + 1], ids: [] as string[] }
+    : pendingRepair
+      ? { id: pendingRepair.repair_job_id, variant: pendingRepair.variant_id, revision: pendingRepair.new_revision, slides: [] as number[], ids: pendingRepair.changed_slide_ids ?? [] }
+      : undefined;
+  const pendingId = pending?.id;
   const applying = useRef<string | null>(null);
   useEffect(() => {
-    if (!pending || !pending.new_revision || applying.current || editing || !doc) return;
+    if (!pending || !pending.revision || applying.current || editing || !doc) return;
     if (!touched && doc.revision === 0) return;
-    const edit = { id: pending.edit_job_id, variant: pending.variant_id, revision: pending.new_revision, slide: pending.slide_index + 1 };
+    const edit = { ...pending, revision: pending.revision };
     applying.current = edit.id;
-    const body = { job_id: source.jobId, variant_id: edit.variant, artifact_revision: edit.revision, slide: edit.slide, source_slide: edit.slide };
     void (async () => {
-      // Редактор мог как раз перезагружаться после другой правки: несколько попыток.
-      for (let attempt = 0; attempt < 6; attempt++) {
-        try {
-          await applySlide(body);
-          setAppliedArtifact(`${edit.variant}/r${edit.revision}/deck.pptx`);
-          return;
-        } catch (e) {
-          const message = e instanceof Error ? e.message : "";
-          if (attempt < 5 && /Дождитесь|ещё выполняется/.test(message)) { await new Promise((r) => setTimeout(r, 3000)); continue; }
-          notifications.show({ color: "red", title: `Слайд ${edit.slide} не перенесён в открытую презентацию`, message: `${message} Новая версия доступна кнопкой в баннере.` });
-          return;
+      const slides = edit.slides.length ? edit.slides : await slideNumbers(source.jobId, edit.variant, edit.revision, edit.ids).catch(() => [] as number[]);
+      for (const slide of slides) {
+        const body = { job_id: source.jobId, variant_id: edit.variant, artifact_revision: edit.revision, slide, source_slide: slide };
+        // Редактор мог как раз перезагружаться после другой правки: несколько попыток.
+        for (let attempt = 0; attempt < 6; attempt++) {
+          try {
+            await applySlide(body);
+            break;
+          } catch (e) {
+            const message = e instanceof Error ? e.message : "";
+            if (attempt < 5 && /Дождитесь|ещё выполняется/.test(message)) { await new Promise((r) => setTimeout(r, 3000)); continue; }
+            notifications.show({ color: "red", title: `Слайд ${slide} не перенесён в открытую презентацию`, message: `${message} Новая версия доступна кнопкой в баннере.` });
+            return;
+          }
         }
       }
+      setAppliedArtifact(`${edit.variant}/r${edit.revision}/deck.pptx`);
     })().finally(() => {
       applying.current = null;
       setKnownEdits((known) => known.includes(edit.id) ? known : [...known, edit.id]);
@@ -236,17 +249,34 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingId, touched, doc?.revision, editing]);
 
+  // Правка из чата в сохранённом превью (редактор закрыт): тот же сервер, ревизия — открытая.
+  const previewEdit = useCallback(async (call: (id: string, revision: number) => Promise<{ document: OfficeDocument; changed: boolean; message: string }>) => {
+    if (!doc || pollError) throw new Error("Дождитесь проверки сохранённой презентации.");
+    if (busy.current) throw new Error("Предыдущая ИИ-правка ещё выполняется.");
+    if (doc.active_key || doc.error) throw new Error("Завершите ручное редактирование во всех вкладках и дождитесь сохранения.");
+    if (visibleRevision !== doc.revision) throw new Error("Дождитесь актуального превью перед ИИ-правкой.");
+    busy.current = true;
+    setEditing(true);
+    try {
+      const base = doc.revision;
+      const result = await call(doc.id, base);
+      setDoc(result.document);
+      setPreviewError("");
+      return outcomeOf(result, base);
+    } finally { busy.current = false; setEditing(false); }
+  }, [doc, pollError, visibleRevision]);
+
   useImperativeHandle(editRef, () => ({ insertImage: async (image) => {
     // Картинка встаёт на текущий слайд живого редактора; в сохранённом превью слайда нет.
     if (!manual || !manualEdit.current) throw new Error("Откройте редактор слайдов, чтобы вставить картинку.");
     return manualEdit.current.insertImage(image);
-  }, applySlide, edit: async (instruction, target, logo) => {
+  }, applySlide, edit: async (instruction, target, logo, image) => {
     const live = target && "name" in target ? target : undefined;
     const picked = target && "documentId" in target ? target : undefined;
     if (manual) {
       if (picked && !logo) throw new Error("Для правки выбранных объектов откройте сохранённое превью и выберите их заново.");
       if (!manualEdit.current) throw new Error("Дождитесь загрузки редактора.");
-      return manualEdit.current.edit(instruction, live, logo);
+      return manualEdit.current.edit(instruction, live, logo, image);
     }
     if (live) throw new Error("Редактор слайдов закрыт: выделите объект заново.");
     if (!doc || pollError) throw new Error("Дождитесь проверки сохранённой презентации.");
@@ -257,13 +287,26 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
     busy.current = true;
     setEditing(true);
     try {
-      const targets = logo ? undefined : picked?.objects.map(({ slide, shape_id }) => ({ slide, shape_id }));
-      const result = await api.office.edit(doc.id, doc.revision, instruction, targets?.length === 1 ? targets[0] : targets, logo);
+      const targets = logo || image ? undefined : picked?.objects.map(({ slide, shape_id }) => ({ slide, shape_id }));
+      const result = await api.office.edit(doc.id, doc.revision, instruction, targets?.length === 1 ? targets[0] : targets, logo, image);
       setDoc(result.document);
       setPreviewError("");
       return result.changed ? `Правка сохранена в этом PPTX · v${result.document.revision}. ${result.message}` : `Документ не изменён. ${result.message}`;
     } finally { busy.current = false; setEditing(false); }
-  } }), [manual, doc, pollError, visibleRevision, index, applySlide]);
+  }, run: async (request) => {
+    if (manual) {
+      if (!manualEdit.current) throw new Error("Дождитесь загрузки редактора.");
+      return manualEdit.current.run(request);
+    }
+    return previewEdit((id, revision) => api.office.edit(id, revision, request.instruction, request.live, request.logo, request.image, request.slides, request.table, request.chart));
+  }, undo: async (revision, to) => {
+    if (manual) {
+      if (!manualEdit.current) throw new Error("Дождитесь загрузки редактора.");
+      return manualEdit.current.undo(revision, to);
+    }
+    const outcome = await previewEdit((id) => api.office.undo(id, revision, to));
+    return { ...outcome, base: revision };
+  } }), [manual, doc, pollError, visibleRevision, index, applySlide, previewEdit]);
 
   const selectable = !manual && !editing && !pollError && !doc?.active_key && !doc?.error && visiblePreview?.revision === doc?.revision && objectMap?.documentId === doc?.id && objectMap?.revision === doc?.revision;
   const currentObjects = selectable ? objectMap?.objects.filter((obj) => obj.slide === index + 1) ?? [] : [];
@@ -316,7 +359,7 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
     {switcher && (actionsTarget ? createPortal(switcher, actionsTarget) : <Group p="xs">{switcher}</Group>)}
     {!manual && (actionsTarget ? createPortal(actions, actionsTarget) : actions)}
     {templateId && <Text size="xs" c="dimmed" p="xs">Рабочая копия шаблона · ИИ-правки сохраняются только в этом проекте. Исходный шаблон не изменяется.</Text>}
-    {!templateId && !session.terminal && <Text size="xs" c="dimmed" p="xs" role="status">Готовый вариант уже доступен. Остальные варианты и проверки выполняются в фоне; этот PPTX не заменяется.</Text>}
+    {!session.terminal && variants.length > 1 && variants.some((v) => !v.artifacts?.pptx && v.status !== "failed") && <Text size="xs" c="dimmed" p="xs" role="status">Остальные варианты ещё собираются — их можно будет открыть переключателем вверху.</Text>}
     {changed && <Alert color="blue" title="Доступна другая версия презентации">
       Ручные и ИИ-правки остаются в текущем PPTX и не переносятся в другую сборку.
       <Button ml="sm" size="xs" disabled={manual || editing || !doc || Boolean(doc.active_key) || Boolean(doc.error) || Boolean(pollError)} onClick={() => {

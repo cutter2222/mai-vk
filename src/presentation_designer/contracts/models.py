@@ -1883,6 +1883,10 @@ class SlideRef(BaseModel):
     slide_index: int = Field(..., ge=0)
 
 
+class Slide2(RootModel[int]):
+    root: int = Field(..., ge=1)
+
+
 class Event(BaseModel):
     """
     Событие ленты чата: сообщение пользователя или карточка шага. Карточка хранит только идентификаторы и читает живое состояние
@@ -1907,6 +1911,7 @@ class Event(BaseModel):
         "job_card",
         "audit_card",
         "edit_card",
+        "edit_result",
     ]
     text: str | None = None
     file_ids: list[Id] | None = None
@@ -1949,6 +1954,26 @@ class Event(BaseModel):
     Стабильный идентификатор. Не содержит пробелов и путей.
     """
     slide_index: int | None = Field(None, ge=0)
+    document_id: str | None = Field(None, pattern="^[A-Za-z0-9_.:-]{1,80}$")
+    """
+    для edit_result: офисная копия, которую изменила правка
+    """
+    revision: int | None = Field(None, ge=0)
+    """
+    для edit_result: ревизия копии после правки
+    """
+    base_revision: int | None = Field(None, ge=0)
+    """
+    для edit_result: ревизия копии до правки — к ней возвращает «Отменить»
+    """
+    slides: list[Slide2] | None = None
+    """
+    для edit_result: слайды правки (с единицы)
+    """
+    undone: bool | None = None
+    """
+    правка отменена («Отменить» в карточке или «отмени» словом)
+    """
 
 
 class SettingsDraft(BaseModel):
@@ -3255,7 +3280,7 @@ class Project(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    schema_version: Literal["1.5"]
+    schema_version: Literal["1.6"]
     project_id: str = Field(..., pattern="^[A-Za-z0-9_.:-]{1,80}$")
     """
     Стабильный идентификатор. Не содержит пробелов и путей.

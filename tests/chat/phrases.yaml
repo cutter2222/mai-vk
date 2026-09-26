@@ -1,0 +1,81 @@
+# Золотой набор фраз роутера чата (этап 37, docs/chat-editing-plan.md, раздел 4.8).
+# Колода — tests/chat/deck.json (8 слайдов). Поля: text; chip_slide / chip_object (имя фигуры
+# выделения) / pictures (число картинок во вложении) / can_rebuild; expect — kind и, для run,
+# допустимые actions, slides и object (имя фигуры). source: rules — решает правило без модели,
+# model — модель на записанных ответах. clear: true — однозначная фраза, поддержанная
+# исполнителями: такие должны исполняться без вопроса (цель — не меньше 90 %).
+
+- {text: "отмени", source: rules, clear: true, expect: {kind: run, actions: [undo]}}
+- {text: "верни как было", source: rules, clear: true, expect: {kind: run, actions: [undo]}}
+- {text: "Отмени последнюю правку", source: rules, clear: true, expect: {kind: run, actions: [undo]}}
+- {text: "исправь все замечания", source: rules, clear: true, expect: {kind: run, actions: [repair], slides: []}}
+- {text: "исправь замечания на слайде 3", source: rules, clear: true, expect: {kind: run, actions: [repair], slides: [3]}}
+- {text: "убери логотип", source: rules, clear: true, expect: {kind: run, actions: [logo]}}
+- {text: "замени логотип на наш", pictures: 1, source: rules, clear: true, expect: {kind: run, actions: [logo]}}
+- {text: "/edit замени «школ» на «колледжей»", source: rules, clear: true, expect: {kind: run, actions: [deck_text]}}
+- {text: "на слайде 3 сделай две колонки", source: rules, clear: true, expect: {kind: run, actions: [slide_rebuild], slides: [3]}}
+- {text: "на слайде три сделай две колонки", source: rules, clear: true, expect: {kind: run, actions: [slide_rebuild], slides: [3]}}
+- {text: "на третьем слайде сократи текст", source: rules, clear: true, expect: {kind: run, actions: [slide_rebuild], slides: [3]}}
+- {text: "слайды 3 и 5 сделай короче", source: rules, clear: true, expect: {kind: run, actions: [slide_rebuild], slides: [3, 5]}}
+- {text: "на слайдах 2–4 сократи текст", source: rules, clear: true, expect: {kind: run, actions: [slide_rebuild], slides: [2, 3, 4]}}
+- {text: "на последнем слайде сделай текст теплее", source: rules, clear: true, expect: {kind: run, actions: [slide_rebuild], slides: [8]}}
+- {text: "на слайде 12 сократи текст", source: rules, expect: {kind: refusal}}
+- {text: "на двадцать пятом слайде сократи текст", source: rules, expect: {kind: refusal}}
+- {text: "сделай подачу карточками", chip_slide: 4, source: rules, clear: true, expect: {kind: run, actions: [slide_rebuild], slides: [4]}}
+- {text: "сократи вдвое", chip_slide: 2, chip_object: "Body 2", source: rules, clear: true, expect: {kind: run, actions: [object_edit], slides: [2], object: "Body 2"}}
+- {text: "что это за текст?", chip_slide: 2, chip_object: "Body 2", source: rules, expect: {kind: answer}}
+- {text: "что на слайде 3?", source: rules, expect: {kind: answer}}
+- {text: "сколько слайдов в презентации?", source: rules, expect: {kind: answer}}
+- {text: "вставь на слайд 2 справа", pictures: 1, source: rules, clear: true, expect: {kind: run, actions: [image], slides: [2]}}
+- {text: "поставь сюда", pictures: 1, chip_slide: 6, source: rules, clear: true, expect: {kind: run, actions: [image], slides: [6]}}
+- {text: "вставь картинку", pictures: 1, source: rules, expect: {kind: question}}
+- {text: "а можно на слайде 3 две колонки?", source: rules, clear: true, expect: {kind: run, actions: [slide_rebuild], slides: [3]}}
+- {text: "По шаблону", source: rules, expect: {kind: answer}}
+- {text: "сделай подачу списком", chip_slide: 3, can_rebuild: false, source: rules, clear: true, expect: {kind: run, actions: [deck_text], slides: [3]}}
+- {text: "крупнее", chip_slide: 2, chip_object: "Body 2", source: rules, clear: true, expect: {kind: run, actions: [object_edit], slides: [2], object: "Body 2"}}
+- {text: "сделай синим", chip_slide: 1, chip_object: "Title 1", source: rules, clear: true, expect: {kind: run, actions: [object_edit], slides: [1], object: "Title 1"}}
+
+- {text: "сократи заголовок на слайде 4", source: model, clear: true, expect: {kind: run, actions: [object_edit], slides: [4], object: "Title 1"}}
+- {text: "на слайде про выручку сделай подачу таблицей", source: model, clear: true, expect: {kind: run, actions: [slide_rebuild], slides: [4]}}
+- {text: "поменяй заголовок на титульном на «Школа 2.0»", source: model, clear: true, expect: {kind: run, actions: [object_edit], slides: [1], object: "Title 1"}}
+- {text: "в таблице тарифов поменяй цену базового на 1490 ₽", source: model, clear: true, expect: {kind: run, actions: [object_edit, slide_rebuild], slides: [6]}}
+- {text: "везде замени «школ» на «колледжей»", source: model, clear: true, expect: {kind: run, actions: [deck_text]}}
+- {text: "исправь опечатки во всей презентации", source: model, clear: true, expect: {kind: run, actions: [deck_text]}}
+- {text: "добавь анимацию на слайд 2", source: model, expect: {kind: refusal}}
+- {text: "сгенерируй картинку ракеты", source: model, expect: {kind: refusal}}
+- {text: "поменяй шаблон на VK Tech", source: model, expect: {kind: refusal}}
+- {text: "удали слайд 5", source: model, expect: {kind: refusal}}
+- {text: "сделай заголовок на слайде 2 красным", source: model, clear: true, expect: {kind: run, actions: [object_edit], slides: [2], object: "Title 1"}}
+- {text: "поправь это", source: model, expect: {kind: question}}
+- {text: "на слайде с командой добавь Анну Иванову", source: model, clear: true, expect: {kind: run, actions: [slide_rebuild, object_edit], slides: [5]}}
+- {text: "в плане внедрения переименуй второй шаг в «Регион Москва»", source: model, clear: true, expect: {kind: run, actions: [object_edit, slide_rebuild], slides: [7]}}
+- {text: "на слайде 2 передвинь картинку правее", source: model, clear: true, expect: {kind: run, actions: [object_edit], slides: [2], object: "Picture 4"}}
+- {text: "сократи подзаголовок на первом слайде", source: model, clear: true, expect: {kind: run, actions: [object_edit], slides: [1], object: "Subtitle 2"}}
+- {text: "на слайде «Решение» замени «Единый журнал» на «Электронный журнал»", source: model, clear: true, expect: {kind: run, actions: [object_edit, slide_rebuild, deck_text], slides: [3]}}
+- {text: "на слайде 4 подпись справа сделай короче", source: model, clear: true, expect: {kind: run, actions: [object_edit], slides: [4], object: "Text 7"}}
+- {text: "удали подзаголовок на первом слайде", source: model, clear: true, expect: {kind: run, actions: [object_edit], slides: [1], object: "Subtitle 2"}}
+- {text: "на слайде 3 добавь четвёртую карточку «Аналитика»", source: model, clear: true, expect: {kind: run, actions: [object_edit, slide_rebuild], slides: [3]}}
+- {text: "добавь на слайд 2 пункт про сроки внедрения", source: model, clear: true, expect: {kind: run, actions: [object_edit, slide_rebuild], slides: [2]}}
+- {text: "на слайде 2 убери второй пункт", source: model, clear: true, expect: {kind: run, actions: [object_edit, slide_rebuild], slides: [2]}}
+- {text: "подпиши картинку на слайде 2: «Фото: пресс-служба»", source: model, clear: true, expect: {kind: run, actions: [object_edit], slides: [2], object: "Picture 4"}}
+- {text: "заголовок на слайде 5 крупнее", source: model, clear: true, expect: {kind: run, actions: [object_edit], slides: [5], object: "Title 1"}}
+- {text: "добавь иконку ракеты на слайд 3", source: model, expect: {kind: refusal}}
+- {text: "в таблице тарифов добавь строку «Премиум — 49 000 ₽»", source: model, clear: true, expect: {kind: run, actions: [object_edit], slides: [6], object: "Table 8"}}
+- {text: "отсортируй тарифы по цене по убыванию", source: model, clear: true, expect: {kind: run, actions: [object_edit], slides: [6], object: "Table 8"}}
+- {text: "выдели в таблице тарифов строку «Школа»", source: model, clear: true, expect: {kind: run, actions: [object_edit], slides: [6], object: "Table 8"}}
+- {text: "вот таблица — поставь на слайд 6 справа", sheets: 1, source: rules, clear: true, expect: {kind: run, actions: [table], slides: [6]}}
+- {text: "поставь эту таблицу", sheets: 1, source: rules, expect: {kind: question}}
+# Этап 40: диаграммы.
+- {text: "по этому файлу построй график на слайд 4 справа", sheets: 1, source: rules, clear: true, expect: {kind: run, actions: [chart], slides: [4]}}
+- {text: "вот график — сделай такой же на слайде 7", pictures: 1, source: rules, clear: true, expect: {kind: run, actions: [chart], slides: [7]}}
+- {text: "вставь картинку с графиком на слайд 2", pictures: 1, source: rules, clear: true, expect: {kind: run, actions: [image], slides: [2]}}
+- {text: "сделай диаграмму на слайде 4 редактируемой", source: rules, clear: true, expect: {kind: run, actions: [chart], slides: [4]}}
+- {text: "построй диаграмму по файлу", sheets: 1, source: rules, expect: {kind: question}}
+- {text: "на слайде 4 за 2024 — 150, а не 120", source: rules, clear: true, expect: {kind: run, actions: [object_edit], slides: [4], object: "Chart 6"}}
+- {text: "на слайде 6 покажи тарифы графиком", can_rebuild: false, source: rules, clear: true, expect: {kind: run, actions: [object_edit], slides: [6], object: "Table 8"}}
+- {text: "на слайде 4 покажи данные таблицей", source: rules, clear: true, expect: {kind: run, actions: [slide_rebuild], slides: [4]}}
+- {text: "сделай диаграмму выручки круговой", source: model, clear: true, expect: {kind: run, actions: [object_edit], slides: [4], object: "Chart 6"}}
+- {text: "на графике выручки убери легенду", source: model, clear: true, expect: {kind: run, actions: [object_edit], slides: [4], object: "Chart 6"}}
+- {text: "выдели на диаграмме 2024 год", source: model, clear: true, expect: {kind: run, actions: [object_edit], slides: [4], object: "Chart 6"}}
+- {text: "добавь в диаграмму выручки 2025 год — 180", source: model, clear: true, expect: {kind: run, actions: [object_edit], slides: [4], object: "Chart 6"}}
+- {text: "увеличь все значения на графике на 10 %", source: model, expect: {kind: refusal}}

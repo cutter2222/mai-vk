@@ -40,6 +40,47 @@ export interface OfficeLogoAction {
   action: "replace" | "remove";
   file_id?: string;
 }
+
+/** Плашка над полем ввода для роутера: слайд и, если выделен, объект живого редактора. */
+export interface RouteChip {
+  slide: number;
+  object?: { name: string; label?: string; box?: { x: number; y: number; width: number; height: number }; in_group?: boolean };
+}
+
+/** Шаг решения роутера: какой исполнитель что делает. Номера слайдов — с единицы. */
+export interface RouteStep {
+  action: "object_edit" | "slide_rebuild" | "deck_text" | "logo" | "image" | "table" | "chart" | "repair" | "undo";
+  slides: number[];
+  instruction?: string;
+  target?: { slide: number; name: string; label?: string; box?: { x: number; y: number; width: number; height: number }; in_group?: boolean };
+  file_id?: string;
+  logo?: "replace" | "remove";
+  /** Диаграмма: из файла, по картинке графика или «сделай редактируемой». */
+  source?: "file" | "image" | "editable";
+}
+
+/** Решение роутера: шаги, вопрос с кнопками, отказ или ответ ассистента. */
+export interface RouteDecision {
+  kind: "run" | "question" | "refusal" | "answer";
+  steps: RouteStep[];
+  text: string;
+  options: string[];
+  source: "rules" | "model";
+  normalized: string;
+  event?: Event;
+}
+
+/** Картинка из сообщения — на слайд копии: место названо словами или выделено в редакторе. */
+export interface OfficeImagePlacement {
+  file_id: string;
+  slide: number;
+}
+/** Новая диаграмма на слайд копии: из xlsx/csv, по картинке графика или из фигур и картинок слайда. */
+export interface OfficeChartPlacement {
+  source: "file" | "image" | "editable";
+  slide: number;
+  file_id?: string;
+}
 /** Картинка для текущего слайда редактора: файл проекта или ресурс шаблона. */
 export type OfficeImageSource =
   | { project_id: string; file_id: string }
@@ -233,7 +274,9 @@ export const api = {
     preview: (id: string, revision: number) => request<OfficePreview>(`/office/documents/${encodeURIComponent(id)}/preview/${revision}`),
     objects: (id: string, revision: number) => request<{ revision: number; objects: OfficeObject[] }>(`/office/documents/${encodeURIComponent(id)}/objects/${revision}`),
     previewUrl: (id: string, revision: number, name: string) => `${API_BASE}/office/documents/${encodeURIComponent(id)}/preview/${revision}/${encodeURIComponent(name)}`,
-    edit: (id: string, revision: number, instruction: string, target?: OfficeObjectTarget | OfficeObjectTarget[] | OfficeLiveTarget, logo?: OfficeLogoAction) => request<{ document: OfficeDocument; changed: boolean; message: string }>(`/office/documents/${encodeURIComponent(id)}/edit`, json({ revision, instruction, ...(logo ? { logo } : Array.isArray(target) ? { targets: target } : target && "name" in target ? { live_target: target } : target ? { target } : {}) })),
+    edit: (id: string, revision: number, instruction: string, target?: OfficeObjectTarget | OfficeObjectTarget[] | OfficeLiveTarget, logo?: OfficeLogoAction, image?: OfficeImagePlacement, slides?: number[], table?: OfficeImagePlacement, chart?: OfficeChartPlacement) => request<{ document: OfficeDocument; changed: boolean; message: string }>(`/office/documents/${encodeURIComponent(id)}/edit`, json({ revision, instruction, ...(logo ? { logo } : Array.isArray(target) ? { targets: target } : target && "name" in target ? { live_target: target } : target ? { target } : {}), ...(image ? { image } : {}), ...(table ? { table } : {}), ...(chart ? { chart } : {}), ...(slides?.length && !target && !logo && !image && !table && !chart ? { slides } : {}) })),
+    /** Отмена правки копии: прежние байты новой ревизией, если после правки копию не меняли. */
+    undo: (id: string, revision: number, toRevision: number) => request<{ document: OfficeDocument; changed: boolean; message: string }>(`/office/documents/${encodeURIComponent(id)}/undo`, json({ revision, to_revision: toRevision })),
     /** Слайд, пересобранный правкой из чата, встаёт в офисную копию; остальные слайды не меняются. */
     applySlide: (id: string, revision: number, body: OfficeApplySlide) => request<{ document: OfficeDocument; changed: boolean; message: string }>(`/office/documents/${encodeURIComponent(id)}/apply-slide`, json({ revision, ...body })),
     config: (id: string) => request<{ script_url: string; config: Record<string, unknown> }>(`/office/documents/${encodeURIComponent(id)}/config`, json({})),
@@ -316,6 +359,8 @@ export const api = {
     extract: (text: string, brief?: Record<string, unknown>) => request<BriefExtractResponse>("/brief", json({ text, brief })),
   },
 
+  // text и file_ids — только для отладки и заглушек: сервер разбирает сохранённое сообщение.
+  chatRoute: (projectId: string, eventId: string, office?: OpenOfficeDocument | null, chip?: RouteChip | null, currentSlide?: number | null, echo?: { text: string; file_ids: string[] }) => request<RouteDecision>("/chat/route", json({ project_id: projectId, event_id: eventId, ...(office ? { office } : {}), ...(chip ? { chip } : {}), ...(currentSlide ? { current_slide: currentSlide } : {}), ...(echo ?? {}) })),
   chat: (projectId: string, eventId: string, office?: OpenOfficeDocument | null) => request<{ reply: string; options: string[]; source: "model" | "rules"; event: Event }>("/chat", json({ project_id: projectId, event_id: eventId, ...(office ? { office } : {}) })),
 
   content: {
@@ -347,6 +392,12 @@ export const api = {
       request<{ edit_job_id: string }>(
         `/generations/${encodeURIComponent(jobId)}/variants/${encodeURIComponent(variantId)}/edits`,
         json({ base_revision: baseRevision, slide_index: slideIndex, instruction }),
+      ),
+    /** Отмена последней правки варианта: файлы прежней ревизии новой ревизией, запись в edits[]. */
+    revert: (jobId: string, variantId: string, baseRevision: number, toRevision: number, slideIndex: number) =>
+      request<{ edit_job_id: string }>(
+        `/generations/${encodeURIComponent(jobId)}/variants/${encodeURIComponent(variantId)}/revert`,
+        json({ base_revision: baseRevision, to_revision: toRevision, slide_index: slideIndex }),
       ),
     /** Ручные правки из визуального редактора: новая ревизия варианта без модели (документ slide_patch). */
     patch: (jobId: string, variantId: string, baseRevision: number, slides: SlidePatch["slides"], order?: string[], templateLogo?: "keep" | "drop") =>

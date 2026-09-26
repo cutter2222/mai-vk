@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-26T09:10:27Z",
+ "entry_version": 1,
+ "key": "6e8d4b1f45b304e02ee8b2cfd2d920097d415791043a81358c42d95b08cde7e9",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4643,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 932,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"message\": \"на слайде 3 добавь четвёртую карточку «Аналитика»\", \"normalized\": \"на слайде 3 добавь 4-й карточку «Аналитика»\", \"slide_count\": 8, \"can_rebuild\": true, \"outline\": [\"1. «Цифровая платформа",
+  "prompt": [
+   "chat.route",
+   "0.1.3"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "chat_router",
+   "0.1.3"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 1752,
+  "model": "qwen3.8-27b",
+  "provider": "qwen-api",
+  "text": "{\"kind\": \"run\", \"steps\": [{\"action\": \"object_edit\", \"slides\": [3], \"object_id\": \"12\", \"instruction\": \"Добавить ещё одну карточку в ряд рядом с «Кабинет родителя» с текстом «Аналитика»\"}], \"text\": \"Добавляю четвёртую карточку «Аналитика» на слайд 3.\" , \"options\": []}",
+  "usage": {
+   "completion_tokens": 97,
+   "prompt_tokens": 1756,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

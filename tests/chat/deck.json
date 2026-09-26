@@ -1,0 +1,974 @@
+{
+ "schema_version": "1.0",
+ "source": {
+  "kind": "office",
+  "ids": {
+   "document_id": "doc_test"
+  },
+  "revision": 1,
+  "pptx_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+ },
+ "slide_size": {
+  "width_emu": 12192000,
+  "height_emu": 6858000,
+  "aspect_ratio": 1.7778
+ },
+ "slides": [
+  {
+   "index": 1,
+   "sld_id": 256,
+   "role": "title",
+   "layout": "Layout",
+   "title": "Цифровая платформа для школ",
+   "hidden": false,
+   "background": {
+    "kind": "inherited"
+   },
+   "notes": "",
+   "objects": [
+    {
+     "address": {
+      "object_id": "2",
+      "group_path": []
+     },
+     "name": "Title 1",
+     "kind": "text",
+     "role": "title",
+     "bbox": {
+      "x": 0.08,
+      "y": 0.35,
+      "width": 0.6,
+      "height": 0.15
+     },
+     "fixed": false,
+     "text": {
+      "plain": "Цифровая платформа для школ",
+      "paragraphs": [
+       {
+        "text": "Цифровая платформа для школ",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     }
+    },
+    {
+     "address": {
+      "object_id": "3",
+      "group_path": []
+     },
+     "name": "Subtitle 2",
+     "kind": "text",
+     "role": "subtitle",
+     "bbox": {
+      "x": 0.08,
+      "y": 0.55,
+      "width": 0.5,
+      "height": 0.08
+     },
+     "fixed": false,
+     "text": {
+      "plain": "Иван Петров, директор по продукту",
+      "paragraphs": [
+       {
+        "text": "Иван Петров, директор по продукту",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     }
+    },
+    {
+     "address": {
+      "object_id": "4",
+      "group_path": []
+     },
+     "name": "Logo",
+     "kind": "picture",
+     "role": "logo",
+     "bbox": {
+      "x": 0.9,
+      "y": 0.9,
+      "width": 0.06,
+      "height": 0.04
+     },
+     "fixed": true
+    }
+   ]
+  },
+  {
+   "index": 2,
+   "sld_id": 257,
+   "role": "freeform",
+   "layout": "Layout",
+   "title": "Проблема",
+   "hidden": false,
+   "background": {
+    "kind": "inherited"
+   },
+   "notes": "",
+   "objects": [
+    {
+     "address": {
+      "object_id": "2",
+      "group_path": []
+     },
+     "name": "Title 1",
+     "kind": "text",
+     "role": "title",
+     "bbox": {
+      "x": 0.06,
+      "y": 0.06,
+      "width": 0.8,
+      "height": 0.1
+     },
+     "fixed": false,
+     "text": {
+      "plain": "Проблема",
+      "paragraphs": [
+       {
+        "text": "Проблема",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     }
+    },
+    {
+     "address": {
+      "object_id": "3",
+      "group_path": []
+     },
+     "name": "Body 2",
+     "kind": "text",
+     "role": "body",
+     "bbox": {
+      "x": 0.06,
+      "y": 0.22,
+      "width": 0.55,
+      "height": 0.6
+     },
+     "fixed": false,
+     "text": {
+      "plain": "Учителя тратят 12 часов в неделю на отчёты\nДанные разбросаны по пяти системам\nРодители не видят прогресс",
+      "paragraphs": [
+       {
+        "text": "Учителя тратят 12 часов в неделю на отчёты",
+        "level": 0,
+        "bullet": false
+       },
+       {
+        "text": "Данные разбросаны по пяти системам",
+        "level": 0,
+        "bullet": false
+       },
+       {
+        "text": "Родители не видят прогресс",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     }
+    },
+    {
+     "address": {
+      "object_id": "5",
+      "group_path": []
+     },
+     "name": "Picture 4",
+     "kind": "picture",
+     "role": "image",
+     "bbox": {
+      "x": 0.66,
+      "y": 0.22,
+      "width": 0.3,
+      "height": 0.6
+     },
+     "fixed": false
+    },
+    {
+     "address": {
+      "object_id": "4",
+      "group_path": []
+     },
+     "name": "Logo",
+     "kind": "picture",
+     "role": "logo",
+     "bbox": {
+      "x": 0.9,
+      "y": 0.9,
+      "width": 0.06,
+      "height": 0.04
+     },
+     "fixed": true
+    }
+   ]
+  },
+  {
+   "index": 3,
+   "sld_id": 258,
+   "role": "freeform",
+   "layout": "Layout",
+   "title": "Решение",
+   "hidden": false,
+   "background": {
+    "kind": "inherited"
+   },
+   "notes": "",
+   "objects": [
+    {
+     "address": {
+      "object_id": "2",
+      "group_path": []
+     },
+     "name": "Title 1",
+     "kind": "text",
+     "role": "title",
+     "bbox": {
+      "x": 0.06,
+      "y": 0.06,
+      "width": 0.8,
+      "height": 0.1
+     },
+     "fixed": false,
+     "text": {
+      "plain": "Решение",
+      "paragraphs": [
+       {
+        "text": "Решение",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     }
+    },
+    {
+     "address": {
+      "object_id": "10",
+      "group_path": []
+     },
+     "name": "Card 1",
+     "kind": "text",
+     "role": "body",
+     "bbox": {
+      "x": 0.06,
+      "y": 0.3,
+      "width": 0.27,
+      "height": 0.4
+     },
+     "fixed": false,
+     "text": {
+      "plain": "Единый журнал",
+      "paragraphs": [
+       {
+        "text": "Единый журнал",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     }
+    },
+    {
+     "address": {
+      "object_id": "11",
+      "group_path": []
+     },
+     "name": "Card 2",
+     "kind": "text",
+     "role": "body",
+     "bbox": {
+      "x": 0.37,
+      "y": 0.3,
+      "width": 0.27,
+      "height": 0.4
+     },
+     "fixed": false,
+     "text": {
+      "plain": "Отчёты в один клик",
+      "paragraphs": [
+       {
+        "text": "Отчёты в один клик",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     }
+    },
+    {
+     "address": {
+      "object_id": "12",
+      "group_path": []
+     },
+     "name": "Card 3",
+     "kind": "text",
+     "role": "body",
+     "bbox": {
+      "x": 0.68,
+      "y": 0.3,
+      "width": 0.27,
+      "height": 0.4
+     },
+     "fixed": false,
+     "text": {
+      "plain": "Кабинет родителя",
+      "paragraphs": [
+       {
+        "text": "Кабинет родителя",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     }
+    },
+    {
+     "address": {
+      "object_id": "4",
+      "group_path": []
+     },
+     "name": "Logo",
+     "kind": "picture",
+     "role": "logo",
+     "bbox": {
+      "x": 0.9,
+      "y": 0.9,
+      "width": 0.06,
+      "height": 0.04
+     },
+     "fixed": true
+    }
+   ]
+  },
+  {
+   "index": 4,
+   "sld_id": 259,
+   "role": "chart",
+   "layout": "Layout",
+   "title": "Выручка растёт",
+   "hidden": false,
+   "background": {
+    "kind": "inherited"
+   },
+   "notes": "",
+   "objects": [
+    {
+     "address": {
+      "object_id": "2",
+      "group_path": []
+     },
+     "name": "Title 1",
+     "kind": "text",
+     "role": "title",
+     "bbox": {
+      "x": 0.06,
+      "y": 0.06,
+      "width": 0.8,
+      "height": 0.1
+     },
+     "fixed": false,
+     "text": {
+      "plain": "Выручка растёт",
+      "paragraphs": [
+       {
+        "text": "Выручка растёт",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     }
+    },
+    {
+     "address": {
+      "object_id": "7",
+      "group_path": []
+     },
+     "name": "Chart 6",
+     "kind": "chart",
+     "role": "chart",
+     "bbox": {
+      "x": 0.06,
+      "y": 0.2,
+      "width": 0.6,
+      "height": 0.7
+     },
+     "fixed": false,
+     "chart": {
+      "type": "column",
+      "categories": [
+       "2022",
+       "2023",
+       "2024"
+      ],
+      "series": [
+       {
+        "name": "Выручка, млн ₽",
+        "values": [
+         40,
+         75,
+         120
+        ]
+       }
+      ],
+      "values_from": "cache"
+     }
+    },
+    {
+     "address": {
+      "object_id": "8",
+      "group_path": []
+     },
+     "name": "Text 7",
+     "kind": "text",
+     "role": "body",
+     "bbox": {
+      "x": 0.7,
+      "y": 0.3,
+      "width": 0.25,
+      "height": 0.3
+     },
+     "fixed": false,
+     "text": {
+      "plain": "Рост в 3 раза за два года",
+      "paragraphs": [
+       {
+        "text": "Рост в 3 раза за два года",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     }
+    },
+    {
+     "address": {
+      "object_id": "4",
+      "group_path": []
+     },
+     "name": "Logo",
+     "kind": "picture",
+     "role": "logo",
+     "bbox": {
+      "x": 0.9,
+      "y": 0.9,
+      "width": 0.06,
+      "height": 0.04
+     },
+     "fixed": true
+    }
+   ]
+  },
+  {
+   "index": 5,
+   "sld_id": 260,
+   "role": "freeform",
+   "layout": "Layout",
+   "title": "Команда",
+   "hidden": false,
+   "background": {
+    "kind": "inherited"
+   },
+   "notes": "",
+   "objects": [
+    {
+     "address": {
+      "object_id": "2",
+      "group_path": []
+     },
+     "name": "Title 1",
+     "kind": "text",
+     "role": "title",
+     "bbox": {
+      "x": 0.06,
+      "y": 0.06,
+      "width": 0.8,
+      "height": 0.1
+     },
+     "fixed": false,
+     "text": {
+      "plain": "Команда",
+      "paragraphs": [
+       {
+        "text": "Команда",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     }
+    },
+    {
+     "address": {
+      "object_id": "20",
+      "group_path": []
+     },
+     "name": "Name 1",
+     "kind": "text",
+     "role": "name",
+     "bbox": {
+      "x": 0.06,
+      "y": 0.6,
+      "width": 0.25,
+      "height": 0.06
+     },
+     "fixed": false,
+     "text": {
+      "plain": "Иван Петров",
+      "paragraphs": [
+       {
+        "text": "Иван Петров",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     }
+    },
+    {
+     "address": {
+      "object_id": "21",
+      "group_path": []
+     },
+     "name": "Name 2",
+     "kind": "text",
+     "role": "name",
+     "bbox": {
+      "x": 0.38,
+      "y": 0.6,
+      "width": 0.25,
+      "height": 0.06
+     },
+     "fixed": false,
+     "text": {
+      "plain": "Мария Смирнова",
+      "paragraphs": [
+       {
+        "text": "Мария Смирнова",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     }
+    },
+    {
+     "address": {
+      "object_id": "22",
+      "group_path": []
+     },
+     "name": "Name 3",
+     "kind": "text",
+     "role": "name",
+     "bbox": {
+      "x": 0.7,
+      "y": 0.6,
+      "width": 0.25,
+      "height": 0.06
+     },
+     "fixed": false,
+     "text": {
+      "plain": "Олег Козлов",
+      "paragraphs": [
+       {
+        "text": "Олег Козлов",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     }
+    },
+    {
+     "address": {
+      "object_id": "4",
+      "group_path": []
+     },
+     "name": "Logo",
+     "kind": "picture",
+     "role": "logo",
+     "bbox": {
+      "x": 0.9,
+      "y": 0.9,
+      "width": 0.06,
+      "height": 0.04
+     },
+     "fixed": true
+    }
+   ]
+  },
+  {
+   "index": 6,
+   "sld_id": 261,
+   "role": "table",
+   "layout": "Layout",
+   "title": "Тарифы",
+   "hidden": false,
+   "background": {
+    "kind": "inherited"
+   },
+   "notes": "",
+   "objects": [
+    {
+     "address": {
+      "object_id": "2",
+      "group_path": []
+     },
+     "name": "Title 1",
+     "kind": "text",
+     "role": "title",
+     "bbox": {
+      "x": 0.06,
+      "y": 0.06,
+      "width": 0.8,
+      "height": 0.1
+     },
+     "fixed": false,
+     "text": {
+      "plain": "Тарифы",
+      "paragraphs": [
+       {
+        "text": "Тарифы",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     }
+    },
+    {
+     "address": {
+      "object_id": "9",
+      "group_path": []
+     },
+     "name": "Table 8",
+     "kind": "table",
+     "role": "table",
+     "bbox": {
+      "x": 0.06,
+      "y": 0.2,
+      "width": 0.88,
+      "height": 0.6
+     },
+     "fixed": false,
+     "table": {
+      "rows": [
+       [
+        "Тариф",
+        "Цена"
+       ],
+       [
+        "Базовый",
+        "990 ₽"
+       ],
+       [
+        "Школа",
+        "29 000 ₽"
+       ]
+      ]
+     }
+    },
+    {
+     "address": {
+      "object_id": "4",
+      "group_path": []
+     },
+     "name": "Logo",
+     "kind": "picture",
+     "role": "logo",
+     "bbox": {
+      "x": 0.9,
+      "y": 0.9,
+      "width": 0.06,
+      "height": 0.04
+     },
+     "fixed": true
+    }
+   ]
+  },
+  {
+   "index": 7,
+   "sld_id": 262,
+   "role": "freeform",
+   "layout": "Layout",
+   "title": "План внедрения",
+   "hidden": false,
+   "background": {
+    "kind": "inherited"
+   },
+   "notes": "",
+   "objects": [
+    {
+     "address": {
+      "object_id": "2",
+      "group_path": []
+     },
+     "name": "Title 1",
+     "kind": "text",
+     "role": "title",
+     "bbox": {
+      "x": 0.06,
+      "y": 0.06,
+      "width": 0.8,
+      "height": 0.1
+     },
+     "fixed": false,
+     "text": {
+      "plain": "План внедрения",
+      "paragraphs": [
+       {
+        "text": "План внедрения",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     }
+    },
+    {
+     "address": {
+      "object_id": "30",
+      "group_path": []
+     },
+     "name": "Step 1",
+     "kind": "text",
+     "role": "body",
+     "bbox": {
+      "x": 0.06,
+      "y": 0.4,
+      "width": 0.25,
+      "height": 0.2
+     },
+     "fixed": false,
+     "text": {
+      "plain": "Пилот в 3 школах",
+      "paragraphs": [
+       {
+        "text": "Пилот в 3 школах",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     }
+    },
+    {
+     "address": {
+      "object_id": "31",
+      "group_path": []
+     },
+     "name": "Step 2",
+     "kind": "text",
+     "role": "body",
+     "bbox": {
+      "x": 0.38,
+      "y": 0.4,
+      "width": 0.25,
+      "height": 0.2
+     },
+     "fixed": false,
+     "text": {
+      "plain": "Регион",
+      "paragraphs": [
+       {
+        "text": "Регион",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     }
+    },
+    {
+     "address": {
+      "object_id": "32",
+      "group_path": []
+     },
+     "name": "Step 3",
+     "kind": "text",
+     "role": "body",
+     "bbox": {
+      "x": 0.7,
+      "y": 0.4,
+      "width": 0.25,
+      "height": 0.2
+     },
+     "fixed": false,
+     "text": {
+      "plain": "Вся страна",
+      "paragraphs": [
+       {
+        "text": "Вся страна",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     }
+    },
+    {
+     "address": {
+      "object_id": "4",
+      "group_path": []
+     },
+     "name": "Logo",
+     "kind": "picture",
+     "role": "logo",
+     "bbox": {
+      "x": 0.9,
+      "y": 0.9,
+      "width": 0.06,
+      "height": 0.04
+     },
+     "fixed": true
+    }
+   ]
+  },
+  {
+   "index": 8,
+   "sld_id": 263,
+   "role": "freeform",
+   "layout": "Layout",
+   "title": "Спасибо!",
+   "hidden": false,
+   "background": {
+    "kind": "inherited"
+   },
+   "notes": "",
+   "objects": [
+    {
+     "address": {
+      "object_id": "2",
+      "group_path": []
+     },
+     "name": "Title 1",
+     "kind": "text",
+     "role": "title",
+     "bbox": {
+      "x": 0.08,
+      "y": 0.35,
+      "width": 0.6,
+      "height": 0.15
+     },
+     "fixed": false,
+     "text": {
+      "plain": "Спасибо!",
+      "paragraphs": [
+       {
+        "text": "Спасибо!",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     }
+    },
+    {
+     "address": {
+      "object_id": "3",
+      "group_path": []
+     },
+     "name": "Body 2",
+     "kind": "text",
+     "role": "body",
+     "bbox": {
+      "x": 0.08,
+      "y": 0.55,
+      "width": 0.5,
+      "height": 0.08
+     },
+     "fixed": false,
+     "text": {
+      "plain": "ivan@school.example",
+      "paragraphs": [
+       {
+        "text": "ivan@school.example",
+        "level": 0,
+        "bullet": false
+       }
+      ]
+     }
+    },
+    {
+     "address": {
+      "object_id": "4",
+      "group_path": []
+     },
+     "name": "Logo",
+     "kind": "picture",
+     "role": "logo",
+     "bbox": {
+      "x": 0.9,
+      "y": 0.9,
+      "width": 0.06,
+      "height": 0.04
+     },
+     "fixed": true
+    }
+   ]
+  }
+ ],
+ "outline": [
+  {
+   "index": 1,
+   "sld_id": 256,
+   "role": "title",
+   "title": "Цифровая платформа для школ",
+   "kinds": [
+    "text"
+   ]
+  },
+  {
+   "index": 2,
+   "sld_id": 257,
+   "role": "freeform",
+   "title": "Проблема",
+   "kinds": [
+    "picture",
+    "text"
+   ]
+  },
+  {
+   "index": 3,
+   "sld_id": 258,
+   "role": "freeform",
+   "title": "Решение",
+   "kinds": [
+    "text"
+   ]
+  },
+  {
+   "index": 4,
+   "sld_id": 259,
+   "role": "chart",
+   "title": "Выручка растёт",
+   "kinds": [
+    "chart",
+    "text"
+   ]
+  },
+  {
+   "index": 5,
+   "sld_id": 260,
+   "role": "freeform",
+   "title": "Команда",
+   "kinds": [
+    "text"
+   ]
+  },
+  {
+   "index": 6,
+   "sld_id": 261,
+   "role": "table",
+   "title": "Тарифы",
+   "kinds": [
+    "table",
+    "text"
+   ]
+  },
+  {
+   "index": 7,
+   "sld_id": 262,
+   "role": "freeform",
+   "title": "План внедрения",
+   "kinds": [
+    "text"
+   ]
+  },
+  {
+   "index": 8,
+   "sld_id": 263,
+   "role": "freeform",
+   "title": "Спасибо!",
+   "kinds": [
+    "text"
+   ]
+  }
+ ]
+}

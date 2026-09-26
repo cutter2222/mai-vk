@@ -684,6 +684,111 @@ class Orchestrator:
         self.state.update_job(repair_id, rq_ids=[rq_id])
         return self.state.get_job(repair_id)
 
+    # ----- отмена правки слайда -----
+
+    def submit_revert(
+        self, job_id: str, variant_id: str, base_revision: int, to_revision: int, slide_index: int
+    ) -> JsonDict:
+        """Отмена последней правки варианта: ревизия base+1 — копия файлов `to_revision`.
+        Записывается правкой (`edit`, «Правка отменена»), поэтому открытая копия получает
+        слайд тем же путём, что и обычную правку. Отменяется только последняя: после неё
+        ревизия не менялась."""
+        variant = self.state.get_variant(job_id, variant_id)
+        if variant["revision"] != base_revision:
+            raise ConflictError(
+                "revision_stale",
+                "После этой правки вариант уже меняли — отменить её отдельно нельзя.",
+                {"current_revision": variant["revision"]},
+            )
+        if not 1 <= to_revision < base_revision:
+            raise ConflictError("revert_invalid", "Вернуться можно только к прежней ревизии")
+        try:
+            self.state.get_revision(job_id, variant_id, to_revision)
+        except NotFound as exc:
+            raise ConflictError("revert_invalid", f"Ревизии {to_revision} нет") from exc
+        active = self.state.active_repair(job_id, variant_id)
+        if active:
+            raise ConflictError(
+                "repair_in_progress",
+                "Правка этого варианта ещё выполняется",
+                {"repair_job_id": active["repair_job_id"]},
+            )
+        undone = next(
+            (
+                r
+                for r in self.state.list_repairs(job_id, kind=("edit", "patch", "repair"))
+                if r["variant_id"] == variant_id and r["new_revision"] == base_revision
+            ),
+            None,
+        )
+        changed = list((undone or {}).get("changed_slide_ids") or [])
+        edit_id = new_id("edit")
+        new_rev = base_revision + 1
+        self.state.create_job(
+            kind="slide_edit",
+            job_id=edit_id,
+            stage="compose",
+            parent_job_id=job_id,
+            progress={"percent": 0, "message": "Отменяю правку"},
+        )
+        self.state.create_repair(
+            repair_job_id=edit_id,
+            job_id=job_id,
+            variant_id=variant_id,
+            base_revision=base_revision,
+            issue_ids=[],
+            kind="edit",
+            slide_index=slide_index,
+            instruction="Отмена правки",
+        )
+        source = self.artifacts.revision_dir(job_id, variant_id, to_revision)
+        with self.artifacts.stage_revision(job_id, variant_id, new_rev) as staging:
+            for path in sorted(source.rglob("*")):
+                if (
+                    path.is_file()
+                    and path.name != "manifest.json"
+                    and not path.name.startswith(".")
+                ):
+                    staging.write_bytes(path.relative_to(source).as_posix(), path.read_bytes())
+        prefix = self.artifacts.prefix(variant_id, new_rev)
+        manifest = self.artifacts.read_manifest(job_id, variant_id, new_rev)
+        self.state.add_revision(
+            job_id=job_id,
+            variant_id=variant_id,
+            revision=new_rev,
+            artifacts_prefix=prefix,
+            manifest=manifest,
+            repair_job_id=edit_id,
+            changed_slide_ids=changed,
+            pptx_hash=_pptx_hash(manifest, prefix),
+        )
+        audit = dict(variant.get("audit") or {})
+        if audit:
+            audit["report_artifact"] = f"{prefix}audit.json"
+            self.state.update_variant(job_id, variant_id, audit=audit)
+        note = "Правка отменена: слайд как до неё"
+        self.state.update_repair(
+            edit_id,
+            result="applied",
+            new_revision=new_rev,
+            slide_id=(undone or {}).get("slide_id"),
+            change_note=note,
+            changed_slide_ids=changed,
+        )
+        self.state.update_job(
+            edit_id,
+            status="succeeded",
+            stage="done",
+            finished_at=now_iso(),
+            result={
+                "revision": new_rev,
+                "change_note": note,
+                "generation_result_url": f"/api/generations/{job_id}",
+            },
+            progress={"percent": 100, "message": note},
+        )
+        return self.state.get_job(edit_id)
+
     # ----- правка слайда по запросу -----
 
     def submit_edit(
@@ -1541,7 +1646,8 @@ def _refine_original(o: Orchestrator, job_id: str, settings: JsonDict) -> int:
         shutil.copyfile(shown / "deck.pptx", deck)
         prompted = _preview_prompts(deck, settings)
         out = _preview_charts(o, job_id, deck)
-        if prompted or (out is not None and out.replaced):
+        logos = _preview_logos(job_id, deck)
+        if prompted or logos or (out is not None and out.replaced):
             if out is not None and out.report:
                 staging.write_json("charts.json", out.report)
         else:
@@ -1558,10 +1664,11 @@ def _refine_original(o: Orchestrator, job_id: str, settings: JsonDict) -> int:
         )
         _chart_warning(o, job_id, out)
         log.info(
-            "копия %s: r2 — подписей %d, диаграмм заменено %d",
+            "копия %s: r2 — подписей %d, диаграмм заменено %d, знаков на слайдах %d",
             job_id,
             prompted,
             out.replaced if out is not None else 0,
+            logos,
         )
         return 2
     if out is not None and out.report:
@@ -1643,6 +1750,23 @@ def _preview_prompts(path: pathlib.Path, settings: JsonDict) -> int:
     if filled:
         prs.save(str(path))
     return filled
+
+
+def _preview_logos(job_id: str, deck: pathlib.Path) -> int:
+    """Знак шаблона копии — с макетов на слайды, как в полной сборке: в редакторе его двигают
+    и меняют на слайде. Профиля ещё нет (копия показывается раньше, чем кончается разбор),
+    поэтому знак ищется по самому файлу тем же правилом анализатора. Идёт после диаграмм:
+    картинки знака на слайдах им читать незачем. Возвращает число поставленных картинок."""
+    from presentation_designer.generation.office_logo import promote_file
+
+    try:
+        data, placed = promote_file(deck)
+    except Exception:  # перенос необязателен: знак остаётся на макетах
+        log.exception("знак шаблона копии %s не перенесён на слайды", job_id)
+        return 0
+    if data is not None:
+        deck.write_bytes(data)
+    return placed
 
 
 def _preview_charts(o: Orchestrator, job_id: str, deck: pathlib.Path) -> Any:

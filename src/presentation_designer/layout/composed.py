@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from presentation_designer.layout.images import read_crop
+from presentation_designer.layout.package import logo_hashes
 from presentation_designer.layout.shapes import shape_map
 from presentation_designer.parsing.template.geometry import Paragraph, ShapeInfo
 from presentation_designer.parsing.template.package import open_template
@@ -252,6 +253,9 @@ def build_composed_deck(
         (str(f.get("source_part", "")), str(f.get("element_ref", "")))
         for f in profile.get("fixed_elements") or []
     }
+    # Знак шаблона, перенесённый сборкой с макетов на слайды (`promote_logos`), остаётся
+    # постоянным элементом, а не декором образца.
+    logos = {h.split(":", 1)[-1] for h in logo_hashes(profile)}
     plan_slides = {str(s.get("slide_id")): s for s in plan.get("slides") or []}
     assets: dict[str, JsonDict] = {}
     slides_out: list[JsonDict] = []
@@ -330,8 +334,10 @@ def build_composed_deck(
             else:
                 obj["source_object_id"] = info.element_id
                 obj["content_source"] = "template"
-                is_fixed = info.element_id in record.static_object_ids or (
-                    (record.source_slide_part, info.element_id) in fixed_refs
+                is_fixed = (
+                    info.element_id in record.static_object_ids
+                    or (record.source_slide_part, info.element_id) in fixed_refs
+                    or (kind == "picture" and (info.media_sha256 or "") in logos)
                 )
                 if kind in ("picture", "shape") and info.area >= 0.85:
                     obj["role"] = "background"

@@ -171,15 +171,23 @@ def paragraph_context(root: etree._Element, allowed: list[int]) -> list[dict[str
     return result
 
 
-async def propose(data: bytes, instruction: str, settings: Settings) -> EditPlan:
+async def propose(
+    data: bytes, instruction: str, settings: Settings, only: list[int] | None = None
+) -> EditPlan:
+    """Точечные замены текста по всей копии или только на слайдах `only` (с единицы)."""
+
     def validate(value: object) -> EditPlan:
         plan = EditPlan.model_validate(value)
+        if only and any(patch.slide not in only for patch in plan.patches):
+            raise ValueError(f"менять можно только слайды {sorted(only)}")
         plan.validate_facts(instruction, data)
         return plan
 
     with ZipFile(io.BytesIO(data)) as archive:
         content = []
         for index, name in enumerate(slides(archive), 1):
+            if only and index not in only:
+                continue
             root = etree.fromstring(
                 archive.read(name), etree.XMLParser(resolve_entities=False, no_network=True)
             )
