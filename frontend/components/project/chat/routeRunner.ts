@@ -97,10 +97,9 @@ async function rebuildSlides(ctx: RunContext, slides: number[], instruction: str
     return false;
   }
   let revision = variant.revision;
-  for (const [i, slide] of slides.entries()) {
+  for (const slide of slides) {
     const editJob = await ctx.rebuild(instruction, { jobId, variantId: variant.variant_id, revision, slideIndex: slide - 1 });
     if (!editJob) return false;
-    if (i === slides.length - 1) break;
     // Следующий слайд — на ревизии, которую дала эта правка.
     if (!(await settle(editJob))) {
       ctx.say(`Правка слайда ${slide} не завершилась — остальные слайды не трогаю.`);
@@ -109,6 +108,7 @@ async function rebuildSlides(ctx: RunContext, slides: number[], instruction: str
     try {
       const result = await api.generations.get(jobId);
       revision = result.variants.find((v) => v.variant_id === variant.variant_id)?.revision ?? revision;
+      ctx.session = { ...ctx.session, result, variant: result.variants.find((v) => v.variant_id === variant.variant_id) ?? variant };
       ctx.session.job.refresh();
     } catch {
       return false;
@@ -141,6 +141,13 @@ async function repair(ctx: RunContext, slides: number[]): Promise<boolean> {
     }
     const res = await api.generations.repair(jobId, variant.variant_id, variant.revision, issues.map((i) => i.issue_id));
     appendMessage(ctx.projectId, { role: "assistant", kind: "edit_card", job_id: jobId, variant_id: variant.variant_id, edit_job_id: res.repair_job_id, slide_index: Math.max(0, (slides[0] ?? 1) - 1) });
+    if (!(await settle(res.repair_job_id))) {
+      ctx.say("Исправление не завершилось — следующие шаги не выполняю.");
+      return false;
+    }
+    const result = await api.generations.get(jobId);
+    ctx.session = { ...ctx.session, result, variant: result.variants.find((v) => v.variant_id === variant.variant_id) ?? variant };
+    ctx.session.job.refresh();
     return true;
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) ctx.say("Отчёт проверки ещё не готов — повторите через минуту.");
@@ -156,7 +163,7 @@ function lastUndoable(projectId: string, session: GenerationSession): ChatMessag
     const e = events[i];
     if (e.role !== "assistant") continue;
     if (e.kind === "edit_result" && !e.undone) return e;
-    if (e.kind === "edit_card" && !e.undone && e.job_id === session.jobId) {
+    if (e.kind === "edit_card" && !e.undone && e.job_id === session.jobId && e.variant_id === session.variant?.variant_id) {
       const entry = session.result?.edits?.find((x) => x.edit_job_id === e.edit_job_id);
       if (entry?.result === "applied") return e;
     }
@@ -179,7 +186,7 @@ export async function undo(ctx: RunContext, eventId?: string): Promise<boolean> 
       return false;
     }
     try {
-      await ctx.office.undo(target.revision, target.base_revision);
+      await ctx.office.undo(target.revision, target.base_revision, target.document_id);
       await patchMessage(ctx.projectId, target.event_id, { undone: true });
       const where = target.slides?.length ? ` на ${target.slides.length > 1 ? `слайдах ${target.slides.join(", ")}` : `слайде ${target.slides[0]}`}` : "";
       ctx.say(`Отменил правку${where}: вернул как было.`);
@@ -190,6 +197,11 @@ export async function undo(ctx: RunContext, eventId?: string): Promise<boolean> 
     }
   }
   if (target.kind === "edit_card") {
+    if (target.undone) return true;
+    if (target.job_id !== ctx.session.jobId || target.variant_id !== ctx.session.variant?.variant_id) {
+      ctx.say("Откройте вариант презентации, в котором была сделана эта правка.");
+      return false;
+    }
     const entry = ctx.session.result?.edits?.find((x) => x.edit_job_id === target.edit_job_id);
     if (!entry || entry.result !== "applied" || !entry.new_revision) {
       ctx.say("Эту правку отменить нельзя: она не применилась.");
@@ -197,8 +209,13 @@ export async function undo(ctx: RunContext, eventId?: string): Promise<boolean> 
     }
     try {
       const res = await api.generations.revert(target.job_id, target.variant_id, entry.new_revision, entry.base_revision, entry.slide_index);
+      if (!(await settle(res.edit_job_id))) {
+        ctx.say("Отмена не завершилась — следующие шаги не выполняю.");
+        return false;
+      }
       await patchMessage(ctx.projectId, target.event_id, { undone: true });
-      appendMessage(ctx.projectId, { role: "assistant", kind: "edit_card", job_id: target.job_id, variant_id: target.variant_id, edit_job_id: res.edit_job_id, slide_index: entry.slide_index });
+      const result = await api.generations.get(target.job_id);
+      ctx.session = { ...ctx.session, result, variant: result.variants.find((v) => v.variant_id === target.variant_id) ?? ctx.session.variant };
       ctx.session.job.refresh();
       return true;
     } catch (e) {

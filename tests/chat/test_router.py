@@ -66,6 +66,47 @@ def test_numbers_in_words_become_digits() -> None:
 
 
 @pytest.mark.parametrize(
+    "case",
+    [
+        {"text": "Как удалить логотип?"},
+        {"text": "Почему убрали логотип?"},
+        {"text": "Как заменить логотип?", "pictures": 1},
+        {"text": "Как исправить замечания на слайде 3?"},
+        {"text": "Что на этой картинке?", "pictures": 1, "chip_slide": 2},
+        {"text": "Что на этой картинке?", "pictures": 1},
+        {"text": "Какие данные в таблице?", "sheets": 1, "chip_slide": 2},
+        {"text": "Какие данные в таблице?", "sheets": 1},
+        {"text": "Что показывает график на слайде 4?", "sheets": 1},
+        {"text": "Что показывает график на слайде 4?", "pictures": 1},
+        {"text": "Как сделать диаграмму на слайде 4 редактируемой?"},
+    ],
+)
+def test_informational_questions_never_schedule_edits(case: dict[str, Any]) -> None:
+    decision = router.decide(context(case))
+    assert decision.kind == "answer", decision.as_dict()
+    assert decision.steps == []
+
+
+@pytest.mark.parametrize(
+    ("case", "action"),
+    [
+        ({"text": "Можешь удалить логотип?"}, "logo"),
+        ({"text": "Можно заменить логотип?", "pictures": 1}, "logo"),
+        ({"text": "Можешь вставить картинку?", "pictures": 1, "chip_slide": 2}, "image"),
+        ({"text": "Можно таблицу на слайд 3?", "sheets": 1}, "table"),
+        ({"text": "Можно сделать диаграмму на слайде 4 редактируемой?"}, "chart"),
+        ({"text": "/edit замени заголовок на «Как удалить логотип?»"}, "deck_text"),
+    ],
+)
+def test_polite_edit_requests_and_explicit_edit_still_run(
+    case: dict[str, Any], action: str
+) -> None:
+    decision = router.decide(context(case))
+    assert decision.kind == "run", decision.as_dict()
+    assert decision.steps[0].action == action
+
+
+@pytest.mark.parametrize(
     ("text", "slides"),
     [
         ("на слайде 3", [3]),

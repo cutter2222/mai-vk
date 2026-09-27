@@ -281,6 +281,52 @@ def test_live_selection_finds_group_child_by_group_relative_box(structured_deck)
     assert next(o for o in objects(data) if o.shape_id == top.shape_id).group_path == []
 
 
+@pytest.mark.parametrize("fault", ["moved", "duplicate", "no_box", "wrong_group"])
+def test_live_selection_rejects_stale_or_ambiguous_object(fault):
+    from presentation_designer.generation.office_objects import LiveBox, LiveTarget, resolve_live
+
+    deck = Presentation()
+    slide = deck.slides.add_slide(deck.slide_layouts[6])
+    shape = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(2), Inches(1))
+    shape.name = "Selected"
+    shape.text = "Neighbour must not change"
+    if fault in ("duplicate", "no_box"):
+        slide.shapes.add_textbox(Inches(1), Inches(1), Inches(2), Inches(1)).name = shape.name
+    output = io.BytesIO()
+    deck.save(output)
+    live = LiveTarget(
+        slide=1,
+        name=shape.name,
+        in_group=fault == "wrong_group",
+        box=None
+        if fault == "no_box"
+        else LiveBox(x=80 if fault == "moved" else 25.4, y=25.4, width=50.8, height=25.4),
+    )
+    with pytest.raises(ValueError, match=r"выделите.*заново"):
+        resolve_live(output.getvalue(), live)
+
+
+def test_live_selection_survives_shape_renumbering():
+    from presentation_designer.generation.office_objects import LiveBox, LiveTarget, resolve_live
+
+    deck = Presentation()
+    slide = deck.slides.add_slide(deck.slide_layouts[6])
+    shape = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(2), Inches(1))
+    shape.name = "Selected"
+    shape._element.find(".//{*}cNvPr").set("id", "99")
+    output = io.BytesIO()
+    deck.save(output)
+    target = resolve_live(
+        output.getvalue(),
+        LiveTarget(
+            slide=1,
+            name=shape.name,
+            box=LiveBox(x=25.4, y=25.4, width=50.8, height=25.4),
+        ),
+    )
+    assert target.shape_id == "99"
+
+
 async def test_object_proposal_receives_only_selected_text(manual_deck, monkeypatch):
     import json
     from types import SimpleNamespace

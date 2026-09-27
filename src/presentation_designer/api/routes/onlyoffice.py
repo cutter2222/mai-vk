@@ -281,12 +281,17 @@ class UndoRequest(BaseModel):
 @router.post("/documents/{document_id}/undo")
 def undo(document_id: str, body: UndoRequest, orch: Orch) -> dict[str, Any]:
     """Прежние байты новой ревизией: история копии не переписывается, отмену можно отменить.
-    Только если после правки копию не меняли — иначе пропали бы и более поздние правки."""
+    Текущие байты должны совпадать с результатом правки, в том числе после отмены
+    более поздних правок. begin_edit повторно сверяет текущую ревизию под блокировкой."""
     office = store(orch)
     if body.to_revision >= body.revision:
         raise ApiError(422, "office_undo_invalid", "Вернуться можно только к прежней ревизии")
     current = office.get(document_id)
-    if int(current["revision"]) != body.revision:
+    revision = int(current["revision"])
+    if revision != body.revision and (
+        body.revision > revision
+        or office.read(document_id, revision) != office.read(document_id, body.revision)
+    ):
         raise ApiError(
             409,
             "office_undo_stale",
@@ -294,9 +299,9 @@ def undo(document_id: str, body: UndoRequest, orch: Orch) -> dict[str, Any]:
             "Верните нужное в редакторе (Ctrl+Z) или попросите исправить словами.",
         )
     previous = office.read(document_id, body.to_revision)
-    token = office.begin_edit(document_id, body.revision)
+    token = office.begin_edit(document_id, revision)
     try:
-        office.commit_edit(document_id, token, body.revision, previous)
+        office.commit_edit(document_id, token, revision, previous)
         return {"document": office.get(document_id), "changed": True, "message": "Правка отменена."}
     finally:
         office.end_edit(document_id, token)

@@ -144,6 +144,20 @@ async function setup(page: Page, { slides = 5, editorSlides = 5 } = {}) {
 
 const live = (page: Page, script: string) => page.evaluate(script);
 
+test("undo from another document cannot mutate the open copy", async ({ page }) => {
+  const state = await setup(page);
+  await page.route("**/api/projects/live-test", (r) => r.fulfill({ json: {
+    project_id: "live-test", title: "Футбол", job_id: "job_live", files: [], brief: {}, settings: {},
+    events: [{ event_id: "other-edit", role: "assistant", kind: "edit_result", text: "Правка другой копии",
+      document_id: "other-doc", revision: 1, base_revision: 0, slides: [1] }],
+  } }));
+  await page.goto("/project?id=live-test");
+  await expect.poll(() => live(page, "window.__live?.opened ?? 0")).toBe(1);
+  await page.getByTestId("edit-result-undo").click();
+  await expect(page.getByTestId("chat-list")).toContainText("Откройте презентацию, в которой была сделана эта правка");
+  expect(state.undos).toEqual([]);
+});
+
 test("выбранный в редакторе слайд — адресат правки: слайд пересобирается и встаёт в открытую копию", async ({ page }) => {
   const state = await setup(page);
   await page.goto("/project?id=live-test");

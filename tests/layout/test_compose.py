@@ -94,6 +94,53 @@ def _plan_with(
 # ---------- roundtrip и сверка с файлом ----------
 
 
+def test_process_cards_keep_backdrops_under_each_filled_body(
+    mini_profile,
+    example_package,
+    tmp_path,
+):
+    from presentation_designer.library.register import builtin_patterns
+
+    profile = copy.deepcopy(mini_profile)
+    pattern = next(
+        p for p in builtin_patterns(profile) if p["pattern_id"] == "pat_builtin_process_count3"
+    )
+    profile["patterns"] = [pattern]
+    blocks = [{"slot_id": "title", "kind": "title", "text": "План Q4"}]
+    for i, month in enumerate(["Октябрь", "Ноябрь", "Декабрь"], 1):
+        blocks.extend(
+            [
+                {"slot_id": f"step_{i}_title", "kind": "label", "text": month},
+                {"slot_id": f"step_{i}_body", "kind": "caption", "text": f"Описание этапа {i}"},
+            ]
+        )
+    plan = _plan_with(
+        profile, [{"pattern_id": pattern["pattern_id"], "title": "План Q4", "blocks": blocks}]
+    )
+    result = _compose(plan, profile, MINI_TEMPLATE, example_package, tmp_path / "q4.pptx")
+    slide = Presentation(result.pptx_path).slides[0]
+    descriptions = [
+        shape
+        for shape in slide.shapes
+        if shape.has_text_frame and shape.text.startswith("Описание этапа")
+    ]
+    assert {shape.text for shape in descriptions} == {f"Описание этапа {i}" for i in range(1, 4)}
+    for shape in descriptions:
+        backdrops = [
+            other
+            for other in slide.shapes
+            if other != shape
+            and other.fill.type is not None
+            and other.left <= shape.left
+            and other.top <= shape.top
+            and other.left + other.width >= shape.left + shape.width
+            and other.top + other.height >= shape.top + shape.height
+        ]
+        assert backdrops, f"{shape.text}: потеряна подложка"
+        text_color = shape.text_frame.paragraphs[0].runs[0].font.color.rgb
+        assert any(other.fill.fore_color.rgb != text_color for other in backdrops)
+
+
 @pytest.mark.parametrize("mode", ["mixed", "all_new", "template_only"])
 def test_generated_diagrams_roundtrip_in_allowed_compositions(
     mode: str,

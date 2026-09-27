@@ -165,8 +165,8 @@ QUESTION = re.compile(
 # Просьба в вопросительной форме: «а можно две колонки?» — правка, а не вопрос.
 ASKS_EDIT = re.compile(
     r"^\s*(а\s+)?(можно|нельзя\s+ли)(?![а-я])|"
-    r"(можно|могли\s+бы|можешь|сможешь|давай)[^?]*\b(сдела|помен|замени|убер|убра|удал|добав|"
-    r"сократ|увелич|уменьш|перенес|передвин|постав|вставь|переделай|перепиш|раздел)",
+    r"(можно|могли\s+бы|можешь|сможешь)[^?]*\b(сдела|помен|замен|убер|убра|удал|добав|"
+    r"сократ|увелич|уменьш|перенес|передвин|постав|встав|передел|перепиш|раздел)",
     re.I,
 )
 # Раскладка слайда: число мест или другая подача — перестройка, даже если названа «карточка».
@@ -305,6 +305,15 @@ def by_rules(ctx: Context) -> Decision | None:
         return Decision("run", [Step("undo")], normalized=norm)
     if low.strip(" .!") in DESIGN_REPLIES:
         return Decision("answer", normalized=norm)
+    # Явная команда важнее ключевых слов внутри текста, который пользователь правит.
+    if text.startswith("/edit"):
+        instruction = text[len("/edit") :].strip()
+        return Decision("run", [Step("deck_text", instruction=instruction)], normalized=norm)
+    # Вопрос не должен удалять логотип или вставлять вложение. Вежливые просьбы
+    # («можешь заменить?») по-прежнему передаются исполнителям.
+    question = bool(QUESTION.search(low)) and not ASKS_EDIT.search(low)
+    if question:
+        return Decision("answer", normalized=norm)
     addressed = slides_in(norm, ctx.slide_count)
     if LOGO.search(low):
         if LOGO_REMOVE.search(low):
@@ -313,9 +322,6 @@ def by_rules(ctx: Context) -> Decision | None:
             step = Step("logo", logo="replace", instruction=text)
             step.file_id = ctx.pictures[0] if ctx.pictures else None
             return Decision("run", [step], normalized=norm)
-    if text.startswith("/edit"):
-        instruction = text[len("/edit") :].strip()
-        return Decision("run", [Step("deck_text", instruction=instruction)], normalized=norm)
     if REPAIR.search(low):
         return Decision("run", [Step("repair", slides=addressed)], normalized=norm)
     chart = _chart_rule(ctx, low, addressed)
@@ -345,9 +351,6 @@ def by_rules(ctx: Context) -> Decision | None:
             "«на слайд 3 справа».",
             normalized=norm,
         )
-    question = bool(QUESTION.search(low)) and not ASKS_EDIT.search(low)
-    if question:
-        return Decision("answer", normalized=norm)
     if BEYOND.search(low):
         return None
     if ctx.chip_object is not None and (not addressed or addressed == [ctx.chip_object.slide]):

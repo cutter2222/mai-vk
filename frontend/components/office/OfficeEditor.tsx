@@ -24,7 +24,7 @@ export type OfficeEditHandle = {
   /** Правка копии на сервере с итогом для карточки: ревизии до и после. */
   run: (request: OfficeEditRequest) => Promise<OfficeEditOutcome>;
   /** Отмена правки: `revision` — ревизия, которую она дала, `to` — ревизия до неё. */
-  undo: (revision: number, to: number) => Promise<OfficeEditOutcome>;
+  undo: (revision: number, to: number, documentId: string) => Promise<OfficeEditOutcome>;
 };
 
 /** Правка копии из чата: объект по имени, логотип, картинка или текст на слайдах. */
@@ -288,8 +288,9 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
         });
         return outcomeOf(result, base);
       },
-      undo: async (revision: number, to: number) => {
-        // Сервер сверяет: копия всё ещё в ревизии, которую дала правка (после неё не правили).
+      undo: async (revision: number, to: number, documentId: string) => {
+        if (documentId !== id) throw new Error("Откройте презентацию, в которой была сделана эта правка.");
+        // Сервер сверяет содержимое с результатом правки; чужие изменения отменять нельзя.
         const result = await serverEdit(() => api.office.undo(id, revision, to));
         return outcomeOf(result, revision);
       },

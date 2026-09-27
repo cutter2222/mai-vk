@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 
+import pytest
 from fastapi.testclient import TestClient
 from pptx import Presentation
 
@@ -73,6 +74,36 @@ def test_route_decides_by_rules_and_writes_questions_to_the_feed(client: TestCli
     assert bad.status_code == 422
 
 
+@pytest.mark.parametrize("attached", [False, True])
+def test_route_keeps_questions_out_of_edit_executors(client: TestClient, attached: bool) -> None:
+    project = client.post("/api/projects", json={}).json()["project_id"]
+    file_ids = []
+    if attached:
+        from PIL import Image
+
+        png = io.BytesIO()
+        Image.new("RGB", (20, 20)).save(png, "PNG")
+        (photo,) = client.post(
+            f"/api/projects/{project}/files",
+            files=[("files", ("фото.png", png.getvalue(), "image/png"))],
+        ).json()
+        file_ids.append(photo["file_id"])
+    text = "Что на этой картинке?" if attached else "Как удалить логотип?"
+    event_id = say(client, project, text, file_ids)
+    before = client.get(f"/api/projects/{project}").json()
+    response = client.post(
+        "/api/chat/route",
+        json={"project_id": project, "event_id": event_id, "current_slide": 1},
+    )
+    assert response.status_code == 200, response.text
+    decision = response.json()
+    assert decision["kind"] == "answer"
+    assert decision["steps"] == []
+    assert decision["source"] == "rules"
+    assert "event" not in decision
+    assert client.get(f"/api/projects/{project}").json() == before
+
+
 def test_office_undo_restores_bytes_as_a_new_revision(client: TestClient, office) -> None:  # noqa: F811
     store, doc_id = office
     original = store.read(doc_id, 0)
@@ -94,6 +125,30 @@ def test_office_undo_restores_bytes_as_a_new_revision(client: TestClient, office
     # После правки копию уже меняли (ревизия 2) — отмена правки 1 отдельно невозможна.
     stale = client.post(url, json={"revision": 1, "to_revision": 0})
     assert stale.status_code == 409 and stale.json()["error"]["code"] == "office_undo_stale"
+
+
+def test_office_sequential_undo_preserves_revision_history(client: TestClient, office) -> None:  # noqa: F811
+    store, doc_id = office
+    original = store.read(doc_id, 0)
+    revisions = [original]
+    for base, title in enumerate(["Первая правка", "Вторая правка"]):
+        deck = Presentation(io.BytesIO(revisions[-1]))
+        deck.slides[0].shapes.title.text = title
+        output = io.BytesIO()
+        deck.save(output)
+        revisions.append(output.getvalue())
+        token = store.begin_edit(doc_id, base)
+        store.commit_edit(doc_id, token, base, revisions[-1])
+        store.end_edit(doc_id, token)
+    url = f"/api/office/documents/{doc_id}/undo"
+    assert client.post(url, json={"revision": 1, "to_revision": 0}).status_code == 409
+    assert client.post(url, json={"revision": 2, "to_revision": 1}).status_code == 200
+    assert store.read(doc_id, 3) == revisions[1]
+    response = client.post(url, json={"revision": 1, "to_revision": 0})
+    assert response.status_code == 200, response.text
+    assert store.read(doc_id, 4) == original
+    assert store.read(doc_id, 2) == revisions[2]
+    assert client.post(url, json={"revision": 1, "to_revision": 0}).status_code == 409
 
 
 def test_revert_restores_the_slide_as_a_new_revision(

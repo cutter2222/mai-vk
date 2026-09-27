@@ -299,14 +299,15 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
       return manualEdit.current.run(request);
     }
     return previewEdit((id, revision) => api.office.edit(id, revision, request.instruction, request.live, request.logo, request.image, request.slides, request.table, request.chart));
-  }, undo: async (revision, to) => {
+  }, undo: async (revision, to, documentId) => {
+    if (documentId !== id) throw new Error("Откройте презентацию, в которой была сделана эта правка.");
     if (manual) {
       if (!manualEdit.current) throw new Error("Дождитесь загрузки редактора.");
-      return manualEdit.current.undo(revision, to);
+      return manualEdit.current.undo(revision, to, documentId);
     }
     const outcome = await previewEdit((id) => api.office.undo(id, revision, to));
     return { ...outcome, base: revision };
-  } }), [manual, doc, pollError, visibleRevision, index, applySlide, previewEdit]);
+  } }), [id, manual, doc, pollError, visibleRevision, index, applySlide, previewEdit]);
 
   const selectable = !manual && !editing && !pollError && !doc?.active_key && !doc?.error && visiblePreview?.revision === doc?.revision && objectMap?.documentId === doc?.id && objectMap?.revision === doc?.revision;
   const currentObjects = selectable ? objectMap?.objects.filter((obj) => obj.slide === index + 1) ?? [] : [];

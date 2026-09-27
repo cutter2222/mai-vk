@@ -185,7 +185,7 @@ export function ProjectEditor({ project }: { project: Project }) {
   const runContext = (): RunContext => ({
     projectId: project.project_id,
     session,
-    office: officeEdit.current,
+    get office() { return officeEdit.current; },
     liveCount: liveSelection?.count ?? null,
     say: chat.say,
     rebuild: (instruction, target) => chat.editSlide(instruction, target, { silent: true }),

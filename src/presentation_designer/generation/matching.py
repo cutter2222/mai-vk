@@ -520,6 +520,12 @@ def _typed_page_number(slot: SlotInfo, slide_index: int) -> bool:
 
 def pattern_info(raw: JsonDict) -> PatternInfo:
     slots = [_slot_info(s) for s in raw.get("slots", [])]
+    # Старые встроенные процессы называли и крупную надпись, и заголовок label:
+    # три карточки превращались в шесть, подписи и подложки расходились с текстами.
+    if str(raw.get("pattern_id", "")).startswith("pat_builtin_process_"):
+        for slot in slots:
+            if re.fullmatch(r"step_\d+_number", slot.slot_id) and slot.kind == "label":
+                slot.kind = "subtitle"
     index = int((raw.get("source") or {}).get("slide_index") or 0)
     for s in slots:
         if _typed_page_number(s, index):

@@ -385,7 +385,7 @@ def build_process(family: Family, params: dict[str, Any]) -> Composition:
         slots.append(
             CompositionSlot(
                 slot_id=f"step_{index}_number",
-                kind="label",
+                kind="subtitle",
                 bbox=(x + pad, top + height * 0.08, width - 2 * pad, height * 0.14),
                 text_role="subtitle",
                 bold=True,

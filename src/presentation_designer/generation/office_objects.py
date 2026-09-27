@@ -153,39 +153,41 @@ class LiveTarget(BaseModel):
 
 
 def resolve_live(data: bytes, live: LiveTarget) -> ObjectTarget:
-    """Фигура сохранённой копии по выделению живого редактора: с тем же именем на том же
-    слайде, в группах тоже; при нескольких — ближайшая по положению."""
+    """Однозначное совпадение имени, контекста группы и рамки; никогда не сосед."""
     on_slide = [obj for obj in objects(data) if obj.slide == live.slide]
-    found = [obj for obj in on_slide if obj.name == live.name]
+    found = [
+        obj for obj in on_slide if obj.name == live.name and bool(obj.group_path) == live.in_group
+    ]
     if not found:
         raise ValueError(
             "выбранный объект не найден в сохранённой презентации или не поддерживает "
             "адресную правку — выделите его заново"
         )
-    if len(found) > 1:
-        # Сначала те, что там же по отношению к группе, что и выделение.
-        found.sort(key=lambda obj: bool(obj.group_path) != live.in_group)
-        if live.box is not None:
-            with ZipFile(io.BytesIO(data)) as archive:
-                size = xml(archive.read("ppt/presentation.xml")).find("p:sldSz", NS)
-            if size is not None:
-                width = int(size.attrib["cx"]) / EMU_PER_MM
-                height = int(size.attrib["cy"]) / EMU_PER_MM
-                groups = {obj.shape_id: obj for obj in on_slide if obj.kind == "grpSp"}
-                box = live.box
+    if live.box is not None:
+        with ZipFile(io.BytesIO(data)) as archive:
+            size = xml(archive.read("ppt/presentation.xml")).find("p:sldSz", NS)
+        if size is None:
+            raise ValueError("Рамка слайда неизвестна — выделите объект заново")
+        width = int(size.attrib["cx"]) / EMU_PER_MM
+        height = int(size.attrib["cy"]) / EMU_PER_MM
+        groups = {obj.shape_id: obj for obj in on_slide if obj.kind == "grpSp"}
+        box = live.box
 
-                def distance(obj: SlideObject) -> tuple[bool, float]:
-                    x, y = obj.bbox.x, obj.bbox.y
-                    parent = groups.get(obj.group_path[-1]) if obj.group_path else None
-                    if live.in_group and parent is not None:
-                        x, y = x - parent.bbox.x, y - parent.bbox.y
-                    return (
-                        bool(obj.group_path) != live.in_group,
-                        abs(x * width - box.x)
-                        + abs(y * height - box.y)
-                        + abs(obj.bbox.width * width - box.width)
-                        + abs(obj.bbox.height * height - box.height),
-                    )
+        def distance(obj: SlideObject) -> float:
+            x, y = obj.bbox.x, obj.bbox.y
+            parent = groups.get(obj.group_path[-1]) if obj.group_path else None
+            if live.in_group and parent is not None:
+                x, y = x - parent.bbox.x, y - parent.bbox.y
+            return (
+                abs(x * width - box.x)
+                + abs(y * height - box.y)
+                + abs(obj.bbox.width * width - box.width)
+                + abs(obj.bbox.height * height - box.height)
+            )
 
-                found.sort(key=distance)
+        # Округление рамки карты и SDK допустимо до 1 мм суммарно.
+        # Даже единственное совпадение имени могло остаться от удалённого соседа.
+        found = [obj for obj in found if distance(obj) <= 1.0]
+    if len(found) != 1:
+        raise ValueError("выбранный объект неоднозначен или изменился — выделите его заново")
     return ObjectTarget(slide=found[0].slide, shape_id=found[0].shape_id)
