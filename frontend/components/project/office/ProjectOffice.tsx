@@ -69,6 +69,7 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
   const [objectError, setObjectError] = useState("");
   const [objectAttempt, setObjectAttempt] = useState(0);
   const busy = useRef(false);
+  const transferErrors = useRef(new Map<string, Error>());
   // Ревизия варианта, чей пересобранный слайд уже перенесён в открытую копию: копия ей
   // соответствует, и баннер «Доступна другая версия» о ней не нужен.
   const [appliedArtifact, setAppliedArtifact] = useState<string | null>(null);
@@ -195,7 +196,10 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
     busy.current = true;
     setEditing(true);
     try {
-      const result = await api.office.applySlide(doc.id, doc.revision, body);
+      // Каждый перенос получает новую ревизию; замыкание цикла хранит старый doc.
+      const current = await api.office.get(doc.id);
+      if (current.active_key || current.error) throw new Error("Дождитесь сохранения презентации.");
+      const result = await api.office.applySlide(doc.id, current.revision, body);
       setDoc(result.document);
       setPreviewError("");
       return result.message;
@@ -225,7 +229,8 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
     const edit = { ...pending, revision: pending.revision };
     applying.current = edit.id;
     void (async () => {
-      const slides = edit.slides.length ? edit.slides : await slideNumbers(source.jobId, edit.variant, edit.revision, edit.ids).catch(() => [] as number[]);
+      const slides = edit.slides.length ? edit.slides : await slideNumbers(source.jobId, edit.variant, edit.revision, edit.ids);
+      if (!slides.length) throw new Error("Не удалось определить слайды для переноса.");
       for (const slide of slides) {
         const body = { job_id: source.jobId, variant_id: edit.variant, artifact_revision: edit.revision, slide, source_slide: slide };
         // Редактор мог как раз перезагружаться после другой правки: несколько попыток.
@@ -236,18 +241,43 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
           } catch (e) {
             const message = e instanceof Error ? e.message : "";
             if (attempt < 5 && /Дождитесь|ещё выполняется/.test(message)) { await new Promise((r) => setTimeout(r, 3000)); continue; }
-            notifications.show({ color: "red", title: `Слайд ${slide} не перенесён в открытую презентацию`, message: `${message} Новая версия доступна кнопкой в баннере.` });
-            return;
+            throw e;
           }
         }
       }
       setAppliedArtifact(`${edit.variant}/r${edit.revision}/deck.pptx`);
-    })().finally(() => {
+    })().catch((e: unknown) => {
+      const error = e instanceof Error ? e : new Error("Перенос не подтверждён.");
+      transferErrors.current.set(edit.id, error);
+      notifications.show({ color: "red", title: "Правка не перенесена в открытую презентацию", message: `${error.message} Новая версия доступна кнопкой в баннере.` });
+    }).finally(() => {
       applying.current = null;
       setKnownEdits((known) => known.includes(edit.id) ? known : [...known, edit.id]);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingId, touched, doc?.revision, editing]);
+
+  // Ожидание читает актуальный render, а не замыкание до завершения backend-задания.
+  const transferState = useRef<() => { jobId: string; variant?: string; revision: number; known: string[]; ready: boolean }>(() => ({ jobId: "", revision: 0, known: [], ready: false }));
+  useEffect(() => {
+    transferState.current = () => ({
+      jobId: source.jobId, variant: opened?.variant, revision: opened?.revision ?? 0,
+      known: knownEdits,
+      ready: Boolean(doc && !editing && !error && !pollError && !doc.error && (manual ? manualEdit.current?.isReady?.() : visibleRevision === doc.revision)),
+    });
+  });
+  const waitForApplied = useCallback(async (jobId: string, variantId: string, revision: number, editJobId: string) => {
+    const until = Date.now() + 120000;
+    while (Date.now() < until) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const state = transferState.current();
+      if (state.jobId !== jobId || state.variant !== variantId) throw new Error("Откройте вариант, в котором была сделана правка.");
+      const error = transferErrors.current.get(editJobId);
+      if (error) throw error;
+      if (state.ready && (state.revision >= revision || state.known.includes(editJobId))) return;
+    }
+    throw new Error("Перенос правки в открытую презентацию не подтверждён. Следующие шаги не выполняю.");
+  }, []);
 
   // Правка из чата в сохранённом превью (редактор закрыт): тот же сервер, ревизия — открытая.
   const previewEdit = useCallback(async (call: (id: string, revision: number) => Promise<{ document: OfficeDocument; changed: boolean; message: string }>) => {
@@ -270,7 +300,7 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
     // Картинка встаёт на текущий слайд живого редактора; в сохранённом превью слайда нет.
     if (!manual || !manualEdit.current) throw new Error("Откройте редактор слайдов, чтобы вставить картинку.");
     return manualEdit.current.insertImage(image);
-  }, applySlide, edit: async (instruction, target, logo, image) => {
+  }, applySlide, waitForApplied, edit: async (instruction, target, logo, image) => {
     const live = target && "name" in target ? target : undefined;
     const picked = target && "documentId" in target ? target : undefined;
     if (manual) {
@@ -307,7 +337,7 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
     }
     const outcome = await previewEdit((id) => api.office.undo(id, revision, to));
     return { ...outcome, base: revision };
-  } }), [id, manual, doc, pollError, visibleRevision, index, applySlide, previewEdit]);
+  } }), [id, manual, doc, pollError, visibleRevision, index, applySlide, waitForApplied, previewEdit]);
 
   const selectable = !manual && !editing && !pollError && !doc?.active_key && !doc?.error && visiblePreview?.revision === doc?.revision && objectMap?.documentId === doc?.id && objectMap?.revision === doc?.revision;
   const currentObjects = selectable ? objectMap?.objects.filter((obj) => obj.slide === index + 1) ?? [] : [];

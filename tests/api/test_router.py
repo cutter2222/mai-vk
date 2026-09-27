@@ -189,6 +189,57 @@ def test_revert_restores_the_slide_as_a_new_revision(
     assert status["status"] == "succeeded"
 
 
+@pytest.mark.parametrize("tamper", [None, "plan.json", "deck.pptx"])
+def test_revert_chain_requires_identical_revision_files(
+    client: TestClient, pptx_bytes: bytes, xlsx_bytes: bytes, orchestrator, tamper
+) -> None:
+    from tests.pipeline.helpers import run_generation
+
+    job_id = run_generation(client, pptx_bytes, xlsx_bytes)["job_id"]
+    base = f"/api/generations/{job_id}/variants/balanced"
+    for revision, slide in [(1, 1), (2, 2)]:
+        response = client.post(
+            f"{base}/edits",
+            json={
+                "base_revision": revision,
+                "slide_index": slide,
+                "instruction": "Новый заголовок",
+            },
+        )
+        assert response.status_code == 202, response.text
+    first = {"base_revision": 2, "to_revision": 1, "slide_index": 1}
+    assert client.post(f"{base}/revert", json=first).status_code == 409
+    # Нельзя подменить цель отмены или адрес слайда.
+    for to_revision, slide_index in [(1, 2), (2, 1)]:
+        response = client.post(
+            f"{base}/revert",
+            json={"base_revision": 3, "to_revision": to_revision, "slide_index": slide_index},
+        )
+        assert response.status_code == 422, response.text
+    response = client.post(
+        f"{base}/revert", json={"base_revision": 3, "to_revision": 2, "slide_index": 2}
+    )
+    assert response.status_code == 202, response.text
+    root = orchestrator.artifacts.revision_dir(job_id, "balanced", 4)
+    original = orchestrator.artifacts.revision_dir(job_id, "balanced", 1)
+    if tamper:
+        path = root / tamper
+        path.write_bytes(path.read_bytes() + b" ")
+    response = client.post(f"{base}/revert", json=first)
+    if tamper:
+        assert response.status_code == 409, response.text
+        assert orchestrator.state.get_variant(job_id, "balanced")["revision"] == 4
+        return
+    assert response.status_code == 202, response.text
+    restored = orchestrator.artifacts.revision_dir(job_id, "balanced", 5)
+    for path in original.rglob("*"):
+        if path.is_file() and path.name != "manifest.json":
+            assert (restored / path.relative_to(original)).read_bytes() == path.read_bytes()
+    entry = orchestrator.state.get_repair(response.json()["edit_job_id"])
+    assert entry["base_revision"] == 4 and entry["new_revision"] == 5
+    assert client.post(f"{base}/revert", json=first).status_code == 409
+
+
 def test_edit_result_events_pass_the_contract(client: TestClient) -> None:
     project = client.post("/api/projects", json={}).json()["project_id"]
     event = client.post(

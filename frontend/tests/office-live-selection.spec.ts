@@ -180,6 +180,47 @@ test("выбранный в редакторе слайд — адресат п�
   await expect(page.getByText("Доступна другая версия презентации")).toHaveCount(0);
 });
 
+for (const fail of [false, true]) {
+  test(`mixed command waits for apply-slide and SDK reopen (${fail})`, async ({ page }) => {
+    const state = await setup(page);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let applying = false;
+    await page.route("**/api/chat/route", (r) => r.fulfill({ json: {
+      kind: "run", steps: [
+        { action: "slide_rebuild", slides: [3], instruction: "две колонки" },
+        { action: "deck_text", slides: [2], instruction: "следующий шаг" },
+      ], text: "", options: [], source: "rules",
+    } }));
+    await page.route("**/api/office/documents/live-doc/apply-slide", async (r) => {
+      applying = true;
+      await gate;
+      if (fail) return r.fulfill({ status: 409, json: { error: { message: "Перенос отклонён" } } });
+      return r.fallback();
+    });
+    try {
+      await page.goto("/project?id=live-test");
+      await expect.poll(() => live(page, "window.__live?.opened ?? 0")).toBe(1);
+      await page.getByTestId("chat-input").fill("сначала перестрой, затем измени текст");
+      await page.getByTestId("chat-send").click();
+      await expect.poll(() => applying, { timeout: 20_000 }).toBe(true);
+      // Backend уже закончил, но перенос намеренно задержан дольше опроса runner.
+      await page.waitForTimeout(2500);
+      expect(state.objectEdits).toHaveLength(0);
+      release();
+      if (fail) {
+        await expect(page.getByTestId("chat-list")).toContainText("Перенос отклонён");
+        expect(state.objectEdits).toHaveLength(0);
+      } else {
+        await expect.poll(() => state.objectEdits.length, { timeout: 20_000 }).toBe(1);
+        expect(state.objectEdits[0]).toMatchObject({ revision: 2, slides: [2], instruction: "следующий шаг" });
+        expect(state.applied).toHaveLength(1);
+        await expect.poll(() => live(page, "window.__live.opened")).toBe(3);
+      }
+    } finally { release(); }
+  });
+}
+
 test("выделенный объект — правка только его; крестик снимает адресацию", async ({ page }) => {
   const state = await setup(page);
   await page.goto("/project?id=live-test");

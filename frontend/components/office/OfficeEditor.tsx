@@ -16,6 +16,9 @@ import { draggedImage, setDraggedImage, useDraggedImage, type DraggedImage } fro
 
 type Editor = { destroyEditor: () => void; requestClose: () => void; insertImage?: (command: Record<string, unknown>) => void };
 export type OfficeEditHandle = {
+  isReady?: () => boolean;
+  /** ProjectOffice подтверждает перенос результата, а не только завершение backend job. */
+  waitForApplied?: (jobId: string, variantId: string, revision: number, editJobId: string) => Promise<void>;
   edit: (instruction: string, target?: import("@/lib/api/client").OfficeSelection | OfficeLiveTarget, logo?: import("@/lib/api/client").OfficeLogoAction, image?: import("@/lib/api/client").OfficeImagePlacement) => Promise<string>;
   /** Слайд, пересобранный правкой из чата, — в открытую копию: остальные слайды не меняются. */
   applySlide: (body: OfficeApplySlide) => Promise<string>;
@@ -268,11 +271,12 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
         busy.current = false;
         if (mounted.current) {
           setEditing(false);
-          if (saved) { setReady(false); setModified(false); setError(""); setClosed(false); }
+          if (saved) { editorReady.current = false; setReady(false); setModified(false); setError(""); setClosed(false); }
         }
       }
     };
     return {
+      isReady: () => mounted.current && editorReady.current && !busy.current,
       insertImage,
       edit: async (instruction: string, target?: unknown, logo?: OfficeLogoAction, image?: OfficeImagePlacement) => {
         const live = target && typeof target === "object" && "name" in target ? target as OfficeLiveTarget : undefined;

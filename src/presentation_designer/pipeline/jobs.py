@@ -689,12 +689,17 @@ class Orchestrator:
     def submit_revert(
         self, job_id: str, variant_id: str, base_revision: int, to_revision: int, slide_index: int
     ) -> JsonDict:
-        """Отмена последней правки варианта: ревизия base+1 — копия файлов `to_revision`.
-        Записывается правкой (`edit`, «Правка отменена»), поэтому открытая копия получает
-        слайд тем же путём, что и обычную правку. Отменяется только последняя: после неё
-        ревизия не менялась."""
+        """Отмена правки новой ревизией, без потери последующих изменений.
+
+        После отмены более поздних правок номер ревизии уже другой. В этом случае
+        должны совпасть все артефакты результата отменяемой правки, включая план:
+        одного совпадения PPTX недостаточно для безопасного восстановления колоды.
+        """
         variant = self.state.get_variant(job_id, variant_id)
-        if variant["revision"] != base_revision:
+        current_revision = variant["revision"]
+        if current_revision != base_revision and not self._same_revision_files(
+            job_id, variant_id, current_revision, base_revision
+        ):
             raise ConflictError(
                 "revision_stale",
                 "После этой правки вариант уже меняли — отменить её отдельно нельзя.",
@@ -721,9 +726,16 @@ class Orchestrator:
             ),
             None,
         )
+        if (
+            undone is None
+            or undone["result"] != "applied"
+            or undone["base_revision"] != to_revision
+            or int(undone["slide_index"] or 0) != slide_index
+        ):
+            raise ConflictError("revert_invalid", "Ревизии и слайд не соответствуют правке")
         changed = list((undone or {}).get("changed_slide_ids") or [])
         edit_id = new_id("edit")
-        new_rev = base_revision + 1
+        new_rev = current_revision + 1
         self.state.create_job(
             kind="slide_edit",
             job_id=edit_id,
@@ -735,7 +747,7 @@ class Orchestrator:
             repair_job_id=edit_id,
             job_id=job_id,
             variant_id=variant_id,
-            base_revision=base_revision,
+            base_revision=current_revision,
             issue_ids=[],
             kind="edit",
             slide_index=slide_index,
@@ -788,6 +800,33 @@ class Orchestrator:
             progress={"percent": 100, "message": note},
         )
         return self.state.get_job(edit_id)
+
+    def _same_revision_files(
+        self, job_id: str, variant_id: str, current: int, expected: int
+    ) -> bool:
+        """Сравнение содержимого, а не номеров/путей ревизий; отсутствующее — не равно."""
+        if expected >= current:
+            return False
+        snapshots: list[dict[str, str]] = []
+        for revision in (current, expected):
+            try:
+                row = self.state.get_revision(job_id, variant_id, revision)
+            except NotFound:
+                return False
+            prefix = self.artifacts.prefix(variant_id, revision)
+            manifest = row["manifest"]
+            if f"{prefix}deck.pptx" not in manifest:
+                return False
+            snapshot: dict[str, str] = {}
+            for name in manifest:
+                if not name.startswith(prefix):
+                    return False
+                path = self.artifacts.resolve(job_id, name)
+                if not path.is_file():
+                    return False
+                snapshot[name.removeprefix(prefix)] = hashlib.sha256(path.read_bytes()).hexdigest()
+            snapshots.append(snapshot)
+        return snapshots[0] == snapshots[1]
 
     # ----- правка слайда по запросу -----
 

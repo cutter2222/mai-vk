@@ -222,6 +222,36 @@ test("preview opens no SDK, survives panel toggles, downloads saved revision", a
   expect(state.opened).toEqual(["compact/r1/deck.pptx"]);
 });
 
+test("multi-slide repair in saved preview uses each new document revision", async ({ page }) => {
+  const state = await setup(page);
+  let repaired = false;
+  const applied: Array<{ revision: number; slide: number }> = [];
+  await page.route("**/api/generations/job_officeuitest", (r) => r.fulfill({ json: {
+    job_id: "job_officeuitest", status: "succeeded", stage: "done", metrics: { totals: { duration_ms: 1000 } },
+    variants: [{ variant_id: "compact", status: "ready", revision: repaired ? 2 : 1, artifacts: { pptx: `compact/r${repaired ? 2 : 1}/deck.pptx` } }],
+    repairs: repaired ? [{ repair_job_id: "repair_many", variant_id: "compact", result: "applied", base_revision: 1, new_revision: 2, changed_slide_ids: ["s1", "s2"] }] : [],
+  } }));
+  await page.route("**/api/chat/route", (r) => r.fulfill({ json: { kind: "run", steps: [{ action: "repair", slides: [] }], text: "", options: [], source: "rules" } }));
+  await page.route("**/variants/compact/audit?revision=1", (r) => r.fulfill({ json: { issues: [{ issue_id: "issue_1", slide_index: 0 }] } }));
+  await page.route("**/variants/compact/repairs", (r) => { repaired = true; return r.fulfill({ json: { repair_job_id: "repair_many" } }); });
+  await page.route("**/api/jobs/repair_many", (r) => r.fulfill({ json: { status: "succeeded" } }));
+  await page.route("**/artifacts/compact/r2/plan.json", (r) => r.fulfill({ json: { slides: [{ slide_id: "s1", order: 0 }, { slide_id: "s2", order: 1 }] } }));
+  await page.route("**/api/office/documents/preview-test/apply-slide", (r) => {
+    const body = r.request().postDataJSON();
+    applied.push(body);
+    if (body.revision !== state.revision) return r.fulfill({ status: 409, json: { error: { message: "stale revision" } } });
+    state.revision++;
+    return r.fulfill({ json: { document: { id: "preview-test", revision: state.revision, active_key: null }, changed: true, message: "Перенесён" } });
+  });
+  await page.goto("/project?id=office-ui-test");
+  await expect(page.getByText("Превью · v3", { exact: true })).toBeVisible();
+  await page.getByTestId("chat-input").fill("исправь замечания");
+  await page.getByTestId("chat-send").click();
+  await expect(page.getByText("Превью · v5", { exact: true })).toBeVisible();
+  expect(applied.map(({ revision, slide }) => [revision, slide])).toEqual([[3, 1], [4, 2]]);
+  expect(state.configs).toBe(0);
+});
+
 test("immediate close flushes even with a clean parent flag and waits for SDK acknowledgement", async ({ page }) => {
   await setup(page);
   await page.goto("/project?id=office-ui-test");

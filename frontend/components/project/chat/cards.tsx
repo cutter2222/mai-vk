@@ -728,8 +728,8 @@ export function EditCard({ m, ctx }: { m: Msg<"edit_card">; ctx: CardContext }) 
         {m.undone ? <Aside>Отменено.</Aside> : (
           <Options options={[
             { label: "Показать слайд", onClick: show, testId: "edit-show" },
-            // Отменяется только последняя правка варианта: после неё ревизия не менялась.
-            ...(ctx.onUndo && session.variant?.variant_id === m.variant_id && session.variant.revision === entry.new_revision
+            // Сервер проверяет содержимое: предыдущая правка доступна после отмены поздней.
+            ...(ctx.onUndo && session.variant?.variant_id === m.variant_id
               ? [{ label: "Отменить", onClick: () => ctx.onUndo?.(m.event_id), testId: "edit-undo" }] : []),
           ]} />
         )}

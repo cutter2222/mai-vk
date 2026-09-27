@@ -54,6 +54,50 @@ test("a failed asynchronous rebuild stops following steps", async () => {
   } finally { api.jobs.get = getJob; }
 });
 
+for (const transferFails of [false, true]) {
+  test(`mixed steps await the open-document acknowledgment (${transferFails})`, async () => {
+    const originals = { job: api.jobs.get, generation: api.generations.get };
+    const calls: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const variant = { variant_id: "balanced", revision: 2, status: "ready", slide_count: 3, artifacts: { pptx: "balanced/r2/deck.pptx" } };
+    api.jobs.get = async () => ({ status: "succeeded" }) as Awaited<ReturnType<typeof originals.job>>;
+    api.generations.get = async () => ({ variants: [variant], edits: [{ edit_job_id: "edit_2", result: "applied", new_revision: 2 }] }) as Awaited<ReturnType<typeof originals.generation>>;
+    const ctx = {
+      projectId: "mixed-test", liveCount: null, say: (text: string) => calls.push(text),
+      session: { jobId: "job_test", variant: { ...variant, revision: 1 }, job: { refresh: () => {} } },
+      rebuild: async () => "edit_2",
+      office: {
+        waitForApplied: async (...args: unknown[]) => {
+          expect(args).toEqual(["job_test", "balanced", 2, "edit_2"]);
+          calls.push("applying");
+          await gate;
+          if (transferFails) throw new Error("transfer failed");
+          calls.push("applied");
+        },
+        run: async () => { calls.push("office edit"); return { changed: false, message: "no-op" }; },
+      },
+    } as unknown as RunContext;
+    let running: Promise<void> | undefined;
+    try {
+      running = runSteps(ctx, [{ action: "slide_rebuild", slides: [1] }, { action: "deck_text", slides: [2], instruction: "next" }]);
+      await expect.poll(() => calls).toContain("applying");
+      expect(calls).not.toContain("office edit");
+      release();
+      await running;
+      if (transferFails) {
+        expect(calls).toContain("transfer failed");
+        expect(calls).not.toContain("office edit");
+      } else expect(calls.slice(0, 3)).toEqual(["applying", "applied", "office edit"]);
+    } finally {
+      release();
+      await running;
+      api.jobs.get = originals.job;
+      api.generations.get = originals.generation;
+    }
+  });
+}
+
 for (const succeeded of [false, true]) {
   test(`rebuild undo marks the original only after success (${succeeded})`, async () => {
     const originals = { get: api.projects.get, patch: api.projects.patchEvent, revert: api.generations.revert, job: api.jobs.get, generation: api.generations.get };

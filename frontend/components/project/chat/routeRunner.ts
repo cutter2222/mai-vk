@@ -27,6 +27,13 @@ export interface RunContext {
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+async function applied(ctx: RunContext, jobId: string, variantId: string, revision: number, editJobId: string): Promise<void> {
+  const office = ctx.office;
+  if (!office) return;
+  if (!office.waitForApplied) throw new Error("Редактор не подтвердил перенос правки. Следующие шаги не выполняю.");
+  await office.waitForApplied(jobId, variantId, revision, editJobId);
+}
+
 /** Ждёт конца задания правки: следующая перестройка идёт на её результате. */
 async function settle(jobId: string, limitMs = 300000): Promise<boolean> {
   const until = Date.now() + limitMs;
@@ -110,7 +117,11 @@ async function rebuildSlides(ctx: RunContext, slides: number[], instruction: str
       revision = result.variants.find((v) => v.variant_id === variant.variant_id)?.revision ?? revision;
       ctx.session = { ...ctx.session, result, variant: result.variants.find((v) => v.variant_id === variant.variant_id) ?? variant };
       ctx.session.job.refresh();
-    } catch {
+      const entry = result.edits?.find((e) => e.edit_job_id === editJob);
+      if (ctx.office && !entry) throw new Error("Сервер не подтвердил результат правки. Следующие шаги не выполняю.");
+      if (entry?.result === "applied" && entry.new_revision) await applied(ctx, jobId, variant.variant_id, entry.new_revision, editJob);
+    } catch (e) {
+      ctx.say(errorText(e, "Не удалось подтвердить перенос правки в презентацию."));
       return false;
     }
   }
@@ -148,6 +159,9 @@ async function repair(ctx: RunContext, slides: number[]): Promise<boolean> {
     const result = await api.generations.get(jobId);
     ctx.session = { ...ctx.session, result, variant: result.variants.find((v) => v.variant_id === variant.variant_id) ?? variant };
     ctx.session.job.refresh();
+    const entry = result.repairs?.find((r) => r.repair_job_id === res.repair_job_id);
+    if (ctx.office && !entry) throw new Error("Сервер не подтвердил результат исправления. Следующие шаги не выполняю.");
+    if (entry?.result === "applied" && entry.new_revision) await applied(ctx, jobId, variant.variant_id, entry.new_revision, res.repair_job_id);
     return true;
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) ctx.say("Отчёт проверки ещё не готов — повторите через минуту.");
@@ -217,6 +231,7 @@ export async function undo(ctx: RunContext, eventId?: string): Promise<boolean> 
       const result = await api.generations.get(target.job_id);
       ctx.session = { ...ctx.session, result, variant: result.variants.find((v) => v.variant_id === target.variant_id) ?? ctx.session.variant };
       ctx.session.job.refresh();
+      await applied(ctx, target.job_id, target.variant_id, ctx.session.variant!.revision, res.edit_job_id);
       return true;
     } catch (e) {
       ctx.say(errorText(e, "Отменить не получилось."));
