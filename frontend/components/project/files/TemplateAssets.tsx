@@ -2,12 +2,11 @@
 
 import { Chip, Group, Loader, Text, TextInput } from "@mantine/core";
 import { IconSearch } from "@tabler/icons-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { api, type TemplateDetail } from "@/lib/api/client";
 import type { Asset } from "@/lib/api/types";
-import { usePolling } from "@/lib/api/usePolling";
-import { imageDragProps } from "@/lib/state/drag";
+import { dragProps } from "@/lib/state/drag";
 
 const KIND_LABELS: Record<string, string> = { icon: "Иконки", photo: "Фото", logo: "Логотипы", image: "Картинки", background: "Фоны", screenshot: "Скриншоты", mockup: "Мокапы", chart_image: "Графики", qr: "QR" };
 
@@ -26,17 +25,16 @@ export function templateAssets(detail: TemplateDetail | null): Asset[] {
 
 /**
  * Вкладка «Из шаблона»: иконки, логотипы и картинки из профиля шаблона проекта по видам,
- * с поиском по тегам анализа. В сетке миниатюры сервера, по щелчку — оригинал.
+ * с поиском по тегам анализа. В сетке миниатюры сервера, по щелчку — оригинал. Профиль
+ * запрашивает панель: он нужен и вкладке «Слайды», и счётчикам вкладок.
  */
-export function TemplateAssets({ templateId, hidden, onCount }: { templateId: string | null; hidden: boolean; onCount: (count: number | null) => void }) {
-  const detail = usePolling<TemplateDetail>(templateId ? () => api.templates.get(templateId) : null, (d) => d.status === "succeeded" || d.status === "failed", [templateId]);
-  const current = templateId ? detail.data : null;
+export function TemplateAssets({ templateId, detail, hidden }: { templateId: string | null; detail: TemplateDetail | null; hidden: boolean }) {
+  const current = templateId ? detail : null;
   const assets = useMemo(() => templateAssets(current), [current]);
   const kinds = useMemo(() => [...new Set(assets.map((a) => a.kind))].sort((a, b) => Object.keys(KIND_LABELS).indexOf(a) - Object.keys(KIND_LABELS).indexOf(b)), [assets]);
   const [kind, setKind] = useState("all");
   const [query, setQuery] = useState("");
   const status = current?.status;
-  useEffect(() => { onCount(status === "succeeded" ? assets.length : null); }, [status, assets.length, onCount]);
 
   if (hidden) return null;
   if (!templateId) return <Text size="sm" c="dimmed" py="md" data-testid="template-assets-empty">Шаблон не выбран. Выберите его вверху справа — здесь появятся его картинки, иконки и логотипы.</Text>;
@@ -68,7 +66,7 @@ export function TemplateAssets({ templateId, hidden, onCount }: { templateId: st
             const caption = a.tags?.slice(0, 2).join(", ") || KIND_LABELS[a.kind] || a.kind;
             return (
               <div key={a.asset_id} className="file-card asset-card" data-testid={`template-asset-${a.asset_id}`} title={`${[KIND_LABELS[a.kind] ?? a.kind, ...(a.tags ?? [])].join(" · ")} — перетащите на слайд`}
-                {...imageDragProps({ template_id: templateId, asset_id: a.asset_id, name: caption })}>
+                {...dragProps({ template_id: templateId, asset_id: a.asset_id, name: caption })}>
                 <a className="file-thumb" href={url} target="_blank" rel="noreferrer" draggable={false} aria-label={`Открыть ${caption}`}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={api.templates.mediaThumbnailUrl(templateId, a.asset_id)} alt="" loading="lazy" draggable={false} />

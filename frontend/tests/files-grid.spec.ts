@@ -44,16 +44,18 @@ async function setup(page: Page, templateStatus: "succeeded" | "running" = "succ
   return requests;
 }
 
-test("загруженные файлы — карточки с миниатюрами сервера, остальным значок типа", async ({ page }) => {
+test("загруженные файлы — карточки с миниатюрами сервера, остальным значок типа; PPTX шаблона нет", async ({ page }) => {
   const requests = await setup(page);
   await page.goto("/project?id=files-grid-test");
   await page.getByTestId("tab-files").click();
   const panel = page.getByTestId("files-panel");
   await expect(panel).toContainText("Изображения · 1");
-  await expect(panel).toContainText("Презентации · 1");
   await expect(panel).toContainText("Документы · 1");
+  // Презентацию тащить некуда: шаблон выбирают вверху справа, его слайды — на вкладке «Слайды».
+  await expect(panel).not.toContainText("Презентации");
+  await expect(page.getByTestId("file-file_deck")).toHaveCount(0);
+  await expect(page.getByTestId("files-tab-uploaded")).toHaveText("Загруженные · 2");
   await expect(page.getByTestId("file-file_photo").locator("img")).toHaveAttribute("src", /\/files\/file_photo\/thumbnail$/);
-  await expect(page.getByTestId("file-file_deck").locator("img")).toBeVisible();
   // Для DOCX сервер миниатюру не строит: запроса нет, вместо картинки значок.
   await expect(page.getByTestId("file-file_notes").locator("img")).toHaveCount(0);
   expect(requests.some((path) => path.includes("file_notes"))).toBe(false);

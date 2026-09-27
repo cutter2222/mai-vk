@@ -13,7 +13,7 @@ import type { OfficeSelection } from "@/lib/api/client";
 import type { SlideTarget } from "@/lib/hooks/useGenerationSession";
 import type { ChatMessage, PptxAnswer } from "@/lib/state/projects";
 
-import { BriefCard, ContentCard, EditCard, EditResultCard, JobCard, PptxQuestion, TemplateCard, TemplateQuestionCard, type CardContext } from "./cards";
+import { BriefCard, ContentCard, EditCard, EditResultCard, JobCard, PptxQuestion, TemplateCard, TemplateQuestionCard, UploadProgress, type CardContext } from "./cards";
 import { deckJobHasNews, isVisibleProjectMessage } from "./feed";
 import type { StagedPptx } from "./useChat";
 import { MessageTime } from "./MessageTime";
@@ -184,10 +184,11 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
             <MessageTime at={m.at} />
           </div>
         ))}
-        {/* Сам бросок PPTX в ленту не пишется: вопрос называет файл. */}
+        {/* Сам бросок PPTX в ленту не пишется: вопрос называет файл, а под ним идёт загрузка. */}
         {staged.map((s) => (
           <div key={s.local_id} className="chat-msg chat-msg-assistant" data-testid="msg-assistant">
-            <PptxQuestion name={s.name} resolved={s.answer} uploading onAnswer={(answer) => onAnswerStaged(s.local_id, answer)} testId={`template-question-${s.local_id}`} />
+            <PptxQuestion name={s.name} resolved={s.answer} uploading onAnswer={(answer) => onAnswerStaged(s.local_id, answer)} testId={`template-question-${s.local_id}`}
+              progress={<UploadProgress size={s.size} sent={s.sent} />} />
           </div>
         ))}
       </div>

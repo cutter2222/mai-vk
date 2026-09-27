@@ -5,17 +5,24 @@ import { useSyncExternalStore, type DragEvent } from "react";
 import type { OfficeImageSource } from "@/lib/api/client";
 
 /**
- * Какую картинку сейчас тащат из панели «Файлы» на слайд. Значение живёт вне React, как
- * состояние панели в `panel.ts`: карточка в левой панели и слой-приёмник над редактором —
- * разные ветки дерева. Слой нужен потому, что iframe ONLYOFFICE забирает события
- * перетаскивания себе, и без прозрачной крышки родитель броска не увидит.
+ * Что сейчас тащат из панели «Файлы» в редактор: картинку на слайд или готовый слайд шаблона.
+ * Значение живёт вне React, как состояние панели в `panel.ts`: карточка в левой панели и
+ * слой-приёмник над редактором — разные ветки дерева. Слой нужен потому, что iframe ONLYOFFICE
+ * забирает события перетаскивания себе, и без прозрачной крышки родитель броска не увидит.
  */
 export type DraggedImage = OfficeImageSource & { name: string };
+
+/** Слайд шаблона (номер с единицы): встаёт в презентацию следом за текущим слайдом. */
+export type DraggedSlide = { template_id: string; slide: number; name: string };
+
+export type DraggedItem = DraggedImage | DraggedSlide;
+
+export const isDraggedSlide = (item: DraggedItem): item is DraggedSlide => "slide" in item;
 
 /** Тип данных перетаскивания: Firefox не начинает перетаскивание без данных. */
 export const DRAG_TYPE = "application/x-pd-image";
 
-let dragged: DraggedImage | null = null;
+let dragged: DraggedItem | null = null;
 let pending: ReturnType<typeof setTimeout> | undefined;
 const listeners = new Set<() => void>();
 
@@ -26,22 +33,22 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-export function setDraggedImage(value: DraggedImage | null): void {
+export function setDragged(value: DraggedItem | null): void {
   clearTimeout(pending);
   dragged = value;
   listeners.forEach((listener) => listener());
 }
 
-export function draggedImage(): DraggedImage | null {
+export function draggedItem(): DraggedItem | null {
   return dragged;
 }
 
-export function useDraggedImage(): DraggedImage | null {
-  return useSyncExternalStore(subscribe, draggedImage, () => null);
+export function useDragged(): DraggedItem | null {
+  return useSyncExternalStore(subscribe, draggedItem, () => null);
 }
 
-/** Свойства карточки, которую можно бросить на слайд. */
-export function imageDragProps(item: DraggedImage) {
+/** Свойства карточки, которую можно бросить в редактор. */
+export function dragProps(item: DraggedItem) {
   return {
     draggable: true,
     onDragStart: (event: DragEvent<HTMLElement>) => {
@@ -50,8 +57,8 @@ export function imageDragProps(item: DraggedImage) {
       // Слой-приёмник появляется со следующего такта: правку DOM прямо в dragstart Chrome
       // иногда принимает за отмену перетаскивания.
       clearTimeout(pending);
-      pending = setTimeout(() => setDraggedImage(item), 0);
+      pending = setTimeout(() => setDragged(item), 0);
     },
-    onDragEnd: () => setDraggedImage(null),
+    onDragEnd: () => setDragged(null),
   };
 }

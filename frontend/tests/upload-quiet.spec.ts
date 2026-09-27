@@ -120,6 +120,14 @@ test("PPTX шаблоном: «разберу, как только загруз�
     : { status: "running", job_id: "job_tpl", name: "Шаблон VK.pptx", previews: [], timing: { created_at: new Date(Date.now() - 14000).toISOString(), started_at: new Date(Date.now() - 14000).toISOString() } } }));
   await page.route("**/api/office/capabilities", (r) => r.fulfill({ json: { enabled: false } }));
 
+  // Перехват Playwright не присылает ход отправки: половина файла «уходит» сразу после send.
+  await page.addInitScript(() => {
+    const send = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.send = function (body) {
+      send.call(this, body);
+      setTimeout(() => this.upload.dispatchEvent(new ProgressEvent("progress", { lengthComputable: true, loaded: 2, total: 4 })), 50);
+    };
+  });
   await page.goto("/project?id=tpl-flow");
   const chat = page.getByTestId("chat-list");
   const chooser = page.waitForEvent("filechooser");
@@ -127,8 +135,13 @@ test("PPTX шаблоном: «разберу, как только загруз�
   await (await chooser).setFiles({ name: "Шаблон VK.pptx", mimeType: PPTX_MIME, buffer: Buffer.from("deck") });
   await page.getByTestId("answer-template").click();
   await expect(chat).toContainText("Разберу «Шаблон VK.pptx» как шаблон, как только файл загрузится.");
+  // Пока файл едет — строка загрузки с процентом под этой же репликой.
+  const upload = chat.getByTestId("upload-progress");
+  await expect(upload).toContainText("Загружаю файл · 4 Б");
+  await expect(chat.getByTestId("upload-progress-percent")).toHaveText("50%");
 
   await expect(chat).toContainText("«Шаблон VK.pptx» загружен, приступаю к разбору шаблона.");
+  await expect(upload).toHaveCount(0);
   const progress = chat.getByTestId("template-progress");
   await expect(progress).toBeVisible();
   await expect(chat.getByTestId("template-progress-timer")).toHaveText(/^0:1\d$/);

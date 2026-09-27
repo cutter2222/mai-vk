@@ -39,7 +39,7 @@ from presentation_designer.generation.office_objects import (
     objects,
     resolve_live,
 )
-from presentation_designer.layout.merge import MergeError, replace_slide
+from presentation_designer.layout.merge import MergeError, insert_slide, replace_slide
 from presentation_designer.llm.types import LlmError
 from presentation_designer.parsing.template.embedded_fonts import prepare_fonts
 from presentation_designer.parsing.template.package import PackageError
@@ -357,6 +357,53 @@ def _replace_slide(original: bytes, slide: int, source: bytes, source_slide: int
     out = io.BytesIO()
     base.save(out)
     return out.getvalue()
+
+
+class InsertSlideRequest(BaseModel):
+    """Слайд шаблона — копией в офисную копию следом за слайдом `after` (0 — в начало)."""
+
+    revision: int = Field(ge=0)
+    template_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    # Номера слайдов с единицы: в файле шаблона и в офисной копии.
+    slide: int = Field(ge=1)
+    after: int = Field(ge=0)
+
+
+@router.post("/documents/{document_id}/insert-slide")
+def insert_template_slide(document_id: str, body: InsertSlideRequest, orch: Orch) -> dict[str, Any]:
+    """Готовый слайд шаблона перетащили из панели «Файлы» в редактор: он встаёт копией следом
+    за текущим слайдом, остальные слайды и ручные правки не меняются."""
+    from pptx import Presentation
+
+    office = store(orch)
+    office.get(document_id)
+    try:
+        template = orch.state.get_template(body.template_id)
+    except NotFound as exc:
+        raise ApiError(404, "template_not_found", "Шаблон не найден в библиотеке") from exc
+    if template.get("status") != "succeeded":
+        raise ApiError(409, "template_not_ready", "Шаблон ещё разбирается — повторите через минуту")
+    source_path = orch.files.path_for(str(template["sha256"]))
+    if not source_path.is_file():
+        raise ApiError(404, "template_file_missing", "Файл шаблона не найден")
+    token = office.begin_edit(document_id, body.revision)
+    try:
+        original = office.read(document_id, body.revision)
+        base = Presentation(io.BytesIO(original))
+        insert_slide(base, body.after, Presentation(str(source_path)), body.slide - 1)
+        out = io.BytesIO()
+        base.save(out)
+        office.commit_edit(document_id, token, body.revision, out.getvalue())
+        place = "в начало" if body.after == 0 else f"после слайда {body.after}"
+        return {
+            "document": office.get(document_id),
+            "changed": True,
+            "message": f"Слайд {body.slide} шаблона вставлен {place}.",
+        }
+    except (MergeError, ValueError) as exc:
+        raise ApiError(422, "office_insert_failed", "Слайд не вставлен: " + str(exc)) from exc
+    finally:
+        office.end_edit(document_id, token)
 
 
 def _document_template(orch: Orch, source: str) -> str | None:

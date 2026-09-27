@@ -259,7 +259,38 @@ def replace_slide(base: Any, index: int, source: Any, source_index: int) -> Merg
         raise MergeError("slide_missing", f"в презентации нет слайда {index + 1}")
     if not 0 <= source_index < len(source.slides):
         raise MergeError("slide_missing", f"в новой версии нет слайда {source_index + 1}")
-    src = source.slides[source_index]
+    ctx, new_part = _copy_slide(base, source.slides[source_index])
+    entry = list(base.slides._sldIdLst.sldId_lst)[index]
+    old_rid = entry.rId
+    entry.rId = base.part.relate_to(new_part, RT.SLIDE)
+    base.part.drop_rel(old_rid)
+    return ctx.result
+
+
+def insert_slide(base: Any, position: int, source: Any, source_index: int) -> MergeResult:
+    """Вставляет копию слайда `source_index` из `source` в `base` на место `position`.
+
+    Зачем. Готовый слайд шаблона перетаскивают из панели «Файлы» в открытую презентацию: он
+    встаёт следом за текущим слайдом, остальные слайды и их ручные правки не меняются.
+
+    Как. Слайд переносится так же, как в `replace_slide` (связи, картинки, макет по имени),
+    но получает свою новую запись в `sldIdLst`, которая ставится на место `position`.
+    """
+    if not 0 <= position <= len(base.slides):
+        raise MergeError("slide_missing", f"в презентации нет места {position + 1}")
+    if not 0 <= source_index < len(source.slides):
+        raise MergeError("slide_missing", f"в шаблоне нет слайда {source_index + 1}")
+    ctx, new_part = _copy_slide(base, source.slides[source_index])
+    lst = base.slides._sldIdLst
+    entry = lst.add_sldId(base.part.relate_to(new_part, RT.SLIDE))
+    lst.remove(entry)
+    lst.insert(position, entry)
+    return ctx.result
+
+
+def _copy_slide(base: Any, src: Any) -> tuple[_Ctx, Any]:
+    """Новая часть слайда `src` в пакете `base`: связи переносятся, как при слиянии; макет —
+    свой с тем же именем, а нет такого — вместе с мастером. В колоду часть не ставится."""
     ctx = _Ctx(package=base.part.package)
     _index_media(ctx, base)
     layout = _same_layout(base, src.slide_layout)
@@ -291,13 +322,8 @@ def replace_slide(base: Any, index: int, source: Any, source_index: int) -> Merg
     element = getattr(new_part, "_element", None)
     if element is not None:
         _remap_rel_ids(element, mapping)
-
-    entry = list(base.slides._sldIdLst.sldId_lst)[index]
-    old_rid = entry.rId
-    entry.rId = base.part.relate_to(new_part, RT.SLIDE)
-    base.part.drop_rel(old_rid)
     ctx.result.slides = 1
-    return ctx.result
+    return ctx, new_part
 
 
 def _same_layout(base: Any, layout: Any) -> Any | None:

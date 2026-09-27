@@ -23,9 +23,11 @@ export function GenerationProgress({ session, compact = false, starting = false 
   }, []);
   const result = starting ? null : session.result;
   // Таймер виден сразу: при запуске отсчёт идёт с появления индикатора, затем — от создания
-  // задания на сервере.
+  // задания на сервере. Первый вариант готов — таймер уходит: остальные собираются в фоне, и
+  // общее время задания уже не то, чего ждёт человек (время каждого варианта — в чате).
   const [shownAt] = useState(() => new Date().toISOString());
-  const elapsed = useElapsed(result?.created_at ?? (starting ? shownAt : null));
+  const firstReady = Boolean(result?.variants?.some((v) => v.ready_at || v.artifacts?.pptx));
+  const elapsed = useElapsed(firstReady ? null : (result?.created_at ?? (starting ? shownAt : null)));
   const rawPercent = result?.progress?.percent;
   const percent = typeof rawPercent === "number" && Number.isFinite(rawPercent)
     ? Math.max(0, Math.min(100, rawPercent)) : null;

@@ -54,12 +54,12 @@ test("содержания меньше, чем просили: варианты
   await page.route("**/api/generations/job_short", (r) => r.fulfill({ json: {
     job_id: "job_short", status: "needs_review", stage: "done", created_at: "2026-09-24T10:00:00Z", finished_at: "2026-09-24T10:03:00Z",
     metrics: { totals: { duration_ms: 180000 } }, execution_mode: { mode: "real", layers: {} }, progress: { percent: 100, message: "" },
-    variants: [["compact", 6], ["balanced", 7], ["detailed", 7]].map(([variant_id, slide_count]) => ({ variant_id, status: "ready", revision: 1, slide_count, artifacts: {} })),
+    variants: [["compact", 6], ["balanced", 7], ["detailed", 7]].map(([variant_id, slide_count]) => ({ variant_id, status: "ready", revision: 1, slide_count, artifacts: {}, ...(variant_id === "balanced" ? { ready_at: "2026-09-24T10:01:30Z" } : {}) })),
     warnings: [{ code: "slide_count_short", message }],
   } }));
   await page.goto("/project?id=count-test");
   const job = page.getByTestId("job-card");
-  await expect(job.getByTestId("job-summary")).toHaveText("Собрал 6–7 слайдов в трёх вариантах за 3 мин 0 с.");
+  await expect(job.getByTestId("job-summary")).toHaveText("Собрал сбалансированный вариант из 7 слайдов за 1 мин 30 с.");
   await expect(job.getByTestId("job-short")).toHaveText(message);
   await expect(job).not.toContainText("не собрался");
 });

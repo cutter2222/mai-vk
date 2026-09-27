@@ -8,7 +8,12 @@ import pathlib
 from pptx import Presentation
 
 from presentation_designer.audit.deterministic import check_package
-from presentation_designer.layout.merge import _SLD_LAYOUT_ID, merge_presentation, replace_slide
+from presentation_designer.layout.merge import (
+    _SLD_LAYOUT_ID,
+    insert_slide,
+    merge_presentation,
+    replace_slide,
+)
 
 
 def _ids(prs) -> list[int]:
@@ -104,3 +109,36 @@ def test_replace_slide_rejects_a_missing_slide() -> None:
     base = Presentation(FIXTURE)
     with pytest.raises(MergeError):
         replace_slide(base, 9, Presentation(FIXTURE), 0)
+
+
+def test_insert_slide_puts_a_copy_after_the_current_one(tmp_path: pathlib.Path) -> None:
+    import pytest
+
+    from presentation_designer.layout.merge import MergeError
+
+    base = Presentation(FIXTURE)
+    base.slides[0].shapes.title.text = "Ручная правка"
+    ids = _slide_ids(base)
+    source = Presentation(FIXTURE)
+    # Слайд шаблона с диаграммой встаёт вторым: у остальных слайдов прежние записи и правки.
+    result = insert_slide(base, 1, source, 2)
+    assert result.slides == 1 and result.masters == 0
+    out = tmp_path / "inserted.pptx"
+    base.save(out)
+    assert check_package(out) == []
+    saved = Presentation(out)
+    got = _slide_ids(saved)
+    assert len(got) == 5 and [got[0], *got[2:]] == ids and got[1] not in ids
+    assert saved.slides[0].shapes.title.text == "Ручная правка"
+    assert [s.name for s in saved.slides[1].shapes] == ["TextBox 1", "Table 2", "Chart 3"]
+    assert saved.slides[1].shapes[2].has_chart
+    # В начало и в самый конец — тоже; места за концом и слайда за концом шаблона нет.
+    insert_slide(saved, 0, source, 0)
+    insert_slide(saved, len(saved.slides), source, 3)
+    assert len(saved.slides) == 7
+    saved.save(out)
+    assert check_package(out) == []
+    with pytest.raises(MergeError):
+        insert_slide(saved, 9, source, 0)
+    with pytest.raises(MergeError):
+        insert_slide(saved, 0, source, 9)

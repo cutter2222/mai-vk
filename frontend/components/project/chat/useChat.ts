@@ -24,6 +24,7 @@ import {
 } from "@/lib/state/projects";
 import type { GenerationRequest } from "@/lib/api/types";
 import { isDesignModeReply } from "@/lib/designMode";
+import { buildOrder, VARIANT_LABELS } from "@/lib/format";
 
 const GENERATE_RE = /сгенерир|запусти|собер[иа]|сдела[йт]|сделаем|построй|начина|давай/i;
 const EDIT_RE = /поменя[йть]|перестав|местами|удали|убери|добавь слайд|переимен/i;
@@ -68,6 +69,8 @@ export interface StagedPptx {
   name: string;
   size: number;
   answer?: PptxAnswer;
+  /** Какая доля файла уже ушла на сервер (0–1); нет — браузер ещё не сообщил. */
+  sent?: number;
 }
 
 /**
@@ -185,8 +188,10 @@ export function useChat(project: Project, session: GenerationSession, generate: 
       say(`${lead}Выберите шаблон оформления вверху справа — и я сразу начну собирать.`);
       return;
     }
-    const n = p.settings.variants.length;
-    say(`${lead}${n > 1 ? `Собираю презентацию: сначала один вариант, ${n === 2 ? "второй" : `ещё ${n - 1}`} — следом.` : "Собираю презентацию."}`);
+    // Порядок сборки словами: «сначала сбалансированный вариант, следом компактный и подробный».
+    const [first, ...next] = buildOrder(p.settings.variants).map((v) => (VARIANT_LABELS[v] ?? v).toLowerCase());
+    const after = next.length > 1 ? `${next.slice(0, -1).join(", ")} и ${next[next.length - 1]}` : next[0];
+    say(`${lead}${after ? `Собираю презентацию: сначала ${first} вариант, следом ${after}.` : "Собираю презентацию."}`);
     await generate();
   }, [current, say, offerGeneration, generate, session.result?.status]);
 
@@ -446,10 +451,18 @@ export function useChat(project: Project, session: GenerationSession, generate: 
   const stagePptx = useCallback((file: File) => {
     const localId = `stg_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     setStaged((s) => [...s, { local_id: localId, name: file.name, size: file.size }]);
+    // Ход загрузки под вопросом: лента перерисовывается на каждый новый процент, а не на каждое событие.
+    let percent = -1;
+    const onProgress = (share: number) => {
+      const next = Math.floor(share * 100);
+      if (next === percent) return;
+      percent = next;
+      setStaged((s) => s.map((x) => (x.local_id === localId ? { ...x, sent: share } : x)));
+    };
     void (async () => {
       let row: ProjectFile | undefined;
       try {
-        row = (await addProjectFiles(id, [file]))[0];
+        row = (await addProjectFiles(id, [file], onProgress))[0];
       } catch (e) {
         say(`Не удалось загрузить «${file.name}»: ${e instanceof ApiError ? e.message : "неизвестная ошибка"}.`);
       }

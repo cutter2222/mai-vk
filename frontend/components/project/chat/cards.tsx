@@ -1,14 +1,14 @@
 "use client";
 
 import { Anchor, Button, ColorSwatch, Group, Loader, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
-import { IconCircleCheck, IconClock, IconRocket } from "@tabler/icons-react";
+import { IconCircleCheck, IconClock, IconRocket, IconUpload } from "@tabler/icons-react";
 import { useState } from "react";
 
 import { SlideImage } from "@/components/common/SlideImage";
 import { api, ApiError, TERMINAL_STATES, type ContentDetail, type TemplateDetail } from "@/lib/api/client";
 import type { GenerationResult, JobStatus } from "@/lib/api/types";
 import { usePolling } from "@/lib/api/usePolling";
-import { formatMs, plural, STAGE_LABELS, VARIANT_LABELS } from "@/lib/format";
+import { buildOrder, formatBytes, formatMs, plural, STAGE_LABELS, VARIANT_LABELS } from "@/lib/format";
 import { useElapsed } from "@/lib/hooks/useElapsed";
 import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
 import { slideCountAsked, type BriefDraft, type ChatMessage, type PptxAnswer, type Project } from "@/lib/state/projects";
@@ -206,6 +206,26 @@ function DeckProgress({ session, since }: { session: GenerationSession; since?: 
   );
 }
 
+/**
+ * Файл ещё едет на сервер: процент и полоса под репликой о нём. Пока браузер не сообщил,
+ * сколько ушло, полоса бежит без процента.
+ */
+export function UploadProgress({ size, sent }: { size: number; sent?: number }) {
+  const percent = typeof sent === "number" ? Math.min(100, Math.floor(sent * 100)) : null;
+  return (
+    <div className="deck-progress" data-testid="upload-progress" aria-busy="true">
+      <Group gap={6} wrap="nowrap">
+        <IconUpload size={14} stroke={1.8} className="deck-progress-time" aria-hidden />
+        {percent != null && <Text size="xs" fw={600} className="deck-progress-time" data-testid="upload-progress-percent">{percent}%</Text>}
+        <Text size="xs" c="dimmed" truncate style={{ flex: 1 }} role="status">Загружаю файл · {formatBytes(size)}</Text>
+      </Group>
+      <div className={progressStyles.track} style={{ height: 4 }} role="progressbar" aria-label="Загрузка файла" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent ?? undefined}>
+        {percent != null ? <div className={progressStyles.fill} style={{ width: `${percent}%` }} /> : <div className={progressStyles.shimmer} />}
+      </div>
+    </div>
+  );
+}
+
 /** Итог в истории чата: сколько открывалась презентация. */
 function DeckOpened({ ms }: { ms: number }) {
   return (
@@ -395,9 +415,6 @@ export function BriefCard({ m, ctx }: { m: Msg<"brief_card">; ctx: CardContext }
   );
 }
 
-/** Сколько вариантов — словом: «в трёх вариантах» читается как речь, «в 3 вариантах» — как отчёт. */
-const COUNT_WORDS = ["", "одном", "двух", "трёх", "четырёх", "пяти", "шести"];
-
 /**
  * Что делает задание — фразой от первого лица. Названия этапов из `STAGE_LABELS` написаны для
  * таблицы метрик («Сборка PPTX», «Планы вариантов»): в ленте они звучат как строка журнала, а
@@ -417,36 +434,49 @@ const JOB_PHRASE: Record<string, string> = {
   done: "Заканчиваю",
 };
 
-/** То же для строки варианта: «Сбалансированный — сборка», а не «сборка pptx». */
-const VARIANT_STAGE: Record<string, string> = {
-  queued: "в очереди",
-  analyze: "разбор шаблона",
-  import: "чтение материалов",
-  story: "структура",
-  plan: "план слайдов",
-  compose: "сборка",
-  export: "экспорт",
-  audit: "проверка",
-  repair: "исправления",
-  finalize: "завершение",
-  done: "готов",
-};
+type Variant = GenerationResult["variants"][number];
 
-function variantLine(v: GenerationResult["variants"][number]): string {
+const isBuilt = (v: Variant) => v.status === "ready" || v.status === "needs_review";
+
+/** Миллисекунды между двумя моментами; нет одного из них — null. */
+function between(from?: string | null, to?: string | null): number | null {
+  const ms = Date.parse(to ?? "") - Date.parse(from ?? "");
+  return Number.isNaN(ms) ? null : Math.max(0, ms);
+}
+
+/** Время одним словом: строка не переносится между «14» и «с». */
+const duration = (ms: number) => formatMs(ms).replace(/ /g, " ");
+
+/**
+ * Сколько собирался сам вариант: от начала его первого этапа до готовности файлов. Ожидание
+ * основного варианта и проверка после публикации сюда не входят.
+ */
+function buildMs(v: Variant): number | null {
+  const starts = (v.stages ?? []).map((s) => Date.parse(s.started_at ?? "")).filter((t) => !Number.isNaN(t));
+  const ready = Date.parse(v.ready_at ?? "");
+  return starts.length && !Number.isNaN(ready) ? Math.max(0, ready - Math.min(...starts)) : null;
+}
+
+/** Строка варианта: «Компактный — собирается», «Компактный — собран за 1 мин 52 с, 10 слайдов». */
+function variantLine(v: Variant, jobStatus: GenerationResult["status"]): string {
   const label = VARIANT_LABELS[v.variant_id] ?? v.variant_id;
   if (v.status === "failed") return `${label} — не собрался${v.error?.message ? `: ${v.error.message.toLowerCase()}` : ""}`;
-  if (v.status === "ready" || v.status === "needs_review") {
-    return `${label} — готов${v.slide_count ? `, ${v.slide_count} ${plural(v.slide_count, "слайд", "слайда", "слайдов")}` : ""}`;
+  if (isBuilt(v)) {
+    const ms = buildMs(v);
+    return `${label} — собран${ms != null ? ` за ${duration(ms)}` : ""}${v.slide_count ? `, ${v.slide_count} ${plural(v.slide_count, "слайд", "слайда", "слайдов")}` : ""}`;
   }
-  const stage = (v.stages ?? []).find((s) => s.status === "running")?.stage;
-  if (v.status === "running") return `${label} — ${(stage && VARIANT_STAGE[stage]) || "собирается"}`;
-  return `${label} — в очереди`;
+  if (jobStatus === "canceled") return `${label} — отменён`;
+  if (TERMINAL_STATES.has(jobStatus)) return `${label} — не собирался`;
+  return `${label} — ${v.status === "running" ? "собирается" : "в очереди"}`;
 }
 
 /**
- * Генерация в ленте: пока идёт — строка о том, что происходит сейчас, и по строке на вариант;
- * когда закончилась — одна фраза с итогом. Этапы, метрики, идентификатор задания и режим
- * исполнения ушли под «подробности»: при чтении они не нужны, при разборе — открываются.
+ * Генерация в ленте. Варианты собираются по очереди: первым основной (сбалансированный), за ним
+ * остальные. Пока первый не готов — строка о том, что происходит сейчас, и по строке на вариант.
+ * Готов — итог о нём со временем от запроса («Собрал сбалансированный вариант из 12 слайдов за
+ * 3 мин 14 с»), а строки остальных говорят, собираются ли они и за сколько собрался каждый.
+ * Общее время задания (вместе с проверками всех вариантов) в итог не выносится: оно в разы
+ * больше ожидания первой презентации. Этапы, метрики и режим исполнения — под «подробностями».
  */
 export function JobCard({ m, ctx }: { m: Msg<"job_card">; ctx: CardContext }) {
   const { session } = ctx;
@@ -460,14 +490,16 @@ export function JobCard({ m, ctx }: { m: Msg<"job_card">; ctx: CardContext }) {
   }
 
   const total = terminal ? (result.metrics.totals?.duration_ms ?? elapsed) : elapsed;
-  const done = result.variants.filter((v) => v.status === "ready" || v.status === "needs_review");
-  const broken = result.variants.filter((v) => v.status === "failed");
-  const counts = [...new Set(done.map((v) => v.slide_count).filter((n): n is number => typeof n === "number"))];
-  const slides = counts.length === 1
-    ? `${counts[0]} ${plural(counts[0], "слайд", "слайда", "слайдов")}`
-    : counts.length > 1
-      ? `${Math.min(...counts)}–${Math.max(...counts)} слайдов`
-      : "слайды";
+  const variants = buildOrder(result.variants, (v) => v.variant_id);
+  const done = variants.filter(isBuilt);
+  const broken = variants.filter((v) => v.status === "failed");
+  // Первый собранный по порядку сборки: основной, а если он не собрался — следующий готовый.
+  const lead = done.at(0);
+  const leadMs = lead ? between(result.created_at, lead.ready_at) : null;
+  const leadText = lead
+    ? `Собрал ${(VARIANT_LABELS[lead.variant_id] ?? lead.variant_id).toLowerCase()} вариант${lead.slide_count ? ` из ${lead.slide_count} ${plural(lead.slide_count, "слайда", "слайдов", "слайдов")}` : ""}${leadMs != null ? ` за ${duration(leadMs)}` : ""}`
+    : "";
+  const rest = variants.filter((v) => v !== lead);
   const failMessage = (result.error?.message ?? "задание завершилось ошибкой").replace(/\.\s*$/, "");
   const warnings = result.warnings?.filter((w) => JOB_WARNINGS.has(w.code) && w.code !== "slide_count_short") ?? [];
   // Содержания меньше, чем просили: варианты собраны короче, и это говорится обычной фразой.
@@ -494,16 +526,14 @@ export function JobCard({ m, ctx }: { m: Msg<"job_card">; ctx: CardContext }) {
     );
   }
 
-  const summary = !terminal ? (
+  const summary = !terminal && !lead ? (
     <Doing testId="job-summary">{JOB_PHRASE[result.stage] ?? STAGE_LABELS[result.stage]}</Doing>
   ) : result.status === "canceled" ? (
-    <Say testId="job-summary">Отменил сборку{total ? ` через ${formatMs(total)}` : ""}.</Say>
-  ) : done.length === 0 ? (
+    <Say testId="job-summary">{lead ? `${leadText}, остальные отменил.` : `Отменил сборку${total ? ` через ${formatMs(total)}` : ""}.`}</Say>
+  ) : !lead ? (
     <Say testId="job-summary">Не собрал: {failMessage}.{result.error?.retryable ? " Можно повторить." : ""}</Say>
   ) : (
-    <Say testId="job-summary">
-      Собрал {slides}{done.length > 1 ? ` в ${COUNT_WORDS[done.length] ?? done.length} ${plural(done.length, "варианте", "вариантах", "вариантах")}` : ""} за {formatMs(total)}.
-    </Say>
+    <Say testId="job-summary">{leadText}.</Say>
   );
 
   return (
@@ -518,13 +548,21 @@ export function JobCard({ m, ctx }: { m: Msg<"job_card">; ctx: CardContext }) {
           {" "}— остальные готовы, повторить сборку можно кнопкой «Повторить» в шапке проекта.
         </Say>
       )}
-      <Stack gap={2}>
-        {result.variants.map((v) => (
-          <Text key={v.variant_id} size="sm" className="job-variant-line" data-status={v.status} data-testid={`variant-progress-${v.variant_id}`}>
-            {variantLine(v)}
-          </Text>
-        ))}
-      </Stack>
+      {rest.length > 0 && (
+        <Stack gap={2}>
+          {rest.map((v) => (
+            <Text
+              key={v.variant_id}
+              size="sm"
+              className={v.status === "running" && !terminal ? "job-variant-line chat-hint" : "job-variant-line"}
+              data-status={v.status}
+              data-testid={`variant-progress-${v.variant_id}`}
+            >
+              {variantLine(v, result.status)}
+            </Text>
+          ))}
+        </Stack>
+      )}
       {warnings.map((w) => (
         <Aside key={w.code} testId={w.code === "chart_images" ? "job-charts" : "job-warning"}>{w.message}</Aside>
       ))}

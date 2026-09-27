@@ -252,10 +252,35 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 /**
+ * Отправка формы с ходом загрузки: fetch не сообщает, сколько байтов ушло, XMLHttpRequest —
+ * сообщает. `onProgress` получает долю от 0 до 1; ошибки те же, что у `request`.
+ */
+function upload<T>(path: string, body: FormData, headers: Record<string, string> | undefined, onProgress: (share: number) => void): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_BASE}${path}`);
+    Object.entries(headers ?? {}).forEach(([name, value]) => xhr.setRequestHeader(name, value));
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable && e.total > 0) onProgress(e.loaded / e.total); };
+    xhr.onload = () => {
+      let data: unknown;
+      try {
+        data = xhr.responseText ? JSON.parse(xhr.responseText) : undefined;
+      } catch {
+        data = undefined;
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data as T);
+      else reject(new ApiError(xhr.status, data as ApiErrorBody | undefined, `Ошибка запроса ${xhr.status}`));
+    };
+    xhr.onerror = () => reject(new TypeError("Failed to fetch"));
+    xhr.send(body);
+  });
+}
+
+/**
  * В режиме заглушек Safari передаёт multipart в service worker без бинарных частей,
  * поэтому имена и размеры файлов дублируются заголовком. В рабочем режиме заголовок не добавляется.
  */
-function mockFilesHeader(files: File[]): HeadersInit | undefined {
+function mockFilesHeader(files: File[]): Record<string, string> | undefined {
   if (API_MODE !== "mock") return undefined;
   return { "X-Mock-Files": encodeURIComponent(JSON.stringify(files.map((f) => ({ name: f.name, size: f.size })))) };
 }
@@ -279,6 +304,8 @@ export const api = {
     undo: (id: string, revision: number, toRevision: number) => request<{ document: OfficeDocument; changed: boolean; message: string }>(`/office/documents/${encodeURIComponent(id)}/undo`, json({ revision, to_revision: toRevision })),
     /** Слайд, пересобранный правкой из чата, встаёт в офисную копию; остальные слайды не меняются. */
     applySlide: (id: string, revision: number, body: OfficeApplySlide) => request<{ document: OfficeDocument; changed: boolean; message: string }>(`/office/documents/${encodeURIComponent(id)}/apply-slide`, json({ revision, ...body })),
+    /** Готовый слайд шаблона (номер с единицы) — копией в презентацию следом за слайдом `after`. */
+    insertSlide: (id: string, revision: number, body: { template_id: string; slide: number; after: number }) => request<{ document: OfficeDocument; changed: boolean; message: string }>(`/office/documents/${encodeURIComponent(id)}/insert-slide`, json({ revision, ...body })),
     config: (id: string) => request<{ script_url: string; config: Record<string, unknown> }>(`/office/documents/${encodeURIComponent(id)}/config`, json({})),
     /** Команда вставки картинки на текущий слайд: сервер проверяет источник и подписывает ссылку. */
     imageCommand: (id: string, source: OfficeImageSource) => request<OfficeImageCommand>(`/office/documents/${encodeURIComponent(id)}/images`, json(
@@ -311,10 +338,14 @@ export const api = {
     appendEvent: (id: string, event: EventInput) => request<Event>(`/projects/${encodeURIComponent(id)}/events`, json(event)),
     patchEvent: (id: string, eventId: string, patch: Partial<Event>) =>
       request<Event>(`/projects/${encodeURIComponent(id)}/events/${encodeURIComponent(eventId)}`, json(patch, "PATCH")),
-    uploadFiles: (id: string, files: File[]) => {
+    /** `onProgress` — доля отправленных байтов (0–1): с ним загрузка идёт через XMLHttpRequest. */
+    uploadFiles: (id: string, files: File[], onProgress?: (share: number) => void) => {
       const form = new FormData();
       files.forEach((f) => form.append("files", f));
-      return request<ProjectFile[]>(`/projects/${encodeURIComponent(id)}/files`, { method: "POST", body: form, headers: mockFilesHeader(files) });
+      const path = `/projects/${encodeURIComponent(id)}/files`;
+      return onProgress
+        ? upload<ProjectFile[]>(path, form, mockFilesHeader(files), onProgress)
+        : request<ProjectFile[]>(path, { method: "POST", body: form, headers: mockFilesHeader(files) });
     },
     /** Сообщение с содержанием — материалом «Текст из чата.md»: сервер восстанавливает строки и разделы «Слайд N». */
     addText: (id: string, text: string) => request<ProjectFile>(`/projects/${encodeURIComponent(id)}/files/text`, json({ text })),

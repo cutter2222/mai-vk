@@ -968,6 +968,34 @@ def test_apply_slide_puts_the_rebuilt_slide_into_the_edited_copy(
     assert store.get(doc_id)["active_key"] is None
 
 
+def test_insert_slide_puts_a_template_slide_after_the_current_one(client, office, pptx_bytes):
+    """Слайд шаблона, брошенный из панели «Файлы», встаёт копией следом за текущим слайдом;
+    ручные правки остальных слайдов остаются."""
+    store, doc_id = office
+    edited = Presentation(io.BytesIO(pptx_bytes))
+    edited.slides[0].shapes.title.text = "Ручная правка"
+    _saved(store, doc_id, edited)
+    upload = client.post("/api/templates", files={"file": ("Шаблон.pptx", pptx_bytes)})
+    template_id = upload.json()["template_id"]
+    url = f"/api/office/documents/{doc_id}/insert-slide"
+    body = {"revision": 1, "template_id": template_id, "slide": 3, "after": 1}
+    response = client.post(url, json=body)
+    assert response.status_code == 200, response.text
+    assert response.json()["document"]["revision"] == 2
+    assert response.json()["message"] == "Слайд 3 шаблона вставлен после слайда 1."
+    saved = Presentation(io.BytesIO(store.read(doc_id, 2)))
+    template = Presentation(io.BytesIO(pptx_bytes))
+    assert len(saved.slides) == len(template.slides) + 1
+    assert saved.slides[0].shapes.title.text == "Ручная правка"
+    assert [s.name for s in saved.slides[1].shapes] == [s.name for s in template.slides[2].shapes]
+    assert client.post(url, json=body).status_code == 409  # ревизия копии уже 2
+    assert client.post(url, json=body | {"revision": 2, "slide": 9}).status_code == 422
+    missing = body | {"revision": 2, "template_id": "tpl_missing"}
+    assert client.post(url, json=missing).status_code == 404
+    assert store.get(doc_id)["revision"] == 2
+    assert store.get(doc_id)["active_key"] is None
+
+
 def _group_and_placeholder_deck() -> Presentation:
     from pptx.util import Mm
 

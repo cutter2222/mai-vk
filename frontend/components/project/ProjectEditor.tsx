@@ -25,7 +25,7 @@ import { isDeckJob } from "./chat/feed";
 import { runSteps, undo, type RunContext } from "./chat/routeRunner";
 import type { CardContext } from "./chat/cards";
 import { useChat } from "./chat/useChat";
-import { FilesPanel } from "./files/FilesPanel";
+import { FilesPanel, listedFiles } from "./files/FilesPanel";
 import { BriefFields } from "./panels/BriefFields";
 import { SettingsPanel, settingsError } from "./panels/SettingsPanel";
 import { PreviewPane } from "./preview/PreviewPane";
@@ -290,7 +290,7 @@ export function ProjectEditor({ project }: { project: Project }) {
   // Две вкладки: разговор целиком и загруженные файлы. Шаги работы — реплики той же ленты.
   const TABS: Array<{ key: Tab; label: string; icon: React.ReactNode; badge?: number }> = [
     { key: "chat", label: "Чат", icon: <IconMessage size={16} stroke={1.7} /> },
-    { key: "files", label: "Файлы", icon: <IconFolder size={16} stroke={1.7} />, badge: project.files.length || undefined },
+    { key: "files", label: "Файлы", icon: <IconFolder size={16} stroke={1.7} />, badge: listedFiles(project.files).length || undefined },
   ];
 
   return (
@@ -351,7 +351,7 @@ export function ProjectEditor({ project }: { project: Project }) {
             {tab === "chat" ? (
               <ChatPanel ctx={ctx} onSend={send} officeSelection={officeSelection} onDismissOfficeSelection={() => setOfficeSelection(null)} liveTarget={liveTarget} onDismissLiveTarget={() => setLiveDismissed(liveKey)} suggestions={chat.suggestions} onAttach={attach} staged={chat.staged} onAnswerStaged={chat.answerStaged} speech={Boolean(caps?.features.speech)} />
             ) : (
-              <FilesPanel project={project} onAdd={(files) => { const rest = attach(files); if (rest.length) void chat.send("", rest); }} onRemove={(fid) => void chat.removeFile(fid)} onSelectTemplate={chat.selectTemplate} />
+              <FilesPanel project={project} onAdd={(files) => { const rest = attach(files); if (rest.length) void chat.send("", rest); }} onRemove={(fid) => void chat.removeFile(fid)} />
             )}
           </div>
         </aside>

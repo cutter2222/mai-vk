@@ -1,10 +1,10 @@
 export function formatMs(ms?: number | null): string {
   if (ms == null) return "—";
   if (ms < 1000) return `${ms} мс`;
-  const s = ms / 1000;
-  if (s < 60) return `${Math.round(s)} с`;
-  const m = Math.floor(s / 60);
-  return `${m} мин ${Math.round(s - m * 60)} с`;
+  // Округляем до секунд сразу: иначе 119,6 с превращались в «1 мин 60 с».
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s} с`;
+  return `${Math.floor(s / 60)} мин ${s % 60} с`;
 }
 
 export function formatBytes(bytes: number): string {
@@ -52,6 +52,14 @@ export const VARIANT_LABELS: Record<string, string> = {
   detailed: "Подробный",
   original: "Исходная презентация",
 };
+
+/** Вариант, который сервер собирает первым (`jobs.PRIMARY_VARIANT`). */
+export const PRIMARY_VARIANT = "balanced";
+
+/** Порядок сборки, как `jobs.ordered_variants`: основной вариант первым, остальные в порядке запроса. */
+export function buildOrder<T>(items: T[], id: (item: T) => string = String): T[] {
+  return [...items.filter((item) => id(item) === PRIMARY_VARIANT), ...items.filter((item) => id(item) !== PRIMARY_VARIANT)];
+}
 
 export const SEVERITY_LABELS: Record<string, string> = {
   blocking: "Блокирует",

@@ -2,7 +2,7 @@
 
 import { ActionIcon, Alert, Button, Group, Loader, Menu, Select, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconDots, IconDownload, IconPhotoPlus } from "@tabler/icons-react";
+import { IconDots, IconDownload, IconPhotoPlus, IconSlideshow } from "@tabler/icons-react";
 import Link from "next/link";
 import { useCallback, useEffect, useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 import { createPortal } from "react-dom";
@@ -12,7 +12,7 @@ import { downloadArtifact } from "@/lib/download";
 import { Logo } from "@/components/app/Logo";
 import { goToOfficeSlide, watchOfficeSelection, type LiveSelection } from "@/lib/editor/officeLive";
 import { flushOfficeFrame } from "@/lib/editor/officeSave";
-import { draggedImage, setDraggedImage, useDraggedImage, type DraggedImage } from "@/lib/state/drag";
+import { draggedItem, isDraggedSlide, setDragged, useDragged, type DraggedImage, type DraggedItem, type DraggedSlide } from "@/lib/state/drag";
 
 type Editor = { destroyEditor: () => void; requestClose: () => void; insertImage?: (command: Record<string, unknown>) => void };
 export type OfficeEditHandle = {
@@ -49,6 +49,10 @@ export type OfficeEditOutcome = { changed: boolean; message: string; documentId:
 export function outcomeOf(result: { document: OfficeDocument; changed: boolean; message: string }, base: number): OfficeEditOutcome {
   return { changed: result.changed, message: result.message, documentId: result.document.id, base, revision: result.document.revision };
 }
+/** Заголовок плашки на время правки копии на сервере. */
+const AI_EDIT_TITLE = "ИИ редактирует этот PPTX";
+
+
 let sdkPromise: Promise<void> | undefined;
 
 export function loadSDK(url: string): Promise<void> {
@@ -124,6 +128,7 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
   const [attempt, setAttempt] = useState(0);
   const editorId = useId();
   const [editing, setEditing] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(AI_EDIT_TITLE);
   const [closing, setClosing] = useState(false);
   const busy = useRef(false);
   const mounted = useRef(true);
@@ -149,14 +154,14 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
   const returnedAfterSave = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; saveAbort.current?.abort(); }; }, []);
 
-  const flush = async () => {
+  const flush = useCallback(async () => {
     saveAbort.current?.abort();
     const controller = new AbortController();
     saveAbort.current = controller;
     await flushOfficeFrame(canvas.current?.querySelector("iframe") ?? null, controller.signal);
     dirty.current = false;
     setModified(false);
-  };
+  }, []);
 
   useEffect(() => {
     // finish() clears pre-close state; only a fresh server acknowledgement allows return.
@@ -216,65 +221,75 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
     if (!mounted.current || !sdk.current?.insertImage) return;
     sdk.current.insertImage({ ...command });
   }, [id, ready, closed, editing, closing]);
-  const dragged = useDraggedImage();
-  const [dropOver, setDropOver] = useState(false);
-  const dropImage = async (image: DraggedImage) => {
+  // Правка на сервере идёт по сохранённой копии: несохранённое сбрасывается в файл, редактор
+  // закрывается, сервер пишет следующую ревизию, редактор открывается на ней на том же слайде.
+  const serverEdit = useCallback(async (run: (revision: number) => Promise<{ document: OfficeDocument; changed: boolean; message: string }>, title = AI_EDIT_TITLE) => {
+    if (busy.current) throw new Error("Предыдущая ИИ-правка ещё выполняется.");
+    for (let waited = 0; !editorReady.current && !closed && waited < 60000 && mounted.current; waited += 500) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    if (!(editorReady.current || closed) || error || pollError || doc?.error) throw new Error("Сначала дождитесь готовности редактора и устраните ошибку сохранения.");
+    busy.current = true;
+    setEditingTitle(title);
+    setEditing(true);
+    let saved = false;
     try {
-      await insertImage(image);
+      if (!closed) {
+        await flush();
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => { closeRequested.current = null; reject(new Error("Редактор не подтвердил закрытие. Сохраните документ и повторите запрос.")); }, 15000);
+          closeRequested.current = () => {
+            clearTimeout(timer);
+            closeRequested.current = null;
+            if (dirty.current) reject(new Error("Есть несохранённые изменения; редактор оставлен открытым."));
+            else { setClosed(true); resolve(); }
+          };
+          if (!sdk.current) { clearTimeout(timer); closeRequested.current = null; reject(new Error("Редактор недоступен.")); }
+          else sdk.current.requestClose();
+        });
+      }
+      // Closing the SDK starts final save. A clean client flag is NOT a storage ack.
+      const until = Date.now() + 90000;
+      while (Date.now() < until) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        if (!mounted.current) throw new Error("Страница закрыта; ИИ-правка не запущена.");
+        const current = await api.office.get(id);
+        if (current.error) throw new Error(current.error);
+        if (current.active_key) continue;
+        saved = true;
+        const result = await run(current.revision);
+        if (mounted.current) { setDoc(result.document); setVersion(null); }
+        return result;
+      }
+      throw new Error("Сохранение не подтверждено. Закройте другие вкладки этого документа и повторите запрос. PPTX не перезаписан.");
+    } finally {
+      busy.current = false;
+      if (mounted.current) {
+        setEditing(false);
+        if (saved) { editorReady.current = false; setReady(false); setModified(false); setError(""); setClosed(false); }
+      }
+    }
+  }, [id, closed, error, pollError, doc?.error, flush]);
+
+  // Слайд шаблона встаёт следом за текущим, и редактор открывается уже на нём.
+  const insertSlide = async (item: DraggedSlide) => {
+    const current = Math.max(1, lastSlide.current);
+    await serverEdit((revision) => api.office.insertSlide(id, revision, { template_id: item.template_id, slide: item.slide, after: current }), "Вставляю слайд из шаблона");
+    lastSlide.current = current + 1;
+  };
+
+  const dragged = useDragged();
+  const [dropOver, setDropOver] = useState(false);
+  const drop = async (item: DraggedItem) => {
+    try {
+      if (isDraggedSlide(item)) await insertSlide(item);
+      else await insertImage(item);
     } catch (e) {
-      notifications.show({ color: "red", title: "Картинка не вставлена", message: e instanceof Error ? e.message : "Повторите перетаскивание." });
+      notifications.show({ color: "red", title: isDraggedSlide(item) ? "Слайд из шаблона" : "Картинка не вставлена", message: e instanceof Error ? e.message : "Повторите перетаскивание." });
     }
   };
 
   useImperativeHandle(editRef, () => {
-    // Правка на сервере идёт по сохранённой копии: несохранённое сбрасывается в файл, редактор
-    // закрывается, сервер пишет следующую ревизию, редактор открывается на ней на том же слайде.
-    const serverEdit = async (run: (revision: number) => Promise<{ document: OfficeDocument; changed: boolean; message: string }>) => {
-      if (busy.current) throw new Error("Предыдущая ИИ-правка ещё выполняется.");
-      for (let waited = 0; !editorReady.current && !closed && waited < 60000 && mounted.current; waited += 500) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      }
-      if (!(editorReady.current || closed) || error || pollError || doc?.error) throw new Error("Сначала дождитесь готовности редактора и устраните ошибку сохранения.");
-      busy.current = true;
-      setEditing(true);
-      let saved = false;
-      try {
-        if (!closed) {
-          await flush();
-          await new Promise<void>((resolve, reject) => {
-            const timer = setTimeout(() => { closeRequested.current = null; reject(new Error("Редактор не подтвердил закрытие. Сохраните документ и повторите запрос.")); }, 15000);
-            closeRequested.current = () => {
-              clearTimeout(timer);
-              closeRequested.current = null;
-              if (dirty.current) reject(new Error("Есть несохранённые изменения; редактор оставлен открытым."));
-              else { setClosed(true); resolve(); }
-            };
-            if (!sdk.current) { clearTimeout(timer); closeRequested.current = null; reject(new Error("Редактор недоступен.")); }
-            else sdk.current.requestClose();
-          });
-        }
-        // Closing the SDK starts final save. A clean client flag is NOT a storage ack.
-        const until = Date.now() + 90000;
-        while (Date.now() < until) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          if (!mounted.current) throw new Error("Страница закрыта; ИИ-правка не запущена.");
-          const current = await api.office.get(id);
-          if (current.error) throw new Error(current.error);
-          if (current.active_key) continue;
-          saved = true;
-          const result = await run(current.revision);
-          if (mounted.current) { setDoc(result.document); setVersion(null); }
-          return result;
-        }
-        throw new Error("Сохранение не подтверждено. Закройте другие вкладки этого документа и повторите запрос. PPTX не перезаписан.");
-      } finally {
-        busy.current = false;
-        if (mounted.current) {
-          setEditing(false);
-          if (saved) { editorReady.current = false; setReady(false); setModified(false); setError(""); setClosed(false); }
-        }
-      }
-    };
     return {
       isReady: () => mounted.current && editorReady.current && !busy.current,
       insertImage,
@@ -299,7 +314,7 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
         return outcomeOf(result, revision);
       },
     };
-  }, [id, error, pollError, doc?.error, closed, insertImage]);
+  }, [id, insertImage, serverEdit]);
 
   useEffect(() => {
     onActiveChange?.(editing || !closed || !doc || Boolean(doc.active_key) || Boolean(pollError));
@@ -433,7 +448,7 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
         {error || doc?.error}
         {startFailed && !closed && <Button ml="sm" size="xs" variant="light" onClick={() => { setError(""); setStartFailed(false); setAttempt((n) => n + 1); }}>Повторить загрузку редактора</Button>}
       </Alert>}
-      {editing && <Alert color="blue" title="ИИ редактирует этот PPTX">Ожидаем сохранения ONLYOFFICE и применяем точечную правку. Редактор откроется автоматически. Не закрывайте страницу.</Alert>}
+      {editing && <Alert color="blue" title={editingTitle}>Ожидаем сохранения ONLYOFFICE и применяем точечную правку. Редактор откроется автоматически. Не закрывайте страницу.</Alert>}
       {closed ? (editing ? null : (
         <Alert color={!doc || doc.active_key || doc.error || pollError ? "yellow" : "green"}>
           {!doc || doc.active_key || doc.error || pollError ? "Ожидаем завершения сессии и сохранения. Если файл открыт в другой вкладке, завершите редактирование и там." : onSaved && !embedded ? "Возвращаемся в ИИ-редактор…" : `Сессия закрыта. Версия v${doc.revision} сохранена на сервере.`}
@@ -454,11 +469,13 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
                 onDrop={(e) => {
                   e.preventDefault();
                   setDropOver(false);
-                  const image = draggedImage();
-                  setDraggedImage(null);
-                  if (image) void dropImage(image);
+                  const item = draggedItem();
+                  setDragged(null);
+                  if (item) void drop(item);
                 }}>
-                <span><IconPhotoPlus size={20} stroke={1.6} />Отпустите — «{dragged.name}» встанет на текущий слайд</span>
+                {isDraggedSlide(dragged)
+                  ? <span><IconSlideshow size={20} stroke={1.6} />Отпустите — «{dragged.name}» встанет после текущего слайда</span>
+                  : <span><IconPhotoPlus size={20} stroke={1.6} />Отпустите — «{dragged.name}» встанет на текущий слайд</span>}
               </div>
             )}
           </div>

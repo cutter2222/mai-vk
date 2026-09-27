@@ -17,6 +17,7 @@
 .timer { flex-shrink: 0; color: var(--mantine-primary-color-filled); font-variant-numeric: tabular-nums; }
 .track { height: 6px; overflow: hidden; border-radius: 8px; background: var(--mantine-color-gray-2); }
 .shimmer { width: 35%; height: 100%; border-radius: inherit; background: var(--mantine-primary-color-filled); animation: travel 1.8s ease-in-out infinite alternate; }
+.fill { height: 100%; border-radius: inherit; background: var(--mantine-primary-color-filled); transition: width 200ms linear; }
 @keyframes float { 50% { transform: translateY(-8px) rotate(5deg); } }
 @keyframes appear { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes travel { from { transform: translateX(0); } to { transform: translateX(185%); } }

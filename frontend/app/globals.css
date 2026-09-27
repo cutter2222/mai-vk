@@ -1232,6 +1232,15 @@ body {
   object-fit: contain;
 }
 
+/* Готовые слайды шаблона: крупнее ресурсов, в пропорциях слайда. */
+.file-grid-slides {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+.slide-card .file-thumb {
+  aspect-ratio: 16 / 9;
+}
+
 /* Ресурсы шаблона часто прозрачные: шахматка показывает их границы. */
 .asset-card .file-thumb {
   aspect-ratio: 1;

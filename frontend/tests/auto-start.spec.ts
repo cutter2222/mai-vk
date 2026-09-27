@@ -45,7 +45,7 @@ test("шаблон есть, пришёл текст — сборка старт
   await page.goto("/project?id=auto-test");
   await send(page, TEXT);
   const chat = page.getByTestId("chat-list");
-  await expect(chat).toContainText("Понял задачу: «Эволюция тактики в современном футболе», аудитория — тренеры и спортивные аналитики. Собираю презентацию: сначала один вариант, ещё 2 — следом.");
+  await expect(chat).toContainText("Понял задачу: «Эволюция тактики в современном футболе», аудитория — тренеры и спортивные аналитики. Собираю презентацию: сначала сбалансированный вариант, следом компактный и подробный.");
   await expect.poll(() => state.generations.length).toBe(1);
   expect(state.generations[0].settings).toMatchObject({ design_mode: "mixed", variants: ["compact", "balanced", "detailed"] });
   expect((state.generations[0].settings as Record<string, unknown>).slide_count).toBeUndefined();
@@ -67,7 +67,7 @@ test("шаблона нет — просьба выбрать, выбор шаб
   expect(state.generations).toHaveLength(0);
   await page.getByTestId("template-menu").click();
   await page.getByTestId("template-option-tpl_lib").click();
-  await expect(chat).toContainText("Выбрал шаблон «Фирменный». Собираю презентацию: сначала один вариант, ещё 2 — следом.");
+  await expect(chat).toContainText("Выбрал шаблон «Фирменный». Собираю презентацию: сначала сбалансированный вариант, следом компактный и подробный.");
   await expect.poll(() => state.generations.length).toBe(1);
   expect(state.generations[0]).toMatchObject({ template_id: "tpl_lib", package_id: "pkg_auto" });
 });
@@ -123,4 +123,55 @@ test("первый вариант открыт, остальные с загру
   await expect.poll(() => opened).toEqual(["balanced/r1/deck.pptx", "compact/r1/deck.pptx"]);
   await expect(switcher.locator('input[value="compact"]')).toBeChecked();
   await expect(page.getByTestId("preview-pane").locator("iframe")).toBeVisible();
+});
+
+test("итог — о первом варианте со временем от запроса, остальные — строками со своим временем", async ({ page }) => {
+  // Числа задания «Футбол» 27.09: сбалансированный готов через 3 мин 14 с, компактный собирался
+  // 1 мин 52 с, подробный 4 мин 31 с, всё задание с проверками — 15 мин 8 с.
+  const created = "2026-09-27T20:59:15.000Z";
+  const job: Record<string, unknown> = { status: "running", stage: "plan" };
+  const variants: Record<string, Record<string, unknown>> = {
+    compact: { variant_id: "compact", status: "pending", revision: 1, artifacts: {} },
+    balanced: { variant_id: "balanced", status: "running", revision: 1, artifacts: {}, stages: [{ stage: "plan", status: "running", started_at: "2026-09-27T20:59:37.000Z" }] },
+    detailed: { variant_id: "detailed", status: "pending", revision: 1, artifacts: {} },
+  };
+  await page.route("**/api/projects/lead-test", (r) => r.fulfill({ json: {
+    schema_version: "1.5", project_id: "lead-test", title: "Футбол", template_id: "tpl_v", package_id: "pkg_v", job_id: "job_lead", chosen_variant: null,
+    created_at: created, updated_at: created, brief: BRIEF, settings: SETTINGS, files: [],
+    events: [{ event_id: "evt_job", at: created, role: "assistant", kind: "job_card", job_id: "job_lead" }],
+  } }));
+  await page.route("**/api/projects/lead-test/events", (r) => r.fulfill({ json: { ...r.request().postDataJSON(), event_id: `evt_${Date.now()}`, at: new Date().toISOString() } }));
+  await page.route("**/api/templates", (r) => r.fulfill({ json: [] }));
+  await page.route("**/api/office/capabilities", (r) => r.fulfill({ json: { enabled: false } }));
+  await page.route("**/api/generations/job_lead", (r) => r.fulfill({ json: {
+    job_id: "job_lead", ...job, created_at: created, metrics: { totals: { duration_ms: 908_000 } }, execution_mode: { mode: "real", layers: {} },
+    progress: { percent: 40, message: "Собираю первый вариант" },
+    variants: ["compact", "balanced", "detailed"].map((id) => variants[id]),
+  } }));
+
+  await page.goto("/project?id=lead-test");
+  const card = page.getByTestId("job-card");
+  const lines = card.locator(".job-variant-line");
+  // Пока первый не готов: что происходит сейчас и строки в порядке сборки.
+  await expect(card.getByTestId("job-summary")).toHaveText("Раскладываю содержание по слайдам");
+  await expect(lines).toHaveText(["Сбалансированный — собирается", "Компактный — в очереди", "Подробный — в очереди"]);
+  await expect(page.getByTestId("generation-timer")).toBeVisible();
+
+  // Сбалансированный готов: итог о нём со временем от запроса, остальные собираются; таймер
+  // общего времени сверху уходит.
+  Object.assign(variants.balanced, { status: "ready", slide_count: 12, ready_at: "2026-09-27T21:02:29.000Z", artifacts: { pptx: "balanced/r1/deck.pptx" } });
+  Object.assign(variants.compact, { status: "running", stages: [{ stage: "plan", status: "running", started_at: "2026-09-27T21:05:50.000Z" }] });
+  await expect(card.getByTestId("job-summary")).toHaveText("Собрал сбалансированный вариант из 12 слайдов за 3 мин 14 с.", { timeout: 10_000 });
+  await expect(lines).toHaveText(["Компактный — собирается", "Подробный — в очереди"]);
+  await expect(page.getByTestId("generation-progress")).toBeVisible();
+  await expect(page.getByTestId("generation-timer")).toHaveCount(0);
+
+  // Все готовы: у каждого своё время сборки, общего времени задания в ленте нет.
+  Object.assign(variants.compact, { status: "needs_review", slide_count: 10, ready_at: "2026-09-27T21:07:42.000Z", artifacts: { pptx: "compact/r1/deck.pptx" } });
+  Object.assign(variants.detailed, { status: "needs_review", slide_count: 14, ready_at: "2026-09-27T21:10:21.000Z", artifacts: { pptx: "detailed/r1/deck.pptx" },
+    stages: [{ stage: "plan", status: "done", started_at: "2026-09-27T21:05:50.000Z", duration_ms: 250_000 }] });
+  Object.assign(job, { status: "needs_review", stage: "done", finished_at: "2026-09-27T21:14:23.000Z" });
+  await expect(lines).toHaveText(["Компактный — собран за 1 мин 52 с, 10 слайдов", "Подробный — собран за 4 мин 31 с, 14 слайдов"], { timeout: 10_000 });
+  await expect(card.getByTestId("job-summary")).toHaveText("Собрал сбалансированный вариант из 12 слайдов за 3 мин 14 с.");
+  await expect(card).not.toContainText("15 мин");
 });

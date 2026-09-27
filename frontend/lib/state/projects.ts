@@ -452,9 +452,9 @@ export async function routeMessage(projectId: string, messageId: string, chip: R
 // ---------- файлы проекта ----------
 
 /** Загружает файлы на сервер в момент добавления в чат; байты дальше передаются по идентификаторам. */
-export async function addProjectFiles(projectId: string, files: File[]): Promise<ProjectFile[]> {
+export async function addProjectFiles(projectId: string, files: File[], onProgress?: (share: number) => void): Promise<ProjectFile[]> {
   if (files.length === 0) return [];
-  const rows = await api.projects.uploadFiles(await serverId(projectId), files);
+  const rows = await api.projects.uploadFiles(await serverId(projectId), files, onProgress);
   updateProject(projectId, (p) => ({ files: [...p.files.filter((f) => !rows.some((r) => r.file_id === f.file_id)), ...rows] }));
   return rows;
 }
