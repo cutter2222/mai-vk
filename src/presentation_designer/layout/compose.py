@@ -394,6 +394,12 @@ def _fill_slide(
     if ctx.spill:
         from presentation_designer.generation.capacity import substitute_facts
 
+        ctx.warn(
+            "text_spilled_to_notes",
+            f"{record.slide_id}: часть текста не поместилась и перенесена в заметки; "
+            "нужно разделить содержание или выбрать более вместительную композицию",
+            slide_index,
+        )
         more = "\n".join(substitute_facts(text, ctx.facts) for text in ctx.spill)
         label = "Подробнее" if ctx.language.lower().startswith("ru") else "More"
         record.notes = f"{record.notes}\n\n{label}: {more}".strip()
@@ -468,7 +474,7 @@ def _apply_block(
         tx.set_wrap(element, True)
     if kind == "bullets":
         items = [str(it.get("text", "")) for it in block.get("items") or []]
-        result = tx.fill_bullets(element, items, size_pt=size, facts=ctx.facts)
+        result = tx.fill_bullets(element, items, size_pt=size, facts=ctx.facts, markup=True)
         _record_text(ctx, fill, result, block, slide_index)
         ctx.count("text_objects")
         return fill
@@ -492,7 +498,7 @@ def _apply_block(
                     set_element_box(
                         element, (own[0], own[1], min(width, own[2]), min(height, own[3]))
                     )
-        result = tx.fill_text(element, text, size_pt=size, facts=ctx.facts)
+        result = tx.fill_text(element, text, size_pt=size, facts=ctx.facts, markup=kind != "code")
         if kind == "number" and " " in text:
             tx.set_wrap(element, False)
         if (

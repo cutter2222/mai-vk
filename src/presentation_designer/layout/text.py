@@ -20,6 +20,7 @@ from lxml import etree
 
 from presentation_designer.layout.ooxml import NS_A, NS_P
 from presentation_designer.layout.shapes import NS
+from presentation_designer.shared.slide_text import plain, spans
 
 FACT_REF = re.compile(r"\{fact:([A-Za-z0-9_.:-]+)\}")
 A_P = f"{{{NS_A}}}p"
@@ -140,7 +141,9 @@ def _set_size(rpr: Any | None, size_pt: float | None) -> None:
         rpr.set("sz", str(round(size_pt * 100)))
 
 
-def _write_paragraph(paragraph: Any, text: str, size_pt: float | None) -> None:
+def _write_paragraph(
+    paragraph: Any, text: str, size_pt: float | None, *, markup: bool = False
+) -> None:
     """Текст абзаца: фрагменты образца заменяются одним фрагментом с оформлением первого,
     `\\n` становится `a:br` с тем же оформлением."""
     rpr = _template_rpr(paragraph)
@@ -159,18 +162,17 @@ def _write_paragraph(paragraph: Any, text: str, size_pt: float | None) -> None:
                 br.append(copy.deepcopy(rpr))
             paragraph.insert(insert_at, br)
             insert_at += 1
-        run = etree.Element(A_R)
-        if rpr is not None:
-            run_rpr = copy.deepcopy(rpr)
+        for value, strong in spans(line) if markup else [(line, False)]:
+            run = etree.Element(A_R)
+            run_rpr = copy.deepcopy(rpr) if rpr is not None else etree.Element(A_RPR)
             _set_size(run_rpr, size_pt)
+            if strong:
+                run_rpr.set("b", "1")
             run.append(run_rpr)
-        elif size_pt:
-            run_rpr = etree.SubElement(run, A_RPR)
-            _set_size(run_rpr, size_pt)
-        t = etree.SubElement(run, A_T)
-        t.text = line
-        paragraph.insert(insert_at, run)
-        insert_at += 1
+            t = etree.SubElement(run, A_T)
+            t.text = value
+            paragraph.insert(insert_at, run)
+            insert_at += 1
 
 
 def set_wrap(element: Any, wrap: bool) -> None:
@@ -216,6 +218,7 @@ def fill_text(
     *,
     size_pt: float | None = None,
     facts: dict[str, dict[str, Any]] | None = None,
+    markup: bool = False,
 ) -> TextResult:
     """Заменяет текст фигуры. Многострочный текст ложится на абзацы образца, если их
     несколько; иначе в один абзац с переносами строк."""
@@ -235,16 +238,16 @@ def fill_text(
         for i, line in enumerate(lines):
             tpl = templates[min(i, len(templates) - 1)]
             p = copy.deepcopy(tpl)
-            _write_paragraph(p, line, size_pt)
+            _write_paragraph(p, line, size_pt, markup=markup)
             new_paragraphs.append(p)
     else:
         p = copy.deepcopy(templates[0])
-        _write_paragraph(p, substituted, size_pt)
+        _write_paragraph(p, substituted, size_pt, markup=markup)
         new_paragraphs = [p]
     _replace_paragraphs(body, paragraphs, new_paragraphs)
     _reset_autofit(element)
     return TextResult(
-        plain=substituted,
+        plain=plain(substituted) if markup else substituted,
         paragraphs=len(new_paragraphs),
         fact_refs=used,
         missing_facts=missing,
@@ -258,12 +261,13 @@ def fill_bullets(
     *,
     size_pt: float | None = None,
     facts: dict[str, dict[str, Any]] | None = None,
+    markup: bool = False,
 ) -> TextResult:
     """Пункты списка — абзацы по образцу первого маркированного абзаца (иначе первого
     с фрагментами); оформление маркера и отступов сохраняется."""
     body = text_body(element)
     if body is None:
-        return fill_text(element, "\n".join(items), size_pt=size_pt, facts=facts)
+        return fill_text(element, "\n".join(items), size_pt=size_pt, facts=facts, markup=markup)
     paragraphs = _paragraphs(body)
     if not paragraphs:
         paragraphs = [etree.SubElement(body, A_P)]
@@ -271,15 +275,15 @@ def fill_bullets(
     template = bulleted[0] if bulleted else _styled(paragraphs)[0]
     used: list[str] = []
     missing: list[str] = []
-    plain: list[str] = []
+    plain_items: list[str] = []
     new_paragraphs = []
     for item in items:
         substituted, u, m = substitute_facts(item, facts or {})
         used.extend(u)
         missing.extend(m)
-        plain.append(substituted)
+        plain_items.append(plain(substituted) if markup else substituted)
         p = copy.deepcopy(template)
-        _write_paragraph(p, substituted, size_pt)
+        _write_paragraph(p, substituted, size_pt, markup=markup)
         new_paragraphs.append(p)
     if not new_paragraphs:
         p = copy.deepcopy(template)
@@ -288,7 +292,7 @@ def fill_bullets(
     _replace_paragraphs(body, paragraphs, new_paragraphs)
     _reset_autofit(element)
     return TextResult(
-        plain="\n".join(plain),
+        plain="\n".join(plain_items),
         paragraphs=len(new_paragraphs),
         fact_refs=list(dict.fromkeys(used)),
         missing_facts=list(dict.fromkeys(missing)),

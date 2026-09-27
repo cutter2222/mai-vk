@@ -66,3 +66,44 @@ def test_content_first_pptx_preserves_blocks_and_notes(
         assert item["sub"] in visible
         assert item["text"] in visible
     assert draft.notes in actual.notes_slide.notes_text_frame.text
+
+
+def test_model_emphasis_survives_full_compose(
+    rich_profile,
+    rich_template_path,
+    example_package,
+    tmp_path,
+):
+    ctx = vr.build_context({}, rich_profile, example_package, "balanced", {}, get_settings(), 1)
+    ctx.theses = [vr.Thesis("t1", 1, "claim", "Условия", "", True, None, [], [], [], [], None)]
+    packet = vr.Packet(0, ctx.theses, 1, 1, 1, {})
+    answer = {
+        "slides": [
+            {
+                "theses": ["t1"],
+                "title": "Проверяем условия",
+                "visual": "bullets",
+                "items": [
+                    {"text": "Проверяем **согласие** участников"},
+                    {"text": "Учитываем **нагрузку** поддержки"},
+                ],
+            }
+        ]
+    }
+    draft = vr.fit_draft(ctx, vr.make_validator(ctx, packet)(answer)["drafts"][0])
+    plan = _plan_with(rich_profile, [vr.slide_from_draft(ctx, draft, slide_id="s1", order=1)])
+    result = _compose(
+        plan, rich_profile, rich_template_path, example_package, tmp_path / "emphasis-full.pptx"
+    )
+    assert result.integrity.ok
+    slide = Presentation(result.pptx_path).slides[0]
+    runs = [
+        run
+        for shape in iter_shapes(slide)
+        if shape.has_text_frame
+        for para in shape.text_frame.paragraphs
+        for run in para.runs
+    ]
+    assert "**" not in " ".join(run.text for run in runs)
+    for word in ("согласие", "нагрузку"):
+        assert any(run.text == word and run.font.bold for run in runs)

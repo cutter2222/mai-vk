@@ -20,6 +20,7 @@ from typing import Any
 
 from presentation_designer.generation.matching import SlotInfo
 from presentation_designer.shared import text_metrics
+from presentation_designer.shared.slide_text import plain, spans
 
 JsonDict = dict[str, Any]
 
@@ -177,12 +178,16 @@ def measure(
     как в образце. Для слота без шрифта (картинка) измерение не имеет смысла: возвращается
     «помещается»."""
     paragraphs = text if isinstance(text, list) else [text]
+    # Code is literal. For emphasis use the wider face conservatively for the block.
+    emphasized = slot.kind != "code" and any(b for p in paragraphs for _, b in spans(p))
+    if slot.kind != "code":
+        paragraphs = [plain(p) for p in paragraphs]
     chars = sum(len(p) for p in paragraphs)
     base_size = float(slot.size_pt or 18.0)
     size = float(size_pt or base_size)
     if slot.family is None and slot.size_pt is None:
         return Measure(size, 0, 0, chars, slot.max_chars, True, "none")
-    font = text_metrics.resolve_font(slot.family, bold=slot.bold, italic=slot.italic)
+    font = text_metrics.resolve_font(slot.family, bold=slot.bold or emphasized, italic=slot.italic)
     width_emu, height_emu, insets = slot_box_emu(slot, slide_w_emu, slide_h_emu)
     left, top, right, bottom = insets
     indent = abs(slot.indent_emu) if (slot.kind == "bullets" or slot.bullet) else 0

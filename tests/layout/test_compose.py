@@ -1263,6 +1263,7 @@ def test_overflowing_text_keeps_whole_sentences_and_spills_rest_to_notes(
     assert not any("номер 11" in t for t in texts), "хвост не на слайде"
     notes = slide.notes_slide.notes_text_frame.text
     assert "номер 11" in notes, "остаток сохранён в заметках"
+    assert any(w["code"] == "text_spilled_to_notes" for w in result.warnings)
     fit = next(
         o["fit"]
         for s in result.deck["slides"]

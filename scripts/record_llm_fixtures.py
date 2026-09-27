@@ -48,7 +48,7 @@ EXAMPLES = ROOT / "examples" / "content"
 EXAMPLE_FILES = ("overview.docx", "metrics.xlsx", "notes.md", "openrate_chart.png", "logo.png")
 
 
-def example_package() -> dict[str, object]:
+def example_package(asset_dir: pathlib.Path | None = None) -> dict[str, object]:
     files = []
     for i, name in enumerate(EXAMPLE_FILES, start=1):
         path = EXAMPLES / name
@@ -72,6 +72,11 @@ def example_package() -> dict[str, object]:
         cache=ParseCache(pathlib.Path(tempfile.mkdtemp())),
         use_model=False,
     )
+    if asset_dir is not None:
+        for relative, data in result.assets.items():
+            destination = asset_dir / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(data)
     return result.package
 
 

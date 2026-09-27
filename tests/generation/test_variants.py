@@ -634,6 +634,12 @@ def test_plan_without_model_is_marked_and_valid(
         assert any(w["code"] == "plan_without_model" for w in result.plan["warnings"])
         assert result.plan["generation_meta"]["models"] == []
         assert result.plan["coverage"]["missing"] == []
+        quality = result.report["page_quality"]
+        assert [s["slide_id"] for s in quality] == [s["slide_id"] for s in result.plan["slides"]]
+        assert all(0 <= s["body_fill_ratio"] <= 1 for s in quality)
+        assert quality[0]["applicable"] is False  # обложка не требует заполнения текстом
+        if any(s["underfilled"] for s in quality):
+            assert any(w["code"] == "slide_underfilled" for w in result.plan["warnings"])
 
 
 @pytest.mark.parametrize("mode", ["template_only", "mixed", "all_new"])
@@ -1058,6 +1064,52 @@ def test_style_policy_per_variant(
         }
     # Политика входит в ключ кэша планов.
     assert results["balanced"].report["plan_key"] != first["balanced"].report["plan_key"]
+
+
+def test_single_thesis_sections_do_not_create_empty_dividers(
+    example_story: dict[str, Any], variety_profile: dict[str, Any], example_package: dict[str, Any]
+) -> None:
+    """Раздел с одним тезисом не получает отдельный пустой слайд-заголовок."""
+    content_ids = [
+        t["thesis_id"]
+        for t in example_story["theses"]
+        if t["kind"] not in ("section", "call_to_action", "conclusion")
+    ]
+    story = _with_sections(
+        example_story,
+        {thesis_id: f"Раздел {index}" for index, thesis_id in enumerate(content_ids)},
+    )
+    result = vr.build_variant_plan(
+        story,
+        variety_profile,
+        example_package,
+        "balanced",
+        {"language": "ru"},
+        slide_count=12,
+        use_model=False,
+    )
+
+    assert result.report["structure"]["dividers"] == []
+    assert not any(slide["role"] == "section_divider" for slide in result.plan["slides"])
+
+
+def test_multi_thesis_section_keeps_justified_divider(
+    example_story: dict[str, Any], variety_profile: dict[str, Any], example_package: dict[str, Any]
+) -> None:
+    """Раздел с несколькими тезисами сохраняет фирменный разделитель."""
+    story = _with_sections(example_story, {"t4": "Результаты пилота"})
+    result = vr.build_variant_plan(
+        story,
+        variety_profile,
+        example_package,
+        "balanced",
+        {"language": "ru"},
+        slide_count=12,
+        use_model=False,
+    )
+
+    assert result.report["structure"]["dividers"]
+    assert any(slide["role"] == "section_divider" for slide in result.plan["slides"])
 
 
 def test_series_uses_group_siblings(

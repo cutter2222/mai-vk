@@ -230,6 +230,55 @@ async def test_preserved_retry_still_cannot_worsen_capacity(
     assert rationale == "исходный"
 
 
+def test_retry_can_add_emphasis_without_changing_the_words():
+    ctx, packet, answer = _setup()
+    before = vr.drafts_from_answer(ctx, packet, answer)
+    after = copy.deepcopy(before)
+    after[0].items[1]["text"] = "**Риск нагрузки** поддержки"
+    assert vr.retry_content_loss(before, after) is None
+
+
+async def test_retry_cannot_trade_overflow_for_an_underfilled_page(monkeypatch):
+    ctx, packet, first = _setup()
+    retry = copy.deepcopy(first)
+    retry["slides"][0]["items"].append({"text": retry["slides"][0].pop("text")})
+    _overflow(monkeypatch)
+    monkeypatch.setattr(
+        vr,
+        "page_density",
+        lambda ctx, d: {
+            "underfilled": not bool(d.text),
+            "body_fill_ratio": 0.1,
+        },
+    )
+    drafts, rationale, _ = await vr.fit_packet(
+        ctx,
+        packet,
+        Request("llm", []),
+        Answers([first, retry]),
+    )
+    assert drafts[0].overflow
+    assert rationale == "исходный"
+
+
+async def test_underfill_alone_triggers_bounded_retry(monkeypatch):
+    ctx, packet, first = _setup()
+    monkeypatch.setattr(vr, "fit_draft", lambda ctx, d: d)
+    monkeypatch.setattr(vr, "density_hint", lambda drafts: None)
+    monkeypatch.setattr(
+        vr,
+        "page_density",
+        lambda ctx, d: {
+            "underfilled": True,
+            "body_fill_ratio": 0.1,
+        },
+    )
+    client = Answers([first, copy.deepcopy(first)])
+    _, _, responses = await vr.fit_packet(ctx, packet, Request("llm", []), client)
+    assert len(responses) == 2
+    assert "заполнение содержательной области" in client.requests[1].messages[-1].text
+
+
 async def test_recorded_title_only_response_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     path = (
         Path(__file__).resolve().parents[1]

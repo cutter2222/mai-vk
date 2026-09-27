@@ -568,7 +568,8 @@ def test_builtin_grid_goes_back_to_template_grid(
         {"unchanged": True, "reason": "Менять нечего", "change_note": "", "slides": []}, times=1
     )
     items = [{"text": "Тактика: проверяем схемы"}, {"text": "Аналитика: решения и данные"}]
-    stub.answer(_answer(slide, pattern="pat_s2", visual="cards", items=items))
+    # This layout-only fixture has no factual quantity to add as a third card.
+    stub.answer(_answer(slide, pattern="pat_s2", visual="cards", items=items, facts=[]))
     result = _edit(
         plan,
         index,
@@ -578,7 +579,9 @@ def test_builtin_grid_goes_back_to_template_grid(
         profile=mini_profile,
         package=example_package,
     )
-    assert result.changed and result.plan is not None and len(stub.calls) == 2
+    assert result.changed and result.plan is not None and len(stub.calls) == 2, json.dumps(
+        result.report, ensure_ascii=False
+    )
     assert "встроенной композицией" in stub.calls[0].messages[-1].text
     new = ed.ordered_slides(result.plan)[index]
     assert new["pattern_id"] == "pat_s2"

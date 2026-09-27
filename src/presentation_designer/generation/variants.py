@@ -32,9 +32,12 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from openpyxl.utils.cell import coordinate_to_tuple, range_boundaries
+
 from presentation_designer.contracts import ContentPackage, SlidePlan, StoryPlan, TemplateProfile
 from presentation_designer.contracts.validators import check_slide_plan
 from presentation_designer.generation import capacity as cap
+from presentation_designer.generation import density
 from presentation_designer.generation.grounding import (
     CONCEPT_POLICY,
     CONCEPT_WARNING,
@@ -57,17 +60,18 @@ from presentation_designer.generation.matching import (
     siblings_of,
 )
 from presentation_designer.generation.outline import OutlineSlide, slide_of, user_outline
-from presentation_designer.layout import diagrams
+from presentation_designer.layout import charts, diagrams, tables
 from presentation_designer.parsing.content.facts import weak_metric
 from presentation_designer.shared import text_metrics
 from presentation_designer.shared.settings import Settings, get_settings
+from presentation_designer.shared.slide_text import plain as plain_slide_text
 from presentation_designer.shared.text import plural
 
 log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 
-PLAN_VERSION = "0.4.6"
+PLAN_VERSION = "0.4.12"
 PLAN_SCHEMA_VERSION = "1.3"
 # Версии плана, отличающиеся от текущей только добавленными необязательными полями: план
 # прежней ревизии (правки из чата и редактора читают его с диска) поднимается до текущей.
@@ -548,6 +552,16 @@ def _roomy_pool(pool: list[PatternInfo], ratio: float = 0.5) -> list[PatternInfo
     return roomy or pool
 
 
+def _section_supports_divider(section: Thesis, content: list[Thesis]) -> bool:
+    """Разделитель оправдан только для раздела, который раскрывается несколькими тезисами.
+
+    Одно содержательное утверждение уже имеет собственный заголовок и отдельный слайд;
+    дополнительный слайд только с названием раздела выглядит пустым и съедает место у
+    содержания. Раздел без тезисов тем более не должен превращаться в пустой слайд.
+    """
+    return sum(t.section == section.id for t in content) >= 2
+
+
 def _style_anchor(
     divider_pool: list[PatternInfo], variant_id: str, policy: str
 ) -> tuple[PatternInfo | None, str | None, int]:
@@ -667,7 +681,11 @@ def deck_structure(ctx: Context, *, use_agenda: bool | None = None) -> Structure
     if divider_pattern is not None and variant != "compact" and spare > 0:
         # Разделители получают разделы с наибольшим числом тезисов, не более запаса.
         ranked = sorted(
-            [s for s in sections if _divider_fits(ctx, divider_pattern, s)],
+            [
+                s
+                for s in sections
+                if _section_supports_divider(s, content) and _divider_fits(ctx, divider_pattern, s)
+            ],
             key=lambda s: (-sum(1 for t in content if t.section == s.id), s.order),
         )
         dividers = [s.id for s in ranked[: min(len(ranked), spare)]]
@@ -982,6 +1000,26 @@ def packet_digest(ctx: Context, structure: Structure, packet: Packet) -> str:
         "Сначала сформируй содержание слайдов: заголовок и смысловые блоки. "
         "Композицию и слоты подберёт код после ответа по числу блоков и наличию ресурсов. "
         "Не возвращай pattern, координаты, шрифты или цвета."
+    )
+    lines.append(
+        "Постраничный контракт: один тезис — предпочтительно 1 страница, максимум 2 "
+        "как целевой предел, в рамках бюджета пакета. На второй странице — другая сторона "
+        "того же тезиса с собственным заголовком-выводом, не повтор первой и не «продолжение». "
+        "Если обязательные данные не вмещаются, сохрани их и оговорки, а не обрезай ради лимита. "
+        "Раскладка пользователя по страницам имеет приоритет."
+    )
+    lines.append(
+        "Заполнение: заголовок + содержательное пояснение + уместный визуальный блок "
+        "(только имеющееся изображение, данные, сравнение или схема по реальным отношениям); "
+        "без визуального ресурса — 2–4 конкретных пункта или цельный содержательный абзац. "
+        "Не добавляй воду, повтор фактов, выдуманные примеры или картинки ради заполнения. "
+        "Ориентир для одной страницы: заголовок до 60 знаков; 2–4 пункта до 110 знаков "
+        "каждый; при графике/таблице — короткое пояснение и все существенные оговорки. "
+        "Это ориентиры, не разрешение удалить содержание; реальную вместимость измеряет код. "
+        "Списки передавай в items, без ручных маркеров «-»/«•» и нумерации: код оформит их "
+        "по шаблону. В text и items.text для text/bullets/cards допустимо "
+        "**жирное выделение** 1–2 ключевых фраз; "
+        "не выделяй весь абзац. Не используй HTML, Markdown-таблицы или заголовки с #."
     )
     lines.append(
         f"Слайдов в этом пакете: цель {packet.target}, допустимо от {packet.lo} до {packet.hi}. "
@@ -1363,6 +1401,10 @@ def content_patterns(
         )
     if not candidates:
         raise ValueError("нет подходящей композиции для содержания и доступных ресурсов")
+    # A data layout without a title can fit more content only by hiding the headline.
+    titled = [p for p in candidates if p.title is not None]
+    if titled:
+        candidates = titled
     # Reorder only equivalent fixed grids. Do not promote a generic list over a
     # comparison/chart, lose text capacity, or override the template/library ranking.
     if items:
@@ -1478,7 +1520,7 @@ def _label_for_fact(ctx: Context, items: list[JsonDict], fact_id: str) -> str:
         bare = FACT_REF.sub("", text).strip(" —–:-,.")
         if not bare or cap.substitute_facts(text, ctx.facts).strip() == value:
             continue
-        return text
+        return _item_text(it)
     return _fact_label(ctx, fact_id)
 
 
@@ -1498,6 +1540,31 @@ def _fact_phrase(ctx: Context, fact_id: str) -> str:
     label = str(context.get("metric") or fact.get("label") or "").strip()
     ref = f"{{fact:{fact_id}}}"
     raw = str(fact.get("raw") or "")
+    comparison = str(context.get("comparison") or "")
+    if label and raw and raw in comparison:
+        # Keep before/after together, but only bind facts from the same source statement.
+        replacements: dict[str, str] = {}
+        for fid, other in ctx.facts.items():
+            other_context = other.get("context") or {}
+            other_raw = str(other.get("raw") or "")
+            if (
+                fact.get("block_id")
+                and other.get("block_id") == fact["block_id"]
+                and other.get("source_id") == fact.get("source_id")
+                and other_context.get("metric") == context.get("metric")
+                and other_context.get("comparison") == context["comparison"]
+                and other_raw
+            ):
+                replacements.setdefault(other_raw, f"{{fact:{fid}}}")
+        if replacements:
+            pattern = "|".join(re.escape(r) for r in sorted(replacements, key=len, reverse=True))
+            comparison = re.sub(
+                rf"(?<![\w.,])(?:{pattern})(?!\w)",
+                lambda match: replacements[match.group()],
+                comparison,
+            )
+        if FACT_REF.search(comparison):
+            return f"{label[:1].upper()}{label[1:]}: {comparison}"
     if label and not weak_metric(label, fact.get("unit")):
         return f"{label[:1].upper()}{label[1:]}: {ref}"
     fragment = str((fact.get("source_location") or {}).get("fragment") or "").rstrip("…")
@@ -1640,6 +1707,83 @@ def _item_line(ctx: Context, item: JsonDict) -> str:
     return line
 
 
+def _data_shown_facts(ctx: Context, blocks: list[JsonDict]) -> set[str]:
+    """Only exact source cells with visible units and row/series labels cover a fact.
+
+    Dataset membership or a coincidentally equal value cannot justify dropping prose.
+    Derived facts and sources without cell provenance deliberately remain textual.
+    """
+    shown: set[str] = set()
+    for block in blocks:
+        kind = block.get("kind")
+        if kind not in ("table", "chart"):
+            continue
+        payload = block[kind]
+        ds = ctx.datasets.get(payload.get("dataset_id"), {})
+        location = ds.get("source_location") or {}
+        try:
+            left, top, _, _ = range_boundaries(location.get("cell_range", ""))
+        except (ValueError, TypeError):
+            continue
+        if left is None or top is None:
+            continue
+        cols, rows = ds.get("columns", []), ds.get("rows", [])
+        if kind == "table":
+            spec = tables.table_spec(payload, ds)
+            chosen = payload.get("columns") or [c["name"] for c in cols]
+            offset, stop = spec.row_offset, spec.row_offset + len(spec.rows)
+            # Without the row's category, a bare number loses its period/subject.
+            if not any(c["type"] in ("string", "date") and c["name"] in chosen for c in cols):
+                continue
+        else:
+            chart = charts.chart_spec(payload, ds)
+            if not (chart.show_data_labels and chart.show_axis_labels and chart.show_legend):
+                continue
+            chosen = [name for name, _ in chart.series]
+            offset, stop = 0, len(rows)
+        for fid, fact in ctx.facts.items():
+            if (
+                fact.get("derived")
+                or not ds.get("block_id")
+                or fact.get("block_id") != ds["block_id"]
+                or fact.get("source_id") != ds.get("source_id")
+            ):
+                continue
+            source = fact.get("source_location") or {}
+            if source.get("sheet") != location.get("sheet"):
+                continue
+            try:
+                row, col = coordinate_to_tuple(source.get("cell", ""))
+            except (ValueError, KeyError, TypeError):
+                continue
+            row, col = row - top - 1, col - left
+            if not (offset <= row < stop and 0 <= col < len(cols) and col < len(rows[row])):
+                continue
+            column = cols[col]
+            if column["name"] not in chosen or column.get("unit") != fact.get("unit"):
+                continue
+            value = rows[row][col]
+            if (
+                not isinstance(value, (int, float))
+                or isinstance(value, bool)
+                or value != fact.get("value")
+            ):
+                continue
+            # The renderer rounds numbers: do not claim a precise source value survives it.
+            if kind == "table":
+                rendered = tables.format_number(value).replace(" ", "").replace(",", ".")
+                if str(value) != rendered:
+                    try:
+                        if float(rendered) != value:
+                            continue
+                    except ValueError:
+                        continue
+            elif chart.units != fact.get("unit") or round(value, 1) != value:
+                continue
+            shown.add(fid)
+    return shown
+
+
 def _item_text(item: JsonDict) -> str:
     """Keep a block heading when the layout has no separate heading slot."""
     text = str(item["text"])
@@ -1696,7 +1840,7 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
                     "kind": "image",
                     "image": {
                         "asset_id": draft.image,
-                        "fit": "cover",
+                        "fit": "contain",
                         "alt": _clean(asset.get("caption") or draft.title, 200),
                     },
                 }
@@ -1732,16 +1876,15 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
             }
             # Показанное число не заменяет пояснение к нему. Убираем только пункт,
             # текст которого уже выведен числом или подписью; пустой набор fact_refs
-            # не означает, что обычный пункт покрыт показателями. Отдельный sub также
-            # нельзя потерять при переносе основного текста в подпись.
+            # не означает, что обычный пункт покрыт показателями. Заголовок sub
+            # переносится вместе с текстом: сравниваем полную строку, а не только text.
             items = [
                 it
                 for it in items
                 if not (
                     it.get("fact_refs")
                     and set(it["fact_refs"]) <= shown
-                    and not it.get("sub")
-                    and cap.substitute_facts(it["text"], ctx.facts).strip() in shown_texts
+                    and cap.substitute_facts(_item_text(it), ctx.facts).strip() in shown_texts
                 )
             ]
     # A fact reference in slide metadata is not visible content. Quantities which
@@ -1751,6 +1894,7 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
         + [str(b.get("text") or "") for b in blocks]
     )
     shown_ids = {b["number"]["fact_id"] for b in blocks if b.get("number")}
+    shown_ids.update(_data_shown_facts(ctx, blocks))
     visible_values = " ".join(cap.substitute_facts(visible, ctx.facts).split())
     # На титуле, разделителе и финале числа не дописываются: «• Бюджет: 18 млн руб» под
     # «Спасибо за внимание» — не подпись, а хвост тезиса.
@@ -1772,6 +1916,7 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
             text = "\n".join(t for t in (text, phrase) if t)
             continue
         items.append({"text": phrase, "fact_refs": [fid]})
+    items = _distinct_items(ctx, copy.deepcopy(items))
     # Схема потребляет те же смысловые пункты, но только после проверки реальных узлов.
     diagram_slot = free("diagram")
     if diagram_slot is not None and visual in ("diagram", "timeline"):
@@ -1890,6 +2035,13 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
         slot = _slot_for_text(ctx, p, used, ("body", "subtitle", "caption"), text)
         if slot is not None:
             put(_text_block(slot, text))
+            text = ""
+        elif (
+            bullet_block := next((b for b in blocks if b["kind"] == "bullets"), None)
+        ) is not None:
+            # A one-column list can carry the introductory condition too. Do not
+            # force an extra page simply because its sole body slot is already used.
+            bullet_block["items"].insert(0, {"text": text})
             text = ""
     placed_texts = [str(b.get("text") or "") for b in blocks] + [
         it.get("text", "") for b in blocks for it in b.get("items") or []
@@ -2453,8 +2605,9 @@ def measure_blocks(ctx: Context, draft: Draft, blocks: list[JsonDict]) -> list[J
                     action = "font_step"
                     note = f"кегль {base:g} → {size:g}"
                     break
-        if not m.fits:
-            # Сокращение без потери обязательного: пункты и предложения без фактов.
+        if not m.fits and (draft.kind != "content" or block["slot_id"] in draft.filler_slots):
+            # Lack of fact references does not make source prose optional. Content
+            # must swap layout, retry or split; only service/filler text may shorten.
             shortened = False
             if block["kind"] == "bullets":
                 items = list(block.get("items", []))
@@ -2720,6 +2873,108 @@ def thin_count(drafts: list[Draft]) -> int:
     return sum(1 for d in drafts if thin_ratio(d) is not None)
 
 
+def page_density(ctx: Context, draft: Draft) -> JsonDict:
+    return density.assess(
+        draft.pattern,
+        draft.blocks,
+        ctx.facts,
+        ctx.slide_w,
+        ctx.slide_h,
+        kind=draft.kind,
+        visual=draft.visual,
+        filler_slots=draft.filler_slots,
+    )
+
+
+def page_quality_hint(ctx: Context, drafts: list[Draft]) -> str | None:
+    hints = []
+    for d in drafts:
+        score = page_density(ctx, d)
+        if score["underfilled"]:
+            hints.append(
+                f"«{d.title[:40]}»: заполнение содержательной области примерно "
+                f"{score['body_fill_ratio']:.0%}; раскрой конкретику из источника, "
+                "используй имеющийся визуальный ресурс или более компактную подачу. "
+                "Не добавляй воду, повторы и выдуманные сведения"
+            )
+    for tid in dict.fromkeys(t for d in drafts if d.kind == "content" for t in d.theses):
+        count = sum(tid in d.theses for d in drafts if d.kind == "content")
+        if count > 2:
+            hints.append(f"{tid}: {count} страниц; цель 1–2 без потери содержания и источников")
+    return "; ".join(hints) or None
+
+
+def compact_sparse_pattern(ctx: Context, draft: Draft) -> bool:
+    """Try a smaller text composition, never trading source text or font size for density."""
+    before = page_density(ctx, draft)
+    if (
+        not before["underfilled"]
+        or before["measurement_incomplete"]
+        or draft.overflow
+        or draft.unplaced_text
+        or draft.visual not in ("text", "bullets", "cards")
+        or draft.image
+        or draft.dataset
+    ):
+        return False
+
+    def texts(d: Draft) -> list[str]:
+        return [
+            " ".join(plain_slide_text(cap.substitute_facts(t, ctx.facts)).split())
+            for b in d.blocks
+            if b.get("slot_id") not in d.filler_slots
+            for t in [str(b.get("text") or ""), *[it["text"] for it in b.get("items", [])]]
+            if t.strip()
+        ]
+
+    def sizes(d: Draft) -> list[float]:
+        return [
+            float(b["fit"]["size_pt"])
+            for b in d.blocks
+            if b.get("kind") != "title" and (b.get("fit") or {}).get("size_pt")
+        ]
+
+    original = draft.pattern
+    baseline = texts(draft)
+    floor = min(sizes(draft), default=0)
+    best: tuple[float, Draft] | None = None
+    for alt in _alternatives(ctx, draft):
+        if _big_image_slot(alt) or alt.style_key != original.style_key:
+            continue
+        trial = copy.deepcopy(draft)
+        trial.pattern = alt
+        fixes = len(ctx.fixes)
+        trial.blocks = _drop_overflowing_fillers(
+            trial, measure_blocks(ctx, trial, fill_blocks(ctx, trial))
+        )
+        del ctx.fixes[fixes:]
+        if trial.overflow or trial.unplaced_text or not _keeps_content(draft, trial, ratio=1):
+            continue
+        if any(b.get("fit", {}).get("action") == "shortened" for b in trial.blocks):
+            continue
+        visible = " ".join(texts(trial))
+        if any(t not in visible for t in baseline) or min(sizes(trial), default=0) < floor:
+            continue
+        score = page_density(ctx, trial)
+        gain = score["body_fill_ratio"] - before["body_fill_ratio"]
+        if score["measurement_incomplete"] or score["underfilled"] or gain < 0.1:
+            continue
+        if best is None or gain > best[0]:
+            best = (gain, trial)
+    if best is None:
+        return False
+    trial = best[1]
+    draft.pattern, draft.blocks = trial.pattern, trial.blocks
+    draft.filler_slots = trial.filler_slots
+    draft.candidates = [c for c in draft.candidates if c is not trial.pattern] + [original]
+    draft.actions.append(f"compact_sparse:{original.pattern_id}→{trial.pattern.pattern_id}")
+    ctx.fix(
+        "pattern_compacted",
+        f"«{draft.title[:40]}»: {original.pattern_id} → {trial.pattern.pattern_id}",
+    )
+    return True
+
+
 def fit_draft(ctx: Context, draft: Draft) -> Draft:
     """Блоки и измерение; композиция по объёму содержания; при переполнении — более
     вместительный кандидат, затем лестница."""
@@ -2772,7 +3027,11 @@ def fit_draft(ctx: Context, draft: Draft) -> Draft:
             if alt.pattern_id in seen:
                 continue
             seen.add(alt.pattern_id)
-            if not draft.image and _big_image_slot(alt):
+            if original.title is not None and alt.title is None:
+                continue
+            if (not draft.image and _big_image_slot(alt)) or (
+                draft.image and not alt.has_image_slot
+            ):
                 # Картинка во весь слайд без картинки — пустая рамка, а не композиция.
                 continue
             trial = copy.copy(draft)
@@ -2824,10 +3083,14 @@ def fit_draft(ctx: Context, draft: Draft) -> Draft:
         finally:
             ctx.force_text = False
     draft.blocks = measured
+    if draft.unplaced_text and not draft.overflow:
+        # No text slot is not a successful fit. Keep this visible to retry/split/audit.
+        draft.overflow = [{"kind": "body", "slot_id": "unplaced_text"}]
     for b in measured:
         act = b.get("fit", {}).get("action")
         if act in ("font_step", "shortened"):
             draft.actions.append(f"{act}:{b['slot_id']}")
+    compact_sparse_pattern(ctx, draft)
     return draft
 
 
@@ -2840,6 +3103,8 @@ def overflow_hint(drafts: list[Draft]) -> str | None:
                 "выбери текстовую подачу или переразложи содержание без потери пунктов и связей"
             )
         for o in d.overflow:
+            if o["slot_id"] == "unplaced_text":
+                continue  # Reported above; this is not a measurable text slot.
             if d.splittable and d.overflow_in_items and o["kind"] == "bullets":
                 continue
             lines.append(
@@ -2874,7 +3139,7 @@ def retry_content_loss(before: list[Draft], after: list[Draft]) -> str | None:
     """
 
     def normalized(text: str) -> str:
-        return re.sub(r"\s+", " ", text).strip().casefold().rstrip(". ")
+        return re.sub(r"\s+", " ", plain_slide_text(text)).strip().casefold().rstrip(". ")
 
     def visible(draft: Draft) -> list[str]:
         return [draft.title, draft.message, draft.text] + [
@@ -2951,7 +3216,7 @@ async def fit_packet(
     rationale = str(resp.parsed.get("rationale") or "")
     for _ in range(capacity_retries):
         over = overflow_hint(drafts)
-        hint = "; ".join(h for h in (over, thin_hint) if h)
+        hint = "; ".join(h for h in (over, thin_hint, page_quality_hint(ctx, drafts)) if h)
         if not hint or (req.deadline is not None and req.deadline.remaining() < 5):
             break
         reason = "переполнения" if over else "пустых слайдов"
@@ -2971,6 +3236,9 @@ async def fit_packet(
         if (
             sum(len(d.overflow) for d in retried) <= sum(len(d.overflow) for d in drafts)
             and thin_after <= thin_before
+            and sum(page_density(ctx, d)["underfilled"] for d in retried)
+            <= sum(page_density(ctx, d)["underfilled"] for d in drafts)
+            and _thesis_page_excess(retried) <= _thesis_page_excess(drafts)
             and abs(len(raw2) - packet.target) <= abs(len(raw) - packet.target)
         ):
             drafts = retried
@@ -2981,6 +3249,15 @@ async def fit_packet(
             rationale = str(resp.parsed.get("rationale") or rationale)
         thin_hint = None
     return drafts, rationale, responses
+
+
+def _thesis_page_excess(drafts: list[Draft]) -> int:
+    counts: dict[str, int] = {}
+    for d in drafts:
+        if d.kind == "content":
+            for tid in set(d.theses):
+                counts[tid] = counts.get(tid, 0) + 1
+    return sum(max(0, count - 2) for count in counts.values())
 
 
 # ---------- сборка колоды ----------
@@ -3361,10 +3638,128 @@ def assemble(ctx: Context, structure: Structure, packet_drafts: list[list[Draft]
     deck = _control_count(ctx, structure, deck)
     deck = _ensure_coverage(ctx, structure, deck)
     deck = _ensure_facts(ctx, deck)
+    deck = _split_visual_explanations(ctx, deck)
     deck = _diversify(ctx, deck)
     deck = _limit_series(ctx, deck)
     _distinct_titles(ctx, deck)
     return deck
+
+
+def _split_commentary(ctx: Context, draft: Draft) -> list[Draft] | None:
+    """Try whole-item boundaries; keep the introductory paragraph intact on page one."""
+    draft = copy.deepcopy(draft)
+    # fill_blocks adds missing facts locally; make those same phrases splittable too.
+    visible = " ".join([draft.title, draft.text, *[_item_text(it) for it in draft.items]])
+    values = " ".join(cap.substitute_facts(visible, ctx.facts).split())
+    refs = {f for it in draft.items for f in it.get("fact_refs", [])}
+    for fid in draft.facts:
+        raw = " ".join(str(ctx.facts[fid].get("raw") or "").split())
+        if fid in refs or f"{{fact:{fid}}}" in visible or (raw and raw in values):
+            continue
+        draft.items.append({"text": _fact_phrase(ctx, fid), "fact_refs": [fid]})
+    draft.items = _distinct_items(ctx, draft.items)
+    if not draft.items:
+        return None
+    half = (len(draft.items) + 1) // 2
+    cuts = sorted(range(0 if draft.text else 1, len(draft.items)), key=lambda n: abs(n - half))
+    for cut in cuts:
+        fixes = len(ctx.fixes)
+        first, second = copy.deepcopy(draft), copy.deepcopy(draft)
+        first.items, second.items = first.items[:cut], second.items[cut:]
+        second.text, second.message = "", ""
+        second.title = draft.title + " (продолжение)"
+        # Do not re-inject every metric on both pages during block construction.
+        second_refs = set(FACT_REF.findall(" ".join(_item_text(it) for it in second.items)))
+        second_refs.update(f for it in second.items for f in it.get("fact_refs", []))
+        first_refs = set(FACT_REF.findall(first.text + " " + first.message))
+        first_refs.update(FACT_REF.findall(" ".join(_item_text(it) for it in first.items)))
+        first_refs.update(f for it in first.items for f in it.get("fact_refs", []))
+        first.facts = [f for f in draft.facts if f in first_refs or f not in second_refs]
+        second.facts = [f for f in draft.facts if f in second_refs]
+        parts = [first, second]
+        for part in parts:
+            part.visual = "bullets" if part.items else "text"
+            part.overflow = []
+            fit_draft(ctx, part)
+        if (
+            all(not p.overflow and not p.unplaced_text and not p.dataset for p in parts)
+            and retry_content_loss([draft], parts) is None
+        ):
+            return parts
+        del ctx.fixes[fixes:]
+    return None
+
+
+def _split_visual_explanations(ctx: Context, deck: list[Draft]) -> list[Draft]:
+    """Separate data from overflowing commentary, including facts restored late in assembly.
+
+    Never trade a chart/table for prose or spill conditions into speaker notes. All parts
+    must fit, preserve the original content and respect the user's slide-count ceiling.
+    Unsuccessful trials leave the original draft and diagnostic log untouched.
+    """
+    out: list[Draft] = []
+    remaining = ctx.spec.hi - len(deck)
+    for draft in deck:
+        if (
+            remaining <= 0
+            or draft.kind != "content"
+            or draft.visual not in ("chart", "table", "image")
+            or not (draft.dataset or draft.image)
+            or not draft.overflow
+            or not (draft.text or draft.items)
+        ):
+            out.append(draft)
+            continue
+        fixes = len(ctx.fixes)
+        data, explanation = copy.deepcopy(draft), copy.deepcopy(draft)
+        data.text, data.items, data.facts, data.message = "", [], [], ""
+        explanation.dataset = None
+        explanation.columns = []
+        explanation.image = None
+        explanation.visual = "bullets" if explanation.items else "text"
+        explanation.title = draft.title + " — пояснения"
+        pool = candidates_for(
+            ctx.patterns,
+            _need_of(explanation),
+            ctx.variant_id,
+            limit=10,
+            has_datasets=False,
+            include_library_alternative=True,
+        )
+        # A commentary slide must not silently acquire a dataset from a required slot.
+        pool = [p for p in pool if not any(s.kind in ("chart", "table") for s in p.slots.values())]
+        accepted = False
+        parts = [data, explanation]
+        if pool:
+            explanation.pattern, explanation.candidates = pool[0], pool[1:]
+            for part in (data, explanation):
+                part.overflow = []
+                part.actions.append("split_visual_explanation")
+                fit_draft(ctx, part)
+            if (
+                remaining >= 2
+                and not (data.overflow or data.unplaced_text)
+                and (explanation.overflow or explanation.unplaced_text)
+            ):
+                commentary = _split_commentary(ctx, explanation)
+                if commentary is not None:
+                    parts = [data, *commentary]
+            accepted = (
+                not any(d.overflow or d.unplaced_text for d in parts)
+                and not any(d.dataset for d in parts[1:])
+                and any(b.get("kind") == draft.visual for b in data.blocks)
+                and retry_content_loss([draft], parts) is None
+            )
+        if accepted:
+            out.extend(parts)
+            remaining -= len(parts) - 1
+            ctx.fix(
+                "visual_explanation_split", f"«{draft.title[:60]}»: данные и пояснения отдельно"
+            )
+        else:
+            del ctx.fixes[fixes:]
+            out.append(draft)
+    return out
 
 
 def _distinct_titles(ctx: Context, deck: list[Draft]) -> None:
@@ -3396,6 +3791,7 @@ def _ensure_facts(ctx: Context, deck: list[Draft]) -> list[Draft]:
     written = []
     for d in deck:
         shown.update(b["number"]["fact_id"] for b in d.blocks if b.get("number"))
+        shown.update(_data_shown_facts(ctx, d.blocks))
         text = _visible_text(d) + " " + d.title
         shown.update(FACT_REF.findall(text))
         written.append(" ".join(cap.substitute_facts(text, ctx.facts).split()))
@@ -3676,7 +4072,11 @@ def _add_divider(
         return False
     present = {d.section for d in deck if d.kind == "divider"}
     for sec in structure.sections:
-        if sec.id in present or not _divider_fits(ctx, structure.divider_pattern, sec):
+        if (
+            sec.id in present
+            or sec.id not in structure.dividers
+            or not _divider_fits(ctx, structure.divider_pattern, sec)
+        ):
             continue
         idx = next(
             (i for i, d in enumerate(deck) if d.kind == "content" and d.section == sec.id), None
@@ -3833,7 +4233,8 @@ def _ensure_coverage(ctx: Context, structure: Structure, deck: list[Draft]) -> l
             if host is None:
                 # Пустой раздел: разделитель, если есть место, иначе к соседнему слайду.
                 if (
-                    structure.divider_pattern is not None
+                    t.id in structure.dividers
+                    and structure.divider_pattern is not None
                     and ctx.variant_id != "compact"
                     and _count(deck) < ctx.spec.hi
                     and _divider_fits(ctx, structure.divider_pattern, t)
@@ -3962,6 +4363,8 @@ def _alternatives(ctx: Context, draft: Draft) -> list[PatternInfo]:
         if cand.pattern_id in seen:
             continue
         seen.add(cand.pattern_id)
+        if draft.pattern.title is not None and cand.title is None:
+            continue
         out.append(cand)
     # Свой стиль вперёд: светлый слайд не должен без нужды становиться тёмным.
     out.sort(key=lambda c: c.style_key != draft.pattern.style_key)
@@ -4001,6 +4404,8 @@ def _diversify(ctx: Context, deck: list[Draft]) -> list[Draft]:
             if not _keeps_content(d, trial):
                 # Разнообразие не стоит содержания: подгонка вмещает текст в мелкие слоты
                 # сокращением, и «Каналы / Фокус» вместо трёх функций продукта хуже повтора.
+                continue
+            if page_density(ctx, trial)["underfilled"] and not page_density(ctx, d)["underfilled"]:
                 continue
             used[d.pattern.pattern_id] -= 1
             used[trial.pattern.pattern_id] += 1
@@ -4083,6 +4488,11 @@ def _limit_series(ctx: Context, deck: list[Draft]) -> list[Draft]:
                 if trial.overflow or not sequence_ok(sequence, trial.pattern):
                     continue
                 if not _keeps_content(d, trial):
+                    continue
+                if (
+                    page_density(ctx, trial)["underfilled"]
+                    and not page_density(ctx, d)["underfilled"]
+                ):
                     continue
                 sibling = bool(alt.group_id) and alt.group_id == d.pattern.group_id
                 ctx.fix(
@@ -4644,6 +5054,23 @@ def build_variant_plan(
             packet_drafts.append([fit_draft(ctx, d) for d in drafts_without_model(ctx, packet)])
         meta["skills"] = [{"name": "variant_planner", "version": "none"}]
     deck = assemble(ctx, structure, packet_drafts)
+    report["page_quality"] = [
+        {"slide_id": f"s{i}", "title": d.title, **page_density(ctx, d)}
+        for i, d in enumerate(deck, start=1)
+    ]
+    for entry in report["page_quality"]:
+        if entry["underfilled"]:
+            ctx.fix(
+                "slide_underfilled",
+                f"{entry['slide_id']}: «{entry['title'][:60]}» — "
+                f"оценка заполнения {entry['body_fill_ratio']:.0%}; нужна проверка подачи",
+            )
+    if _thesis_page_excess(deck):
+        ctx.fix(
+            "thesis_page_target_exceeded",
+            "Есть тезисы длиннее двух страниц: "
+            "содержание сохранено; требуется редакторская проверка группировки",
+        )
     unresolved = [
         {"slide": d.title[:60], "pattern": d.pattern.pattern_id, "overflow": d.overflow}
         for d in deck

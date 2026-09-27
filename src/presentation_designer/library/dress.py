@@ -38,6 +38,7 @@ from presentation_designer.layout.ooxml import NS_A, NS_P
 from presentation_designer.library import iconset
 from presentation_designer.library.spec import Composition, CompositionSlot
 from presentation_designer.library.tokens import DesignCode
+from presentation_designer.library.typography import emphasize
 from presentation_designer.parsing.template.tone import relative_luminance
 
 JsonDict = dict[str, Any]
@@ -148,6 +149,23 @@ def dress_slide(
     elif family == "image_split":
         if _dress_image_split(frame, composition, refs):
             done.append("image_split")
+    elif family == "diagram_pane":
+        lead = frame.get(refs.get("lead"))
+        if emphasize([lead], code.subtitle_pt, code.font_for("body")):
+            done.append("lead_typography")
+    elif family == "agenda":
+        entries = [frame.get(refs.get(s.slot_id)) for s in composition.slots if s.kind == "bullets"]
+        if emphasize(entries, code.title_pt * 0.85, code.font_for("body")):
+            done.append("agenda_typography")
+    elif family == "section":
+        if emphasize([frame.get(refs.get("title"))], code.title_pt * 1.5, code.font_for("title")):
+            done.append("section_typography")
+        if emphasize([frame.get(refs.get("lead"))], code.body_pt, code.font_for("body")):
+            done.append("lead_typography")
+    elif family in ("title_slide", "closing"):
+        title = frame.get(refs.get("title"))
+        if emphasize([title], code.title_pt * 1.25, code.font_for("title")):
+            done.append("cover_typography")
     service = family in ("title_slide", "section", "closing", "agenda")
     if (
         look.title_mark
@@ -1092,18 +1110,17 @@ def _dress_numbers(
         _set_fill(bar, accent)
         _set_line(bar, None)
         _set_shadow(bar, False)
+    labels = []
     for slot in composition.slots:
         if slot.kind == "label" and slot.slot_id.endswith("_label"):
             shape = frame.get(refs.get(slot.slot_id))
             if shape is not None and frame.text_of(str(shape.shape_id)):
+                labels.append(shape)
                 _, body_color = _text_colors(frame, None)
                 runs = [r for p in shape.text_frame.paragraphs for r in p.runs]
-                size = max(
-                    code.body_pt, float(runs[0].font.size.pt) if runs and runs[0].font.size else 0
-                )
                 for run in runs:
-                    run.font.size = Pt(size)
                     run.font.color.rgb = _rgb(body_color)
+    emphasize(labels, code.body_pt, code.font_for("body"))
     if composition.family == "hero_number":
         _hero_body(frame, composition, refs)
     for card_id in card_ids:

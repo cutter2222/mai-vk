@@ -140,6 +140,26 @@ def test_existing_number_card_groups_keep_caption_pairing() -> None:
     assert captions == {"caption_3": "Охват пилота", "caption_4": "Экономия за год"}
 
 
+@pytest.mark.parametrize("variant", vr.VARIANTS)
+def test_metric_heading_and_explanation_are_placed_once_together(variant: str) -> None:
+    ctx = _context(variant)
+    item = {"sub": "Охват", "text": "Только участники пилота", "fact_refs": ["f1"]}
+    qualification = {"text": "Не включает отказавшихся пользователей", "fact_refs": ["f1"]}
+    blocks = _fill(ctx, [item, qualification], ["f1"])
+    assert [b["text"] for b in blocks if b["kind"] == "caption"] == [
+        "Охват: Только участники пилота"
+    ]
+    assert _bullets(blocks) == [qualification]
+
+
+def test_metric_heading_without_caption_stays_in_bullets() -> None:
+    ctx = _context("balanced", captions=0)
+    item = {"sub": "Охват", "text": "Только участники пилота", "fact_refs": ["f1"]}
+    assert _bullets(_fill(ctx, [item], ["f1"])) == [
+        {"text": "Охват: Только участники пилота", "fact_refs": ["f1"]}
+    ]
+
+
 def test_new_plans_do_not_reuse_previous_content_loss_cache(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -147,3 +167,41 @@ def test_new_plans_do_not_reuse_previous_content_loss_cache(
     current = vr.plan_key(ctx.story, ctx.profile, ctx.variant_id, {})
     monkeypatch.setattr(vr, "PLAN_VERSION", "0.3.1")
     assert vr.plan_key(ctx.story, ctx.profile, ctx.variant_id, {}) != current
+
+
+def test_generated_comparison_is_one_line_with_both_fact_references():
+    ctx = _context("balanced", numbers=0, captions=0)
+    ctx.facts = {
+        fid: {
+            "fact_id": fid,
+            "raw": raw,
+            "block_id": "b1",
+            "source_id": "s1",
+            "context": {"metric": "Отписки", "comparison": "с 4,1 % до 2,7 %"},
+        }
+        for fid, raw in [("f1", "4,1 %"), ("f2", "2,7 %")]
+    }
+    blocks = _fill(ctx, [], ["f1", "f2"])
+    assert _bullets(blocks) == [
+        {
+            "text": "Отписки: с {fact:f1} до {fact:f2}",
+            "fact_refs": ["f1", "f2"],
+        }
+    ]
+    ctx.facts["f2"]["block_id"] = "another_source_block"
+    assert "{fact:f2}" not in vr._fact_phrase(ctx, "f1")
+
+
+def test_comparison_substitution_does_not_replace_part_of_a_larger_number():
+    ctx = _context("balanced", numbers=0, captions=0)
+    ctx.facts = {
+        fid: {
+            "fact_id": fid,
+            "raw": raw,
+            "block_id": "b1",
+            "source_id": "s1",
+            "context": {"metric": "Охват", "comparison": "с 4 % до 44 %"},
+        }
+        for fid, raw in [("f1", "4 %"), ("f2", "44 %")]
+    }
+    assert vr._fact_phrase(ctx, "f1") == "Охват: с {fact:f1} до {fact:f2}"

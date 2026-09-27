@@ -355,6 +355,15 @@ def _matrix(
         )
         _text(node, text, sub, style, color=_on_fill(style, fill))
         nodes.append(node)
+    if rows == 1:
+        # Короткие карточки не растягиваем на всю панель. Длинным подписям
+        # оставляем измеренную высоту; многорядные матрицы не сдвигаем.
+        needed = max(_node_text_height(node, style, 0.9) for node in nodes)
+        if math.isfinite(needed):
+            height = min(cy, max(cy // 2, math.ceil((needed + 24) / 0.9 * 12700)))
+            for node in nodes:
+                node.height = height
+                node.top = y + (cy - height) // 2
     return nodes
 
 
@@ -441,6 +450,32 @@ def _set_alpha(shape: Any, percent: int) -> None:
     alpha.set("val", str(percent * 1000))
 
 
+def _node_text_height(node: Any, style: DiagramStyle, ratio: float) -> float:
+    """Высота текста по тем же метрикам для компоновки и проверки вместимости."""
+    available_w = node.width / 12700 * ratio - 7.2
+    used_h = 0.0
+    font = text_metrics.resolve_font(style.font_family)
+    for paragraph in node.text_frame.paragraphs:
+        run = paragraph.runs[0] if paragraph.runs else None
+        size = run.font.size.pt if run and run.font.size else style.font_size_pt
+        lines = 0
+        for line in paragraph.text.split("\n"):
+            lines += 1
+            used_w = 0.0
+            for word in line.split():
+                word_w = text_metrics.text_width_pt(word, font, size)
+                if word_w > available_w:
+                    return math.inf
+                gap = text_metrics.text_width_pt(" ", font, size) if used_w else 0.0
+                if used_w + gap + word_w > available_w:
+                    lines += 1
+                    used_w = word_w
+                else:
+                    used_w += gap + word_w
+        used_h += lines * text_metrics.line_metrics(font, size).line_height_pt
+    return used_h
+
+
 def content_fits(block: dict[str, Any], box: tuple[int, ...], style: DiagramStyle) -> bool:
     """Conservative text fit against the renderer's actual node geometry.
 
@@ -468,28 +503,8 @@ def content_fits(block: dict[str, Any], box: tuple[int, ...], style: DiagramStyl
             return False
         # Inscribe text in curved/tapered nodes, not in their rectangular bounding box.
         ratio = 0.68 if kind in ("cycle", "pyramid", "funnel") else 0.9
-        available_w = node.width / 12700 * ratio - 7.2
         available_h = node.height / 12700 * ratio - 4.32
-        used_h = 0.0
-        for paragraph in node.text_frame.paragraphs:
-            run = paragraph.runs[0] if paragraph.runs else None
-            size = run.font.size.pt if run and run.font.size else style.font_size_pt
-            font = text_metrics.resolve_font(style.font_family)
-            lines = 0
-            for line in paragraph.text.split("\n"):
-                lines += 1
-                used_w = 0.0
-                for word in line.split():
-                    word_w = text_metrics.text_width_pt(word, font, size)
-                    if word_w > available_w:
-                        return False
-                    gap = text_metrics.text_width_pt(" ", font, size) if used_w else 0.0
-                    if used_w + gap + word_w > available_w:
-                        lines += 1
-                        used_w = word_w
-                    else:
-                        used_w += gap + word_w
-            used_h += lines * text_metrics.line_metrics(font, size).line_height_pt
+        used_h = _node_text_height(node, style, ratio)
         if used_h > available_h:
             return False
     return True

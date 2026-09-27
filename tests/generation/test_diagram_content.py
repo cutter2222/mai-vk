@@ -91,7 +91,10 @@ def test_unsafe_diagram_falls_back_without_losing_items(kind: str, count: int, l
             {
                 "pattern_id": "list",
                 "role": "bullets",
-                "slots": [{"slot_id": "list", "kind": "bullets"}],
+                "slots": [
+                    {"slot_id": "title", "kind": "title"},
+                    {"slot_id": "list", "kind": "bullets"},
+                ],
             }
         )
     )

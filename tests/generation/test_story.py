@@ -485,7 +485,9 @@ def test_pipeline_reuses_story_by_content_hash(
             return client.get(f"/api/generations/{job_id}").json()
 
         first = generate({"language": "ru"}, "k1")
-        assert first["status"] in ("needs_review", "succeeded"), first.get("error")
+        assert first["status"] in ("needs_review", "succeeded"), json.dumps(
+            {"error": first.get("error"), "variants": first.get("variants")}, ensure_ascii=False
+        )
         assert first["metrics"]["cache"]["story_hit"] is False
         story = client.get(f"/api/generations/{first['job_id']}/story").json()
         assert StoryPlan.model_validate(story) and story["language"] == "ru"
