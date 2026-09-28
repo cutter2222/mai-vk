@@ -1813,10 +1813,18 @@ _VENDOR_SITE = re.compile(
 )
 
 
+# Заготовки колонтитула образца: имя, город, год капителью латиницей («JOHN DOE», «NEW YORK»,
+# «2023» у SlidesCarnival) — на обложке чужой презентации им не место.
+_FOOTER_STUB = re.compile(r"^(?:[A-Z][A-Z .&'’-]{1,24}|(?:19|20)\d\d)$")
+
+
 def _placeholder_text(ctx: _Context, text: str | None) -> bool:
-    """Текст образца — заготовка автора шаблона: отмечен анализом или адрес сервиса."""
+    """Текст образца — заготовка автора шаблона: отмечен анализом, адрес сервиса или
+    подпись-заглушка колонтитула."""
     plain = " ".join(str(text or "").split())
-    return bool(plain) and (plain in ctx.markers or bool(_VENDOR_SITE.search(plain)))
+    return bool(plain) and (
+        plain in ctx.markers or bool(_VENDOR_SITE.search(plain)) or bool(_FOOTER_STUB.match(plain))
+    )
 
 
 def _beside(info: Any, box: tuple[float, float, float, float]) -> bool:

@@ -283,3 +283,36 @@ def test_answer_items_lose_manual_markers_and_concept_notice():
         "Предлагаем выбирать отдел не произвольно. Устоявшиеся процессы важны."
     )
     assert vr._without_notice(notice.rstrip("."), notice) == ""
+
+
+def test_cover_beyond_slide_edge_yields_to_builtin_cover(monkeypatch):
+    # SlidesCarnival luxury: заголовок обложки — слово в 300 pt шире слайда; тема в нём
+    # обрезалась сверху, хотя образец был единственным в пуле (28.09.2026).
+    from presentation_designer.generation.matching import pattern_info
+
+    ctx = _context("balanced")
+    title_slot = {
+        "slot_id": "t",
+        "kind": "title",
+        "bbox": {"x": -0.16, "y": -0.04, "width": 1.32, "height": 0.32},
+    }
+    huge = pattern_info({"pattern_id": "huge", "role": "title", "slots": [title_slot]})
+    own = pattern_info(
+        {
+            "pattern_id": "own_cover",
+            "role": "title",
+            "source": {"kind": "builtin"},
+            "slots": [
+                {
+                    "slot_id": "t",
+                    "kind": "title",
+                    "bbox": {"x": 0.1, "y": 0.3, "width": 0.8, "height": 0.3},
+                }
+            ],
+        }
+    )
+    ctx.patterns = [huge, own]
+    monkeypatch.setattr(vr, "fit_draft", lambda ctx, draft: draft)
+    assert vr._first_fitting(ctx, [huge], "Тема презентации", "") is own
+    assert any(f["code"] == "service_pattern_builtin" for f in ctx.fixes)
+    assert vr._off_slide(huge.title) and not vr._off_slide(own.title)

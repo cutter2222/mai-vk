@@ -531,15 +531,36 @@ def _first_fitting(
     ctx: Context, ordered: list[PatternInfo], title: str, message: str
 ) -> PatternInfo | None:
     """Первый паттерн порядка, в который заголовок и подпись помещаются без переполнения после
-    лестницы ёмкости; если не помещаются никуда — первый (переполнение запишет план)."""
-    for p in ordered:
+    лестницы ёмкости. Образец, чей заголовок нарисован за краем слайда (SlidesCarnival luxury:
+    слово в 300 pt шире слайда), пропускается — текст в нём обрезается даже когда «помещается».
+    Не помещается никуда — своя композиция той же роли, и только потом первый образец
+    (переполнение запишет план)."""
+
+    def fits(p: PatternInfo) -> bool:
         draft = fit_draft(
             ctx, Draft(kind="title", theses=[], pattern=p, title=title, message=message)
         )
         _drop_overflowing_optional(draft)
-        if not draft.overflow:
-            return p
+        return not draft.overflow
+
+    for p in ordered:
+        if _off_slide(p.title) or not fits(p):
+            continue
+        return p
+    if ordered and not ordered[0].builtin:
+        for p in ctx.patterns:
+            if p.builtin and p.role == ordered[0].role and fits(p):
+                ctx.fix("service_pattern_builtin", f"{ordered[0].role}: образцы шаблона не вмещают")
+                return p
     return ordered[0] if ordered else None
+
+
+def _off_slide(slot: SlotInfo | None, tolerance: float = 0.03) -> bool:
+    """Слот заметно выходит за край слайда."""
+    if slot is None:
+        return False
+    x, y, w, h = slot.bbox
+    return x < -tolerance or y < -tolerance or x + w > 1 + tolerance or y + h > 1 + tolerance
 
 
 def _roomy_pool(pool: list[PatternInfo], ratio: float = 0.5) -> list[PatternInfo]:

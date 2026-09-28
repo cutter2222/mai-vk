@@ -1271,3 +1271,14 @@ def test_overflowing_text_keeps_whole_sentences_and_spills_rest_to_notes(
         if o.get("slot_id") == "subtitle_1"
     )
     assert fit["action"] == "shortened"
+
+
+def test_footer_stubs_of_sample_cover_count_as_placeholders() -> None:
+    # SlidesCarnival luxury: «JOHN DOE», «NEW YORK», «2023» из колонтитула образца оставались
+    # на обложке чужой презентации (28.09.2026).
+    from presentation_designer.layout.compose import _FOOTER_STUB
+
+    for stub in ("JOHN DOE", "NEW YORK", "2023", "CONFIDENTIAL"):
+        assert _FOOTER_STUB.match(stub), stub
+    for real in ("VK Tech", "Company name", "12", "Итоги года", "A"):
+        assert not _FOOTER_STUB.match(real), real

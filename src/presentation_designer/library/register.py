@@ -94,16 +94,26 @@ def _base_layout(profile: JsonDict) -> str:
         ]
         return 1 if titles and float((titles[0].get("bbox") or {}).get("y") or 0) > 0.2 else 0
 
+    def service_name(item: JsonDict) -> int:
+        # Макет «TITLE» без плейсхолдеров (SlidesCarnival morph) выигрывал по их числу, а на
+        # нём — декор обложки во весь слайд: имя макета — тоже свидетельство назначения.
+        name = str(item.get("name") or "").lower()
+        return 1 if any(w in name for w in _SERVICE_LAYOUT_WORDS) else 0
+
     ranked = sorted(
         layouts,
         key=lambda item: (
             service_only(item),
             centered_title(item),
-            len(item.get("placeholders") or []),
+            service_name(item),
             0 if "blank" in str(item.get("name") or "").lower() else 1,
+            len(item.get("placeholders") or []),
         ),
     )
     return str(ranked[0].get("layout_id") or "")
+
+
+_SERVICE_LAYOUT_WORDS = ("title", "cover", "section", "thank", "closing", "end", "титул", "обложк")
 
 
 SERVICE_ROLES = {"title", "thanks", "section_divider", "qr", "agenda", "speaker"}

@@ -146,3 +146,21 @@ def _between(rgb: str, palette: set[str]) -> bool:
     value = tuple(int(rgb[i : i + 2], 16) for i in (0, 2, 4))
     bounds = [tuple(int(p[i : i + 2], 16) for i in (0, 2, 4)) for p in palette]
     return all(min(b[k] for b in bounds) <= value[k] <= max(b[k] for b in bounds) for k in range(3))
+
+
+def test_base_layout_skips_service_named_layouts() -> None:
+    # SlidesCarnival morph: макет «TITLE» без плейсхолдеров выигрывал по их числу, а на нём
+    # декор обложки во весь слайд ложился под текст собственных композиций (28.09.2026).
+    from presentation_designer.library.register import _base_layout
+
+    profile = {
+        "layouts": [
+            {"layout_id": "L1", "name": "BLANK", "placeholders": [{"type": "ftr"}] * 3},
+            {"layout_id": "L2", "name": "TITLE", "placeholders": []},
+            {"layout_id": "L3", "name": "OBJECT", "placeholders": [{"type": "body"}]},
+        ],
+        "patterns": [],
+    }
+    assert _base_layout(profile) == "L1"
+    profile["layouts"].pop(0)
+    assert _base_layout(profile) == "L3"
