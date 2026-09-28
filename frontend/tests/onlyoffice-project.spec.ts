@@ -635,9 +635,9 @@ test("loading screen shows the opening stages in project style until slides are 
   await page.goto("/project?id=office-ui-test&officeView=editor");
   const loading = page.getByTestId("office-loading");
   await expect(loading).toBeVisible();
-  await expect(loading.getByText("Запускаем редактор…")).toBeVisible();
+  await expect(loading.getByText("Запускаем редактор")).toBeVisible();
   await page.evaluate(() => (window as unknown as { testAppReady: () => void }).testAppReady());
-  await expect(loading.getByText("Открываем слайды…")).toBeVisible();
+  await expect(loading.getByText("Открываем слайды")).toBeVisible();
   await page.evaluate(() => (window as unknown as { testDocReady: () => void }).testDocReady());
   await expect(loading).toHaveCount(0);
   await expect(page.getByTestId("office-preview")).toBeEnabled();

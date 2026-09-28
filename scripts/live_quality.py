@@ -437,6 +437,7 @@ def main() -> int:
     parser.add_argument("--api", default="http://localhost:8080")
     parser.add_argument("--variants", default="compact,balanced,detailed")
     parser.add_argument("--seed", type=int, default=240926)
+    parser.add_argument("--parallel", type=int, default=6, help="сколько заданий одновременно")
     parser.add_argument(
         "--job",
         action="append",
@@ -468,7 +469,7 @@ def main() -> int:
             return report_job(api, name, base / name, variants, jobs[name])
         return run(api, name, base / name, variants, args.seed, specs.get(name))
 
-    with ThreadPoolExecutor(max_workers=min(len(names), 6) or 1) as pool:
+    with ThreadPoolExecutor(max_workers=min(len(names), args.parallel) or 1) as pool:
         summaries = list(pool.map(one, names))
     total: collections.Counter[str] = collections.Counter()
     for summary in summaries:
