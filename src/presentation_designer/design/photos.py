@@ -34,10 +34,12 @@ SOURCES: dict[str, tuple[bool, tuple[str, ...]]] = {
     "statement": (False, ("statement",)),
 }
 # Доля содержательных слайдов с фото по варианту: сжатый — самый визуальный.
-SHARE = {"compact": 0.4, "balanced": 0.34, "detailed": 0.25}
+SHARE = {"compact": 0.45, "balanced": 0.4, "detailed": 0.3}
 MAX_PHOTOS = 4
 # Текст слайда длиннее этого не переводится на половину ширины: он бы ужался до мелкого.
-MAX_CHARS = {True: 420, False: 420}
+# Список из четырёх пунктов по предложению — около 600 знаков — в половину ширины встаёт
+# в 14 пт (замер 28.09.2026); при 420 фото получал один слайд из десяти.
+MAX_CHARS = {True: 650, False: 520}
 
 QUERY_SCHEMA: JsonDict = {
     "type": "object",

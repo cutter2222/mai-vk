@@ -894,12 +894,12 @@ def _dress_bullets(frame: Frame, composition: Composition, refs: dict[str, str])
     top, bottom = _body_area(frame, refs)
     avail = bottom - top
     single = len(boxes) == 1
-    title = frame.get(refs.get("title"))
     left = int(boxes[0].left)
     right = max(int(b.left + b.width) for b in boxes)
-    panel_w = int((right - left) * 0.34) if single else 0
-    gap = int(frame.width * 0.035) if single else 0
-    text_w = (right - left - panel_w - gap) if single else int(boxes[0].width)
+    # Панель со значком рядом с одной колонкой убрана (28.09.2026): плашка с контурным
+    # значком читалась как незагруженная картинка, а с заливкой — тяжёлым блоком. Картинку
+    # таким слайдам даёт фотослой (design/photos), список занимает всю ширину.
+    text_w = (right - left) if single else int(boxes[0].width)
     family = code.font_for("body")
     items_all = [[p.text.strip() for p in b.text_frame.paragraphs if p.text.strip()] for b in boxes]
     para_gap = 0.55
@@ -914,8 +914,6 @@ def _dress_bullets(frame: Frame, composition: Composition, refs: dict[str, str])
             align=PP_ALIGN.LEFT, family=family,
         )  # fmt: skip
         _bullets_with_leads(box, _accent_text(frame), title_color, size)
-    if single and panel_w > 0:
-        _topic_panel(frame, (right - panel_w, y, panel_w, max(block, int(avail * 0.62))), title)
     return True
 
 
@@ -1025,38 +1023,6 @@ def copy_run(run: Any) -> Any:
     element = copy.deepcopy(run._r)
     run._r.addnext(element)
     return _Run(element, run._parent)
-
-
-def _topic_panel(frame: Frame, box: tuple[int, int, int, int], title: Any | None) -> None:
-    """Панель с крупной иконкой темы слайда рядом со списком."""
-    text = frame.text_of(str(title.shape_id)) if title is not None else ""
-    icon = iconset.find_icon(text)
-    accent = _accent(frame, 0)
-    x, y, w, h = box
-    corner = frame.code.corner_ratio if frame.code.card_geometry == "roundRect" else 0.04
-    panel = _shape(frame, MSO_SHAPE.ROUNDED_RECTANGLE, box, "Topic panel", corner=max(corner, 0.04))
-    if frame.dark:
-        _set_fill(panel, "#FFFFFF", 0.06)
-        _set_line(panel, "#FFFFFF", 0.75, 0.14)
-    else:
-        _set_fill(panel, _mix(accent, frame.backdrop, 0.09))
-        _set_line(panel, None)
-    _set_shadow(panel, False)
-    _to_back(frame, panel)
-    if icon:
-        size = int(min(w, h) * 0.42)
-        iconset.add_icon(
-            frame.slide, icon, x + (w - size) // 2, y + (h - size) // 2, size, accent, weight=0.7
-        )
-    else:
-        # Без иконки — крупный акцентный круг-знак, чтобы панель не пустовала.
-        d = int(min(w, h) * 0.36)
-        ring = _shape(
-            frame, MSO_SHAPE.OVAL, (x + (w - d) // 2, y + (h - d) // 2, d, d), "Topic mark"
-        )
-        _set_fill(ring, None)
-        _set_line(ring, accent, max(2.0, d / EMU_PT * 0.06))
-        _set_shadow(ring, False)
 
 
 # ---------- числа ----------

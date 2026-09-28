@@ -54,7 +54,7 @@ def _plan(count: int) -> dict[str, Any]:
 def test_candidates_are_limited_and_not_three_in_a_row() -> None:
     plan = _plan(9)
     chosen = photos.candidates(plan, _profile(), "balanced")
-    assert len(chosen) == 3, "треть содержательных слайдов"
+    assert len(chosen) == 4, "две пятых содержательных слайдов"
     for i in chosen:
         assert not {i - 1, i - 2} <= set(chosen)
 
@@ -120,7 +120,7 @@ def test_attach_places_photos_alternating_sides_without_repeats() -> None:
     out, report = photos.attach_photos(plan, _profile(), variant="balanced", ask=ask, find=find)
     assert "Умные остановки" in asked[0], "модель знает тему презентации"
     placed = [p["slide"] for p in report["placed"]]
-    assert report["candidates"] == 3
+    assert report["candidates"] == 4
     assert len(placed) == 2, "одно фото дважды не ставится"
     sides = [
         s["pattern_id"].rsplit("side", 1)[1]
