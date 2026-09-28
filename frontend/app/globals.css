@@ -544,15 +544,6 @@ body {
   background: transparent;
 }
 
-/* Заглушки — голубые, как подсветка карточек, а не серые: миниатюра чуть светлее строк. */
-.grid-card-skeleton .mantine-Skeleton-root[data-visible]::after {
-  background-color: color-mix(in srgb, var(--accent) 16%, var(--page));
-}
-
-.grid-card-skeleton .grid-card-thumb .mantine-Skeleton-root[data-visible]::after {
-  background-color: color-mix(in srgb, var(--accent) 9%, var(--page));
-}
-
 /* ---------- Редактор проекта ---------- */
 
 .editor {
