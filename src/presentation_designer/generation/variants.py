@@ -1102,11 +1102,17 @@ def _stems(text: str) -> set[str]:
 # ---------- ответ модели → черновики ----------
 
 
+_LEADING_MARKER = re.compile(r"^[•▪◦●■□‣\-–—]+\s+")
+
+
 def _clean(text: Any, limit: int = 600) -> str:
     """Текст одной строкой не длиннее `limit`. Длинный режется по концу предложения, а если
     его нет в последних трёх пятых — по границе слова с многоточием: обрубок «цикл зависим»
     на слайде хуже, чем на предложение короче."""
     value = re.sub(r"\s+", " ", str(text or "")).strip()
+    # Ручной маркер в начале («• Сценарий риска: …») при собственном маркере списка
+    # давал двойной знак на слайде; нумерацию не трогаем — она бывает частью смысла.
+    value = _LEADING_MARKER.sub("", value)
     if len(value) <= limit:
         return value
     head = value[: limit + 1]
@@ -1117,6 +1123,13 @@ def _clean(text: Any, limit: int = 600) -> str:
     if cut <= limit * 0.4:
         return value[:limit]
     return head[:cut].rstrip(" ,;:—–-") + "…"
+
+
+def _without_notice(text: str, notice: str) -> str:
+    """Текст без предложения-оговорки концепции (с точкой в конце или без неё)."""
+    core = notice.rstrip(".")
+    pattern = re.compile(r"\s*" + re.escape(core) + r"\.?(?:\s+|$)", re.IGNORECASE)
+    return re.sub(r"\s+", " ", pattern.sub(" ", text)).strip(" ;:,")
 
 
 def drafts_from_answer(
@@ -1190,6 +1203,16 @@ def drafts_from_answer(
         for item in items:
             facts.extend(f for f in item.get("fact_refs", []) if f not in facts)
         text = _clean(raw.get("text"), 1200)
+        if is_concept(ctx.story):
+            # Оговорка уже стоит на обложке и в заметках; модель (Sonnet) повторяла её
+            # абзацем или пунктом на половине слайдов.
+            notice = concept_notice(str(ctx.story.get("language", "ru")))
+            text = _without_notice(text, notice)
+            items = [
+                {**it, "text": _without_notice(it["text"], notice)}
+                for it in items
+                if _without_notice(it["text"], notice)
+            ]
         for ref in FACT_REF.findall(text + " " + title):
             if ref in ctx.facts and ref not in facts:
                 facts.append(ref)
@@ -2783,6 +2806,13 @@ def _drop_overflowing_fillers(draft: Draft, measured: list[JsonDict]) -> list[Js
         and not slot.required
     }
     if not bad:
+        return measured
+    if draft.kind == "content" and all(
+        b["slot_id"] in bad or b.get("kind") == "title" for b in measured
+    ):
+        # Наполнитель — единственное содержание слайда (модель вернула один заголовок,
+        # пояснение тезиса легло в узкий слот образца): без него остался бы пустой слайд.
+        # Переполнение остаётся, и fit_draft подбирает более вместительную композицию.
         return measured
     draft.overflow = [o for o in draft.overflow if o["slot_id"] not in bad]
     draft.actions.extend(f"filler_dropped:{sid}" for sid in sorted(bad))

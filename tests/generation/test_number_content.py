@@ -268,3 +268,18 @@ def test_fact_phrase_reads_like_a_caption(fact, expected):
     ctx = _context("balanced", numbers=0, captions=0)
     ctx.facts = {"f1": {"fact_id": "f1", **fact}}
     assert vr._fact_phrase(ctx, "f1") == expected
+
+
+def test_answer_items_lose_manual_markers_and_concept_notice():
+    # Sonnet ставил «• » в тексте пунктов уже маркированного списка и повторял оговорку
+    # концепции абзацем на половине слайдов (зоопарк шаблонов, 28.09.2026).
+    assert vr._clean("• Сценарий риска: клиент не получает ответ") == (
+        "Сценарий риска: клиент не получает ответ"
+    )
+    assert vr._clean("— Пункт") == "Пункт" and vr._clean("2024 год") == "2024 год"
+    notice = "Концепция по теме: источники не предоставлены; утверждения требуют проверки."
+    text = f"Предлагаем выбирать отдел не произвольно. {notice} Устоявшиеся процессы важны."
+    assert vr._without_notice(text, notice) == (
+        "Предлагаем выбирать отдел не произвольно. Устоявшиеся процессы важны."
+    )
+    assert vr._without_notice(notice.rstrip("."), notice) == ""

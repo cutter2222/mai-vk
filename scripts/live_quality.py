@@ -201,7 +201,15 @@ class Api:
         self.client = httpx.Client(base_url=f"{base.rstrip('/')}/api", timeout=180)
 
     def call(self, method: str, path: str, **kwargs: Any) -> Any:
-        response = self.client.request(method, path, **kwargs)
+        # Случайный 502/503 от прокси под нагрузкой не должен ронять прогон на 23 шаблона:
+        # чтение повторяется, запись (создание задания) — нет.
+        attempts = 4 if method == "GET" else 1
+        for attempt in range(attempts):
+            response = self.client.request(method, path, **kwargs)
+            if response.status_code >= 500 and attempt + 1 < attempts:
+                time.sleep(3 * (attempt + 1))
+                continue
+            break
         if response.is_error:
             print(response.text, file=sys.stderr)
         response.raise_for_status()

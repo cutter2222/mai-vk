@@ -224,3 +224,22 @@ def test_alternative_layout_cannot_remove_headline():
     ctx, draft, compact = sparse_draft()
     compact.title = None
     assert compact not in vr._alternatives(ctx, draft)
+
+
+def test_only_filler_is_kept_when_it_overflows():
+    # e-learning, слайд «Идея: приоритет маршруту…»: пояснение тезиса не влезло в слот на
+    # 180 знаков, наполнитель убрали, и слайд остался с одним заголовком (28.09.2026).
+    body = "body"
+    draft = vr.Draft(kind="content", theses=["t1"], pattern=pattern(), title="Идея")
+    draft.filler_slots = {body}
+    measured = [
+        {"slot_id": "title", "kind": "title", "text": "Идея"},
+        {"slot_id": body, "kind": "body", "text": "Пояснение " * 40},
+    ]
+    draft.overflow = [{"kind": "body", "slot_id": body}]
+    assert vr._drop_overflowing_fillers(draft, list(measured)) == measured
+    assert draft.overflow == [{"kind": "body", "slot_id": body}]
+    # Есть другое содержание — переполненный наполнитель по-прежнему убирается.
+    with_items = [*measured, {"slot_id": "x", "kind": "bullets", "items": [{"text": "Пункт"}]}]
+    assert vr._drop_overflowing_fillers(draft, with_items) == [measured[0], with_items[2]]
+    assert draft.overflow == []
