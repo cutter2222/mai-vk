@@ -42,7 +42,7 @@ test("accepted PPTX survives editor save, fresh-page reopen and UI download", as
   await expect(inline).toBeVisible({ timeout: 180_000 });
   await expect(page.getByTestId("office-loading")).toHaveCount(0, { timeout: 180_000 });
   await expect(page.frameLocator("iframe").locator("#status-label-pages")).toHaveText(`Слайд 1 из ${slides}`);
-  await page.getByTestId("open-office").click();
+  await page.goto(`/office?${new URLSearchParams({ id, project: projectId })}`);
   await expect(page.frameLocator("iframe").locator("#id-toolbar-btn-add-slide")).toBeVisible({ timeout: 180_000 });
   await expect(page.getByTestId("office-loading")).toHaveCount(0, { timeout: 180_000 });
   await page.getByRole("button", { name: "Завершить и сохранить", exact: true }).click();

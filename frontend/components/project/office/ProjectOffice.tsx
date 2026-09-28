@@ -1,8 +1,6 @@
 "use client";
 
-import { ActionIcon, Alert, Button, Group, Loader, SegmentedControl, Text, Tooltip } from "@mantine/core";
-import { IconArrowsMaximize } from "@tabler/icons-react";
-import Link from "next/link";
+import { Alert, Button, Group, Loader, SegmentedControl, Text } from "@mantine/core";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { createPortal } from "react-dom";
@@ -27,7 +25,9 @@ function revisionOf(artifact: string): { variant: string; revision: number } | n
  * Презентация в проекте — всегда открытый редактор ONLYOFFICE над серверной копией PPTX.
  * Отдельного «сохранённого превью» с выбором объектов по картинке больше нет (28.09.2026):
  * выделение читается из живого редактора, ИИ-правки ложатся в открытую копию, автосохранение
- * включено, а скачивание берёт последнюю серверную ревизию.
+ * включено, а скачивание берёт последнюю серверную ревизию. Кнопки «На весь экран» тоже нет
+ * (29.09): больше места даёт сворачивание чата без второй сессии редактора; страница `/office`
+ * остаётся доступной по адресу.
  */
 export function ProjectOffice({ session, title, projectId, editRef, actionsTarget, template, onEditorReady, onLiveSelection }: {
   session: GenerationSession; title: string; projectId: string;
@@ -285,19 +285,9 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
         };
       })} />
   );
-  // Полноэкранный редактор: та же копия, после «Завершить и сохранить» — обратно в проект.
-  const fullscreen = doc && (
-    <Tooltip label="На весь экран">
-      <ActionIcon component={Link} variant="subtle" color="gray" aria-label="На весь экран" data-testid="open-office"
-        href={`/office?${new URLSearchParams({ id: doc.id, project: projectId, ...(templateId ? {} : { officeJob: source.jobId, officeArtifact: source.artifact }) })}`}>
-        <IconArrowsMaximize size={18} />
-      </ActionIcon>
-    </Tooltip>
-  );
 
   return <div className="project-office" data-testid="project-office">
     {switcher && (actionsTarget ? createPortal(switcher, actionsTarget) : <Group p="xs">{switcher}</Group>)}
-    {fullscreen && (actionsTarget ? createPortal(fullscreen, actionsTarget) : <Group p="xs">{fullscreen}</Group>)}
     {templateId && <Text size="xs" c="dimmed" p="xs">Рабочая копия шаблона · ИИ-правки сохраняются только в этом проекте. Исходный шаблон не изменяется.</Text>}
     {!session.terminal && variants.length > 1 && variants.some((v) => !v.artifacts?.pptx && v.status !== "failed") && <Text size="xs" c="dimmed" p="xs" role="status">Остальные варианты ещё собираются — их можно будет открыть переключателем вверху.</Text>}
     {changed && <Alert color="blue" title="Доступна другая версия презентации">

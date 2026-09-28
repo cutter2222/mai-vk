@@ -4,6 +4,9 @@ import { mockRouter } from "./helpers";
 
 // Isolated API and SDK fixtures: never edit a user's deck.
 
+/** Полноэкранный редактор той же копии: кнопки в шапке нет, страница живёт по прямому адресу. */
+const FULLSCREEN = `/office?${new URLSearchParams({ id: "preview-test", project: "office-ui-test", officeJob: "job_officeuitest", officeArtifact: "compact/r1/deck.pptx" })}`;
+
 /** Встроенный редактор открыл слайды: рамка на месте, заставка загрузки ушла. */
 async function editorReady(page: Page) {
   await expect(page.getByTestId("preview-pane").locator("iframe")).toBeVisible();
@@ -18,9 +21,9 @@ test("slides open the editor inline, keep it across panel toggles and offer no s
   await expect(page.getByTestId("office-preview")).toHaveCount(0);
   await expect(page.getByTestId("edit-slides")).toHaveCount(0);
   await expect(page.getByTestId("slide-counter")).toHaveCount(0);
-  // Переключатель вариантов и выход на весь экран — в шапке рядом с действиями редактора.
+  // Переключатель вариантов — в шапке рядом с действиями редактора; кнопки «На весь экран» нет.
   await expect(page.getByTestId("office-variants")).toBeVisible();
-  await expect(page.getByTestId("open-office")).toBeVisible();
+  await expect(page.getByTestId("open-office")).toHaveCount(0);
   const pane = await page.getByTestId("preview-pane").boundingBox();
   const canvas = await page.locator(".office-canvas").boundingBox();
   expect(pane).not.toBeNull();
@@ -209,8 +212,7 @@ test("multi-slide repair moves each slide into the open copy with a fresh docume
 
 test("immediate close flushes even with a clean parent flag and waits for SDK acknowledgement", async ({ page }) => {
   await setup(page);
-  await page.goto("/project?id=office-ui-test");
-  await page.getByTestId("open-office").click();
+  await page.goto(FULLSCREEN);
   await expect(page.getByRole("button", { name: "Завершить и сохранить" })).toBeEnabled();
   await page.evaluate("window.testSavePending = true");
   await page.getByRole("button", { name: "Завершить и сохранить" }).click();
@@ -222,8 +224,7 @@ test("immediate close flushes even with a clean parent flag and waits for SDK ac
 
 test("failed SDK save keeps the frame alive and allows retry", async ({ page }) => {
   await setup(page);
-  await page.goto("/project?id=office-ui-test");
-  await page.getByTestId("open-office").click();
+  await page.goto(FULLSCREEN);
   const finish = page.getByRole("button", { name: "Завершить и сохранить" });
   await expect(finish).toBeEnabled();
   await page.evaluate("window.testSavePending = true");
@@ -240,8 +241,7 @@ test("failed SDK save keeps the frame alive and allows retry", async ({ page }) 
 
 test("close debounces clean state and flushes edits arriving during save", async ({ page }) => {
   await setup(page);
-  await page.goto("/project?id=office-ui-test");
-  await page.getByTestId("open-office").click();
+  await page.goto(FULLSCREEN);
   const finish = page.getByRole("button", { name: "Завершить и сохранить" });
   await expect(finish).toBeEnabled();
   await page.clock.install();
@@ -268,8 +268,7 @@ test("close debounces clean state and flushes edits arriving during save", async
 
 test("SDK state read failure leaves editor open and allows a retry", async ({ page }) => {
   await setup(page);
-  await page.goto("/project?id=office-ui-test");
-  await page.getByTestId("open-office").click();
+  await page.goto(FULLSCREEN);
   const finish = page.getByRole("button", { name: "Завершить и сохранить" });
   await expect(finish).toBeEnabled();
   await page.evaluate(`(() => {
@@ -288,8 +287,7 @@ test("SDK state read failure leaves editor open and allows a retry", async ({ pa
 
 test("late edits after a no-op save are flushed before close", async ({ page }) => {
   await setup(page);
-  await page.goto("/project?id=office-ui-test");
-  await page.getByTestId("open-office").click();
+  await page.goto(FULLSCREEN);
   const finish = page.getByRole("button", { name: "Завершить и сохранить" });
   await expect(finish).toBeEnabled();
   await page.clock.install();
@@ -306,8 +304,7 @@ test("late edits after a no-op save are flushed before close", async ({ page }) 
 
 test("callback registration failure clears save wait and permits retry", async ({ page }) => {
   await setup(page);
-  await page.goto("/project?id=office-ui-test");
-  await page.getByTestId("open-office").click();
+  await page.goto(FULLSCREEN);
   const finish = page.getByRole("button", { name: "Завершить и сохранить" });
   await expect(finish).toBeEnabled();
   await page.evaluate(`(() => {
@@ -326,8 +323,7 @@ test("callback registration failure clears save wait and permits retry", async (
 
 test("save timeout and unavailable adapter never destroy the iframe", async ({ page }) => {
   await setup(page);
-  await page.goto("/project?id=office-ui-test");
-  await page.getByTestId("open-office").click();
+  await page.goto(FULLSCREEN);
   const finish = page.getByRole("button", { name: "Завершить и сохранить" });
   await expect(finish).toBeEnabled();
   await page.clock.install();
@@ -349,7 +345,10 @@ test("fullscreen page waits for callback and poll recovery, then returns to the 
   // Выбор варианта сразу открывает его PPTX.
   await page.getByTestId("office-variant-balanced").click();
   await expect.poll(() => state.opened.at(-1)).toBe("balanced/r1/deck.pptx");
-  await page.getByTestId("open-office").click();
+  await expect.poll(() => state.configs).toBe(2);
+  await editorReady(page);
+  // Страница `/office` открывается по прямому адресу: кнопки в шапке нет.
+  await page.goto(`/office?${new URLSearchParams({ id: "preview-test", project: "office-ui-test", officeJob: "job_officeuitest", officeArtifact: "balanced/r1/deck.pptx" })}`);
   await expect(page).toHaveURL(/\/office\?/);
   await expect(page.getByTestId("office-workspace").locator("iframe")).toBeVisible();
   const header = page.locator("header");
@@ -407,7 +406,7 @@ test("fullscreen save returns to the project editor even when the saved revision
   await page.goto("/project?id=office-ui-test");
   await editorReady(page);
   await expect(page.getByText("Сохранено", { exact: true })).toHaveCount(0);
-  await page.getByTestId("open-office").click();
+  await page.goto(FULLSCREEN);
   await page.getByRole("button", { name: "Завершить и сохранить" }).click();
   await expect(page.getByText("Ожидаем завершения сессии", { exact: false })).toBeVisible();
   state.error = "Ошибка сохранения";
@@ -425,9 +424,7 @@ test("fullscreen save returns to the project editor even when the saved revision
 
 test("a delayed pre-close response cannot acknowledge saving", async ({ page }) => {
   const state = await setup(page);
-  await page.goto("/project?id=office-ui-test");
-  await editorReady(page);
-  await page.getByTestId("open-office").click();
+  await page.goto(FULLSCREEN);
   const finish = page.getByRole("button", { name: "Завершить и сохранить" });
   await expect(finish).toBeEnabled();
   let release!: () => void;

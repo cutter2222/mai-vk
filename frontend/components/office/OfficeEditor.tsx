@@ -413,18 +413,7 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
   if (!id) return <Alert color="red">Офисная копия не указана. Откройте её из проекта.</Alert>;
   const actions = (
         <Group gap="xs" wrap="nowrap">
-          <Menu withinPortal position="bottom-end" width={180} shadow="md">
-            <Menu.Target>
-              <ActionIcon variant="subtle" color="gray" aria-label="Скачать презентацию" title="Скачать презентацию" loading={downloading} disabled={!doc || Boolean(pollError)} data-testid="download-menu">
-                <IconDownload size={18} />
-              </ActionIcon>
-            </Menu.Target>
-            <Menu.Dropdown>
-              {(["pptx", "pdf", "html"] as const).map((format) => (
-                <Menu.Item key={format} onClick={() => void download(format)} data-testid={`dl-${format}`}>{format.toUpperCase()}</Menu.Item>
-              ))}
-            </Menu.Dropdown>
-          </Menu>
+          {/* «⋯» перед «Скачать»: главное действие — в самом углу шапки. */}
           <Menu withinPortal position="bottom-end" width={300} closeOnItemClick={false}>
             <Menu.Target>
               <ActionIcon variant="subtle" color="gray" aria-label="Действия с презентацией"><IconDots size={18} /></ActionIcon>
@@ -441,6 +430,18 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
               {documentActions}
               <Menu.Divider />
               <Menu.Item disabled={closed || editing || closing || !ready} onClick={() => void finish()}>Завершить редактирование</Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
+          <Menu withinPortal position="bottom-end" width={180} shadow="md">
+            <Menu.Target>
+              <Button size="xs" variant="light" leftSection={<IconDownload size={14} />} loading={downloading} disabled={!doc || Boolean(pollError)} data-testid="download-menu">
+                Скачать
+              </Button>
+            </Menu.Target>
+            <Menu.Dropdown>
+              {(["pptx", "pdf", "html"] as const).map((format) => (
+                <Menu.Item key={format} onClick={() => void download(format)} data-testid={`dl-${format}`}>{format.toUpperCase()}</Menu.Item>
+              ))}
             </Menu.Dropdown>
           </Menu>
         </Group>

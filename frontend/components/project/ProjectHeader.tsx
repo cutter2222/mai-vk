@@ -83,10 +83,11 @@ export function ProjectHeader({ project, session, onTitle, officeActionsRef, tem
             Повторить
           </Button>
         )}
-        <div ref={officeActionsRef} className="office-header-actions" />
-        {/* Шаблон — в самом углу: кнопки задания и редактора появляются левее и его не двигают. */}
-        {templatePicker && <div className="editor-header-sep" />}
+        {/* Порядок слева направо — как идёт работа: шаблон → вариант → действия → «Скачать»
+            в самом углу как главное действие над готовой презентацией. */}
         {templatePicker}
+        {templatePicker && <div className="editor-header-sep" />}
+        <div ref={officeActionsRef} className="office-header-actions" />
       </div>
     </div>
   );

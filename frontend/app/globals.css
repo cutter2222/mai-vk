@@ -764,10 +764,8 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .slide-skeleton { animation: none; }
 }
-/* Разделитель перед выбором шаблона лишний, если левее пусто или уже стоит разделитель:
-   слот редактора пуст, пока документ не открыт, а кнопок задания может не быть. */
-.editor-header-actions > .office-header-actions:empty:first-child + .editor-header-sep,
-.editor-header-sep + .office-header-actions:empty + .editor-header-sep { display: none; }
+/* Разделитель после выбора шаблона лишний, пока слот редактора пуст (документ не открыт). */
+.editor-header-sep:has(+ .office-header-actions:empty) { display: none; }
 
 .office-canvas {
   position: relative;

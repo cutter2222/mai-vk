@@ -41,7 +41,7 @@ test("synthetic project returns from real fullscreen save to the inline editor o
 
   // A marker in the JS realm catches accidental full-page navigation/reload.
   await page.evaluate(() => Object.defineProperty(window, "sdkProjectNavigation", { value: true }));
-  await page.getByTestId("open-office").click();
+  await page.goto(`/office?${new URLSearchParams({ id, project: projectId, officeJob: project.job_id, officeArtifact: "compact/r1/deck.pptx" })}`);
   await expect(page).toHaveURL(new RegExp(`/office\\?id=${id}&project=${projectId}&`));
   await expect(page.locator("iframe")).toBeVisible({ timeout: 120_000 });
   await expect(page.getByTestId("office-loading")).toHaveCount(0, { timeout: 180_000 });
