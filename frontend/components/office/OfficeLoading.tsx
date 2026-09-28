@@ -2,6 +2,7 @@
 
 import { Stack, Text } from "@mantine/core";
 import { IconPresentation } from "@tabler/icons-react";
+import { useEffect, useRef, useState } from "react";
 
 import styles from "./OfficeLoading.module.css";
 
@@ -15,14 +16,29 @@ const PHRASES: Record<OfficeStage, string> = {
   slides: "Открываем слайды",
 };
 
+/** Меньше этого фраза на экране не живёт: этапы сменяются за доли секунды, и текст прыгал. */
+export const MIN_PHRASE_MS = 3500;
+
 /** Заставка вместо стандартного загрузчика ONLYOFFICE: значок и одна фраза по этапу с
- *  бегущим по кругу многоточием вместо кружка. Живые тесты ждут исчезновения `office-loading`. */
+ *  бегущим по кругу многоточием вместо кружка. Фраза сменяется размеренно: следующий этап
+ *  ждёт, пока текущая пробудет на экране хотя бы `MIN_PHRASE_MS`; готовый редактор заставку
+ *  снимает сразу. Живые тесты ждут исчезновения `office-loading`. */
 export function OfficeLoading({ stage }: { stage: OfficeStage }) {
-  return <div className={`office-loading ${styles.root}`} data-testid="office-loading" data-stage={stage} aria-busy="true">
+  const [shown, setShown] = useState<OfficeStage>(stage);
+  // Момент, когда текущая фраза появилась; заполняется в эффекте, а не при рендере.
+  const since = useRef<number | null>(null);
+  useEffect(() => {
+    since.current ??= Date.now();
+    if (stage === shown) return;
+    const wait = Math.max(0, MIN_PHRASE_MS - (Date.now() - since.current));
+    const timer = setTimeout(() => { since.current = Date.now(); setShown(stage); }, wait);
+    return () => clearTimeout(timer);
+  }, [stage, shown]);
+  return <div className={`office-loading ${styles.root}`} data-testid="office-loading" data-stage={shown} aria-busy="true">
     <Stack gap="md" align="center">
       <div className={styles.magic} aria-hidden="true"><IconPresentation size={40} stroke={1.4} /></div>
-      <Text key={stage} fw={600} size="lg" className={styles.phrase} role="status" aria-live="polite">
-        {PHRASES[stage]}<span className={styles.dots} aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
+      <Text key={shown} fw={600} size="lg" className={styles.phrase} role="status" aria-live="polite">
+        {PHRASES[shown]}<span className={styles.dots} aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
       </Text>
     </Stack>
   </div>;

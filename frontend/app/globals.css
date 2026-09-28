@@ -182,6 +182,57 @@ body {
 .frame-sketch .sketch-fixed[data-kind="page_number"] { background: rgba(250, 176, 5, 0.35); border-color: var(--accent-dark); }
 .frame-sketch .sketch-fixed[data-kind="background"] { background: rgba(31, 111, 235, 0.08); border-color: var(--accent-soft); }
 
+/* Эскиз слева, величины справа: во всю ширину эскиз вырастал в экран, а цифры терялись. */
+.sketch-row {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(240px, 2fr);
+  gap: 28px;
+  align-items: start;
+}
+
+.sketch-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.sketch-fact + .sketch-fact {
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.sketch-margin-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.sketch-legend {
+  padding-top: 4px;
+}
+
+@media (max-width: 900px) {
+  .sketch-row { grid-template-columns: minmax(0, 1fr); }
+  .sketch-margin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Таблицы в карточках шаблона: тихая шапка капителью, без внешней рамки. */
+.detail-table th {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink2);
+  padding-top: 0;
+}
+
+.detail-table td:first-child,
+.detail-table th:first-child { padding-left: 0; }
+
+.detail-table td:last-child,
+.detail-table th:last-child { padding-right: 0; }
+
 /* Сетка образцов и слайдов шаблона: кнопка-карточка с миниатюрой. */
 .sample-card {
   display: block;

@@ -10,7 +10,7 @@
   background: var(--mantine-primary-color-light);
   animation: float 3s ease-in-out infinite;
 }
-.phrase { animation: appear 400ms ease-out; }
+.phrase { animation: appear 700ms ease-out; }
 /* Три точки загораются по очереди и гаснут вместе — по кругу, пока редактор не откроется. */
 .dots span { opacity: 0; animation: dot 1.4s infinite; }
 .dots span:nth-child(2) { animation-delay: 0.2s; }
