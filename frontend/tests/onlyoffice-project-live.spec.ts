@@ -1,16 +1,12 @@
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 
 const digest = (data: Buffer) => createHash("sha256").update(data).digest("hex");
-async function decoded(image: Locator) {
-  await expect(image).toBeVisible();
-  await expect.poll(() => image.evaluate((node: HTMLImageElement) => node.complete && node.naturalWidth > 0)).toBe(true);
-}
 
 // Real project/API/SDK, no route interception. Never retain signed source/callback URLs.
 test.use({ trace: "off" });
-test("synthetic project returns from real SDK save to current canvas and thumbnails", async ({ page, request }, testInfo) => {
+test("synthetic project returns from real fullscreen save to the inline editor on the saved revision", async ({ page, request }, testInfo) => {
   test.skip(!process.env.ONLYOFFICE_SDK_PROJECT_ID || !process.env.ONLYOFFICE_SDK_DOCUMENT_ID || !process.env.ONLYOFFICE_SDK_SHA256,
     "Requires a fresh scripts/seed_office_sdk.py --project seed and a real local stack");
   test.setTimeout(420_000);
@@ -37,15 +33,11 @@ test("synthetic project returns from real SDK save to current canvas and thumbna
   const original = await originalResponse.body();
   expect(digest(original)).toBe(process.env.ONLYOFFICE_SDK_SHA256);
 
-  await page.goto(`/project?id=${projectId}&officeView=preview`);
-  await expect(page.getByText("Превью · v0", { exact: true })).toBeVisible({ timeout: 120_000 });
-  await expect(page.getByTestId("slide-counter")).toHaveText("Слайд 1 из 1");
-  const canvas = page.locator(".preview-stage img");
-  await decoded(canvas);
-  const beforeSrc = await canvas.getAttribute("src");
-  expect(beforeSrc).toBe(`${base}/preview/0/slide-01.png`);
-  await decoded(page.getByTestId("thumb-0").locator("img"));
-  await expect(page.locator("iframe")).toHaveCount(0);
+  const inline = page.getByTestId("preview-pane").locator("iframe");
+  await page.goto(`/project?id=${projectId}`);
+  await expect(inline).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByTestId("office-loading")).toHaveCount(0, { timeout: 180_000 });
+  await expect(page.frameLocator("iframe").locator("#status-label-pages")).toHaveText("Слайд 1 из 1");
 
   // A marker in the JS realm catches accidental full-page navigation/reload.
   await page.evaluate(() => Object.defineProperty(window, "sdkProjectNavigation", { value: true }));
@@ -61,29 +53,16 @@ test("synthetic project returns from real SDK save to current canvas and thumbna
   await page.getByRole("button", { name: "Завершить и сохранить", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/project\\?id=${projectId}&officeJob=`), { timeout: 120_000 });
   expect(await page.evaluate(() => Object.hasOwn(window, "sdkProjectNavigation"))).toBe(true);
-  await expect(page.locator("iframe")).toHaveCount(0);
   const savedResponse = await request.get(base);
   expect(savedResponse.ok()).toBeTruthy();
   const saved = await savedResponse.json();
   expect(saved.revision).toBeGreaterThan(0);
   expect(saved.active_key).toBeNull();
   expect(saved.error).toBeNull();
-  await expect(page.getByText(`Превью · v${saved.revision}`, { exact: true })).toBeVisible({ timeout: 120_000 });
-  await expect(page.getByTestId("slide-counter")).toHaveText("Слайд 1 из 2");
-  await expect(canvas).toHaveAttribute("src", `${base}/preview/${saved.revision}/slide-01.png`);
-  await decoded(canvas);
-  const thumbnails = page.locator(".thumb-image img");
-  await expect(thumbnails).toHaveCount(2);
-  for (let index = 0; index < 2; index++) {
-    const expected = `${base}/preview/${saved.revision}/slide-0${index + 1}.png`;
-    await expect(thumbnails.nth(index)).toHaveAttribute("src", expected);
-    await decoded(thumbnails.nth(index));
-    await page.getByTestId(`thumb-${index}`).click();
-    await expect(canvas).toHaveAttribute("src", expected);
-    await decoded(canvas);
-  }
-  await expect(page.getByTestId("slide-counter")).toHaveText("Слайд 2 из 2");
-  await expect(page.locator(`img[src*="${base}/preview/0/"]`)).toHaveCount(0);
+  // Проект снова открывает встроенный редактор — уже на сохранённой ревизии с двумя слайдами.
+  await expect(inline).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByTestId("office-loading")).toHaveCount(0, { timeout: 180_000 });
+  await expect(page.frameLocator("iframe").locator("#status-label-pages")).toHaveText(/Слайд \d из 2/, { timeout: 120_000 });
   await page.screenshot({ path: testInfo.outputPath("project-saved.png"), fullPage: true });
   const download = await request.get(`${base}/download/${saved.revision}`);
   expect(download.ok()).toBeTruthy();
@@ -97,9 +76,8 @@ test("synthetic project returns from real SDK save to current canvas and thumbna
     project_id: projectId, document_id: id, source: initial.source,
     saved_revision: saved.revision, active_key: saved.active_key, error: saved.error,
     original_sha256: digest(original), saved_sha256: digest(updated),
-    original_unchanged: true, before_src: beforeSrc,
-    thumbnail_sources: await thumbnails.evaluateAll((nodes: HTMLImageElement[]) => nodes.map((node) => node.getAttribute("src"))),
+    original_unchanged: true,
     slides_before: 1, slides_after: 2, returned_without_reload: true,
-    scope: "real synthetic project/API/SDK save and decoded revision-scoped canvas/thumbnails; not brand or AI",
+    scope: "real synthetic project/API/SDK fullscreen save and inline reopen on the saved revision; not brand or AI",
   }, null, 2));
 });

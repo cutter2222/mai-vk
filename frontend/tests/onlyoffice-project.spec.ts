@@ -3,24 +3,24 @@ import { expect, test, type Page } from "@playwright/test";
 import { mockRouter } from "./helpers";
 
 // Isolated API and SDK fixtures: never edit a user's deck.
-test.beforeEach(async ({ page }) => {
-  // Existing preview/fullscreen regressions explicitly enter the secondary saved view.
-  await page.addInitScript(() => {
-    if (location.pathname === "/project" && !location.search.includes("officeView=")) {
-      history.replaceState(null, "", `${location.href}&officeView=preview`);
-    }
-  });
-});
 
-test("slides open the editor inline and wait for server save before preview", async ({ page }) => {
-  const state = await setup(page);
-  await page.goto("/project?id=office-ui-test&officeView=editor");
+/** Встроенный редактор открыл слайды: рамка на месте, заставка загрузки ушла. */
+async function editorReady(page: Page) {
   await expect(page.getByTestId("preview-pane").locator("iframe")).toBeVisible();
-  await expect(page.getByTestId("office-preview")).toBeEnabled();
+  await expect(page.getByTestId("office-loading")).toHaveCount(0);
+}
+
+test("slides open the editor inline, keep it across panel toggles and offer no save button", async ({ page }) => {
+  const state = await setup(page);
+  await page.goto("/project?id=office-ui-test");
+  await editorReady(page);
+  // Сохранённого превью больше нет: ни «Сохранить и превью», ни «Редактировать слайды».
+  await expect(page.getByTestId("office-preview")).toHaveCount(0);
+  await expect(page.getByTestId("edit-slides")).toHaveCount(0);
   await expect(page.getByTestId("slide-counter")).toHaveCount(0);
-  await expect(page.getByText(/Сохранённая версия · v/)).toHaveCount(0);
-  // Переключатель вариантов виден и в редакторе: варианты собираются по очереди.
+  // Переключатель вариантов и выход на весь экран — в шапке рядом с действиями редактора.
   await expect(page.getByTestId("office-variants")).toBeVisible();
+  await expect(page.getByTestId("open-office")).toBeVisible();
   const pane = await page.getByTestId("preview-pane").boundingBox();
   const canvas = await page.locator(".office-canvas").boundingBox();
   expect(pane).not.toBeNull();
@@ -29,19 +29,6 @@ test("slides open the editor inline and wait for server save before preview", as
   await page.getByTestId("panel-collapse").click();
   await page.getByTestId("panel-expand").click();
   expect(state.configs).toBe(1);
-  await page.getByTestId("office-preview").click();
-  await expect(page.locator("iframe")).toHaveCount(0);
-  await expect(page.getByTestId("slide-counter")).toHaveCount(0);
-  await expect(page.getByText("Ожидаем завершения сессии", { exact: false })).toBeVisible();
-  state.revision = 4;
-  state.active = false;
-  await expect(page.getByText("Превью · v4", { exact: true })).toBeVisible();
-  await expect(page.getByText(/Сохранённая версия · v/)).toHaveCount(0);
-  await expect(page.getByTestId("office-variants")).toBeVisible();
-  await expect(page).toHaveURL(/\/project\?/);
-  await page.getByTestId("edit-slides").click();
-  await expect(page.getByTestId("preview-pane").locator("iframe")).toBeVisible();
-  expect(state.configs).toBe(2);
   expect(state.opened).toEqual(["compact/r1/deck.pptx"]);
 });
 
@@ -55,8 +42,8 @@ test("logo request with an image replaces the template logo on every slide in on
     patches.push(r.request().postDataJSON());
     return r.fulfill({ json: { file_id: "file-logo", name: "logo.png", size_bytes: 68, kind: "other", check: { format: "png", status: "ok" } } });
   });
-  await page.goto("/project?id=office-ui-test&officeView=editor");
-  await expect(page.getByTestId("office-preview")).toBeEnabled();
+  await page.goto("/project?id=office-ui-test");
+  await editorReady(page);
   const chooser = page.waitForEvent("filechooser");
   await page.getByTestId("chat-attach").click();
   await (await chooser).setFiles({ name: "logo.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC", "base64") });
@@ -69,13 +56,13 @@ test("logo request with an image replaces the template logo on every slide in on
   expect(state.edits).toBe(1);
   expect(state.lastEdit?.logo).toEqual({ action: "replace", file_id: "file-logo" });
   expect(patches).toContainEqual({ kind: "other" });
-  await expect(page.getByTestId("preview-pane").locator("iframe")).toBeVisible();
+  await editorReady(page);
 });
 
 test("logo request without an image asks for it, and removal needs none", async ({ page }) => {
   const state = await setup(page);
-  await page.goto("/project?id=office-ui-test&officeView=editor");
-  await expect(page.getByTestId("office-preview")).toBeEnabled();
+  await page.goto("/project?id=office-ui-test");
+  await editorReady(page);
   await page.getByTestId("chat-input").fill("Поменяй логотип");
   await page.getByTestId("chat-send").click();
   await expect(page.getByText(/Прикрепите картинку нового логотипа/)).toBeVisible();
@@ -90,54 +77,23 @@ test("logo request without an image asks for it, and removal needs none", async 
 
 test("inline AI saves the active editor, edits the same PPTX and reopens inline", async ({ page }) => {
   const state = await setup(page);
-  await page.goto("/project?id=office-ui-test&officeView=editor");
-  await expect(page.getByTestId("office-preview")).toBeEnabled();
+  await page.goto("/project?id=office-ui-test");
+  await editorReady(page);
   await page.getByTestId("chat-input").fill("/edit Измени заголовок");
   await page.getByTestId("chat-send").click();
   await expect(page.locator("iframe")).toHaveCount(0);
   expect(state.edits).toBe(0);
   state.active = false;
   await expect(page.getByText(/Заголовок изменён/)).toBeVisible();
-  await expect(page.getByTestId("preview-pane").locator("iframe")).toBeVisible();
+  await editorReady(page);
   await expect(page).toHaveURL(/\/project\?/);
   expect(state.edits).toBe(1);
   expect(state.configs).toBe(2);
 });
 
-test("pages load independently and a failed page can be retried", async ({ page }) => {
-  const state = await setup(page);
-  await page.route(/\/preview-test\/preview\/3$/, (r) => r.fulfill({ json: {
-    revision: 3, slides: ["slide-01.png", "slide-02.png", "slide-03.png"], ratio: 16 / 9,
-  } }));
-  let fail = true;
-  await page.route(/\/slide-0[23]\.png(?:\?.*)?$/, (r) => fail
-    ? r.fulfill({ status: 503 })
-    : r.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC", "base64") }));
-  await page.goto("/project?id=office-ui-test");
-  const image = page.locator(".preview-stage img");
-  await expect(image).toBeVisible();
-  await expect(image).toHaveAttribute("src", /slide-01.png$/);
-  await expect(page.getByTestId("slide-counter")).toHaveText("Слайд 1 из 3");
-  await expect(page.locator(".thumb-image img").first()).toHaveAttribute("loading", "lazy");
-  await page.getByTestId("thumb-1").click();
-  const retry = page.locator(".preview-stage").getByRole("button", { name: "Повторить загрузку слайда" });
-  await expect(retry).toBeVisible();
-  fail = false;
-  await retry.click();
-  await expect(image).toBeVisible();
-  await expect(image).toHaveAttribute("src", /slide-02.png\?retry=1$/);
-  const thumbnail = page.getByTestId("thumb-1").locator("img");
-  await expect(thumbnail).toHaveAttribute("src", /slide-02.png\?retry=1$/);
-  await expect(thumbnail).toBeVisible();
-  await expect(page.getByTestId("thumb-1").getByText("Откройте слайд, чтобы повторить")).toHaveCount(0);
-  await page.getByTestId("thumb-0").click();
-  await expect(image).toBeVisible();
-  expect(state.configs).toBe(0);
-});
-
 async function setup(page: Page) {
   await mockRouter(page);
-  const state = { active: false, revision: 3, error: null as string | null, failPoll: false, failPreview: false, configs: 0, edits: 0, opened: [] as string[], lastEdit: null as Record<string, unknown> | null };
+  const state = { active: false, revision: 3, error: null as string | null, failPoll: false, configs: 0, edits: 0, opened: [] as string[], lastEdit: null as Record<string, unknown> | null };
   const doc = () => ({ id: "preview-test", source: "test", title: "Test", revision: state.revision,
     active_key: state.active ? "key" : null, error: state.error, revisions: [{ revision: state.revision, sha256: "test", saved_at: 1 }] });
   await page.route("**/api/projects/office-ui-test", (r) => r.fulfill({ json: {
@@ -156,10 +112,6 @@ async function setup(page: Page) {
   await page.route(/\/api\/office\/documents\/preview-test\/objects\/\d+$/, (r) => r.fulfill({ json: {
     revision: Number(r.request().url().split("/").pop()), objects: [{ slide: 1, shape_id: "2", label: "Заголовок", kind: "sp", bbox: { x: 0.1, y: 0.1, width: 0.6, height: 0.2 }, z: 1, hollow: false }],
   } }));
-  await page.route(/\/api\/office\/documents\/preview-test\/preview\/\d+$/, (r) => state.failPreview
-    ? r.fulfill({ status: 503, json: { error: { message: "Ошибка превью" } } })
-    : r.fulfill({ json: { revision: Number(r.request().url().split("/").pop()), slides: ["slide-01.png"], ratio: 16 / 9 } }));
-  await page.route("**/slide-01.png", (r) => r.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC", "base64") }));
   await page.route("**/api/office/documents/preview-test/config", (r) => {
     state.configs++; state.active = true;
     return r.fulfill({ json: { script_url: "/office-test-sdk.js", config: {} } });
@@ -202,28 +154,30 @@ async function setup(page: Page) {
   return state;
 }
 
-test("preview opens no SDK, survives panel toggles, downloads saved revision", async ({ page }) => {
+test("editor downloads the saved server revision", async ({ page }) => {
   const state = await setup(page);
   const downloads: string[] = [];
   await page.route("**/api/office/documents/preview-test/download/**", (r) => {
     downloads.push(r.request().url()); return r.fulfill({ body: "saved-file" });
   });
   await page.goto("/project?id=office-ui-test");
-  await expect(page.getByText("Превью · v3", { exact: true })).toBeVisible();
-  await expect(page.locator("iframe")).toHaveCount(0);
-  await page.getByTestId("panel-collapse").click();
-  await page.getByTestId("panel-expand").click();
+  await editorReady(page);
   for (const format of ["pptx", "pdf", "html"]) {
     await page.getByTestId("download-menu").click();
     await page.getByTestId(`dl-${format}`).click();
     await expect.poll(() => downloads.some((url) => url.endsWith(`/download/3${format === "pptx" ? "" : `?format=${format}`}`))).toBe(true);
   }
-  expect(state.configs).toBe(0);
+  expect(state.configs).toBe(1);
   expect(state.opened).toEqual(["compact/r1/deck.pptx"]);
 });
 
-test("multi-slide repair in saved preview uses each new document revision", async ({ page }) => {
+test("multi-slide repair moves each slide into the open copy with a fresh document revision", async ({ page }) => {
   const state = await setup(page);
+  // Сессия редактора в этом сценарии сервер не держит: ключ снимается сразу после закрытия.
+  await page.route("**/api/office/documents/preview-test/config", (r) => {
+    state.configs++;
+    return r.fulfill({ json: { script_url: "/office-test-sdk.js", config: {} } });
+  });
   let repaired = false;
   const applied: Array<{ revision: number; slide: number }> = [];
   await page.route("**/api/generations/job_officeuitest", (r) => r.fulfill({ json: {
@@ -244,12 +198,13 @@ test("multi-slide repair in saved preview uses each new document revision", asyn
     return r.fulfill({ json: { document: { id: "preview-test", revision: state.revision, active_key: null }, changed: true, message: "Перенесён" } });
   });
   await page.goto("/project?id=office-ui-test");
-  await expect(page.getByText("Превью · v3", { exact: true })).toBeVisible();
+  await editorReady(page);
   await page.getByTestId("chat-input").fill("исправь замечания");
   await page.getByTestId("chat-send").click();
-  await expect(page.getByText("Превью · v5", { exact: true })).toBeVisible();
+  await expect.poll(() => applied.length, { timeout: 30_000 }).toBe(2);
   expect(applied.map(({ revision, slide }) => [revision, slide])).toEqual([[3, 1], [4, 2]]);
-  expect(state.configs).toBe(0);
+  await editorReady(page);
+  await expect(page.getByText("Доступна другая версия презентации")).toHaveCount(0);
 });
 
 test("immediate close flushes even with a clean parent flag and waits for SDK acknowledgement", async ({ page }) => {
@@ -387,10 +342,10 @@ test("save timeout and unavailable adapter never destroy the iframe", async ({ p
   await expect(page.locator("iframe")).toHaveCount(1);
 });
 
-test("manual page waits for callback and poll recovery, then returns to the same variant", async ({ page }) => {
+test("fullscreen page waits for callback and poll recovery, then returns to the same variant in the editor", async ({ page }) => {
   const state = await setup(page);
   await page.goto("/project?id=office-ui-test");
-  await expect(page.getByText("Превью · v3", { exact: true })).toBeVisible();
+  await editorReady(page);
   // Выбор варианта сразу открывает его PPTX.
   await page.getByTestId("office-variant-balanced").click();
   await expect.poll(() => state.opened.at(-1)).toBe("balanced/r1/deck.pptx");
@@ -427,7 +382,7 @@ test("manual page waits for callback and poll recovery, then returns to the same
   await expect(page).toHaveURL(/\/office\?/);
   await expect(page.getByText("Сохранено", { exact: true })).toHaveCount(0);
   state.failPoll = false;
-  await expect(page).toHaveURL(/\/project\?id=office-ui-test&officeJob=job_officeuitest&officeArtifact=balanced%2Fr1%2Fdeck.pptx&officeView=preview$/);
+  await expect(page).toHaveURL(/\/project\?id=office-ui-test&officeJob=job_officeuitest&officeArtifact=balanced%2Fr1%2Fdeck.pptx$/);
   const saved = page.getByText("Сохранено", { exact: true });
   await expect(saved).toHaveCount(1);
   await expect(saved).toBeVisible();
@@ -435,21 +390,22 @@ test("manual page waits for callback and poll recovery, then returns to the same
   await expect(page.getByText("Сессия закрыта.", { exact: false })).toHaveCount(0);
   await expect(page.getByTestId("chat-input")).toBeVisible();
   await expect(page.getByRole("link", { name: "К списку презентаций" })).toBeVisible();
-  await expect(page.getByText("Превью · v4", { exact: true })).toBeVisible();
-  await expect(page.locator(".preview-stage img")).toHaveAttribute("src", /\/preview\/4\/slide-01.png$/);
+  // Проект снова открывает тот же вариант в редакторе — сохранённую v4.
+  await editorReady(page);
   expect(state.opened.at(-1)).toBe("balanced/r1/deck.pptx");
-  expect(state.configs).toBe(1);
+  // Сессии: compact в проекте, balanced после переключения, полноэкранная, возврат в проект.
+  expect(state.configs).toBe(4);
   await page.mouse.move(0, 800);
   await expect(saved).toHaveCount(0);
   await page.reload();
-  await expect(page.getByText("Превью · v4", { exact: true })).toBeVisible();
+  await editorReady(page);
   await expect(saved).toHaveCount(0);
 });
 
-test("manual save returns to AI editor even when the saved revision is unchanged", async ({ page }) => {
+test("fullscreen save returns to the project editor even when the saved revision is unchanged", async ({ page }) => {
   const state = await setup(page);
   await page.goto("/project?id=office-ui-test");
-  await expect(page.getByText("Превью · v3", { exact: true })).toBeVisible();
+  await editorReady(page);
   await expect(page.getByText("Сохранено", { exact: true })).toHaveCount(0);
   await page.getByTestId("open-office").click();
   await page.getByRole("button", { name: "Завершить и сохранить" }).click();
@@ -462,49 +418,15 @@ test("manual save returns to AI editor even when the saved revision is unchanged
   state.error = null;
   await expect(page).toHaveURL(/\/project\?/);
   await expect(page.getByText("Сохранено", { exact: true })).toBeVisible();
-  await expect(page.getByText("Превью · v3", { exact: true })).toBeVisible();
+  await editorReady(page);
   expect(state.opened.at(-1)).toBe("compact/r1/deck.pptx");
-  expect(state.configs).toBe(1);
-});
-
-test("new revision replaces canvas and thumbnails after a retry without reload", async ({ page }) => {
-  const state = await setup(page);
-  await page.route(/\/preview-test\/preview\/4$/, (r) => state.failPreview
-    ? r.fulfill({ status: 503, json: { error: { message: "Ошибка превью" } } })
-    : r.fulfill({ json: { revision: 4, slides: ["slide-01.png", "slide-02.png"], ratio: 16 / 9 } }));
-  await page.route("**/slide-02.png", (r) => r.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC", "base64") }));
-  await page.goto("/project?id=office-ui-test");
-  const canvas = page.locator(".preview-stage img");
-  await expect(canvas).toBeVisible();
-  await expect(canvas).toHaveAttribute("src", /\/preview\/3\/slide-01.png$/);
-  state.failPreview = true;
-  state.revision = 4;
-  await expect(page.getByText("Обновляем превью v4; пока показана v3.", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Повторить превью" })).toBeVisible();
-  await expect(canvas).toHaveAttribute("src", /\/preview\/3\/slide-01.png$/);
-  await expect(page.getByText("Превью · v4", { exact: true })).toHaveCount(0);
-  state.failPreview = false;
-  await page.getByRole("button", { name: "Повторить превью" }).click();
-  await expect(page.getByText("Превью · v4", { exact: true })).toBeVisible();
-  await expect(page.getByTestId("slide-counter")).toHaveText("Слайд 1 из 2");
-  await expect(page.locator(".thumb-image img")).toHaveCount(2);
-  for (let index = 0; index < 2; index++) {
-    const thumb = page.getByTestId(`thumb-${index}`);
-    const path = `/api/office/documents/preview-test/preview/4/slide-0${index + 1}.png`;
-    await expect(thumb.locator("img")).toHaveAttribute("src", path);
-    await thumb.click();
-    await expect(canvas).toHaveAttribute("src", path);
-    await expect(canvas).toBeVisible();
-  }
-  await expect(page.locator('img[src*="/preview/3/"]')).toHaveCount(0);
-  expect(state.configs).toBe(0);
-  expect(state.opened).toHaveLength(1);
+  expect(state.configs).toBe(3);
 });
 
 test("a delayed pre-close response cannot acknowledge saving", async ({ page }) => {
   const state = await setup(page);
   await page.goto("/project?id=office-ui-test");
-  await expect(page.getByText("Превью · v3", { exact: true })).toBeVisible();
+  await editorReady(page);
   await page.getByTestId("open-office").click();
   const finish = page.getByRole("button", { name: "Завершить и сохранить" });
   await expect(finish).toBeEnabled();
@@ -527,62 +449,7 @@ test("a delayed pre-close response cannot acknowledge saving", async ({ page }) 
   state.revision = 4;
   state.active = false;
   await expect(page).toHaveURL(/\/project\?/);
-  await expect(page.getByText("Превью · v4", { exact: true })).toBeVisible();
-});
-
-test("AI is blocked by a manual session and updates saved preview without an SDK", async ({ page }) => {
-  const state = await setup(page);
-  state.active = true;
-  await page.goto("/project?id=office-ui-test");
-  await expect(page.getByText("Превью · v3", { exact: true })).toBeVisible();
-  await page.getByTestId("chat-input").fill("/edit Измени заголовок");
-  await page.getByTestId("chat-send").click();
-  await expect(page.getByText("Завершите ручное редактирование во всех вкладках", { exact: false })).toBeVisible();
-  expect(state.edits).toBe(0);
-  state.active = false;
-  await expect(page.getByText("Ручная сессия ещё открыта", { exact: false })).toHaveCount(0);
-  await page.getByTestId("chat-input").fill("/edit Измени заголовок");
-  await page.getByTestId("chat-send").click();
-  await expect(page.getByText("Превью · v4", { exact: true })).toBeVisible();
-  expect(state.edits).toBe(1);
-  expect(state.configs).toBe(0);
-});
-
-test("failed preview retries without creating an editor session", async ({ page }) => {
-  const state = await setup(page);
-  state.failPreview = true;
-  await page.goto("/project?id=office-ui-test");
-  await expect(page.getByText("Ошибка превью", { exact: false })).toBeVisible();
-  state.failPreview = false;
-  await page.getByRole("button", { name: "Повторить превью" }).click();
-  await expect(page.getByText("Превью · v3", { exact: true })).toBeVisible();
-  expect(state.opened).toHaveLength(1);
-  expect(state.configs).toBe(0);
-});
-
-test("selected object routes a plain chat command to the same saved revision without SDK", async ({ page }) => {
-  const state = await setup(page);
-  await page.goto("/project?id=office-ui-test");
-  const outline = page.getByTestId("object-outline-2");
-  await expect(outline).toBeVisible();
-  // Click the actual image coordinates, not an artificial DOM click on the outline.
-  const box = await outline.boundingBox();
-  expect(box).not.toBeNull();
-  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
-  await expect(page.getByTestId("office-object-target")).toContainText("Слайд 1 · Заголовок · v3");
-  await expect(outline).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Снять выбор объекта" }).click();
-  await expect(page.getByTestId("office-object-target")).toHaveCount(0);
-  await outline.focus();
-  await page.keyboard.press("Enter");
-  await page.getByTestId("chat-input").fill("Перенеси вправо");
-  const request = page.waitForRequest("**/api/office/documents/preview-test/edit");
-  await page.getByTestId("chat-send").click();
-  expect((await request).postDataJSON()).toEqual({ revision: 3, instruction: "Перенеси вправо", target: { slide: 1, shape_id: "2" } });
-  await expect(page.getByText("Превью · v4", { exact: true })).toBeVisible();
-  await expect(page.getByTestId("office-object-target")).toHaveCount(0);
-  expect(state.edits).toBe(1);
-  expect(state.configs).toBe(0);
+  await editorReady(page);
 });
 
 test("opening failure offers retry without silently changing the document", async ({ page }) => {
@@ -594,32 +461,6 @@ test("opening failure offers retry without silently changing the document", asyn
   await expect(page.locator("iframe")).toHaveCount(0);
 });
 
-test("object map failure is retryable and a newer revision clears selection while preview fails", async ({ page }) => {
-  const state = await setup(page);
-  let fail = true;
-  await page.route(/\/api\/office\/documents\/preview-test\/objects\/\d+$/, (r) => fail
-    ? r.fulfill({ status: 503, json: { error: { message: "Карта объектов недоступна" } } })
-    : r.fallback());
-  await page.goto("/project?id=office-ui-test");
-  await expect(page.getByText("Превью · v3", { exact: true })).toBeVisible();
-  await expect(page.getByText("Выбор объектов недоступен:", { exact: false })).toBeVisible();
-  fail = false;
-  await page.getByRole("button", { name: "Повторить загрузку объектов" }).click();
-  const outline = page.getByTestId("object-outline-2");
-  await expect(outline).toBeVisible();
-  await outline.focus();
-  await page.keyboard.press("Enter");
-  await expect(page.getByTestId("office-object-target")).toBeVisible();
-  state.failPreview = true;
-  state.revision = 4;
-  await expect(page.getByText("Обновляем превью v4", { exact: false })).toBeVisible();
-  await expect(page.getByTestId("office-object-target")).toHaveCount(0);
-  await expect(outline).toHaveCount(0);
-  await page.getByTestId("chat-input").fill("/edit Перенеси правее");
-  await page.getByTestId("chat-send").click();
-  await expect(page.getByText("Дождитесь актуального превью перед ИИ-правкой.", { exact: true })).toBeVisible();
-  expect(state.edits).toBe(0);
-});
 test("loading screen shows the opening stages in project style until slides are ready", async ({ page }) => {
   await setup(page);
   // Программа и слайды готовы не сразу: этапы переключаются событиями SDK.
@@ -632,7 +473,7 @@ test("loading screen shows the opening stages in project style until slides are 
       this.destroyEditor = () => frame.remove();
     }};
   ` }));
-  await page.goto("/project?id=office-ui-test&officeView=editor");
+  await page.goto("/project?id=office-ui-test");
   const loading = page.getByTestId("office-loading");
   await expect(loading).toBeVisible();
   await expect(loading.getByText("Запускаем редактор")).toBeVisible();
@@ -640,5 +481,5 @@ test("loading screen shows the opening stages in project style until slides are 
   await expect(loading.getByText("Открываем слайды")).toBeVisible();
   await page.evaluate(() => (window as unknown as { testDocReady: () => void }).testDocReady());
   await expect(loading).toHaveCount(0);
-  await expect(page.getByTestId("office-preview")).toBeEnabled();
+  await expect(page.getByTestId("preview-pane").locator("iframe")).toBeVisible();
 });

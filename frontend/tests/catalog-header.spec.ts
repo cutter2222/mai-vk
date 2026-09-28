@@ -49,7 +49,7 @@ test("главная: та же шапка, поиск и все статусы 
   await expect(cards).toHaveCount(8);
   await checkLayout(page);
   const filter = page.getByRole("combobox", { name: "Статус презентаций" });
-  for (const [label, count] of [["Черновики", 1], ["В работе", 3], ["Готовые", 1], ["Требуют проверки", 1], ["С ошибкой", 1], ["Отменённые", 1], ["Все презентации", 8]] as const) {
+  for (const [label, count] of [["Черновики", 1], ["В работе", 3], ["Готовые", 2], ["С ошибкой", 1], ["Отменённые", 1], ["Все презентации", 8]] as const) {
     await filter.click();
     await page.getByRole("option", { name: label, exact: true }).click();
     await expect(cards).toHaveCount(count);

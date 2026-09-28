@@ -123,7 +123,12 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
   const [error, setError] = useState("");
   const [ready, setReady] = useState(false);
   const [stage, setStage] = useState<OfficeStage>("copy");
-  const [closed, setClosed] = useState(false);
+  const [closed, setClosedState] = useState(false);
+  // Серверные правки подряд (перенос нескольких слайдов из чата): вторая стартует до
+  // перерисовки после первой и по замыканию видела бы старое «закрыт» — не закрывала бы
+  // редактор и оставляла его открытым на устаревшей ревизии. Поэтому текущее состояние — в ссылке.
+  const closedRef = useRef(false);
+  const setClosed = useCallback((value: boolean) => { closedRef.current = value; setClosedState(value); }, []);
   const [version, setVersion] = useState<string | null>(null);
   const [modified, setModified] = useState(false);
   const [pollError, setPollError] = useState("");
@@ -228,16 +233,16 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
   // закрывается, сервер пишет следующую ревизию, редактор открывается на ней на том же слайде.
   const serverEdit = useCallback(async (run: (revision: number) => Promise<{ document: OfficeDocument; changed: boolean; message: string }>, title = AI_EDIT_TITLE) => {
     if (busy.current) throw new Error("Предыдущая ИИ-правка ещё выполняется.");
-    for (let waited = 0; !editorReady.current && !closed && waited < 60000 && mounted.current; waited += 500) {
+    for (let waited = 0; !editorReady.current && !closedRef.current && waited < 60000 && mounted.current; waited += 500) {
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
-    if (!(editorReady.current || closed) || error || pollError || doc?.error) throw new Error("Сначала дождитесь готовности редактора и устраните ошибку сохранения.");
+    if (!(editorReady.current || closedRef.current) || error || pollError || doc?.error) throw new Error("Сначала дождитесь готовности редактора и устраните ошибку сохранения.");
     busy.current = true;
     setEditingTitle(title);
     setEditing(true);
     let saved = false;
     try {
-      if (!closed) {
+      if (!closedRef.current) {
         await flush();
         await new Promise<void>((resolve, reject) => {
           const timer = setTimeout(() => { closeRequested.current = null; reject(new Error("Редактор не подтвердил закрытие. Сохраните документ и повторите запрос.")); }, 15000);
@@ -272,7 +277,7 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
         if (saved) { editorReady.current = false; setReady(false); setModified(false); setError(""); setClosed(false); }
       }
     }
-  }, [id, closed, error, pollError, doc?.error, flush]);
+  }, [id, error, pollError, doc?.error, flush, setClosed]);
 
   // Слайд шаблона встаёт следом за текущим, и редактор открывается уже на нём.
   const insertSlide = async (item: DraggedSlide) => {
@@ -408,7 +413,6 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
   if (!id) return <Alert color="red">Офисная копия не указана. Откройте её из проекта.</Alert>;
   const actions = (
         <Group gap="xs" wrap="nowrap">
-          {embedded && onSaved && <Button size="xs" variant="light" loading={closing} disabled={closed || !ready || editing} onClick={() => void finish()} data-testid="office-preview">Сохранить и превью</Button>}
           <Menu withinPortal position="bottom-end" width={180} shadow="md">
             <Menu.Target>
               <ActionIcon variant="subtle" color="gray" aria-label="Скачать презентацию" title="Скачать презентацию" loading={downloading} disabled={!doc || Boolean(pollError)} data-testid="download-menu">

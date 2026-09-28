@@ -37,7 +37,11 @@ export function ProjectHeader({ project, session, onTitle, officeActionsRef, tem
   };
 
   const { result } = session;
-  const shown = result && (!deck || result.status === "failed" || result.status === "canceled");
+  // Собранная презентация плашки не получает: «Готово» над слайдами ничего не добавляет, а
+  // «Требует проверки» (аудит нашёл хоть что-то — почти всегда) читалось как поломка; находки
+  // и так лежат карточкой в чате. Остаются ход, сбой, отмена и частичный результат.
+  const done = result?.status === "succeeded" || result?.status === "needs_review";
+  const shown = result && !(done && !result.partial) && (!deck || result.status === "failed" || result.status === "canceled");
 
   return (
     <div className="editor-header">

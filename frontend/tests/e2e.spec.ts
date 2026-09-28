@@ -389,7 +389,9 @@ test.describe("сквозной сценарий в чате на заглушк
     await page.getByTestId("answer-deck").last().click();
     await expect(page.locator('[data-testid^="template-question-"]').last()).toContainText("готовую презентацию");
     await expect(page.getByTestId("template-menu")).toContainText("Отчёт за квартал", { timeout: 15000 });
-    await expect(page.locator(".editor-header")).toContainText(/Готово|Требует проверки/, { timeout: WAIT.variantsDone });
+    // Собранная презентация плашки в шапке не получает: ни «Готово», ни «Требует проверки».
+    await expect(page.getByTestId("chat-list")).toContainText(/Презентация открыта за/, { timeout: WAIT.variantsDone });
+    await expect(page.locator(".editor-header")).not.toContainText(/Готово|Требует проверки/);
     // Ход сборки — полоса над слайдами. В ленте ни вопроса о режиме оформления, ни хода сборки.
     await expect(page.getByTestId("job-card")).toHaveCount(0);
     await expect(page.getByTestId("chat-list")).not.toContainText("Как оформить презентацию");

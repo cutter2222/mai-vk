@@ -35,7 +35,10 @@ export default function ProjectsPage() {
   const shown = projects.filter((project) => {
     const projectStatus = project.job_status ?? (project.job_id ? "queued" : "draft");
     return project.title.toLocaleLowerCase("ru").includes(query.trim().toLocaleLowerCase("ru"))
-      && (status === "all" || (status === "active" ? ["queued", "running"].includes(projectStatus) : projectStatus === status));
+      && (status === "all"
+        || (status === "active" ? ["queued", "running"].includes(projectStatus)
+          : status === "succeeded" ? ["succeeded", "needs_review"].includes(projectStatus)
+            : projectStatus === status));
   });
 
   return (
@@ -57,7 +60,6 @@ export default function ProjectsPage() {
             { value: "draft", label: "Черновики" },
             { value: "active", label: "В работе" },
             { value: "succeeded", label: "Готовые" },
-            { value: "needs_review", label: "Требуют проверки" },
             { value: "failed", label: "С ошибкой" },
             { value: "canceled", label: "Отменённые" },
           ]}

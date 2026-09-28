@@ -30,7 +30,7 @@ interface Props {
   onChoose: (variantId: string | null) => void;
 }
 
-const VARIANT_DOT: Record<string, string> = { pending: "gray", running: "blue", ready: "green", needs_review: "yellow", failed: "red" };
+const VARIANT_DOT: Record<string, string> = { pending: "gray", running: "blue", ready: "green", needs_review: "green", failed: "red" };
 
 /**
  * Шрифты колоды — в страницу: холст рисует текст браузером, а гарнитуры шаблона в системе

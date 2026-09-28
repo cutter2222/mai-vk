@@ -9,7 +9,7 @@ const COLORS: Record<string, string> = {
   succeeded: "green",
   ready: "green",
   complete: "green",
-  needs_review: "yellow",
+  needs_review: "green",
   partial: "yellow",
   failed: "red",
   canceled: "gray",

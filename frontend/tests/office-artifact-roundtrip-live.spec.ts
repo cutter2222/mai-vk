@@ -37,15 +37,18 @@ test("accepted PPTX survives editor save, fresh-page reopen and UI download", as
   expect(initial.active_key).toBeNull();
   expect(initial.error).toBeNull();
   expect(await download(0, "before.pptx")).toBe(sha256);
+  const inline = page.getByTestId("preview-pane").locator("iframe");
   await page.goto(`/project?id=${projectId}`);
-  await expect(page.getByText("Превью · v0", { exact: true })).toBeVisible({ timeout: 180_000 });
-  await expect(page.getByTestId("slide-counter")).toHaveText(`Слайд 1 из ${slides}`);
+  await expect(inline).toBeVisible({ timeout: 180_000 });
+  await expect(page.getByTestId("office-loading")).toHaveCount(0, { timeout: 180_000 });
+  await expect(page.frameLocator("iframe").locator("#status-label-pages")).toHaveText(`Слайд 1 из ${slides}`);
   await page.getByTestId("open-office").click();
   await expect(page.frameLocator("iframe").locator("#id-toolbar-btn-add-slide")).toBeVisible({ timeout: 180_000 });
   await expect(page.getByTestId("office-loading")).toHaveCount(0, { timeout: 180_000 });
   await page.getByRole("button", { name: "Завершить и сохранить", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/project\\?id=${projectId}`), { timeout: 120_000 });
-  await expect(page.getByText("Превью · v0", { exact: true })).toBeVisible({ timeout: 180_000 });
+  await expect(inline).toBeVisible({ timeout: 180_000 });
+  await expect(page.getByTestId("office-loading")).toHaveCount(0, { timeout: 180_000 });
   const saved = await metadata();
   expect(saved.active_key).toBeNull();
   expect(saved.error).toBeNull();
@@ -54,10 +57,9 @@ test("accepted PPTX survives editor save, fresh-page reopen and UI download", as
   await page.close();
   const reopened = await page.context().newPage();
   await reopened.goto(`/project?id=${projectId}`);
-  await expect(reopened.getByText("Превью · v0", { exact: true })).toBeVisible({ timeout: 180_000 });
-  await expect(reopened.getByTestId("slide-counter")).toHaveText(`Слайд 1 из ${slides}`);
-  const canvas = reopened.locator(".preview-stage img");
-  await expect.poll(() => canvas.evaluate((node: HTMLImageElement) => node.complete && node.naturalWidth > 0)).toBe(true);
+  await expect(reopened.getByTestId("preview-pane").locator("iframe")).toBeVisible({ timeout: 180_000 });
+  await expect(reopened.getByTestId("office-loading")).toHaveCount(0, { timeout: 180_000 });
+  await expect(reopened.frameLocator("iframe").locator("#status-label-pages")).toHaveText(`Слайд 1 из ${slides}`);
   await reopened.getByTestId("download-menu").click();
   const downloaded = reopened.waitForEvent("download");
   await reopened.getByTestId("dl-pptx").click();
@@ -69,7 +71,7 @@ test("accepted PPTX survives editor save, fresh-page reopen and UI download", as
     project_id: projectId, document_id: id, sha256, slides,
     revision: saved.revision, active_key: saved.active_key, error: saved.error,
     original_unchanged: true, editor_save_unchanged: true, ui_download_unchanged: true,
-    frontend: "deployed", reopen_mode: "fresh-page",
+    frontend: "deployed", reopen_mode: "fresh-page-inline-editor",
     scope: "Previously accepted PPTX; SDK no-op save, project reopen and UI download. No new model call or manual edit.",
   }, null, 2));
 });

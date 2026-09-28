@@ -23,7 +23,7 @@ export function ProjectCard({ item, onOpen, onRename, onDelete }: Props) {
     .filter(Boolean)
     .join(" · ");
   const status = item.job_status ?? (item.job_id ? "queued" : null);
-  const tone = status === "succeeded" ? "ok" : status === "needs_review" ? "warn" : status === "failed" || status === "canceled" ? "bad" : undefined;
+  const tone = status === "succeeded" || status === "needs_review" ? "ok" : status === "failed" || status === "canceled" ? "bad" : undefined;
   const statusLabel = status ? (STATUS_LABELS[status] ?? status) : "Черновик";
 
   return (

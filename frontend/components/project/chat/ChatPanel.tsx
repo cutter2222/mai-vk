@@ -9,7 +9,6 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { dictationSupported, useDictation } from "@/lib/hooks/useDictation";
 
 import { formatBytes, VARIANT_LABELS } from "@/lib/format";
-import type { OfficeSelection } from "@/lib/api/client";
 import type { SlideTarget } from "@/lib/hooks/useGenerationSession";
 import type { ChatMessage, PptxAnswer } from "@/lib/state/projects";
 
@@ -30,8 +29,6 @@ export interface LiveChatTarget {
 interface Props {
   /** Голосовой ввод доступен (сервис распознавания отвечает, модель на месте). */
   speech?: boolean;
-  officeSelection?: OfficeSelection | null;
-  onDismissOfficeSelection?: () => void;
   liveTarget?: LiveChatTarget | null;
   onDismissLiveTarget?: () => void;
   suggestions?: string[];
@@ -53,7 +50,7 @@ export const CHAT_GREETING = "Опишите, какая нужна презен
  * Чат проекта: лента сообщений и карточек шагов, внизу поле ввода с вложениями; файлы можно бросать в любое место панели.
  * PPTX не ждёт отправки: вопрос «шаблон, готовая презентация или материал» появляется в ленте в момент броска, пока файл грузится.
  */
-export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onAnswerStaged, officeSelection, onDismissOfficeSelection, liveTarget, onDismissLiveTarget, speech = false }: Props) {
+export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onAnswerStaged, liveTarget, onDismissLiveTarget, speech = false }: Props) {
   const { project, session } = ctx;
   // Выбранный справа слайд — адресат сообщения: чип над полем ввода, крестик снимает адресацию.
   const target = session.slideTarget;
@@ -151,7 +148,7 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
     if (sending || blocked) return;
     void dispatch(option, [], null);
   };
-  const placeholder = dictation.recording ? "Говорите — текст появится здесь…" : liveTarget ? (liveTarget.kind === "slide" ? `Что изменить на слайде ${liveTarget.slide}?` : "Что изменить в выделенном объекте?") : officeSelection ? (officeSelection.objects.length > 1 ? "Что изменить в выбранных объектах или куда их переместить?" : "Что изменить в объекте или куда его переместить?") : target
+  const placeholder = dictation.recording ? "Говорите — текст появится здесь…" : liveTarget ? (liveTarget.kind === "slide" ? `Что изменить на слайде ${liveTarget.slide}?` : "Что изменить в выделенном объекте?") : target
     ? `Что изменить на слайде ${target.slideIndex + 1}?`
     : count === 0
       ? "Опишите задачу или перетащите файлы…"
@@ -193,11 +190,6 @@ export function ChatPanel({ ctx, onSend, suggestions = [], onAttach, staged, onA
         ))}
       </div>
       <div className="chat-composer">
-        {officeSelection && <Group gap={6} mb={8} data-testid="office-object-target">
-          <Text size="xs">Слайд {officeSelection.slide} · {officeSelection.label} · v{officeSelection.revision}</Text>
-          <CloseButton size="sm" aria-label="Снять выбор объекта" onClick={onDismissOfficeSelection} />
-          <Text size="xs" c="dimmed">{officeSelection.objects.length > 1 ? "Правка только выбранных объектов. Например: «перемести все три правее»." : "Правка только этого объекта. Например: «сократи текст» или «перенеси правее»."}</Text>
-        </Group>}
         {liveTarget && (
           <Group gap={6} mb={8} data-testid="live-target" data-kind={liveTarget.kind}>
             <Badge

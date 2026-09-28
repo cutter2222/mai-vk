@@ -1,23 +1,21 @@
 "use client";
 
-import { Alert, Button, Group, Loader, Menu, SegmentedControl, Stack, Text } from "@mantine/core";
+import { ActionIcon, Alert, Button, Group, Loader, SegmentedControl, Text, Tooltip } from "@mantine/core";
+import { IconArrowsMaximize } from "@tabler/icons-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { createPortal } from "react-dom";
 import { notifications } from "@mantine/notifications";
 
-import { OfficeEditor, outcomeOf, type OfficeEditHandle } from "@/components/office/OfficeEditor";
+import { OfficeEditor, type OfficeEditHandle } from "@/components/office/OfficeEditor";
 import { OfficeLoading } from "@/components/office/OfficeLoading";
-import { api, type OfficeApplySlide, type OfficeDocument, type OfficePreview, type OfficeObject, type OfficeSelection, type TemplateDetail } from "@/lib/api/client";
+import { api, type OfficeApplySlide, type OfficeDocument, type OfficeObject, type TemplateDetail } from "@/lib/api/client";
 import type { LiveSelection } from "@/lib/editor/officeLive";
-import { selectOfficeObject } from "@/lib/editor/officeSelection";
-import { downloadArtifact } from "@/lib/download";
 import { VARIANT_LABELS } from "@/lib/format";
 import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
 import { setOpenDocument } from "@/lib/state/projects";
 import { slideNumbers } from "../chat/routeRunner";
-import { SlideViewer } from "../preview/SlideViewer";
 
 /** «balanced/r2/deck.pptx» → вариант и номер ревизии артефакта. */
 function revisionOf(artifact: string): { variant: string; revision: number } | null {
@@ -25,16 +23,19 @@ function revisionOf(artifact: string): { variant: string; revision: number } | n
   return match ? { variant: match[1], revision: Number(match[2]) } : null;
 }
 
-/** Saved office bytes are the source of previews and AI edits, not stale generation artifacts. */
-export function ProjectOffice({ session, title, projectId, editRef, actionsTarget, selection, onSelectionChange, template, onEditorReady, onLiveSelection }: {
+/**
+ * Презентация в проекте — всегда открытый редактор ONLYOFFICE над серверной копией PPTX.
+ * Отдельного «сохранённого превью» с выбором объектов по картинке больше нет (28.09.2026):
+ * выделение читается из живого редактора, ИИ-правки ложатся в открытую копию, автосохранение
+ * включено, а скачивание берёт последнюю серверную ревизию.
+ */
+export function ProjectOffice({ session, title, projectId, editRef, actionsTarget, template, onEditorReady, onLiveSelection }: {
   session: GenerationSession; title: string; projectId: string;
   /** Текущий слайд и выделение живого редактора — адресат сообщения в чате. */
   onLiveSelection?: (value: LiveSelection | null) => void;
   /** Редактор открыл документ: слайды видны. */
   onEditorReady?: () => void;
   editRef?: Ref<OfficeEditHandle>; actionsTarget?: HTMLElement | null;
-  selection: OfficeSelection | null;
-  onSelectionChange: (value: OfficeSelection | null) => void;
   template?: { id: string; detail: TemplateDetail };
 }) {
   const params = useSearchParams();
@@ -49,27 +50,11 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
     ? { jobId: params.get("officeJob")!, artifact: params.get("officeArtifact")! }
     : latest ?? { jobId: "", artifact: "" });
   const [doc, setDoc] = useState<OfficeDocument | null>(null);
-  // The editor lives in Slides; the saved preview remains available for scoped AI selection.
-  const [manual, setManual] = useState(() => params.get("officeView") !== "preview");
   const manualEdit = useRef<OfficeEditHandle>(null);
-  const saved = useCallback((value: OfficeDocument) => {
-    setDoc(value);
-    setManual(false);
-    onSelectionChange(null);
-  }, [onSelectionChange]);
-  const [preview, setPreview] = useState<OfficePreview | null>(null);
   const [error, setError] = useState("");
   const [pollError, setPollError] = useState("");
-  const [previewError, setPreviewError] = useState("");
   const [attempt, setAttempt] = useState(0);
-  const [previewAttempt, setPreviewAttempt] = useState(0);
-  const [index, setIndex] = useState(0);
-  const [editing, setEditing] = useState(false);
-  const [multiple, setMultiple] = useState(false);
   const [objectMap, setObjectMap] = useState<{ documentId: string; revision: number; objects: OfficeObject[] } | null>(null);
-  const [objectError, setObjectError] = useState("");
-  const [objectAttempt, setObjectAttempt] = useState(0);
-  const busy = useRef(false);
   const transferErrors = useRef(new Map<string, Error>());
   // Ревизия варианта, чей пересобранный слайд уже перенесён в открытую копию: копия ей
   // соответствует, и баннер «Доступна другая версия» о ней не нужен.
@@ -104,12 +89,10 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
   const newer = Boolean(changed && latestJob && latestArtifact) && (latestJob !== source.jobId
     || Boolean(opened && next && opened.variant === next.variant && next.revision > opened.revision));
   // Переключение — прямо при рендере, как и сброс выше: иначе один кадр показывал бы баннер.
-  if (newer && latestJob && latestArtifact && !templateId && !editing && !error && !touched && docRevision === 0) {
-    setDoc(null); setPreview(null); setPreviewError(""); setIndex(0);
+  if (newer && latestJob && latestArtifact && !templateId && !error && !touched && docRevision === 0) {
+    setDoc(null);
     setSource({ jobId: latestJob, artifact: latestArtifact });
   }
-  const templatePreviews = (template?.detail.previews ?? []).filter((path) => /(^|\/)slide-\d+\.png$/.test(path))
-    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
   useEffect(() => {
     let cancelled = false;
@@ -122,23 +105,22 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
 
   const id = doc?.id;
   const revision = doc?.revision;
-  useEffect(() => { onSelectionChange(null); }, [id, revision, index, onSelectionChange]);
   // Ассистент в чате отвечает о содержимом именно этой копии и её сохранённой ревизии.
   useEffect(() => {
     if (!id || revision === undefined) return;
     setOpenDocument(projectId, { document_id: id, revision });
     return () => setOpenDocument(projectId, null);
   }, [projectId, id, revision]);
-  // Карта объектов сохранённой ревизии: в превью — рамки для выбора, в живом редакторе —
-  // подписи выделенного объекта для чата.
+  // Карта объектов сохранённой ревизии: подписи выделенного в редакторе объекта для чата.
+  // Без неё выделение всё равно адресуется, только без подписи, поэтому ошибка не показывается.
   useEffect(() => {
     if (!id || revision === undefined) return;
     let cancelled = false;
     void api.office.objects(id, revision).then((value) => {
-      if (!cancelled) { setObjectMap({ ...value, documentId: id }); setObjectError(""); }
-    }).catch((e: Error) => { if (!cancelled) setObjectError(e.message); });
+      if (!cancelled) setObjectMap({ ...value, documentId: id });
+    }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [id, revision, objectAttempt]);
+  }, [id, revision]);
   const objectMapRef = useRef(objectMap);
   useEffect(() => { objectMapRef.current = objectMap; }, [objectMap]);
   const liveSelection = useCallback((value: LiveSelection | null) => {
@@ -171,41 +153,10 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
     return () => { cancelled = true; clearTimeout(timer); };
   }, [id]);
 
-  useEffect(() => {
-    if (manual || !id || revision === undefined) return;
-    if (templateId && revision === 0) return;
-    let cancelled = false;
-    void api.office.preview(id, revision).then((value) => {
-      if (!cancelled) { setPreview(value); setPreviewError(""); }
-    }).catch((e: Error) => { if (!cancelled) setPreviewError(e.message); });
-    return () => { cancelled = true; };
-  }, [manual, id, revision, previewAttempt, templateId]);
-
-  // Revision zero is byte-identical to the template: reuse its already rendered real slides.
-  const visiblePreview = templateId && doc?.revision === 0
-    ? { revision: 0, slides: templatePreviews, ratio: undefined }
-    : preview;
-  const visibleRevision = visiblePreview?.revision;
-
   const applySlide = useCallback(async (body: OfficeApplySlide) => {
-    if (manual) {
-      if (!manualEdit.current) throw new Error("Дождитесь загрузки редактора.");
-      return manualEdit.current.applySlide(body);
-    }
-    if (!doc || pollError || doc.active_key || doc.error) throw new Error("Дождитесь сохранения презентации.");
-    if (busy.current) throw new Error("Предыдущая ИИ-правка ещё выполняется.");
-    busy.current = true;
-    setEditing(true);
-    try {
-      // Каждый перенос получает новую ревизию; замыкание цикла хранит старый doc.
-      const current = await api.office.get(doc.id);
-      if (current.active_key || current.error) throw new Error("Дождитесь сохранения презентации.");
-      const result = await api.office.applySlide(doc.id, current.revision, body);
-      setDoc(result.document);
-      setPreviewError("");
-      return result.message;
-    } finally { busy.current = false; setEditing(false); }
-  }, [manual, doc, pollError]);
+    if (!manualEdit.current) throw new Error("Дождитесь загрузки редактора.");
+    return manualEdit.current.applySlide(body);
+  }, []);
 
   // Правка слайда из чата пересобирает его в новой ревизии варианта. Копию не правили — она
   // переключается на новую ревизию целиком (выше); правили — сюда переносится только этот
@@ -225,7 +176,7 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
   const pendingId = pending?.id;
   const applying = useRef<string | null>(null);
   useEffect(() => {
-    if (!pending || !pending.revision || applying.current || editing || !doc) return;
+    if (!pending || !pending.revision || applying.current || !doc) return;
     if (!touched && doc.revision === 0) return;
     const edit = { ...pending, revision: pending.revision };
     applying.current = edit.id;
@@ -256,7 +207,7 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
       setKnownEdits((known) => known.includes(edit.id) ? known : [...known, edit.id]);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingId, touched, doc?.revision, editing]);
+  }, [pendingId, touched, doc?.revision]);
 
   // Ожидание читает актуальный render, а не замыкание до завершения backend-задания.
   const transferState = useRef<() => { jobId: string; variant?: string; revision: number; known: string[]; ready: boolean }>(() => ({ jobId: "", revision: 0, known: [], ready: false }));
@@ -264,7 +215,7 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
     transferState.current = () => ({
       jobId: source.jobId, variant: opened?.variant, revision: opened?.revision ?? 0,
       known: knownEdits,
-      ready: Boolean(doc && !editing && !error && !pollError && !doc.error && (manual ? manualEdit.current?.isReady?.() : visibleRevision === doc.revision)),
+      ready: Boolean(doc && !error && !pollError && !doc.error && manualEdit.current?.isReady?.()),
     });
   });
   const waitForApplied = useCallback(async (jobId: string, variantId: string, revision: number, editJobId: string) => {
@@ -280,70 +231,30 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
     throw new Error("Перенос правки в открытую презентацию не подтверждён. Следующие шаги не выполняю.");
   }, []);
 
-  // Правка из чата в сохранённом превью (редактор закрыт): тот же сервер, ревизия — открытая.
-  const previewEdit = useCallback(async (call: (id: string, revision: number) => Promise<{ document: OfficeDocument; changed: boolean; message: string }>) => {
-    if (!doc || pollError) throw new Error("Дождитесь проверки сохранённой презентации.");
-    if (busy.current) throw new Error("Предыдущая ИИ-правка ещё выполняется.");
-    if (doc.active_key || doc.error) throw new Error("Завершите ручное редактирование во всех вкладках и дождитесь сохранения.");
-    if (visibleRevision !== doc.revision) throw new Error("Дождитесь актуального превью перед ИИ-правкой.");
-    busy.current = true;
-    setEditing(true);
-    try {
-      const base = doc.revision;
-      const result = await call(doc.id, base);
-      setDoc(result.document);
-      setPreviewError("");
-      return outcomeOf(result, base);
-    } finally { busy.current = false; setEditing(false); }
-  }, [doc, pollError, visibleRevision]);
+  const editor = () => {
+    if (!manualEdit.current) throw new Error("Дождитесь загрузки редактора.");
+    return manualEdit.current;
+  };
+  useImperativeHandle(editRef, () => ({
+    insertImage: async (image) => editor().insertImage(image),
+    applySlide,
+    waitForApplied,
+    edit: async (instruction, target, logo, image) => {
+      const live = target && "name" in target ? target : undefined;
+      return editor().edit(instruction, live, logo, image);
+    },
+    run: async (request) => editor().run(request),
+    undo: async (revision, to, documentId) => {
+      if (documentId !== id) throw new Error("Откройте презентацию, в которой была сделана эта правка.");
+      return editor().undo(revision, to, documentId);
+    },
+  }), [id, applySlide, waitForApplied]);
 
-  useImperativeHandle(editRef, () => ({ insertImage: async (image) => {
-    // Картинка встаёт на текущий слайд живого редактора; в сохранённом превью слайда нет.
-    if (!manual || !manualEdit.current) throw new Error("Откройте редактор слайдов, чтобы вставить картинку.");
-    return manualEdit.current.insertImage(image);
-  }, applySlide, waitForApplied, edit: async (instruction, target, logo, image) => {
-    const live = target && "name" in target ? target : undefined;
-    const picked = target && "documentId" in target ? target : undefined;
-    if (manual) {
-      if (picked && !logo) throw new Error("Для правки выбранных объектов откройте сохранённое превью и выберите их заново.");
-      if (!manualEdit.current) throw new Error("Дождитесь загрузки редактора.");
-      return manualEdit.current.edit(instruction, live, logo, image);
-    }
-    if (live) throw new Error("Редактор слайдов закрыт: выделите объект заново.");
-    if (!doc || pollError) throw new Error("Дождитесь проверки сохранённой презентации.");
-    if (busy.current) throw new Error("Предыдущая ИИ-правка ещё выполняется.");
-    if (doc.active_key || doc.error) throw new Error("Завершите ручное редактирование во всех вкладках и дождитесь сохранения.");
-    if (visibleRevision !== doc.revision) throw new Error("Дождитесь актуального превью перед ИИ-правкой.");
-    if (!logo && picked && (picked.documentId !== doc.id || picked.revision !== doc.revision || picked.slide !== index + 1)) throw new Error("Выбранный объект устарел. Выберите его заново.");
-    busy.current = true;
-    setEditing(true);
-    try {
-      const targets = logo || image ? undefined : picked?.objects.map(({ slide, shape_id }) => ({ slide, shape_id }));
-      const result = await api.office.edit(doc.id, doc.revision, instruction, targets?.length === 1 ? targets[0] : targets, logo, image);
-      setDoc(result.document);
-      setPreviewError("");
-      return result.changed ? `Правка сохранена в этом PPTX · v${result.document.revision}. ${result.message}` : `Документ не изменён. ${result.message}`;
-    } finally { busy.current = false; setEditing(false); }
-  }, run: async (request) => {
-    if (manual) {
-      if (!manualEdit.current) throw new Error("Дождитесь загрузки редактора.");
-      return manualEdit.current.run(request);
-    }
-    return previewEdit((id, revision) => api.office.edit(id, revision, request.instruction, request.live, request.logo, request.image, request.slides, request.table, request.chart));
-  }, undo: async (revision, to, documentId) => {
-    if (documentId !== id) throw new Error("Откройте презентацию, в которой была сделана эта правка.");
-    if (manual) {
-      if (!manualEdit.current) throw new Error("Дождитесь загрузки редактора.");
-      return manualEdit.current.undo(revision, to, documentId);
-    }
-    const outcome = await previewEdit((id) => api.office.undo(id, revision, to));
-    return { ...outcome, base: revision };
-  } }), [id, manual, doc, pollError, visibleRevision, index, applySlide, waitForApplied, previewEdit]);
-
-  const selectable = !manual && !editing && !pollError && !doc?.active_key && !doc?.error && visiblePreview?.revision === doc?.revision && objectMap?.documentId === doc?.id && objectMap?.revision === doc?.revision;
-  const currentObjects = selectable ? objectMap?.objects.filter((obj) => obj.slide === index + 1) ?? [] : [];
-
-  const retry = () => { setError(""); setPreviewError(""); setAttempt((n) => n + 1); };
+  const retry = () => { setError(""); setAttempt((n) => n + 1); };
+  const open = (next: { jobId: string; artifact: string }) => {
+    setDoc(null); setError(""); setSource(next);
+    router.replace(`/project?${new URLSearchParams({ id: projectId, officeJob: next.jobId, officeArtifact: next.artifact })}`);
+  };
 
   // Варианты собираются по очереди: первый открыт, пока остальные доделываются в фоне. Все три
   // видны сразу, неготовые — с загрузкой и без нажатия. Выбор открывает PPTX этого варианта;
@@ -351,12 +262,10 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
   const variants = templateId ? [] : session.result?.variants ?? [];
   const switchVariant = (value: string) => {
     const v = variants.find((item) => item.variant_id === value);
-    if (!v?.artifacts?.pptx || !session.jobId || editing) return;
+    if (!v?.artifacts?.pptx || !session.jobId) return;
     session.setSelectedVariant(value);
     if (source.jobId === session.jobId && source.artifact === v.artifacts.pptx) return;
-    const next = { jobId: session.jobId, artifact: v.artifacts.pptx };
-    setDoc(null); setPreview(null); setError(""); setPreviewError(""); setIndex(0); setSource(next);
-    router.replace(`/project?${new URLSearchParams({ id: projectId, officeJob: next.jobId, officeArtifact: next.artifact })}`);
+    open({ jobId: session.jobId, artifact: v.artifacts.pptx });
   };
   // Отмечен вариант, чей PPTX открыт сейчас, а не выбранный в сессии: до переключения это одно.
   const shownVariant = source.jobId === session.jobId ? variants.find((v) => v.artifacts?.pptx === source.artifact) : undefined;
@@ -368,7 +277,7 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
         const label = VARIANT_LABELS[v.variant_id] ?? v.variant_id;
         return {
           value: v.variant_id,
-          disabled: !ready || editing,
+          disabled: !ready,
           label: <Group gap={6} wrap="nowrap" title={ready ? label : failed ? `${label}: не собрался` : `${label}: собирается`} data-testid={`office-variant-${v.variant_id}`} data-state={ready ? "ready" : failed ? "failed" : "building"}>
             {!ready && !failed && <Loader size={10} aria-label="собирается" />}
             <span style={failed ? { textDecoration: "line-through" } : undefined}>{label}</span>
@@ -376,53 +285,30 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
         };
       })} />
   );
-  const actions = doc && <Group gap="xs">
-    <Button disabled={editing} onClick={() => { onSelectionChange(null); setManual(true); }} data-testid="edit-slides">Редактировать слайды</Button>
-    <Button variant="subtle" component={Link} href={`/office?${new URLSearchParams({ id: doc.id, project: projectId, ...(templateId ? {} : { officeJob: source.jobId, officeArtifact: source.artifact }) })}`} disabled={editing} data-testid="open-office">На весь экран</Button>
-    <Menu>
-      <Menu.Target><Button variant="light" data-testid="download-menu">Скачать</Button></Menu.Target>
-      <Menu.Dropdown>{(["pptx", "pdf", "html"] as const).map((format) => <Menu.Item key={format} data-testid={`dl-${format}`} onClick={() => {
-        void downloadArtifact(api.office.downloadUrl(doc.id, doc.revision, format), `${title}-v${doc.revision}.${format}`).catch((e: Error) => setError(e.message));
-      }}>{format.toUpperCase()}</Menu.Item>)}</Menu.Dropdown>
-    </Menu>
-  </Group>;
+  // Полноэкранный редактор: та же копия, после «Завершить и сохранить» — обратно в проект.
+  const fullscreen = doc && (
+    <Tooltip label="На весь экран">
+      <ActionIcon component={Link} variant="subtle" color="gray" aria-label="На весь экран" data-testid="open-office"
+        href={`/office?${new URLSearchParams({ id: doc.id, project: projectId, ...(templateId ? {} : { officeJob: source.jobId, officeArtifact: source.artifact }) })}`}>
+        <IconArrowsMaximize size={18} />
+      </ActionIcon>
+    </Tooltip>
+  );
 
   return <div className="project-office" data-testid="project-office">
     {switcher && (actionsTarget ? createPortal(switcher, actionsTarget) : <Group p="xs">{switcher}</Group>)}
-    {!manual && (actionsTarget ? createPortal(actions, actionsTarget) : actions)}
+    {fullscreen && (actionsTarget ? createPortal(fullscreen, actionsTarget) : <Group p="xs">{fullscreen}</Group>)}
     {templateId && <Text size="xs" c="dimmed" p="xs">Рабочая копия шаблона · ИИ-правки сохраняются только в этом проекте. Исходный шаблон не изменяется.</Text>}
     {!session.terminal && variants.length > 1 && variants.some((v) => !v.artifacts?.pptx && v.status !== "failed") && <Text size="xs" c="dimmed" p="xs" role="status">Остальные варианты ещё собираются — их можно будет открыть переключателем вверху.</Text>}
     {changed && <Alert color="blue" title="Доступна другая версия презентации">
       Ручные и ИИ-правки остаются в текущем PPTX и не переносятся в другую сборку.
-      <Button ml="sm" size="xs" disabled={manual || editing || !doc || Boolean(doc.active_key) || Boolean(doc.error) || Boolean(pollError)} onClick={() => {
-        if (!latest) return;
-        setDoc(null); setPreview(null); setError(""); setPreviewError(""); setIndex(0); setSource(latest);
-        router.replace(`/project?${new URLSearchParams({ id: projectId, officeJob: latest.jobId, officeArtifact: latest.artifact })}`);
-      }}>Открыть выбранную версию</Button>
+      <Button ml="sm" size="xs" disabled={!doc || Boolean(doc.active_key) || Boolean(doc.error) || Boolean(pollError)} onClick={() => { if (latest) open(latest); }}>Открыть выбранную версию</Button>
     </Alert>}
-    {!manual && doc?.active_key && <Alert color="yellow">Ручная сессия ещё открыта или сохраняется. Показана последняя серверная версия; ИИ-правки заблокированы до завершения сессии.</Alert>}
     {pollError && <Alert color="yellow">Сохранение не подтверждено: {pollError}</Alert>}
     {doc?.error && <Alert color="red">{doc.error}</Alert>}
     {error && <Alert color="red">{error}<Button ml="sm" size="xs" onClick={retry}>Повторить открытие</Button></Alert>}
-    {editing && <Alert color="blue">ИИ применяет правку PPTX. После сохранения превью обновится.</Alert>}
-    {objectError && <Alert color="yellow">Выбор объектов недоступен: {objectError}<Button size="xs" ml="sm" onClick={() => setObjectAttempt((n) => n + 1)}>Повторить загрузку объектов</Button></Alert>}
-    {currentObjects.length > 0 && <Group px="xs" gap="xs">
-      <Button size="xs" variant={multiple ? "filled" : "light"} aria-pressed={multiple} onClick={() => setMultiple((value) => !value)} data-testid="multi-select">Мультивыделение</Button>
-      <Text size="xs" c="dimmed">Клик — выбрать; Shift/Ctrl/⌘ + клик — добавить или убрать. Затем напишите команду в чат.</Text>
-      {selection && <Button size="xs" variant="subtle" onClick={() => onSelectionChange(null)}>Снять выделение ({selection.objects.length})</Button>}
-    </Group>}
-    {!manual && previewError && <Alert color="red">{previewError}<Button ml="sm" size="xs" onClick={() => { setPreviewError(""); setPreviewAttempt((n) => n + 1); }}>Повторить превью</Button></Alert>}
-    {manual ? (doc ? <OfficeEditor key={doc.id} id={doc.id} title={title} embedded editRef={manualEdit} actionsTarget={actionsTarget} onSaved={saved} onReady={onEditorReady} onModifiedChange={onModified} onSelection={liveSelection} />
-      : !error && <div className="office-canvas"><OfficeLoading stage="copy" /></div>) : doc && visiblePreview ? <>
-      {visiblePreview.revision !== doc.revision && <Text p="xs" size="sm" role="status">Обновляем превью v{doc.revision}; пока показана v{visiblePreview.revision}.</Text>}
-      <SlideViewer index={index} onIndex={setIndex} ratio={visiblePreview.ratio} caption={<Text size="xs">Превью · v{visiblePreview.revision}</Text>}
-        outlines={currentObjects.map((obj) => ({ ...obj, id: obj.shape_id, selected: selection?.documentId === doc.id && selection.revision === doc.revision && selection.objects.some((item) => item.slide === obj.slide && item.shape_id === obj.shape_id) }))}
-        onClearSelection={() => onSelectionChange(null)}
-        onOutlineClick={(shapeId, additive) => {
-          const obj = currentObjects.find((value) => value.shape_id === shapeId);
-          if (obj) onSelectionChange(selectOfficeObject(doc, obj, selection, additive || multiple));
-        }}
-        slides={visiblePreview.slides.map((name, i) => ({ key: `${visiblePreview.revision}-${name}`, deckIndex: i, label: `Слайд ${i + 1}`, src: templateId && visiblePreview.revision === 0 ? api.templates.assetUrl(templateId, name) : api.office.previewUrl(doc.id, visiblePreview.revision, name) }))} />
-    </> : !error && !previewError && <Stack align="center" justify="center" flex={1}><Loader size="sm" /><Text size="sm" c="dimmed">Формируем превью сохранённого PPTX…</Text></Stack>}
+    {doc
+      ? <OfficeEditor key={doc.id} id={doc.id} title={title} embedded editRef={manualEdit} actionsTarget={actionsTarget} onReady={onEditorReady} onModifiedChange={onModified} onSelection={liveSelection} />
+      : !error && <div className="office-canvas"><OfficeLoading stage="copy" /></div>}
   </div>;
 }

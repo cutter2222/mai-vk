@@ -17,8 +17,6 @@ export function OfficeClient() {
     const value = params.get(key);
     if (value) back.set(key, value);
   }
-  // Completing a fullscreen session must not immediately open another editing session.
-  if (project) back.set("officeView", "preview");
   const returnHref = project ? `/project?${back}` : "/";
   return <OfficeEditor key={id} id={id} returnHref={returnHref} onSaved={project ? () => {
     router.replace(returnHref);

@@ -12,7 +12,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { warmUpOffice, type OfficeEditHandle } from "@/components/office/OfficeEditor";
 
-import { api, ApiError, type CapabilitiesResponse, type OfficeSelection, type RouteChip, type RouteDecision } from "@/lib/api/client";
+import { api, ApiError, type CapabilitiesResponse, type RouteChip, type RouteDecision } from "@/lib/api/client";
 import type { GenerationRequest } from "@/lib/api/types";
 import { useGenerationSession } from "@/lib/hooks/useGenerationSession";
 import { setPanelOpen, usePanelOpen } from "@/lib/state/panel";
@@ -60,11 +60,6 @@ export function ProjectEditor({ project }: { project: Project }) {
   const [editorReady, setEditorReady] = useState<{ jobId: string; at: string } | null>(null);
   const [officeOpened, setOfficeOpened] = useState(false);
   const officeEdit = useRef<OfficeEditHandle>(null);
-  const [officeSelection, setOfficeSelection] = useState<OfficeSelection | null>(null);
-  const selectOfficeObject = useCallback((value: OfficeSelection | null) => {
-    setOfficeSelection(value);
-    if (value) { setPanelOpen(true); setTab("chat"); }
-  }, []);
   // Слайд и объект, выбранные в живом редакторе ONLYOFFICE: адресат сообщения в чате.
   const [liveSelection, setLiveSelection] = useState<LiveSelection | null>(null);
   // Крестик на плашке снимает адресацию до следующего выбора в редакторе.
@@ -175,7 +170,7 @@ export function ProjectEditor({ project }: { project: Project }) {
   const liveObject = liveSelection?.objects.length === 1 && liveSelection.objects[0].name ? liveSelection.objects[0] : null;
   const editVariant = session.variant;
   const slideEditable = Boolean(session.jobId && editVariant?.artifacts?.pptx && editVariant.status !== "failed");
-  const liveTarget = officePresent && liveSelection && liveKey !== liveDismissed && !officeSelection && (liveObject || slideEditable)
+  const liveTarget = officePresent && liveSelection && liveKey !== liveDismissed && (liveObject || slideEditable)
     ? liveObject
       ? { kind: "object" as const, slide: liveSelection.slide, label: liveObject.label ? `«${liveObject.label.length > 48 ? `${liveObject.label.slice(0, 47)}…` : liveObject.label}»` : OBJECT_KINDS[liveObject.kind] }
       : { kind: "slide" as const, slide: liveSelection.slide, label: VARIANT_LABELS[editVariant?.variant_id ?? ""] ?? editVariant?.variant_id ?? "" }
@@ -198,21 +193,9 @@ export function ProjectEditor({ project }: { project: Project }) {
   const send: typeof chat.send = async (text, files, target) => {
     setTab("chat");
     const deckReady = Boolean(session.jobId && session.variant?.artifacts?.pptx);
-    // Документы во вложении — материалы (этап 44); выделение в превью — прежняя правка объектов.
+    // Документы во вложении — материалы (этап 44).
     if (!deckReady || !text.trim() || files.some((f) => !isPicture(f) && !isSheet(f))) {
       await chat.send(text, files, target);
-      return;
-    }
-    if (officePresent && officeSelection) {
-      const label = `Слайд ${officeSelection.slide} · ${officeSelection.label} · v${officeSelection.revision}\n`;
-      appendMessage(project.project_id, { role: "user", kind: "message", text: label + text, file_ids: [] });
-      try {
-        if (!officeEdit.current) throw new Error("Дождитесь открытия презентации.");
-        const message = await officeEdit.current.edit(text.trim(), officeSelection);
-        appendMessage(project.project_id, { role: "assistant", kind: "text", text: message });
-      } catch (e) {
-        appendMessage(project.project_id, { role: "assistant", kind: "text", text: e instanceof Error ? e.message : "Правка не применена." });
-      }
       return;
     }
     const pid = project.project_id;
@@ -349,7 +332,7 @@ export function ProjectEditor({ project }: { project: Project }) {
               </Tooltip>
             </div>
             {tab === "chat" ? (
-              <ChatPanel ctx={ctx} onSend={send} officeSelection={officeSelection} onDismissOfficeSelection={() => setOfficeSelection(null)} liveTarget={liveTarget} onDismissLiveTarget={() => setLiveDismissed(liveKey)} suggestions={chat.suggestions} onAttach={attach} staged={chat.staged} onAnswerStaged={chat.answerStaged} speech={Boolean(caps?.features.speech)} />
+              <ChatPanel ctx={ctx} onSend={send} liveTarget={liveTarget} onDismissLiveTarget={() => setLiveDismissed(liveKey)} suggestions={chat.suggestions} onAttach={attach} staged={chat.staged} onAnswerStaged={chat.answerStaged} speech={Boolean(caps?.features.speech)} />
             ) : (
               <FilesPanel project={project} onAdd={(files) => { const rest = attach(files); if (rest.length) void chat.send("", rest); }} onRemove={(fid) => void chat.removeFile(fid)} />
             )}
@@ -361,7 +344,7 @@ export function ProjectEditor({ project }: { project: Project }) {
             {/* Пока ответа о задании нет, индикатор не показывается: у готового проекта он лишь мелькал перед заставкой редактора. */}
             {(starting || session.job.error || (session.result && !session.terminal)) && !deckJob && <GenerationProgress session={session} compact starting={starting} />}
             {officePresent
-              ? <ProjectOffice session={session} title={project.title} projectId={project.project_id} editRef={officeEdit} actionsTarget={officeActionsTarget} selection={officeSelection} onSelectionChange={selectOfficeObject} onEditorReady={onEditorReady} onLiveSelection={setLiveSelection} />
+              ? <ProjectOffice session={session} title={project.title} projectId={project.project_id} editRef={officeEdit} actionsTarget={officeActionsTarget} onEditorReady={onEditorReady} onLiveSelection={setLiveSelection} />
               : <div className="office-pending" data-testid="office-pending">
                 {/* Место под каждый слайд, пока файл готовится: число страниц сервер знает сразу. */}
                 {pendingSlides > 0 && <div className="slide-skeletons" data-testid="slide-skeletons" aria-hidden>
