@@ -555,6 +555,17 @@ def _first_fitting(
     return ordered[0] if ordered else None
 
 
+def _on_slide_pool(ctx: Context, pool: list[PatternInfo], role: str) -> list[PatternInfo]:
+    """Пул служебной роли без образцов с заголовком за краем слайда (SlidesCarnival luxury:
+    «Спасибо!» в 300 pt обрезался сверху); если таких образцов не осталось — свои композиции
+    той же роли, и только потом исходный пул."""
+    kept = [p for p in pool if not _off_slide(p.title)]
+    if kept or not pool:
+        return kept
+    ctx.fix("service_pattern_builtin", f"{role}: образцы шаблона нарисованы за краем слайда")
+    return [p for p in ctx.patterns if p.builtin and p.role == role] or pool
+
+
 def _off_slide(slot: SlotInfo | None, tolerance: float = 0.03) -> bool:
     """Слот заметно выходит за край слайда."""
     if slot is None:
@@ -633,7 +644,7 @@ def deck_structure(ctx: Context, *, use_agenda: bool | None = None) -> Structure
             200,
         ),
     )
-    final_pattern = _service_pattern(final_pool, policy, tone, rank)
+    final_pattern = _service_pattern(_on_slide_pool(ctx, final_pool, "thanks"), policy, tone, rank)
     agenda_pattern = _service_pattern(agenda_pool, policy, tone, rank)
     if title_pattern is None:
         raise PlanError(

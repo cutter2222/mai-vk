@@ -1636,6 +1636,16 @@ def _cleanup(
         if oid not in fixed_refs_qr and oid not in removed and _looks_like_qr(slide, oid):
             drop(oid)
             ctx.count("sample_qr_removed")
+    # 3д′. Статичные подписи образца-заготовки: не слот и не постоянный элемент, а текст
+    #      автора шаблона на самом слайде («JOHN DOE», «NEW YORK», «2023» на обложке и финале
+    #      SlidesCarnival luxury) — анализ отметил их заготовками, колода их не наследует.
+    for oid in [str(i) for i in pattern_raw.get("static_object_ids") or []]:
+        if oid in removed or oid in fixed_refs_qr:
+            continue
+        info = infos_before.get(oid)
+        if info is not None and info.kind == "text" and _placeholder_text(ctx, info.text):
+            drop(oid)
+            ctx.count("sample_stub_removed")
     # 3е. Колонтитул автора шаблона на самом слайде: «JOHN DOE», «NEW YORK», «2023»,
     #     «SLIDESCARNIVAL.COM» — анализ отметил их заготовками, но как постоянные элементы
     #     они иначе остаются на каждом слайде колоды.
