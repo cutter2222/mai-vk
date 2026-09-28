@@ -52,7 +52,7 @@ test("synthetic project returns from real SDK save to current canvas and thumbna
   await page.getByTestId("open-office").click();
   await expect(page).toHaveURL(new RegExp(`/office\\?id=${id}&project=${projectId}&`));
   await expect(page.locator("iframe")).toBeVisible({ timeout: 120_000 });
-  await expect(page.getByText("Загружается редактор…")).toHaveCount(0, { timeout: 180_000 });
+  await expect(page.getByTestId("office-loading")).toHaveCount(0, { timeout: 180_000 });
   await expect(page.getByText("Ошибка ONLYOFFICE.", { exact: false })).toHaveCount(0);
   const editor = page.frameLocator("iframe");
   await editor.getByText("Главная", { exact: true }).click();

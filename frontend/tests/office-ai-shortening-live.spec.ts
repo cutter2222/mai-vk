@@ -98,7 +98,7 @@ test("Education shortening survives save, fresh-page reopen and UI download", as
   // Open the saved AI revision in the real editor, finish/save without manual edits.
   await page.getByTestId("open-office").click();
   await expect(page.frameLocator("iframe").locator("#id-toolbar-btn-add-slide")).toBeVisible({ timeout: 180_000 });
-  await expect(page.getByText("Загружается редактор…")).toHaveCount(0, { timeout: 180_000 });
+  await expect(page.getByTestId("office-loading")).toHaveCount(0, { timeout: 180_000 });
   await page.getByRole("button", { name: "Завершить и сохранить", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/project\\?id=${projectId}`), { timeout: 120_000 });
   await expect(page.getByText(`Превью · v${revision}`, { exact: true })).toBeVisible({ timeout: 120_000 });

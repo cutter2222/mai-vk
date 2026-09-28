@@ -358,7 +358,8 @@ export function ProjectEditor({ project }: { project: Project }) {
 
         <section className="editor-preview" data-testid="preview-pane">
           {editorSlot && <div className="office-slot">
-            {jobRunning && !deckJob && <GenerationProgress session={session} compact starting={starting} />}
+            {/* Пока ответа о задании нет, индикатор не показывается: у готового проекта он лишь мелькал перед заставкой редактора. */}
+            {(starting || session.job.error || (session.result && !session.terminal)) && !deckJob && <GenerationProgress session={session} compact starting={starting} />}
             {officePresent
               ? <ProjectOffice session={session} title={project.title} projectId={project.project_id} editRef={officeEdit} actionsTarget={officeActionsTarget} selection={officeSelection} onSelectionChange={selectOfficeObject} onEditorReady={onEditorReady} onLiveSelection={setLiveSelection} />
               : <div className="office-pending" data-testid="office-pending">

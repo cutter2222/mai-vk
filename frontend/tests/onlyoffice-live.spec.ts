@@ -17,7 +17,7 @@ test("ONLYOFFICE opens a generated PPTX and closes without changing the AI sourc
   const configPath = `/api/office/documents/${doc.id}/config`;
   await page.goto(`/office?id=${doc.id}`);
   await expect(page.locator("iframe")).toBeVisible({ timeout: 120_000 });
-  await expect(page.getByText("Загружается редактор…")).toHaveCount(0, { timeout: 180_000 });
+  await expect(page.getByTestId("office-loading")).toHaveCount(0, { timeout: 180_000 });
   await expect(page.getByText("Ошибка ONLYOFFICE.", { exact: false })).toHaveCount(0);
   if (process.env.ONLYOFFICE_EDIT_SMOKE === "1") {
     const frame = page.frameLocator("iframe");
@@ -42,7 +42,7 @@ test("ONLYOFFICE opens a generated PPTX and closes without changing the AI sourc
     const config = await (await reopened).json();
     expect(config.config.document.url).toContain(`/source/${saved.revision}?`);
     await expect(page.locator("iframe")).toBeVisible();
-    await expect(page.getByText("Загружается редактор…")).toHaveCount(0, { timeout: 90_000 });
+    await expect(page.getByTestId("office-loading")).toHaveCount(0, { timeout: 90_000 });
     await page.getByRole("button", { name: "Действия с презентацией" }).click();
     await page.getByRole("menuitem", { name: "Завершить редактирование" }).click();
     await page.keyboard.press("Escape");

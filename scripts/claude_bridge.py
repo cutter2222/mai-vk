@@ -173,7 +173,12 @@ def call_claude(cli: str, body: dict[str, Any], timeout_s: float) -> dict[str, A
         else _strip_fence(text or str(result.get("result") or ""))
     )
     usage = result.get("usage") or {}
-    prompt = int(usage.get("input_tokens") or 0) + int(usage.get("cache_read_input_tokens") or 0)
+    # CLI делит вход на три части: свежий, прочитанный из кэша и записанный в кэш; первый
+    # запрос сессии почти весь «записывается в кэш», без него prompt_tokens ≈ 2.
+    prompt = sum(
+        int(usage.get(k) or 0)
+        for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
+    )
     return {
         "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
         "object": "chat.completion",

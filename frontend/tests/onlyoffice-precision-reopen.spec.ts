@@ -34,7 +34,7 @@ test("saved precision sandbox reopens unchanged in a fresh browser", async ({ pa
   const sdk = page.waitForResponse(r => /\/sdkjs\/slide\/sdk-all\.js(?:\?|$)/.test(r.url()));
   await page.goto(`/office?id=${id}`);
   expect((await (await configuration).json()).config.document.url).toContain(`/source/${initial.revision}?`);
-  await expect(page.getByText("Загружается редактор…")).toHaveCount(0, { timeout: 180_000 });
+  await expect(page.getByTestId("office-loading")).toHaveCount(0, { timeout: 180_000 });
   await expect(page.frameLocator("iframe").locator("#id-toolbar-btn-add-slide")).toBeVisible({ timeout: 120_000 });
   expect(createHash("sha256").update(await (await sdk).body()).digest("hex")).toBe(process.env.ONLYOFFICE_SDK_SHA256);
   await page.screenshot({ path: testInfo.outputPath("reopened.png") });

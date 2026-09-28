@@ -748,7 +748,9 @@ def test_plan_cache_hit_rebinds_ids(
     assert second.plan["template_id"] == "tpl_second" and second.plan["package_id"] == "pkg_second"
     assert second.plan["generation_meta"]["cache_hit"] is True
     assert second.plan["slides"] == first.plan["slides"]
-    # Иная цель по числу слайдов — иной ключ: промах кэша, запрос к модели (в replay — нет записи).
+    # Иная цель по числу слайдов — иной ключ: промах кэша планов и запрос к модели. Записей
+    # для него нет (пустой каталог записей), поэтому replay честно падает, а не берёт чужой ответ.
+    replay_client.cache.fixtures.root = tmp_path / "no-fixtures"
     with pytest.raises(vr.PlanError) as info:
         vr.build_variant_plan(
             example_story,

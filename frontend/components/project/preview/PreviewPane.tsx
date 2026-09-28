@@ -1,6 +1,6 @@
 "use client";
 
-import { Stack, Text } from "@mantine/core";
+import { Loader, Stack, Text } from "@mantine/core";
 import { IconLayoutDashboard } from "@tabler/icons-react";
 
 import { ApiError } from "@/lib/api/client";
@@ -34,6 +34,8 @@ export function PreviewPane({ project, session, officeEnabled, starting }: Props
         </div>
       );
     }
+    // Ответа о задании ещё нет — тихое ожидание, а не «Делаем магию»: у готового проекта следом сразу откроется редактор.
+    if (!session.result && !session.job.error) return <div className="preview-empty" data-testid="job-connecting"><Loader size="sm" /></div>;
     if (!session.terminal) return <GenerationProgress session={session} />;
     return (
       <div className="preview-empty">

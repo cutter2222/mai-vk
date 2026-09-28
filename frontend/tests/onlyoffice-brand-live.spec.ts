@@ -37,7 +37,7 @@ test(`brand copy ${explicitSave ? "explicit save" : "immediate close without too
   };
   const ready = async () => {
     await expect(page.locator("iframe")).toBeVisible({ timeout: 120_000 });
-    await expect(page.getByText("Загружается редактор…")).toHaveCount(0, { timeout: 180_000 });
+    await expect(page.getByTestId("office-loading")).toHaveCount(0, { timeout: 180_000 });
     await expect(page.frameLocator("iframe").locator("#id-toolbar-btn-add-slide")).toBeVisible();
     await expect(page.getByText("Ошибка ONLYOFFICE.", { exact: false })).toHaveCount(0);
   };

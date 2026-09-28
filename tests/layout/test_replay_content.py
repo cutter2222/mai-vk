@@ -16,6 +16,7 @@ from presentation_designer.layout.compose import compose_deck
 from presentation_designer.layout.shapes import iter_shapes
 from presentation_designer.llm.skills import get_skill
 from presentation_designer.pipeline.run import resolve_slide_count
+from presentation_designer.shared.slide_text import plain
 from tests.generation.test_variants import _assert_overflow_reported, _assert_valid
 from tests.layout.conftest import MINI_TEMPLATE
 
@@ -96,7 +97,8 @@ def test_replay_plan_content_survives_pptx_composition(
                 for key in ("text", "sub")
             )
             for text in texts:
-                expected = _normalized(cap.substitute_facts(text, facts))
+                # Разметка **жирного** в плане становится начертанием, в тексте PPTX её нет.
+                expected = _normalized(plain(cap.substitute_facts(text, facts)))
                 if expected:
                     assert expected in visible, (planned["slide_id"], block["slot_id"], expected)
         if planned.get("notes"):

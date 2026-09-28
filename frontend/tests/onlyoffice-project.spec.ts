@@ -635,13 +635,9 @@ test("loading screen shows the opening stages in project style until slides are 
   await page.goto("/project?id=office-ui-test&officeView=editor");
   const loading = page.getByTestId("office-loading");
   await expect(loading).toBeVisible();
-  await expect(loading.getByText("Загружается редактор…")).toBeVisible();
-  await expect(loading).toHaveAttribute("data-stage", "app");
-  await expect(page.getByTestId("office-stage-copy")).toHaveAttribute("data-state", "done");
-  await expect(page.getByTestId("office-stage-slides")).toHaveAttribute("data-state", "todo");
+  await expect(loading.getByText("Запускаем редактор…")).toBeVisible();
   await page.evaluate(() => (window as unknown as { testAppReady: () => void }).testAppReady());
-  await expect(loading).toHaveAttribute("data-stage", "slides");
-  await expect(page.getByTestId("office-stage-app")).toHaveAttribute("data-state", "done");
+  await expect(loading.getByText("Открываем слайды…")).toBeVisible();
   await page.evaluate(() => (window as unknown as { testDocReady: () => void }).testDocReady());
   await expect(loading).toHaveCount(0);
   await expect(page.getByTestId("office-preview")).toBeEnabled();

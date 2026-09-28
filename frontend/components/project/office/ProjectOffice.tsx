@@ -8,6 +8,7 @@ import { createPortal } from "react-dom";
 import { notifications } from "@mantine/notifications";
 
 import { OfficeEditor, outcomeOf, type OfficeEditHandle } from "@/components/office/OfficeEditor";
+import { OfficeLoading } from "@/components/office/OfficeLoading";
 import { api, type OfficeApplySlide, type OfficeDocument, type OfficePreview, type OfficeObject, type OfficeSelection, type TemplateDetail } from "@/lib/api/client";
 import type { LiveSelection } from "@/lib/editor/officeLive";
 import { selectOfficeObject } from "@/lib/editor/officeSelection";
@@ -412,7 +413,7 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
     </Group>}
     {!manual && previewError && <Alert color="red">{previewError}<Button ml="sm" size="xs" onClick={() => { setPreviewError(""); setPreviewAttempt((n) => n + 1); }}>Повторить превью</Button></Alert>}
     {manual ? (doc ? <OfficeEditor key={doc.id} id={doc.id} title={title} embedded editRef={manualEdit} actionsTarget={actionsTarget} onSaved={saved} onReady={onEditorReady} onModifiedChange={onModified} onSelection={liveSelection} />
-      : !error && <Stack align="center" justify="center" flex={1}><Loader size="sm" /><Text size="sm">Открываем редактор слайдов…</Text></Stack>) : doc && visiblePreview ? <>
+      : !error && <div className="office-canvas"><OfficeLoading stage="copy" /></div>) : doc && visiblePreview ? <>
       {visiblePreview.revision !== doc.revision && <Text p="xs" size="sm" role="status">Обновляем превью v{doc.revision}; пока показана v{visiblePreview.revision}.</Text>}
       <SlideViewer index={index} onIndex={setIndex} ratio={visiblePreview.ratio} caption={<Text size="xs">Превью · v{visiblePreview.revision}</Text>}
         outlines={currentObjects.map((obj) => ({ ...obj, id: obj.shape_id, selected: selection?.documentId === doc.id && selection.revision === doc.revision && selection.objects.some((item) => item.slide === obj.slide && item.shape_id === obj.shape_id) }))}
