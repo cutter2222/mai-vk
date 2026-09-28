@@ -1282,3 +1282,43 @@ def test_footer_stubs_of_sample_cover_count_as_placeholders() -> None:
         assert _FOOTER_STUB.match(stub), stub
     for real in ("VK Tech", "Company name", "12", "Итоги года", "A"):
         assert not _FOOTER_STUB.match(real), real
+
+
+def test_master_stub_captions_are_cleared() -> None:
+    # PPTAgent beamer: «author», «title», «2025/4/30» в колонтитуле мастера видны на каждом
+    # слайде колоды; судья считал их остатками образца (28.09.2026).
+    import copy
+
+    from pptx import Presentation
+    from pptx.util import Inches
+
+    from presentation_designer.layout.compose import clear_master_stubs
+
+    prs = Presentation()
+    master = prs.slide_masters[0]
+    layout = master.slide_layouts[0]
+    slide = prs.slides.add_slide(master.slide_layouts[6])
+
+    def caption(holder: Any, text: str) -> Any:
+        # У мастера и макета нет add_textbox: надпись рисуется на слайде и переносится в их дерево.
+        box = slide.shapes.add_textbox(Inches(1), Inches(6), Inches(2), Inches(0.4))
+        box.text_frame.text = text
+        element = copy.deepcopy(box._element)
+        box._element.getparent().remove(box._element)
+        holder.shapes._spTree.append(element)
+        return element
+
+    stubs = [caption(master, text) for text in ("author", "Title", "2025/4/30")]
+    brand = caption(master, "VK TECH")
+    layout_stub = caption(layout, "Presentation title")
+    assert clear_master_stubs(prs) == 4
+
+    def text_of(element: Any) -> str:
+        return "".join(
+            t.text or ""
+            for t in element.iter("{http://schemas.openxmlformats.org/drawingml/2006/main}t")
+        )
+
+    assert all(not text_of(e).strip() for e in stubs) and not text_of(layout_stub).strip()
+    assert text_of(brand) == "VK TECH"
+    assert clear_master_stubs(prs) == 0

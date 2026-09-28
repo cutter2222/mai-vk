@@ -1828,6 +1828,33 @@ _VENDOR_SITE = re.compile(
 _FOOTER_STUB = re.compile(r"^(?:[A-Z][A-Z .&'’-]{1,24}|(?:19|20)\d\d)$")
 
 
+# Подписи-заготовки в мастерах и макетах: «author», «title», «2025/4/30» (PPTAgent beamer) —
+# обычные надписи, а не плейсхолдеры, поэтому видны на каждом слайде колоды. Капитель
+# латиницей здесь нарочно не считается заготовкой: «VK TECH» в мастере — знак бренда.
+_MASTER_STUB = re.compile(
+    r"(?i)^(?:author|title|subtitle|date|name|company|company name|footer|presentation title|"
+    r"your name|your title|\d{4}[/.\-]\d{1,2}[/.\-]\d{1,2})$"
+)
+
+
+def clear_master_stubs(prs: Any) -> int:
+    """Стирает текст надписей-заготовок в мастерах и макетах; рамки остаются. Число стёртых."""
+    cleared = 0
+    for master in prs.slide_masters:
+        for holder in (master, *master.slide_layouts):
+            for shape in holder.shapes:
+                if not getattr(shape, "has_text_frame", False):
+                    continue
+                text = " ".join(shape.text_frame.text.split())
+                if not text or not _MASTER_STUB.match(text):
+                    continue
+                for paragraph in shape.text_frame.paragraphs:
+                    for run in paragraph.runs:
+                        run.text = ""
+                cleared += 1
+    return cleared
+
+
 def _placeholder_text(ctx: _Context, text: str | None) -> bool:
     """Текст образца — заготовка автора шаблона: отмечен анализом, адрес сервиса или
     подпись-заглушка колонтитула."""
@@ -2832,11 +2859,12 @@ def compose_deck(
         logo_hashes(profile),
         {s.part: r.removed_object_ids for s, r in zip(new_slides, records, strict=False)},
     )
+    stubs_cleared = clear_master_stubs(prs) if not preserve else 0
     if not preserve:
         update_slide_numbers(prs)
     out_pptx = pathlib.Path(out_pptx)
     out_pptx.parent.mkdir(parents=True, exist_ok=True)
-    if unchanged and not drop_logos and not logos_placed:
+    if unchanged and not drop_logos and not logos_placed and not stubs_cleared:
         if template_path.resolve() != out_pptx.resolve():
             shutil.copyfile(template_path, out_pptx)
     else:
@@ -2846,6 +2874,8 @@ def compose_deck(
         ctx.count("logos_removed", logos_removed)
     if logos_placed:
         ctx.count("logos_placed", logos_placed)
+    if stubs_cleared:
+        ctx.count("master_stubs_cleared", stubs_cleared)
     t0 = time.perf_counter()
     integrity = check_deck(out_pptx, expected_slides=len(new_slides))
     if not integrity.ok:
