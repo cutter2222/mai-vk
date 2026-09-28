@@ -776,11 +776,11 @@ def _follow_outline(
     if not slides:
         return theses
     for i, slide in enumerate(slides):
-        where = [thesis_slides(slides, t, facts) for t in theses]
-        if slide.cover or i in where:
+        placed = [thesis_slides(slides, t, facts) for t in theses]
+        if slide.cover or i in placed:
             continue
-        before = [pos for pos, w in enumerate(where) if w is not None and w < i]
-        after = [pos for pos, w in enumerate(where) if w is not None and w > i]
+        before = [pos for pos, w in enumerate(placed) if w is not None and w < i]
+        after = [pos for pos, w in enumerate(placed) if w is not None and w > i]
         at = before[-1] + 1 if before else (after[0] if after else len(theses))
         theses.insert(at, outline_thesis(slide, package))
         fixes.append({"code": "outline_slide_added", "message": slide.title[:80]})

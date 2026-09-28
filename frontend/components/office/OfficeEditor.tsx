@@ -1,15 +1,17 @@
 "use client";
 
-import { ActionIcon, Alert, Button, Group, Loader, Menu, Select, Stack, Text } from "@mantine/core";
+import { ActionIcon, Alert, Button, Group, Menu, Select, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconDots, IconDownload, IconPhotoPlus, IconSlideshow } from "@tabler/icons-react";
 import Link from "next/link";
 import { useCallback, useEffect, useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
+
 import { createPortal } from "react-dom";
 
 import { api, type OfficeApplySlide, type OfficeChartPlacement, type OfficeDocument, type OfficeImagePlacement, type OfficeLiveTarget, type OfficeLogoAction } from "@/lib/api/client";
 import { downloadArtifact } from "@/lib/download";
 import { Logo } from "@/components/app/Logo";
+import { OfficeLoading, type OfficeStage } from "@/components/office/OfficeLoading";
 import { goToOfficeSlide, watchOfficeSelection, type LiveSelection } from "@/lib/editor/officeLive";
 import { flushOfficeFrame } from "@/lib/editor/officeSave";
 import { draggedItem, isDraggedSlide, setDragged, useDragged, type DraggedImage, type DraggedItem, type DraggedSlide } from "@/lib/state/drag";
@@ -120,6 +122,7 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
   const [doc, setDoc] = useState<OfficeDocument | null>(null);
   const [error, setError] = useState("");
   const [ready, setReady] = useState(false);
+  const [stage, setStage] = useState<OfficeStage>("copy");
   const [closed, setClosed] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
   const [modified, setModified] = useState(false);
@@ -347,6 +350,7 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
     let cancelled = false;
     let editor: Editor | undefined;
     const start = async () => {
+      setStage("copy");
       const response = await api.office.config(id);
       if (cancelled) return;
       await loadSDK(response.script_url);
@@ -355,6 +359,7 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
       editor = new window.DocsAPI.DocEditor(editorId, {
         ...response.config,
         events: {
+          onAppReady: () => { if (!cancelled) setStage("slides"); },
           onDocumentReady: () => {
             if (cancelled) return;
             setReady(true);
@@ -373,6 +378,7 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
         },
       });
       sdk.current = editor;
+      if (!cancelled) setStage((value) => (value === "copy" ? "app" : value));
     };
     void start().catch((e: Error) => { if (!cancelled) { setError(e.message); setStartFailed(true); } });
     return () => {
@@ -458,7 +464,7 @@ export function OfficeEditor({ id, title, embedded = false, onActiveChange, docu
       )) : (
         <>
           <div ref={canvas} className="office-canvas" inert={editing || closing} aria-label="Редактор презентации ONLYOFFICE">
-            {!ready && !error && <div className="office-loading"><Loader size="sm" /><Text size="sm">Загружается редактор…</Text></div>}
+            {!ready && !error && <OfficeLoading stage={stage} />}
             <div id={editorId} />
             {/* Крышка над iframe на время перетаскивания: сам iframe событий родителю не отдаёт. */}
             {dragged && ready && (

@@ -223,3 +223,40 @@ def test_long_commentary_needs_two_pages_and_respects_budget(profile, extra_budg
     visible = " ".join(vr._visible_text(d) for d in result[1:])
     assert before.text in visible
     assert all(item["text"] in visible for item in before.items)
+
+
+@pytest.mark.parametrize("spare_kind", ["divider", "agenda"])
+def test_at_ceiling_service_slide_gives_its_page_to_commentary(profile, spare_kind):
+    # Luna detailed: 15 из 15 слайдов, пояснение к таблице итога уходило в заметки,
+    # хотя в колоде было два слайда-разделителя с одним названием раздела.
+    ctx, draft = context(profile)
+    spare = vr.Draft(kind=spare_kind, theses=[], pattern=draft.pattern, title="Результаты")
+    ctx.spec.max = 2
+    result = vr._split_visual_explanations(ctx, [spare, draft])
+    assert len(result) == 2
+    assert all(d.kind == "content" for d in result)
+    assert all(not d.overflow and not d.unplaced_text for d in result)
+    assert vr.retry_content_loss([draft], result) is None
+    assert any(f["code"] == "slide_dropped" and "Результаты" in f["message"] for f in ctx.fixes)
+
+
+def test_at_ceiling_without_service_slides_content_is_not_dropped(profile):
+    ctx, draft = context(profile)
+    other = copy.deepcopy(draft)
+    other.overflow, other.title = [], "Другой слайд"
+    ctx.spec.max = 2
+    before = copy.deepcopy([other, draft])
+    assert vr._split_visual_explanations(ctx, [other, draft]) == before
+
+
+def test_explanation_page_is_titled_by_key_message_not_service_suffix(profile):
+    ctx, draft = context(profile)
+    draft.message = "Экономия при масштабировании ожидаемая, а не подтверждённая пилотом."
+    result = vr._split_visual_explanations(ctx, [draft])
+    assert len(result) == 2
+    assert result[1].title == "Экономия при масштабировании ожидаемая, а не подтверждённая пилотом"
+    assert result[1].message == ""
+    assert vr.retry_content_loss([draft], result) is None
+    draft.message = ""
+    result = vr._split_visual_explanations(ctx, [draft])
+    assert result[1].title == "Экономика пилота — пояснения"

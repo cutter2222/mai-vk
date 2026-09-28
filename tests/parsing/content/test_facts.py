@@ -214,3 +214,17 @@ def test_unit_is_a_whole_word() -> None:
     assert not [n for n in find_numbers("диабет 2 типа") if n.unit == "т"]
     assert not [n for n in find_numbers("5 мая") if n.unit == "м"]
     assert [(n.raw, n.unit) for n in find_numbers("3 т груза")] == [("3 т", "т")]
+
+
+def test_metric_after_adverb_and_in_nominative_case() -> None:
+    # Luna: подписи «Среднем: 27» и «Затратах на пилот: 2,4 млн ₽» на слайдах.
+    text = (
+        "Пользователи пропускают до 40 % важных уведомлений, потому что получают их без "
+        "приоритизации: в среднем 27 уведомлений в день на человека. Экономия на поддержке "
+        "составила 12,5 млн ₽ за год при затратах на пилот 2,4 млн ₽."
+    )
+    unit = TextUnit(block_id="b1", source_id="s1", text=text)
+    metrics = {f.raw: f.context.get("metric") for f in extract_text_facts([unit])}
+    assert metrics["27"] == "уведомлений"
+    assert metrics["12,5 млн ₽"] == "Экономия на поддержке"
+    assert metrics["2,4 млн ₽"] == "затраты на пилот"

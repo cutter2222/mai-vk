@@ -620,3 +620,29 @@ test("object map failure is retryable and a newer revision clears selection whil
   await expect(page.getByText("Дождитесь актуального превью перед ИИ-правкой.", { exact: true })).toBeVisible();
   expect(state.edits).toBe(0);
 });
+test("loading screen shows the opening stages in project style until slides are ready", async ({ page }) => {
+  await setup(page);
+  // Программа и слайды готовы не сразу: этапы переключаются событиями SDK.
+  await page.route("**/office-test-sdk.js", (r) => r.fulfill({ contentType: "application/javascript", body: `
+    window.DocsAPI = { DocEditor: function(id, config) {
+      const frame = document.createElement('iframe'); document.getElementById(id).appendChild(frame);
+      window.testAppReady = () => config.events.onAppReady();
+      window.testDocReady = () => config.events.onDocumentReady();
+      this.requestClose = () => config.events.onRequestClose();
+      this.destroyEditor = () => frame.remove();
+    }};
+  ` }));
+  await page.goto("/project?id=office-ui-test&officeView=editor");
+  const loading = page.getByTestId("office-loading");
+  await expect(loading).toBeVisible();
+  await expect(loading.getByText("Загружается редактор…")).toBeVisible();
+  await expect(loading).toHaveAttribute("data-stage", "app");
+  await expect(page.getByTestId("office-stage-copy")).toHaveAttribute("data-state", "done");
+  await expect(page.getByTestId("office-stage-slides")).toHaveAttribute("data-state", "todo");
+  await page.evaluate(() => (window as unknown as { testAppReady: () => void }).testAppReady());
+  await expect(loading).toHaveAttribute("data-stage", "slides");
+  await expect(page.getByTestId("office-stage-app")).toHaveAttribute("data-state", "done");
+  await page.evaluate(() => (window as unknown as { testDocReady: () => void }).testDocReady());
+  await expect(loading).toHaveCount(0);
+  await expect(page.getByTestId("office-preview")).toBeEnabled();
+});

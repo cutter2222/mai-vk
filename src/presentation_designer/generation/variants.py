@@ -62,6 +62,7 @@ from presentation_designer.generation.matching import (
 from presentation_designer.generation.outline import OutlineSlide, slide_of, user_outline
 from presentation_designer.layout import charts, diagrams, tables
 from presentation_designer.parsing.content.facts import weak_metric
+from presentation_designer.parsing.content.numbers import MULTIPLIERS
 from presentation_designer.shared import text_metrics
 from presentation_designer.shared.settings import Settings, get_settings
 from presentation_designer.shared.slide_text import plain as plain_slide_text
@@ -1531,6 +1532,9 @@ _LEADING_JOINER = re.compile(
 )
 
 
+_CELL_FRAGMENT = re.compile(r"^(?P<column>[^:=]+): (?P<row>[^=]+) = ")
+
+
 def _fact_phrase(ctx: Context, fact_id: str) -> str:
     """Факт, не упомянутый в тексте слайда, строкой для списка. С внятной подписью —
     «Подписка: {fact}»; со слабой («дней», «даёт») — отрезок исходной фразы вокруг числа:
@@ -1565,10 +1569,28 @@ def _fact_phrase(ctx: Context, fact_id: str) -> str:
             )
         if FACT_REF.search(comparison):
             return f"{label[:1].upper()}{label[1:]}: {comparison}"
-    if label and not weak_metric(label, fact.get("unit")):
-        return f"{label[:1].upper()}{label[1:]}: {ref}"
     fragment = str((fact.get("source_location") or {}).get("fragment") or "").rstrip("…")
     at = fragment.find(raw) if raw else -1
+    # «27 уведомлений в день», «40 % важных уведомлений»: число считает слово после себя,
+    # «Уведомлений: 27» — не по-русски; читается отрезок исходной фразы.
+    counted = (
+        at >= 0
+        and bool(label)
+        and fragment[at + len(raw) :].lstrip().lower().startswith(label.split()[0].lower())
+    )
+    cell = (
+        _CELL_FRAGMENT.match(fragment) if (fact.get("source_location") or {}).get("cell") else None
+    )
+    if cell is not None:
+        # Ячейка таблицы «колонка: строка = значение». Строка-период уточняет колонку
+        # («Открываемость, май»); иначе показатель называет строка, а колонка — общее
+        # «Сумма» или «Значение».
+        column, row = cell["column"].strip(), cell["row"].strip()
+        period = str(context.get("period") or "")
+        name = f"{column}, {row[:1].lower()}{row[1:]}" if row == period else row
+        return f"{name[:1].upper()}{name[1:]}: {ref}"
+    if label and not weak_metric(label, fact.get("unit")) and not counted:
+        return f"{label[:1].upper()}{label[1:]}: {ref}"
     if at >= 0:
         starts = [m.end() for m in _CLAUSE_BREAK.finditer(fragment, 0, at)]
         start = starts[-1] if starts else 0
@@ -1720,6 +1742,8 @@ def _data_shown_facts(ctx: Context, blocks: list[JsonDict]) -> set[str]:
             continue
         payload = block[kind]
         ds = ctx.datasets.get(payload.get("dataset_id"), {})
+        if kind == "table":
+            shown |= _labelled_table_facts(ctx, payload, ds)
         location = ds.get("source_location") or {}
         try:
             left, top, _, _ = range_boundaries(location.get("cell_range", ""))
@@ -1782,6 +1806,77 @@ def _data_shown_facts(ctx: Context, blocks: list[JsonDict]) -> set[str]:
                 continue
             shown.add(fid)
     return shown
+
+
+def _labelled_table_facts(ctx: Context, payload: JsonDict, ds: JsonDict) -> set[str]:
+    """A prose fact shown by a table row of another source: «экономия на поддержке составила
+    12,5 млн ₽» in the text and «Экономия на поддержке за год | 12,5» in a «Сумма, млн ₽» column.
+
+    Not a coincidence of equal numbers: the row label must name the fact's metric, the value
+    must match after the column's unit scale and render without rounding, digits of the
+    fact's period must be visible, and exactly one displayed cell may match.
+    """
+    cols, rows = ds.get("columns", []), ds.get("rows", [])
+    spec = tables.table_spec(payload, ds)
+    chosen = payload.get("columns") or [c["name"] for c in cols]
+    labels = [
+        i for i, c in enumerate(cols) if c["type"] in ("string", "date") and c["name"] in chosen
+    ]
+    values = [
+        i
+        for i, c in enumerate(cols)
+        if c["name"] in chosen and c["type"] in ("money", "number", "percent")
+    ]
+    if not labels or not values:
+        return set()
+    cells: list[tuple[float, str, str]] = []  # значение в единице факта, единица, подпись
+    for r in range(spec.row_offset, min(spec.row_offset + len(spec.rows), len(rows))):
+        row = rows[r]
+        label = " ".join(str(row[i]) for i in labels if i < len(row) and row[i] is not None)
+        for i in values:
+            value = row[i] if i < len(row) else None
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                continue
+            if not _renders_exactly(value):
+                continue
+            unit = str(cols[i].get("unit") or "").split()
+            scale = MULTIPLIERS.get(unit[0], 1.0) if unit else 1.0
+            base = " ".join(unit[1:] if unit and unit[0] in MULTIPLIERS else unit)
+            cells.append((value * scale, base, f"{label} {cols[i]['name']}"))
+    around = " ".join([str(ds.get("title") or ""), *(str(c["name"]) for c in cols)])
+    shown: set[str] = set()
+    for fid, fact in ctx.facts.items():
+        value = fact.get("value")
+        if fact.get("derived") or not isinstance(value, (int, float)) or isinstance(value, bool):
+            continue
+        context = fact.get("context") or {}
+        metric = _stems(str(context.get("metric") or fact.get("label") or ""))
+        if not metric:
+            continue
+        matches = [
+            label
+            for number, unit, label in cells
+            if unit == str(fact.get("unit") or "")
+            and math.isclose(number, float(value), rel_tol=1e-9)
+            and metric <= _stems(label)
+        ]
+        if len(matches) != 1:
+            continue
+        digits = re.findall(r"\d+", str(context.get("period") or ""))
+        if all(d in f"{matches[0]} {around}" for d in digits):
+            shown.add(fid)
+    return shown
+
+
+def _renders_exactly(value: float) -> bool:
+    """The table shows the source value itself, not a rounded one."""
+    rendered = tables.format_number(value).replace(" ", "").replace(",", ".")
+    if str(value) == rendered:
+        return True
+    try:
+        return float(rendered) == value
+    except ValueError:
+        return False
 
 
 def _item_text(item: JsonDict) -> str:
@@ -3667,7 +3762,9 @@ def _split_commentary(ctx: Context, draft: Draft) -> list[Draft] | None:
         first, second = copy.deepcopy(draft), copy.deepcopy(draft)
         first.items, second.items = first.items[:cut], second.items[cut:]
         second.text, second.message = "", ""
-        second.title = draft.title + " (продолжение)"
+        # Тот же заголовок, а не «(продолжение)»: повтор заголовка _distinct_titles заменит
+        # формулировкой тезиса, и обе страницы читаются как выводы, а не как техническая нумерация.
+        second.title = draft.title
         # Do not re-inject every metric on both pages during block construction.
         second_refs = set(FACT_REF.findall(" ".join(_item_text(it) for it in second.items)))
         second_refs.update(f for it in second.items for f in it.get("fact_refs", []))
@@ -3690,18 +3787,36 @@ def _split_commentary(ctx: Context, draft: Draft) -> list[Draft] | None:
     return None
 
 
+def _explanation_title(draft: Draft) -> str:
+    """Заголовок страницы пояснений к таблице или графику: главная мысль слайда
+    («Пилот улучшил ключевые метрики…»), если она есть и не повторяет заголовок данных;
+    служебное «… — пояснения» — только без такой мысли."""
+    message = " ".join(draft.message.split())
+    if 12 <= len(message) <= 90 and _similar(message, draft.title) < 0.8:
+        return message.rstrip(".")
+    return draft.title + " — пояснения"
+
+
 def _split_visual_explanations(ctx: Context, deck: list[Draft]) -> list[Draft]:
     """Separate data from overflowing commentary, including facts restored late in assembly.
 
     Never trade a chart/table for prose or spill conditions into speaker notes. All parts
     must fit, preserve the original content and respect the user's slide-count ceiling.
+    At the ceiling a section divider (then the agenda) gives its page to the commentary:
+    a title-only slide is worth less than text that would otherwise go to the notes.
     Unsuccessful trials leave the original draft and diagnostic log untouched.
     """
     out: list[Draft] = []
     remaining = ctx.spec.hi - len(deck)
+    spare = [d for d in reversed(deck) if d.kind == "divider"]
+    spare += [d for d in deck if d.kind == "agenda"]
+    freed: list[Draft] = []
     for draft in deck:
+        if any(draft is d for d in freed):
+            continue
+        budget = remaining + len(spare)
         if (
-            remaining <= 0
+            budget <= 0
             or draft.kind != "content"
             or draft.visual not in ("chart", "table", "image")
             or not (draft.dataset or draft.image)
@@ -3717,7 +3832,9 @@ def _split_visual_explanations(ctx: Context, deck: list[Draft]) -> list[Draft]:
         explanation.columns = []
         explanation.image = None
         explanation.visual = "bullets" if explanation.items else "text"
-        explanation.title = draft.title + " — пояснения"
+        explanation.title = _explanation_title(draft)
+        if explanation.title != draft.title + " — пояснения":
+            explanation.message = ""
         pool = candidates_for(
             ctx.patterns,
             _need_of(explanation),
@@ -3737,7 +3854,7 @@ def _split_visual_explanations(ctx: Context, deck: list[Draft]) -> list[Draft]:
                 part.actions.append("split_visual_explanation")
                 fit_draft(ctx, part)
             if (
-                remaining >= 2
+                budget >= 2
                 and not (data.overflow or data.unplaced_text)
                 and (explanation.overflow or explanation.unplaced_text)
             ):
@@ -3751,6 +3868,14 @@ def _split_visual_explanations(ctx: Context, deck: list[Draft]) -> list[Draft]:
                 and retry_content_loss([draft], parts) is None
             )
         if accepted:
+            while remaining < len(parts) - 1:
+                freed.append(spare.pop(0))
+                out[:] = [d for d in out if d is not freed[-1]]
+                remaining += 1
+                ctx.fix(
+                    "slide_dropped",
+                    f"{freed[-1].kind}: «{freed[-1].title[:40]}» — место под пояснения",
+                )
             out.extend(parts)
             remaining -= len(parts) - 1
             ctx.fix(

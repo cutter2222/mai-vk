@@ -168,3 +168,87 @@ def test_deck_restoration_does_not_reinject_fact_in_selected_table_cell(monkeypa
     monkeypatch.setattr(vr, "fit_draft", lambda *_: pytest.fail("unexpected fact injection"))
     assert vr._ensure_facts(ctx, [draft]) == [draft]
     assert not draft.items
+
+
+def economy_context():
+    """Факты из текста документа, таблица экономики — из другого файла, суммы в «млн ₽»."""
+    ctx = _context("detailed")
+    ctx.datasets = {
+        "ds2": {
+            "dataset_id": "ds2",
+            "source_id": "src_2",
+            "block_id": "b13",
+            "title": "Экономика",
+            "source_location": {"sheet": "Экономика", "cell_range": "A1:B4"},
+            "columns": [
+                {"name": "Статья", "type": "string"},
+                {"name": "Сумма", "type": "money", "unit": "млн ₽"},
+            ],
+            "rows": [
+                ["Затраты на пилот", 2.4],
+                ["Экономия на поддержке за год", 12.5],
+                ["Ожидаемая экономия при масштабировании", 31],
+            ],
+        }
+    }
+    ctx.facts = {
+        "f7": {
+            "fact_id": "f7",
+            "source_id": "src_1",
+            "block_id": "b7",
+            "value": 12_500_000,
+            "raw": "12,5 млн ₽",
+            "unit": "₽",
+            "label": "Экономия на поддержке (за год)",
+            "context": {"metric": "Экономия на поддержке", "period": "за год", "unit": "₽"},
+        },
+        "f8": {
+            "fact_id": "f8",
+            "source_id": "src_1",
+            "block_id": "b7",
+            "value": 2_400_000,
+            "raw": "2,4 млн ₽",
+            "unit": "₽",
+            "label": "затратах на пилот (за год)",
+            "context": {"metric": "затратах на пилот", "period": "за год", "unit": "₽"},
+        },
+    }
+    return ctx
+
+
+ECONOMY_TABLE = {"kind": "table", "table": {"dataset_id": "ds2", "columns": ["Статья", "Сумма"]}}
+
+
+def test_labelled_row_of_another_source_covers_prose_fact():
+    # Luna detailed, слайд 14: строки «Экономия на поддержке: 12,5 млн ₽» и «Затратах на
+    # пилот: 2,4 млн ₽» дублировали таблицу и переполняли подводку.
+    assert vr._data_shown_facts(economy_context(), [ECONOMY_TABLE]) == {"f7", "f8"}
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["metric", "value", "unit", "period", "ambiguous", "rounded", "no_label_column", "row_window"],
+)
+def test_labelled_row_needs_metric_value_unit_and_single_cell(change):
+    ctx = economy_context()
+    fact = ctx.facts["f7"]
+    ds = ctx.datasets["ds2"]
+    block = copy.deepcopy(ECONOMY_TABLE)
+    if change == "metric":
+        fact["context"]["metric"] = "Выручка от подписки"
+    elif change == "value":
+        fact["value"] = 12_600_000
+    elif change == "unit":
+        fact["unit"] = "$"
+    elif change == "period":
+        fact["context"]["period"] = "за 2025 год"
+    elif change == "ambiguous":
+        ds["rows"].append(["Экономия на поддержке за год (второй регион)", 12.5])
+    elif change == "rounded":
+        ds["rows"][1][1] = 12.504
+        fact["value"] = 12_504_000
+    elif change == "no_label_column":
+        block["table"]["columns"] = ["Сумма"]
+    elif change == "row_window":
+        block["table"].update(row_offset=0, max_rows=1)
+    assert "f7" not in vr._data_shown_facts(ctx, [block])

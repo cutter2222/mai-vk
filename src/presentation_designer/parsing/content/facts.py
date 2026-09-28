@@ -28,6 +28,8 @@ log = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 
+# Наречия меры перед числом: «в среднем 27 уведомлений» — показатель стоит после числа.
+_APPROXIMATE = {"среднем"}
 # Слова перед числом, которые не являются частью показателя.
 _TRAILING_STOP = {
     "составил",
@@ -59,6 +61,8 @@ _TRAILING_STOP = {
     "почти",
     "свыше",
     "примерно",
+    # «в среднем 27 уведомлений»: наречие, а не показатель; показатель — после числа.
+    "среднем",
     "до",
     "на",
     "в",
@@ -607,6 +611,10 @@ def _metric_before(before: str) -> str:
     # перед тире или двоеточием.
     tail = before.rstrip()
     cut = max(tail.rfind("—"), tail.rfind(":"), tail.rfind("–"))
+    if any(w.lower() in _APPROXIMATE for w in _WORD.findall(tail[cut + 1 :])):
+        # «…: в среднем 27 уведомлений»: число описывает слово после себя, а фраза перед
+        # двоеточием — причину, не показатель.
+        return ""
     if (cut > 0 and not _WORD.findall(tail[cut + 1 :].strip())) or (
         cut > 0
         and all(
@@ -641,8 +649,26 @@ def _metric_phrase(before: str) -> str:
     while phrase and phrase[0].lower() in _LEADING_STOP:
         phrase.pop(0)
     phrase = phrase[-6:]
+    if phrase:
+        phrase[0] = _nominative_plural(phrase[0])
     metric = " ".join(phrase).strip(" -–—:")
     return metric if len(metric) >= 3 else ""
+
+
+def _nominative_plural(word: str) -> str:
+    """«при затратах на пилот» → «затраты на пилот»: первое слово показателя после предлога
+    стоит в предложном падеже множественного числа, подпись на слайде — в именительном.
+    Окончания -ах/-ях у существительных в именительном почти не встречаются; короткие слова
+    («страх», «сроках») не трогаются, чтобы не испортить редкое исключение."""
+    low = word.lower()
+    if len(word) < 7 or not word[:1].islower() or not low.endswith(("ах", "ях")):
+        return word
+    stem = word[:-2]
+    if low.endswith(("ениях", "аниях", "ствиях")):
+        return stem + "я"  # вложениях → вложения
+    if low.endswith("ях") or stem[-1:].lower() in "жшчщкгх":
+        return stem + "и"  # инвестициях → инвестиции, продажах → продажи
+    return stem + "ы"  # затратах → затраты, расходах → расходы
 
 
 def _weak_metric(metric: str, unit: str | None = None) -> bool:

@@ -26,13 +26,17 @@ import re
 import time
 import urllib.parse
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from presentation_designer.parsing.content.parsers.base import (
     Location,
     ParsedBlock,
     ParsedDocument,
 )
+
+if TYPE_CHECKING:
+    # Настройки приложения (config/app.yaml) с теми же полями, что и ResearchSettings.
+    from presentation_designer.shared.settings import Research
 
 log = logging.getLogger(__name__)
 
@@ -469,7 +473,7 @@ def _first_sentences(text: str, limit: int) -> str:
 
 def research(
     brief: JsonDict,
-    settings: ResearchSettings | None = None,
+    settings: ResearchSettings | Research | None = None,
     *,
     cache_dir: pathlib.Path | None = None,
     client: Any = None,
@@ -546,7 +550,7 @@ def _collect(
     client: Any,
     queries: list[str],
     language: str,
-    settings: ResearchSettings,
+    settings: ResearchSettings | Research,
     report: JsonDict,
     started: float,
     wiki_title: str | None = None,
@@ -556,10 +560,10 @@ def _collect(
     found_by_query: list[list[WebPage]] = []
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
     try:
-        futures = [pool.submit(search_ddg, client, query, language) for query in queries]
-        for query, future in zip(queries, futures, strict=True):
+        searches = [pool.submit(search_ddg, client, query, language) for query in queries]
+        for query, search in zip(queries, searches, strict=True):
             try:
-                found_by_query.append(future.result(timeout=settings.search_timeout_s + 2))
+                found_by_query.append(search.result(timeout=settings.search_timeout_s + 2))
             except Exception as e:  # сеть, капча, разметка поменялась
                 report["errors"].append(f"поиск «{query}»: {type(e).__name__}: {e}"[:200])
     finally:
@@ -567,11 +571,11 @@ def _collect(
     candidates: list[WebPage] = []
     seen: set[str] = set()
     depth = max((len(found) for found in found_by_query), default=0)
-    for rank in range(depth):
+    for place in range(depth):
         for found in found_by_query:
-            if rank >= len(found):
+            if place >= len(found):
                 continue
-            page = found[rank]
+            page = found[place]
             if page.domain in seen or _skipped(page.url):
                 continue
             seen.add(page.domain)

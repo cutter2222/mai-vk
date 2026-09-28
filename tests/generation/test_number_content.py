@@ -205,3 +205,66 @@ def test_comparison_substitution_does_not_replace_part_of_a_larger_number():
         for fid, raw in [("f1", "4 %"), ("f2", "44 %")]
     }
     assert vr._fact_phrase(ctx, "f1") == "Охват: с {fact:f1} до {fact:f2}"
+
+
+@pytest.mark.parametrize(
+    ("fact", "expected"),
+    [
+        (
+            {
+                "raw": "27",
+                "label": "уведомлений (в день)",
+                "context": {"metric": "уведомлений", "period": "в день"},
+                "source_location": {
+                    "fragment": "…без приоритизации: в среднем 27 уведомлений в день на человека."
+                },
+            },
+            "В среднем {fact:f1} уведомлений в день на человека",
+        ),
+        (
+            {
+                "raw": "2,4 млн ₽",
+                "unit": "млн ₽",
+                "label": "Сумма — Затраты на пилот",
+                "context": {
+                    "metric": "Сумма",
+                    "period": "Экономика",
+                    "subject": "Затраты на пилот",
+                },
+                "source_location": {
+                    "cell": "B2",
+                    "fragment": "Сумма: Затраты на пилот = 2.4 млн ₽",
+                },
+            },
+            "Затраты на пилот: {fact:f1}",
+        ),
+        (
+            {
+                "raw": "31 %",
+                "unit": "%",
+                "label": "Открываемость — Май",
+                "context": {"metric": "Открываемость", "period": "Май", "subject": "Метрики"},
+                "source_location": {"cell": "B2", "fragment": "Открываемость: Май = 31 %"},
+            },
+            "Открываемость, май: {fact:f1}",
+        ),
+        (
+            {
+                "raw": "12,5 млн ₽",
+                "unit": "₽",
+                "label": "Экономия на поддержке (за год)",
+                "context": {"metric": "Экономия на поддержке", "period": "за год"},
+                "source_location": {
+                    "fragment": "Экономия на поддержке составила 12,5 млн ₽ за год"
+                },
+            },
+            "Экономия на поддержке: {fact:f1}",
+        ),
+    ],
+)
+def test_fact_phrase_reads_like_a_caption(fact, expected):
+    # Число, считающее слово после себя, остаётся во фразе источника; ячейку таблицы
+    # называет строка (или колонка с периодом), а не общее имя колонки «Сумма».
+    ctx = _context("balanced", numbers=0, captions=0)
+    ctx.facts = {"f1": {"fact_id": "f1", **fact}}
+    assert vr._fact_phrase(ctx, "f1") == expected

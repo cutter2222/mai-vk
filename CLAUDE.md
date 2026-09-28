@@ -22,18 +22,25 @@
 ## Команды
 
 ```bash
-uv run pytest -q -m "not organizer_data"      # основной набор, ~2 мин (≈1180 тестов)
+uv run pytest -q -m "not organizer_data"      # основной набор, ~3 мин (≈1500 тестов)
 uv run pytest -q -m organizer_data            # шаблоны организаторов, ~2–4 мин
 uv run ruff check . && uv run ruff format --check . && uv run mypy
 uv run scripts/gen_models_md.py --check && uv run scripts/gen_audit_md.py --check
 ```
 
-- mypy сейчас падает в `parsing/content/research.py` и `generation/story.py` (строки ~790):
-  ошибки пришли с чужими коммитами, свои правки проверять по своим файлам.
+- mypy чистый (28.09.2026); держать таким.
 - Смена промпта скилла: новый файл `skills/<skill>/prompts/<id>.vX.Y.Z.md`, версия и changelog
   в `skill.yaml`, `uv run scripts/gen_models_md.py`, версии в тестах; ответы модели для тестов
   перезаписать: `set -a && . ./.env && set +a && export PD_QUEUE_MODE=inline &&
   uv run python scripts/record_llm_fixtures.py --only story` (затем `--only plan`).
+- Записи `tests/fixtures/llm` зависят и от текста запроса: смена подписей фактов, промпта или
+  `PLAN_VERSION` делает их непригодными (`replay_miss`). Бесплатная перезапись через мост к
+  Claude (см. «Стенд»; для записей — `--model sonnet`: у Haiku смысловой план выходит на 9
+  тезисов вместо 15, и тесты на объём не сходятся): `PD_TEST_LLM_MODE=record PD_QWEN_BASE_URL=http://127.0.0.1:8767/v1
+  PD_QWEN_API_KEY=<токен моста> uv run pytest -q tests/generation/test_story.py
+  tests/generation/test_variants.py tests/layout/test_replay_content.py` (≈30 мин);
+  запись английского плана из `test_pipeline_reuses_story_by_content_hash` после этого удалить
+  (тест ждёт `replay_miss`); лишние старые записи не мешают, но их можно вычистить по дате.
 
 ## Стенд
 
@@ -46,10 +53,14 @@ uv run scripts/gen_models_md.py --check && uv run scripts/gen_audit_md.py --chec
   переключены на OpenRouter строками `PD_MODELS__ROLES__{LLM,VLM}__{PROVIDER,MODEL}` в `.env`
   (`openrouter`, `qwen/qwen3.8-27b`); убрать строки — вернуться к `qwen-api`. Баланс
   OpenRouter ≈ $0,7; бесплатная линия `:free` перегружена.
-- Для частых прогонов без qwen: мост к Claude Haiku через CLI Claude Code на хосте —
-  `uv run python scripts/claude_bridge.py --port 8765` (фоном) и в `.env` провайдер
-  `claude-bridge`, модель `claude-haiku-4-5` (+ `PD_CLAUDE_BRIDGE_URL`, `PD_CLAUDE_BRIDGE_KEY`).
-  Замер 25.09.2026: три варианта ≈8,5 мин (qwen на OpenRouter — 2–4 мин), зато бесплатно.
+- Для прогонов без qwen: мост к Claude через CLI Claude Code на хосте —
+  `uv run python scripts/claude_bridge.py --port 8765 --model sonnet` (фоном, лог
+  `runs/claude-bridge-8765.log`; модель берётся из имени в запросе: haiku/sonnet/opus, иначе
+  `--model`) и в `.env` провайдер `claude-bridge`, модель `claude-sonnet-4-5` (с 28.09.2026;
+  + `PD_CLAUDE_BRIDGE_URL`, `PD_CLAUDE_BRIDGE_KEY`). Мост держит путь к бинарнику расширения
+  VS Code: после обновления расширения его надо перезапустить, иначе стенд отвечает
+  «No such file or directory». Замеры: Haiku — три варианта ≈8,5 мин (25.09); Sonnet — один
+  вариант по теме 3 мин 8 с (28.09); qwen на OpenRouter — 2–4 мин на три варианта.
   Итоговая проверка качества и времени — только на qwen.
 - Оформление без модели: `uv run python scripts/rerender.py <job…> --label <метка>` —
   пересборка готовых заданий по сохранённым планам текущим кодом вёрстки (≈4 с на колоду);

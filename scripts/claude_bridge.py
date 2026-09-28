@@ -63,12 +63,17 @@ def find_cli() -> str:
     return found[-1]
 
 
+DEFAULT_MODEL = "haiku"
+
+
 def model_alias(name: str) -> str:
+    """Модель Claude по имени из запроса; чужое имя (qwen…) — модель по умолчанию
+    (`--model`): так записи для тестов можно делать более сильной моделью, не меняя ключей."""
     low = (name or "").lower()
     for key, alias in MODELS.items():
         if key in low:
             return alias
-    return "haiku"
+    return DEFAULT_MODEL
 
 
 def _text_of(content: Any) -> str:
@@ -255,7 +260,14 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--token", default=os.environ.get("PD_CLAUDE_BRIDGE_KEY", "local"))
     ap.add_argument("--timeout", type=float, default=180.0)
+    ap.add_argument(
+        "--model",
+        choices=sorted(MODELS),
+        default=DEFAULT_MODEL,
+        help="модель для запросов с чужим именем модели (по умолчанию haiku)",
+    )
     args = ap.parse_args()
+    globals()["DEFAULT_MODEL"] = args.model
     Handler.cli = find_cli()
     Handler.token = args.token
     Handler.timeout_s = args.timeout

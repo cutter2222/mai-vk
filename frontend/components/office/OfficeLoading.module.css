@@ -1,0 +1,26 @@
+/* Заставка открытия редактора: те же формы, что у индикатора генерации. */
+.root { pointer-events: auto; }
+.content { width: min(100%, 360px); padding: 0 16px; }
+.magic {
+  display: grid;
+  place-items: center;
+  align-self: center;
+  width: 80px;
+  height: 80px;
+  border-radius: 24px;
+  color: var(--mantine-primary-color-filled);
+  background: var(--mantine-primary-color-light);
+  animation: float 3s ease-in-out infinite;
+}
+.timer { flex-shrink: 0; color: var(--mantine-primary-color-filled); font-variant-numeric: tabular-nums; }
+.done { color: var(--success); }
+.active { color: var(--ink); }
+.todo { color: var(--ink2); }
+.dot { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); box-sizing: border-box; }
+.track { height: 6px; overflow: hidden; border-radius: 8px; background: var(--mantine-color-gray-2); }
+.fill { height: 100%; border-radius: inherit; background: var(--mantine-primary-color-filled); transition: width 400ms ease-out; }
+@keyframes float { 50% { transform: translateY(-8px) rotate(5deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .magic { animation: none; }
+  .fill { transition: none; }
+}
