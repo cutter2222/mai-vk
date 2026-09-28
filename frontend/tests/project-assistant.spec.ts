@@ -20,7 +20,7 @@ test("template-only project stays empty without an editor session", async ({ pag
   await expect(page.getByTestId("project-office")).toHaveCount(0);
   await expect(page.getByTestId("slide-counter")).toHaveCount(0);
   await expect(page.locator("iframe")).toHaveCount(0);
-  await expect(page.getByText("Открываем исходный PPTX…")).toHaveCount(0);
+  await expect(page.getByTestId("office-loading")).toHaveCount(0);
   await expect(page.getByText("Рабочая копия шаблона", { exact: false })).toHaveCount(0);
   expect(documents).toBe(0);
 });

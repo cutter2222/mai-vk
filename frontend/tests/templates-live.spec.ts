@@ -30,7 +30,7 @@ test("живой шаблон: стиль, сведения о файле, сл�
   expect(sdkURLs).toHaveLength(0);
   await page.getByTestId("template-open-source").click();
   await expect(page.locator("iframe")).toBeVisible();
-  await expect(page.getByText("Открываем исходный PPTX…")).toHaveCount(0, { timeout: 90_000 });
+  await expect(page.getByTestId("office-loading")).toHaveCount(0, { timeout: 90_000 });
   await expect(page.getByText("Просмотр недоступен", { exact: true })).toHaveCount(0);
   await expect(page.locator(".tpl-section-heading")).toHaveCount(0);
   const content = await page.locator(".tpl-content").boundingBox();

@@ -59,7 +59,7 @@ test("разделы анализа не загружают SDK; исходни�
   expect(sdkRequests).toBe(0);
   await page.getByTestId("template-open-source").click();
   await expect(page.getByTitle("Просмотр шаблона", { exact: true })).toBeVisible();
-  await expect(page.getByText("Открываем исходный PPTX…")).toHaveCount(0);
+  await expect(page.getByTestId("office-loading")).toHaveCount(0);
   expect(configs).toBe(1);
   await expect(page.locator(".tpl-section-heading")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Слайды", exact: true })).toHaveCount(0);

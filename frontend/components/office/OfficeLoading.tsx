@@ -23,7 +23,8 @@ export const MIN_PHRASE_MS = 3500;
  *  бегущим по кругу многоточием вместо кружка. Фраза сменяется размеренно: следующий этап
  *  ждёт, пока текущая пробудет на экране хотя бы `MIN_PHRASE_MS`; готовый редактор заставку
  *  снимает сразу. Живые тесты ждут исчезновения `office-loading`. */
-export function OfficeLoading({ stage }: { stage: OfficeStage }) {
+/** Фразы по этапам можно заменить: просмотр шаблона копии не делает, у него свои слова. */
+export function OfficeLoading({ stage, phrases }: { stage: OfficeStage; phrases?: Partial<Record<OfficeStage, string>> }) {
   const [shown, setShown] = useState<OfficeStage>(stage);
   // Момент, когда текущая фраза появилась; заполняется в эффекте, а не при рендере.
   const since = useRef<number | null>(null);
@@ -38,7 +39,7 @@ export function OfficeLoading({ stage }: { stage: OfficeStage }) {
     <Stack gap="md" align="center">
       <div className={styles.magic} aria-hidden="true"><IconPresentation size={40} stroke={1.4} /></div>
       <Text key={shown} fw={600} size="lg" className={styles.phrase} role="status" aria-live="polite">
-        {PHRASES[shown]}<span className={styles.dots} aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
+        {phrases?.[shown] ?? PHRASES[shown]}<span className={styles.dots} aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
       </Text>
     </Stack>
   </div>;
