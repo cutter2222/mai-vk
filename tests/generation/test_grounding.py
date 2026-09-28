@@ -122,8 +122,8 @@ def test_model_cannot_omit_concept_warning(
     assert CONCEPT_POLICY in "\n".join(m.text for m in stub.calls[0].messages)
 
 
-@pytest.mark.parametrize("language,label", [("ru", "Концепция:"), ("en", "Concept:")])
-def test_concept_reaches_variant_prompt_and_cover(language: str, label: str) -> None:
+@pytest.mark.parametrize("language", ["ru", "en"])
+def test_concept_reaches_variant_prompt_and_cover(language: str) -> None:
     ctx, packet, _ = _setup()
     ctx.story = {
         "language": language,
@@ -132,7 +132,8 @@ def test_concept_reaches_variant_prompt_and_cover(language: str, label: str) -> 
     }
     structure = vr.deck_structure(ctx)
     draft = vr._title_draft(ctx, structure)
-    assert draft.title == label + " iPhone 18"
+    # Заголовок обложки без приписки «Концепция:» (29.09.2026): оговорка живёт в подписи.
+    assert draft.title == "iPhone 18"
     assert draft.title == vr._cover_title(ctx.story)
     assert "источники" in draft.message or "sources" in draft.message
     assert CONCEPT_POLICY in vr.packet_digest(ctx, structure, packet)
@@ -172,7 +173,7 @@ def test_concept_warning_and_title_survive_slide_plan_assembly() -> None:
     draft.blocks = vr.fill_blocks(ctx, draft)
     plan = vr.build_document(ctx, [draft], plan_id="plan_test", generation_meta={}, rationale="")
     assert plan["warnings"] == ctx.story["warnings"]
-    assert any(b.get("text") == "Концепция: iPhone 18" for b in plan["slides"][0]["blocks"])
+    assert any(b.get("text") == "iPhone 18" for b in plan["slides"][0]["blocks"])
 
 
 def test_cover_fit_uses_same_labelled_text_as_export(monkeypatch: Any) -> None:

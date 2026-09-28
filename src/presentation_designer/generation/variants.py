@@ -42,7 +42,6 @@ from presentation_designer.generation.grounding import (
     CONCEPT_POLICY,
     CONCEPT_WARNING,
     concept_notice,
-    concept_title,
     is_concept,
 )
 from presentation_designer.generation.matching import (
@@ -3479,8 +3478,8 @@ def _thesis_page_excess(drafts: list[Draft]) -> int:
 def _cover_title(story: JsonDict) -> str:
     brief = story.get("effective_brief") or {}
     title = str(brief.get("title") or story.get("key_takeaway") or "")
-    if is_concept(story):
-        title = concept_title(title, str(story.get("language", "ru")))
+    # Приписка «Концепция:» к заголовку обложки убрана (29.09.2026): она удлиняла заголовок и
+    # выглядела казённо; оговорка об отсутствии источников остаётся подписью и в заметках.
     return _clean(title, 160)
 
 
@@ -3546,9 +3545,12 @@ _DECK_META = re.compile(r"(?i)\b(раздел|презентаци|слайд|д
 def _agenda_draft(ctx: Context, structure: Structure) -> Draft:
     p = structure.agenda_pattern
     assert p is not None
+    # Пунктов не больше, чем мест под них в композиции (29.09.2026): седьмой раздел при
+    # шести карточках образца вставал в его заголовочную строку над карточками.
+    room = p.item_capacity or len(structure.sections)
     items = [
         {"text": _clean(cap.substitute_facts(s.statement, ctx.facts), 80)}
-        for s in structure.sections
+        for s in structure.sections[:room]
     ]
     return Draft(
         kind="agenda",

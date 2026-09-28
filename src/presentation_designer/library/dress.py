@@ -49,6 +49,7 @@ CARD_FAMILIES = ("cards_grid", "icon_cards", "matrix", "comparison", "process")
 # Доля свободной высоты над группой карточек: чуть выше середины — так группа держится
 # заголовка и не выглядит упавшей.
 TOP_SHARE = 0.42
+CARD_FILL = 0.72  # плашки карточек занимают не меньше этой доли рабочей области
 
 
 @dataclass(frozen=True)
@@ -164,7 +165,9 @@ def dress_slide(
             done.append("lead_typography")
     elif family in ("title_slide", "closing"):
         title = frame.get(refs.get("title"))
-        if emphasize([title], code.title_pt * 1.25, code.font_for("title")):
+        if _dress_cover(frame, composition, refs):
+            done.append("cover_anchor")
+        if emphasize([title], code.title_pt * 1.4, code.font_for("title")):
             done.append("cover_typography")
     service = family in ("title_slide", "section", "closing", "agenda")
     if (
@@ -659,20 +662,24 @@ def _dress_cards(
     def scaled(k: float) -> _Grid:
         return dataclasses.replace(grid, title_pt=grid.title_pt * k, body_pt=grid.body_pt * k)
 
-    # Кегль растёт, пока группа занимает меньше 70 % рабочей области (не больше чем в 1,4
+    # Кегль растёт, пока группа занимает меньше 80 % рабочей области (не больше чем в 1,6
     # раза), и уменьшается, пока не поместится; ниже подписи шаблона текст не опускается.
     k = 1.0
-    while k < 1.4 and measure(scaled(k + 0.05))[0] <= avail * 0.7:
+    while k < 1.6 and measure(scaled(k + 0.05))[0] <= avail * 0.8:
         k += 0.05
     while measure(scaled(k))[0] > avail and grid.body_pt * k > code.caption_pt:
         k *= 0.94
     grid = scaled(k)
     total, heights = measure(grid)
-    if len(rows) == 1 and not line:
-        # Однорядные карточки не ниже 45 % области: иначе широкие короткие плашки выглядят
-        # полосками. Текст в высокой карточке стоит сверху, как в карточке образца.
-        heights = [max(heights[0], int(avail * 0.45))]
-        total = heights[0]
+    if not line:
+        # Плашки занимают не меньше 72 % рабочей области (29.09.2026): ряд карточек в верхней
+        # трети над пустым полем читался как незаконченный слайд. Лишняя высота делится
+        # между рядами поровну; текст в высокой карточке стоит сверху, как в образце.
+        want = int(avail * CARD_FILL)
+        if total < want:
+            extra = (want - total) // len(rows)
+            heights = [h + extra for h in heights]
+            total = sum(heights) + grid.row_gap * (len(rows) - 1)
     y = top + max(0, int((avail - total) * TOP_SHARE))
     first_row_y = y
     for row, row_h in zip(rows, heights, strict=True):
@@ -688,6 +695,16 @@ def _dress_cards(
                 title_color = body_color = _on(on_fill, code)
             text_x = x + grid.pad + stroke * 3
             cursor = y + grid.pad
+            t_h, b_h = text_block(item, grid.title_pt, grid.body_pt, grid.text_w - stroke * 3)
+            if not b_h and t_h:
+                # Карточка с одним заголовком: значок и заголовок по центру высоты плашки,
+                # а не строкой у верхнего края над пустотой.
+                head = (
+                    max(grid.badge_d if show_badge else 0, t_h)
+                    if grid.side
+                    else ((grid.badge_d + badge_gap if show_badge else 0) + t_h)
+                )
+                cursor = y + max(grid.pad, (row_h - head) // 2)
             if show_badge:
                 badge_box = (text_x, cursor, grid.badge_d)
                 _badge(frame, text_x, cursor, grid.badge_d, accent,
@@ -701,7 +718,6 @@ def _dress_cards(
             elif item.number is not None:
                 item.number.text_frame.text = ""
             text_w = grid.text_w - stroke * 3
-            t_h, b_h = text_block(item, grid.title_pt, grid.body_pt, text_w)
             if grid.side and show_badge:
                 # Короткий текст — по центру значка, длинный — от верха карточки.
                 block = t_h + (title_gap if t_h and b_h else 0) + b_h
@@ -799,15 +815,8 @@ def _style_plate(
     else:
         _set_line(plate, None)
     _set_shadow(plate, code.shadow and not frame.dark)
-    if not frame.dark:
-        # Акцентная полоса по верху плашки.
-        x, y, w, _h = box
-        bar_h = max(int(frame.height * 0.007), 38100)
-        inset = int(w * min(corner, 0.5) * 0.5) if corner else 0
-        bar = _shape(frame, MSO_SHAPE.RECTANGLE, (x + inset, y, w - 2 * inset, bar_h), "Accent bar")
-        _set_fill(bar, accent)
-        _set_line(bar, None)
-        _set_shadow(bar, False)
+    # Полосы-украшения по верху плашки нет (29.09.2026): иерархию держат заливка, кегль и
+    # вес шрифта, а одинаковая полоска на каждой карточке колоды выглядела штампом.
     return color if alpha >= 1.0 else None
 
 
@@ -1044,7 +1053,10 @@ def _dress_numbers(
     for order, (_slot, shape) in enumerate(values):
         text = frame.text_of(str(shape.shape_id))
         width = int(shape.width)
-        size = code.number_pt * (1.5 if composition.family == "hero_number" else 1.15)
+        hero = composition.family == "hero_number"
+        # Главное число слайда — во всю ширину своей половины (29.09.2026): раньше оно шло
+        # от кегля чисел шаблона и на широком слайде выходило не крупнее подзаголовка.
+        size = max(code.number_pt * 1.5, code.title_pt * 4.0) if hero else code.number_pt * 1.15
         # Число растёт до ширины своей рамки, но не выше высоты рамки.
         from presentation_designer.shared import text_metrics
 
@@ -1052,7 +1064,8 @@ def _dress_numbers(
         while size > code.title_pt:
             w_pt = text_metrics.text_width_pt(text, font, size)
             h_pt = _line_pt(number_font, size, True)
-            if w_pt * EMU_PT <= width * 0.94 and h_pt * EMU_PT <= int(shape.height) * 1.05:
+            fits_h = hero or h_pt * EMU_PT <= int(shape.height) * 1.05
+            if w_pt * EMU_PT <= width * 0.94 and fits_h:
                 break
             size *= 0.94
         accent = _accent(frame, order)
@@ -1086,9 +1099,10 @@ def _dress_numbers(
                 runs = [r for p in shape.text_frame.paragraphs for r in p.runs]
                 for run in runs:
                     run.font.color.rgb = _rgb(body_color)
-    emphasize(labels, code.body_pt, code.font_for("body"))
-    if composition.family == "hero_number":
-        _hero_body(frame, composition, refs)
+    hero = composition.family == "hero_number"
+    emphasize(labels, code.subtitle_pt if hero else code.body_pt, code.font_for("body"))
+    if hero:
+        _hero_layout(frame, composition, refs, values[0][1], labels)
     for card_id in card_ids:
         plate = frame.get(card_id)
         if plate is not None:
@@ -1099,24 +1113,79 @@ def _dress_numbers(
     return True
 
 
-def _hero_body(frame: Frame, composition: Composition, refs: dict[str, str]) -> None:
-    """Текст рядом с главным числом — основным кеглем, пункты — списком с маркерами."""
+def _hero_layout(
+    frame: Frame, composition: Composition, refs: dict[str, str], number: Any, labels: list[Any]
+) -> None:
+    """Крупное число с подписью — столбиком по центру левой половины, пояснение — списком в
+    правой, по центру той же высоты (29.09.2026). Раньше число висело внизу своей рамки под
+    пустой полосой, а текст мелко ютился под ним при пустой правой половине."""
+    code = frame.code
+    top, bottom = _body_area(frame, refs)
+    avail = bottom - top
+    number_font = code.font_for("number")
+    size = float(number.text_frame.paragraphs[0].runs[0].font.size.pt)
+    num_h = int(_line_pt(number_font, size, True) * EMU_PT * 1.05)
+    label = labels[0] if labels else None
+    label_h = 0
+    if label is not None:
+        label_size = float(code.body_pt)
+        runs = [r for p in label.text_frame.paragraphs for r in p.runs if r.font.size is not None]
+        if runs:
+            label_size = float(runs[0].font.size.pt)
+        label_h = text_height(
+            frame.text_of(str(label.shape_id)), code.font_for("body"), label_size,
+            int(label.width), spacing=1.1,
+        ) + int(frame.height * 0.01)  # fmt: skip
+    gap = int(frame.height * 0.02)
+    block = num_h + (gap + label_h if label is not None else 0)
+    y0 = top + max(0, (avail - block) // 2)
+    number.top, number.height = y0, num_h
+    number.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+    for shape in list(frame.slide.shapes):
+        if str(shape.name) == "Accent bar":
+            shape.top = y0 - int(shape.height) - int(frame.height * 0.012)
+    if label is not None:
+        label.top, label.height = y0 + num_h + gap, label_h
     slot = next((s for s in composition.slots if s.slot_id == "body"), None)
     body = frame.get(refs.get(slot.slot_id)) if slot is not None else None
     if body is None or not frame.text_of(str(body.shape_id)):
         return
     split_breaks(body)
     paragraphs = [p for p in frame.text_of(str(body.shape_id)).split("\n") if p.strip()]
-    top = int(body.top)
-    bottom = int(frame.height * (1 - max(frame.code.margins.get("bottom", 0.08), 0.07)))
     width = int(body.width)
-    size, h = _list_size(frame, [paragraphs], width, max(bottom - top, int(body.height)))
+    size, h = _list_size(frame, [paragraphs], width, avail)
     title_color, body_color = _text_colors(frame, None)
-    _place(body, (int(body.left), top, width, h + int(frame.height * 0.02)))
+    centre = y0 + block // 2
+    y = min(max(top, centre - h // 2), max(top, bottom - h))
+    _place(body, (int(body.left), y, width, h + int(frame.height * 0.02)))
     _style_text(body, size=size, color=body_color, spacing=1.1, para_gap_pt=size * 0.55,
                 align=PP_ALIGN.LEFT, family=frame.code.font_for("body"))  # fmt: skip
     if len(paragraphs) > 1:
         _bullets_with_leads(body, _accent_text(frame), title_color, size)
+
+
+# ---------- обложка и финал ----------
+
+
+COVER_SPLIT = 0.6  # доля ширины под текст обложки; правее — цветной блок-якорь
+
+
+def _dress_cover(frame: Frame, composition: Composition, refs: dict[str, str]) -> bool:
+    """Визуальный якорь обложки и финала на своей композиции (29.09.2026): цветной блок
+    акцентом в правой части слайда, текст — в левых 60 %. Плоский заголовок на пустом фоне
+    читался как черновик; у обложек из образцов шаблона своя графика, их это не касается."""
+    if any(getattr(shape, "shape_type", None) == 13 for shape in frame.slide.shapes):
+        return False  # картинка на слайде — якорь уже есть
+    code = frame.code
+    w, h = frame.width, frame.height
+    x = int(w * (COVER_SPLIT + 0.03))
+    block = _shape(frame, MSO_SHAPE.RECTANGLE, (x, 0, w - x, h), "Cover block")
+    _set_fill(block, code.accent)
+    _set_line(block, None)
+    _set_shadow(block, False)
+    _to_back(frame, block)
+    # Рамки текста не двигаются: их место под блок отведено самой композицией (geometry).
+    return True
 
 
 # ---------- одна мысль ----------

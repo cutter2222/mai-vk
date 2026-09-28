@@ -854,24 +854,26 @@ def build_hero_number(family: Family, params: dict[str, Any]) -> Composition:
         name=family.title,
         slots=[
             _title(),
+            # Число с подписью — левая половина, пояснение — правая (29.09.2026): раньше
+            # текст мелко стоял под числом, а правая половина слайда пустовала.
             CompositionSlot(
                 slot_id="value",
                 kind="number",
-                bbox=(AREA_X, top + 0.04, AREA_W * 0.6, 0.26),
+                bbox=(AREA_X, top + 0.04, AREA_W * 0.52, 0.26),
                 text_role="number",
                 color_role="accent",
             ),
             CompositionSlot(
                 slot_id="value_label",
                 kind="label",
-                bbox=(AREA_X, top + 0.32, AREA_W * 0.6, 0.1),
+                bbox=(AREA_X, top + 0.32, AREA_W * 0.52, 0.1),
                 text_role="subtitle",
                 color_role="muted",
             ),
             CompositionSlot(
                 slot_id="body",
                 kind="body",
-                bbox=(AREA_X, top + 0.44, AREA_W * 0.78, 0.18),
+                bbox=(AREA_X + AREA_W * 0.58, top + 0.02, AREA_W * 0.42, 0.56),
                 text_role="body",
             ),
         ],
@@ -1004,10 +1006,12 @@ def build_title_slide(family: Family, params: dict[str, Any]) -> Composition:
         role=family.role,
         name=family.title,
         slots=[
+            # Текст в левых 60 % слайда, правее — цветной блок-якорь (dress._dress_cover,
+            # 29.09.2026); заголовку треть высоты под крупный кегль в две-три строки.
             CompositionSlot(
                 slot_id="title",
                 kind="title",
-                bbox=(AREA_X, 0.3, AREA_W * 0.82, 0.22),
+                bbox=(AREA_X, 0.24, AREA_W * 0.6, 0.36),
                 text_role="title",
                 required=True,
                 valign="middle",
@@ -1015,14 +1019,14 @@ def build_title_slide(family: Family, params: dict[str, Any]) -> Composition:
             CompositionSlot(
                 slot_id="subtitle",
                 kind="subtitle",
-                bbox=(AREA_X, 0.54, AREA_W * 0.7, 0.12),
+                bbox=(AREA_X, 0.63, AREA_W * 0.56, 0.12),
                 text_role="subtitle",
                 color_role="muted",
             ),
             CompositionSlot(
                 slot_id="date",
                 kind="date",
-                bbox=(AREA_X, 0.72, AREA_W * 0.4, 0.08),
+                bbox=(AREA_X, 0.78, AREA_W * 0.4, 0.08),
                 text_role="label",
                 color_role="muted",
             ),
@@ -1045,7 +1049,7 @@ def build_closing(family: Family, params: dict[str, Any]) -> Composition:
             CompositionSlot(
                 slot_id="title",
                 kind="title",
-                bbox=(AREA_X, 0.38, AREA_W * 0.8, 0.18),
+                bbox=(AREA_X, 0.3, AREA_W * 0.6, 0.3),
                 text_role="title",
                 required=True,
                 valign="middle",
@@ -1053,7 +1057,7 @@ def build_closing(family: Family, params: dict[str, Any]) -> Composition:
             CompositionSlot(
                 slot_id="contacts",
                 kind="caption",
-                bbox=(AREA_X, 0.58, AREA_W * 0.6, 0.12),
+                bbox=(AREA_X, 0.64, AREA_W * 0.56, 0.12),
                 text_role="label",
                 color_role="muted",
             ),
