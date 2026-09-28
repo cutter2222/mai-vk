@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:31:52Z",
+ "entry_version": 1,
+ "key": "3e83c7308cec96f1d3899fd8cda924899bc894d77f373e3d24a18e32ed8fe105",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 2497,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 1611,
+    "images": 1,
+    "role": "user"
+   }
+  ],
+  "preview": "Слайд 6 из 15.\nЗаголовок: Результаты пилота\nТекст слайда: Результаты пилота | Метрики пилота, проведённого с мая по июль 2026 года в трёх регионах.\nОбъекты: text×2\nГлавная мысль всей презентации: Пило",
+  "prompt": [
+   "audit.content_questions",
+   "0.2.0"
+  ],
+  "response_format": "json_schema",
+  "role": "vlm",
+  "skill": [
+   "auditor",
+   "0.2.0"
+  ],
+  "stage": "audit"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 7776,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"items\": [{\"q\": 1, \"answer\": \"no\", \"confidence\": 0.9, \"why\": \"Заголовок «Результаты пилота» просто называет тему, не содержит вывода-утверждения.\"}, {\"q\": 2, \"answer\": \"no\", \"confidence\": 0.7, \"why\": \"Заголовок обещает результаты, но на слайде нет самих метрик — только подзаголовок с описанием периода.\"}, {\"q\": 3, \"answer\": \"no\", \"confidence\": 0.8, \"why\": \"Слайд содержит только заголовок и служебную подпись «Вариант detailed, ревизия 1», содержательного текста для пересказа нет.\"}, {\"q\": 4, \"answer\": \"unsure\", \"confidence\": 0.5, \"why\": \"На слайде нет конкретных цифр, поэтому сверять с фактами нечего.\"}, {\"q\": 5, \"answer\": \"no\", \"confidence\": 0.85, \"why\": \"Кроме заголовка и служебной строки «Вариант detailed, ревизия 1» на слайде нет содержания.\"}, {\"q\": 7, \"answer\": \"no\", \"confidence\": 0.85, \"why\": \"Текст «Вариант detailed, ревизия 1» — это служебная пометка о версии, а не содержание слайда.\"}, {\"q\": 8, \"answer\": \"yes\", \"confidence\": 0.6, \"why\": \"В видимом тексте слайда опечаток не найдено.\"}]}",
+  "usage": {
+   "completion_tokens": 495,
+   "prompt_tokens": 3932,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

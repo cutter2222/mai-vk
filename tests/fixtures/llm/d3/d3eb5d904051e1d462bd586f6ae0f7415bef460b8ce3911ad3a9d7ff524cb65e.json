@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:29:26Z",
+ "entry_version": 1,
+ "key": "d3eb5d904051e1d462bd586f6ae0f7415bef460b8ce3911ad3a9d7ff524cb65e",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 805,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 14,
+    "images": 1,
+    "role": "user"
+   }
+  ],
+  "preview": "Слайд 7 из 11.",
+  "prompt": [
+   "review.layout",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "vlm",
+  "skill": [
+   "visual_reviewer",
+   "0.1.0"
+  ],
+  "stage": "audit"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5992,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"issues\": [{\"code\": \"clipped\", \"where\": \"Заголовок «Экономия на пилоте кратно превышает затр...» обрезан правым краем слайда\"}, {\"code\": \"empty\", \"where\": \"Основная часть слайда пуста — только заголовок и подзаголовок, нет содержания\"}]}",
+  "usage": {
+   "completion_tokens": 149,
+   "prompt_tokens": 3171,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

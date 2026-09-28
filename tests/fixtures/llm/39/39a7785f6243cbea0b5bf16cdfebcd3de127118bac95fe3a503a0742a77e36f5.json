@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:32:28Z",
+ "entry_version": 1,
+ "key": "39a7785f6243cbea0b5bf16cdfebcd3de127118bac95fe3a503a0742a77e36f5",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 805,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 14,
+    "images": 1,
+    "role": "user"
+   }
+  ],
+  "preview": "Слайд 7 из 13.",
+  "prompt": [
+   "review.layout",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "vlm",
+  "skill": [
+   "visual_reviewer",
+   "0.1.0"
+  ],
+  "stage": "audit"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5470,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"issues\": [{\"code\": \"empty\", \"where\": \"Основная область слайда под подзаголовком пуста — нет графика/данных, только заголовок и короткая цветная полоска внизу\"}]}",
+  "usage": {
+   "completion_tokens": 111,
+   "prompt_tokens": 3171,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:25:41Z",
+ "entry_version": 1,
+ "key": "a37d088f21a57a0525c0381fbbf2c1a9fe98d6c760de220f9b683c37dd1573c0",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 1079,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 752,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Тема презентации: Запуск сервиса умных уведомлений\nВсе слайды по порядку: Запуск сервиса умных уведомлений; Три механизма решают проблему приоритизации; Все каналы уведомлений — в одном интерфейсе; Ре",
+  "prompt": [
+   "photo.queries",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "visual_picker",
+   "0.1.0"
+  ],
+  "stage": "compose"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 6323,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"photos\": [{\"slide_id\": \"s2\", \"query\": \"phone notifications\"}]}",
+  "usage": {
+   "completion_tokens": 75,
+   "prompt_tokens": 2,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

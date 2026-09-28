@@ -1,0 +1,56 @@
+{
+ "created_at": "2026-09-28T07:37:03Z",
+ "entry_version": 1,
+ "key": "febbd8ac40ba84e55d26fe78b41e6258f13065f9886a9bf5d70bd82722a20fd5",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 5486,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 7977,
+    "images": 0,
+    "role": "user"
+   },
+   {
+    "chars": 2470,
+    "images": 0,
+    "role": "assistant"
+   },
+   {
+    "chars": 310,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Проверка плана по шаблону: в пакете 3 слайд(ов) при допустимых 4–6 (цель 5) — раскрой тезисы t3, t5, t6, t7, t8 на отдельные слайды по разным сторонам (контекст, механизм, следствия, пример), каждый с",
+  "prompt": [
+   "plan.slides",
+   "0.5.1"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "variant_planner",
+   "0.5.1"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 14738,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"rationale\": \"Раскрыл пакет на 5 слайдов, по одному на тезис (t3, t5, t6, t7, t8), каждый со своей стороной темы: механизм решения, контекст пилота, метрики вовлечённости, экономика, живое подтверждение с фронтлайна. Все обязательные тезисы покрыты, t8 включён как компактная цитата (необязательный, но не отброшен — раскрывает человеческое подтверждение результатов, укладываемся в верхнюю границу 6).\", \"slides\": [{\"theses\": [\"t3\"], \"title\": \"One smart center replaces scattered alerts\", \"message\": \"Describes how the service unifies delivery and timing to surface only relevant messages.\", \"visual\": \"bullets\", \"text\": \"\", \"items\": [{\"sub\": \"Context priority\", \"text\": \"Important notifications are ranked by context and surface first.\", \"facts\": [], \"icon\": \"\"}, {\"sub\": \"Unified center\", \"text\": \"One notification center replaces three separate channels.\", \"facts\": [], \"icon\": \"\"}, {\"sub\": \"Quiet hours\", \"text\": \"Delayed delivery during quiet hours avoids interrupting users.\", \"facts\": [], \"icon\": \"\"}], \"facts\": [], \"image\": \"img_1\", \"notes\": \"Solution section: emphasize business outcome, not technical mechanics.\"}, {\"theses\": [\"t5\"], \"title\": \"Three-region pilot gave a clean comparison\", \"message\": \"The May-July 2026 pilot across three regions established a consistent before/after basis for the results.\", \"visual\": \"timeline\", \"text\": \"\", \"items\": [{\"sub\": \"May\", \"text\": \"Pilot launches across three regions; baseline metrics captured.\", \"facts\": [], \"icon\": \"время\"}, {\"sub\": \"June\", \"text\": \"Mid-pilot checkpoint confirms early engagement gains.\", \"facts\": [], \"icon\": \"время\"}, {\"sub\": \"July\", \"text\": \"Pilot concludes; final metrics compared against baseline.\", \"facts\": [], \"icon\": \"время\"}], \"facts\": [], \"notes\": \"Three regions, May-July 2026, gives a reliable before/after comparison for the metrics that follow.\"}, {\"theses\": [\"t6\"], \"title\": \"Engagement rose while complaints fell\", \"message\": \"Open rate, unsubscribe rate, and active users all moved in the pilot's favor over three months.\", \"visual\": \"number\", \"text\": \"\", \"items\": [{\"sub\": \"Open rate\", \"text\": \"Rose from {fact:f3} to {fact:f4} over the pilot period.\", \"facts\": [\"f3\", \"f4\"], \"icon\": \"рост\"}, {\"sub\": \"Unsubscribe rate\", \"text\": \"Dropped from {fact:f5} to {fact:f6}.\", \"facts\": [\"f5\", \"f6\"], \"icon\": \"безопасность\"}, {\"sub\": \"Active users\", \"text\": \"Grew by {fact:f20}, reaching {fact:f19} by July.\", \"facts\": [\"f19\", \"f20\"], \"icon\": \"команда\"}], \"facts\": [\"f3\", \"f4\", \"f5\", \"f6\", \"f19\", \"f20\"], \"notes\": \"Pilot ran May-July 2026 across three regions, giving a consistent before/after basis.\"}, {\"theses\": [\"t7\"], \"title\": \"Savings far outweigh pilot investment\", \"message\": \"Support savings dwarf pilot spend, and scaling is projected to multiply the gain.\", \"visual\": \"chart\", \"text\": \"Even against a modest pilot budget, support savings were substantial, with scaling expected to deliver even greater returns.\", \"items\": [], \"facts\": [\"f7\", \"f8\", \"f21\", \"f22\"], \"dataset\": \"ds2\", \"chart_type\": \"column\", \"columns\": [\"Статья\", \"Сумма (млн ₽)\"], \"notes\": \"Pilot spend {fact:f8} vs support savings {fact:f7}; projected savings at scale {fact:f22}.\"}, {\"theses\": [\"t8\"], \"title\": \"Frontline teams see notifications helping, not distracting\", \"message\": \"Ground-level feedback from support staff corroborates the quantitative pilot results.\", \"visual\": \"quote\", \"text\": \"\\\"For the first time, notifications started helping users instead of interrupting them,\\\" said the support lead for the North region.\", \"items\": [], \"facts\": [], \"notes\": \"Optional qualitative evidence supporting the metrics; included briefly as it strengthens the case for approval.\"}]}",
+  "usage": {
+   "completion_tokens": 1520,
+   "prompt_tokens": 5470,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

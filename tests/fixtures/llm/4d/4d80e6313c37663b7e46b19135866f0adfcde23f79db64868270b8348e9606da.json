@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:32:21Z",
+ "entry_version": 1,
+ "key": "4d80e6313c37663b7e46b19135866f0adfcde23f79db64868270b8348e9606da",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 805,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 14,
+    "images": 1,
+    "role": "user"
+   }
+  ],
+  "preview": "Слайд 6 из 12.",
+  "prompt": [
+   "review.layout",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "vlm",
+  "skill": [
+   "visual_reviewer",
+   "0.1.0"
+  ],
+  "stage": "audit"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5885,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"issues\": [{\"code\": \"empty\", \"where\": \"Основная область слайда пуста — есть только заголовок и подзаголовок, ниже нет графика, текста или данных, подтверждающих заявление о росте открываемости\"}]}",
+  "usage": {
+   "completion_tokens": 123,
+   "prompt_tokens": 3171,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

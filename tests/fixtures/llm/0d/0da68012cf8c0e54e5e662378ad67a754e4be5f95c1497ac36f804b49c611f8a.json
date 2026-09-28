@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:28:44Z",
+ "entry_version": 1,
+ "key": "0da68012cf8c0e54e5e662378ad67a754e4be5f95c1497ac36f804b49c611f8a",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 805,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 15,
+    "images": 1,
+    "role": "user"
+   }
+  ],
+  "preview": "Слайд 10 из 11.",
+  "prompt": [
+   "review.layout",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "vlm",
+  "skill": [
+   "visual_reviewer",
+   "0.1.0"
+  ],
+  "stage": "audit"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5480,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"issues\": [{\"code\": \"empty\", \"where\": \"Под заголовком и подзаголовком пустая область — нет контента, подтверждающего готовность к расширению\"}]}",
+  "usage": {
+   "completion_tokens": 103,
+   "prompt_tokens": 3171,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

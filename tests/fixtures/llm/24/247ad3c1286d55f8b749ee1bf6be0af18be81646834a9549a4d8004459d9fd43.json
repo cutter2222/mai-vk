@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:33:20Z",
+ "entry_version": 1,
+ "key": "247ad3c1286d55f8b749ee1bf6be0af18be81646834a9549a4d8004459d9fd43",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 805,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 14,
+    "images": 1,
+    "role": "user"
+   }
+  ],
+  "preview": "Слайд 8 из 15.",
+  "prompt": [
+   "review.layout",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "vlm",
+  "skill": [
+   "visual_reviewer",
+   "0.1.0"
+  ],
+  "stage": "audit"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 6039,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"issues\": [{\"code\": \"empty\", \"where\": \"под заголовком и подзаголовком нет графика или данных — почти вся площадь слайда пустая\"}]}",
+  "usage": {
+   "completion_tokens": 100,
+   "prompt_tokens": 3171,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

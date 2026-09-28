@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:32:21Z",
+ "entry_version": 1,
+ "key": "ba559276612d575904b0b96be736f58f778f824d86cf00d986b0bd297a82df55",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 805,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 14,
+    "images": 1,
+    "role": "user"
+   }
+  ],
+  "preview": "Слайд 5 из 12.",
+  "prompt": [
+   "review.layout",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "vlm",
+  "skill": [
+   "visual_reviewer",
+   "0.1.0"
+  ],
+  "stage": "audit"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5876,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"issues\": [{\"code\": \"empty\", \"where\": \"Под подзаголовком «Вариант balanced, ревизия 1» пустое пространство — нет ни графиков, ни метрик, только маленький розовый штрих внизу слева\"}]}",
+  "usage": {
+   "completion_tokens": 127,
+   "prompt_tokens": 3171,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

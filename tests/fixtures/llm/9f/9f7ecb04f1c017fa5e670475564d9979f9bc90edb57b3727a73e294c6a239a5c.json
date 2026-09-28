@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:27:16Z",
+ "entry_version": 1,
+ "key": "9f7ecb04f1c017fa5e670475564d9979f9bc90edb57b3727a73e294c6a239a5c",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 2497,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 3168,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Презентация из 12 слайдов, тексты по порядку:\n1. Запуск сервиса умных уведомлений — Запуск сервиса умных уведомлений | Пилот умных уведомлений поднял открываемость с f3 до f4 и дал экономию f7 при зат",
+  "prompt": [
+   "audit.content_questions",
+   "0.2.0"
+  ],
+  "response_format": "json_schema",
+  "role": "vlm",
+  "skill": [
+   "auditor",
+   "0.2.0"
+  ],
+  "stage": "audit"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 6130,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"items\": [{\"q\": 9, \"answer\": \"yes\", \"confidence\": 0.9, \"why\": \"Все заголовки и текст по всем слайдам на русском языке.\"}, {\"q\": 11, \"answer\": \"yes\", \"confidence\": 0.55, \"why\": \"Слайды последовательно ведут от проблемы к пилоту, результатам, рискам и запросу на расширение — логика сохраняется.\"}]}",
+  "usage": {
+   "completion_tokens": 174,
+   "prompt_tokens": 3932,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

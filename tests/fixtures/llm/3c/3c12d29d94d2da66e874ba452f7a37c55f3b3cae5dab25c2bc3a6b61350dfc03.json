@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:26:37Z",
+ "entry_version": 1,
+ "key": "3c12d29d94d2da66e874ba452f7a37c55f3b3cae5dab25c2bc3a6b61350dfc03",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 805,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 14,
+    "images": 1,
+    "role": "user"
+   }
+  ],
+  "preview": "Слайд 3 из 13.",
+  "prompt": [
+   "review.layout",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "vlm",
+  "skill": [
+   "visual_reviewer",
+   "0.1.0"
+  ],
+  "stage": "audit"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 4613,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"issues\": [{\"code\": \"clipped\", \"where\": \"заголовок «Все каналы уведомлений — в одном интерф...» обрезан правым краем слайда\"}, {\"code\": \"empty\", \"where\": \"основная часть слайда пустая — только заголовок и подзаголовок, нет содержательных элементов\"}]}",
+  "usage": {
+   "completion_tokens": 151,
+   "prompt_tokens": 2,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:32:11Z",
+ "entry_version": 1,
+ "key": "73a883a9cff1fdea710d19cd636b6ea9aa655a5e083aedf7aaa83c51a3ce3e8c",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 2497,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 1648,
+    "images": 1,
+    "role": "user"
+   }
+  ],
+  "preview": "Слайд 15 из 15.\nЗаголовок: Просим одобрить расширение пилота на все продукты в четвёртом квартале.\nТекст слайда: Просим одобрить расширение пилота на все продукты в четвёртом квартале.\nОбъекты: text×1",
+  "prompt": [
+   "audit.content_questions",
+   "0.2.0"
+  ],
+  "response_format": "json_schema",
+  "role": "vlm",
+  "skill": [
+   "auditor",
+   "0.2.0"
+  ],
+  "stage": "audit"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 7940,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"items\": [{\"q\": 1, \"answer\": \"yes\", \"confidence\": 0.9, \"why\": \"Заголовок — утверждение-просьба с конкретным выводом (одобрить расширение пилота в Q4), а не назывная тема.\"}, {\"q\": 2, \"answer\": \"no\", \"confidence\": 0.7, \"why\": \"Под заголовком нет содержания, кроме служебной подписи 'Вариант detailed, ревизия 1', раскрывающего текста нет.\"}, {\"q\": 3, \"answer\": \"yes\", \"confidence\": 0.8, \"why\": \"Единственная фраза слайда сама по себе является кратким пересказом мысли.\"}, {\"q\": 4, \"answer\": \"unsure\", \"confidence\": 0.5, \"why\": \"На слайде нет цифр, но есть неясный служебный текст, не проверяемый по фактам.\"}, {\"q\": 5, \"answer\": \"no\", \"confidence\": 0.75, \"why\": \"Кроме заголовка на слайде только техническая подпись 'Вариант detailed, ревизия 1', содержательного текста нет.\"}, {\"q\": 7, \"answer\": \"no\", \"confidence\": 0.85, \"why\": \"Строка 'Вариант detailed, ревизия 1' — это служебная метка версии/варианта, а не контент слайда.\"}, {\"q\": 8, \"answer\": \"yes\", \"confidence\": 0.8, \"why\": \"В тексте заголовка опечаток не видно.\"}]}",
+  "usage": {
+   "completion_tokens": 497,
+   "prompt_tokens": 3932,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

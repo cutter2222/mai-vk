@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:32:28Z",
+ "entry_version": 1,
+ "key": "ff8fbff3e10439e65315e4883e985616bdddbf831581dc54b7e16116710c71f5",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 805,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 14,
+    "images": 1,
+    "role": "user"
+   }
+  ],
+  "preview": "Слайд 5 из 13.",
+  "prompt": [
+   "review.layout",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "vlm",
+  "skill": [
+   "visual_reviewer",
+   "0.1.0"
+  ],
+  "stage": "audit"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5588,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"issues\": [{\"code\": \"empty\", \"where\": \"Всё пространство под подзаголовком пустое — нет данных, графиков или текста с результатами пилота\"}]}",
+  "usage": {
+   "completion_tokens": 102,
+   "prompt_tokens": 3171,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

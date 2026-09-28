@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:32:03Z",
+ "entry_version": 1,
+ "key": "345a8f87804784cb1c333c88b19c6413d78f50637f5f08a10b22f29932eab9ed",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 2497,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 1609,
+    "images": 1,
+    "role": "user"
+   }
+  ],
+  "preview": "Слайд 11 из 15.\nЗаголовок: План и риски\nТекст слайда: План и риски | Шаги на четвёртый квартал и факторы, которые нужно учитывать при расширении.\nОбъекты: text×2\nГлавная мысль всей презентации: Пилот ",
+  "prompt": [
+   "audit.content_questions",
+   "0.2.0"
+  ],
+  "response_format": "json_schema",
+  "role": "vlm",
+  "skill": [
+   "auditor",
+   "0.2.0"
+  ],
+  "stage": "audit"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 7691,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"items\": [{\"q\": 1, \"answer\": \"no\", \"confidence\": 0.9, \"why\": \"Заголовок «План и риски» называет тему, а не формулирует вывод.\"}, {\"q\": 2, \"answer\": \"unsure\", \"confidence\": 0.4, \"why\": \"Содержимого по сути нет — только подзаголовок 'Вариант detailed, ревизия 1', не относящийся к теме плана и рисков.\"}, {\"q\": 3, \"answer\": \"no\", \"confidence\": 0.85, \"why\": \"На слайде нет содержательного текста про план и риски, кроме заголовка и служебной пометки.\"}, {\"q\": 4, \"answer\": \"unsure\", \"confidence\": 0.5, \"why\": \"На слайде нет чисел вовсе, проверять нечего.\"}, {\"q\": 5, \"answer\": \"no\", \"confidence\": 0.85, \"why\": \"Помимо заголовка есть только техническая пометка 'Вариант detailed, ревизия 1', а не содержание по теме.\"}, {\"q\": 7, \"answer\": \"no\", \"confidence\": 0.85, \"why\": \"Текст 'Вариант detailed, ревизия 1' выглядит как служебная пометка версии, а не контент слайда.\"}, {\"q\": 8, \"answer\": \"yes\", \"confidence\": 0.7, \"why\": \"Явных опечаток в тексте не видно.\"}]}",
+  "usage": {
+   "completion_tokens": 477,
+   "prompt_tokens": 3932,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

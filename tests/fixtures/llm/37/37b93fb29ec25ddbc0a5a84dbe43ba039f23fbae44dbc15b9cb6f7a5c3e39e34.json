@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:29:25Z",
+ "entry_version": 1,
+ "key": "37b93fb29ec25ddbc0a5a84dbe43ba039f23fbae44dbc15b9cb6f7a5c3e39e34",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 805,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 14,
+    "images": 1,
+    "role": "user"
+   }
+  ],
+  "preview": "Слайд 5 из 11.",
+  "prompt": [
+   "review.layout",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "vlm",
+  "skill": [
+   "visual_reviewer",
+   "0.1.0"
+  ],
+  "stage": "audit"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5762,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"issues\": [{\"code\": \"clipped\", \"where\": \"заголовок обрезан правым краем слайда\"}, {\"code\": \"empty\", \"where\": \"тело слайда пустое — нет графика/контента под подзаголовком\"}]}",
+  "usage": {
+   "completion_tokens": 121,
+   "prompt_tokens": 3171,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:29:08Z",
+ "entry_version": 1,
+ "key": "547b6d2ef469683a3981e8e980f7266831cdf90a4d7f57dd8321f736c3bb1329",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 1079,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 1415,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Тема презентации: Запуск сервиса умных уведомлений\nВсе слайды по порядку: Запуск сервиса умных уведомлений; Три механизма приоритизации и доставки; Все каналы уведомлений — в одном месте; Пилот поднял",
+  "prompt": [
+   "photo.queries",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "visual_picker",
+   "0.1.0"
+  ],
+  "stage": "compose"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5106,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"photos\": [{\"slide_id\": \"s4\", \"query\": \"smartphone notification\"}, {\"slide_id\": \"s6\", \"query\": \"phone calendar\"}, {\"slide_id\": \"s9\", \"query\": \"server room\"}, {\"slide_id\": \"s10\", \"query\": \"team meeting laptop\"}]}",
+  "usage": {
+   "completion_tokens": 137,
+   "prompt_tokens": 3264,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

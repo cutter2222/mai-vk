@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:29:19Z",
+ "entry_version": 1,
+ "key": "74abfbb66051cb7dc0d9d22acafe99e7394e4b980e0b0c47fbdf9053cb67f64b",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4044,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 1346,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"slides\": [{\"slide_id\": \"s2\", \"title\": \"Три механизма приоритизации и доставки\", \"key_message\": \"Раскрывает состав решения: как именно сервис устраняет пропуск важных уведомлений.\", \"filled\": [\"Три м",
+  "prompt": [
+   "fill.slots",
+   "0.2.0"
+  ],
+  "response_format": "json_object",
+  "role": "llm",
+  "skill": [
+   "slot_filler",
+   "0.2.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 3600,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"s2\": {\"card_1_title\": \"Приоритизация\", \"card_2_title\": \"Единый центр\"}}",
+  "usage": {
+   "completion_tokens": 44,
+   "prompt_tokens": 1831,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

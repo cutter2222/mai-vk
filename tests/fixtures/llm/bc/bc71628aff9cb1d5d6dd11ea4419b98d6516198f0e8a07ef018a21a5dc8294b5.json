@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:32:50Z",
+ "entry_version": 1,
+ "key": "bc71628aff9cb1d5d6dd11ea4419b98d6516198f0e8a07ef018a21a5dc8294b5",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4044,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 2471,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"slides\": [{\"slide_id\": \"s5\", \"title\": \"Рост открываемости устойчив на всём протяжении пилота\", \"key_message\": \"Рост открываемости устойчив на всём протяжении пилота\", \"filled\": [\"Рост открываемости ",
+  "prompt": [
+   "fill.slots",
+   "0.2.0"
+  ],
+  "response_format": "json_object",
+  "role": "llm",
+  "skill": [
+   "slot_filler",
+   "0.2.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 6338,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"s5\": {\"caption\": \"Открываемость выросла с мая по июль, отписки снизились, активные пользователи прибавили — рост стабилен весь пилот\"}, \"s8\": {\"lead\": \"Октябрь и ноябрь — новые продукты и тихие часы, декабрь — все регионы\"}, \"s10\": {\"support\": \"Требуется решение о запуске расширения на все продукты в четвёртом квартале\"}}",
+  "usage": {
+   "completion_tokens": 150,
+   "prompt_tokens": 4419,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

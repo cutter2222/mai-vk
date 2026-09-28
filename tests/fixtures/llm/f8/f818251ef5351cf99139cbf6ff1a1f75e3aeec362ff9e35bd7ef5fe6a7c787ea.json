@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:30:41Z",
+ "entry_version": 1,
+ "key": "f818251ef5351cf99139cbf6ff1a1f75e3aeec362ff9e35bd7ef5fe6a7c787ea",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 1079,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 1243,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Тема презентации: Запуск сервиса умных уведомлений\nВсе слайды по порядку: Запуск сервиса умных уведомлений; Содержание; Решение; Три механизма решают проблему приоритизации; Все каналы уведомлений соб",
+  "prompt": [
+   "photo.queries",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "llm",
+  "skill": [
+   "visual_picker",
+   "0.1.0"
+  ],
+  "stage": "compose"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5627,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"photos\": [{\"slide_id\": \"s4\", \"query\": \"smartphone notification\"}, {\"slide_id\": \"s8\", \"query\": \"person checking phone\"}, {\"slide_id\": \"s12\", \"query\": \"team office map\"}, {\"slide_id\": \"s13\", \"query\": \"team meeting discussion\"}]}",
+  "usage": {
+   "completion_tokens": 145,
+   "prompt_tokens": 3264,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

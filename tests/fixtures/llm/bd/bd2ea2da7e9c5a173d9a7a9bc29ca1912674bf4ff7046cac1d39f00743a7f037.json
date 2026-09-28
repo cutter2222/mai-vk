@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:31:11Z",
+ "entry_version": 1,
+ "key": "bd2ea2da7e9c5a173d9a7a9bc29ca1912674bf4ff7046cac1d39f00743a7f037",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 805,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 14,
+    "images": 1,
+    "role": "user"
+   }
+  ],
+  "preview": "Слайд 1 из 15.",
+  "prompt": [
+   "review.layout",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "vlm",
+  "skill": [
+   "visual_reviewer",
+   "0.1.0"
+  ],
+  "stage": "audit"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5614,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"issues\": [{\"code\": \"empty\", \"where\": \"Слайд содержит только заголовок и подзаголовок, вся нижняя часть пустая\"}]}",
+  "usage": {
+   "completion_tokens": 98,
+   "prompt_tokens": 3171,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

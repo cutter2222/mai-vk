@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:31:44Z",
+ "entry_version": 1,
+ "key": "4a99d035582b7bde837606caf29dbeb36bc73827e848e2df3911ca8afb211272",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 2497,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 1559,
+    "images": 1,
+    "role": "user"
+   }
+  ],
+  "preview": "Слайд 3 из 15.\nЗаголовок: Решение\nТекст слайда: Решение | Как устроен сервис умных уведомлений.\nОбъекты: text×2\nГлавная мысль всей презентации: Пилот умных уведомлений поднял открываемость с f3 до f4 ",
+  "prompt": [
+   "audit.content_questions",
+   "0.2.0"
+  ],
+  "response_format": "json_schema",
+  "role": "vlm",
+  "skill": [
+   "auditor",
+   "0.2.0"
+  ],
+  "stage": "audit"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 7620,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"items\": [{\"q\": 1, \"answer\": \"no\", \"confidence\": 0.9, \"why\": \"Заголовок «Решение» — назывной, не содержит вывода.\"}, {\"q\": 2, \"answer\": \"unsure\", \"confidence\": 0.4, \"why\": \"На слайде нет содержания кроме подзаголовка, соответствие заголовку оценить нельзя.\"}, {\"q\": 3, \"answer\": \"no\", \"confidence\": 0.85, \"why\": \"На слайде фактически нет содержания, кроме служебной пометки «Вариант detailed, ревизия 1».\"}, {\"q\": 4, \"answer\": \"unsure\", \"confidence\": 0.3, \"why\": \"На слайде нет цифр, но есть непонятный текст «detailed, ревизия 1», не являющийся фактом из материалов.\"}, {\"q\": 5, \"answer\": \"no\", \"confidence\": 0.85, \"why\": \"Кроме заголовка есть только служебная пометка «Вариант detailed, ревизия 1», а не содержание по теме.\"}, {\"q\": 7, \"answer\": \"no\", \"confidence\": 0.75, \"why\": \"Текст «Вариант detailed, ревизия 1» похож на служебную пометку из процесса подготовки, а не на содержание слайда.\"}, {\"q\": 8, \"answer\": \"yes\", \"confidence\": 0.6, \"why\": \"Опечаток в словах не обнаружено.\"}]}",
+  "usage": {
+   "completion_tokens": 492,
+   "prompt_tokens": 3932,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

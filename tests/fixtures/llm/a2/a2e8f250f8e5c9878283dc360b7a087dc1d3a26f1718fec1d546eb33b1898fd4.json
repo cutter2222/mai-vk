@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:28:32Z",
+ "entry_version": 1,
+ "key": "a2e8f250f8e5c9878283dc360b7a087dc1d3a26f1718fec1d546eb33b1898fd4",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4044,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 1144,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"slides\": [{\"slide_id\": \"s4\", \"title\": \"Пилот поднял открываемость и снизил отписки\", \"key_message\": \"Итоговый результат трёхмесячного пилота в трёх регионах по двум ключевым метрикам.\", \"filled\": [\"",
+  "prompt": [
+   "fill.slots",
+   "0.2.0"
+  ],
+  "response_format": "json_object",
+  "role": "llm",
+  "skill": [
+   "slot_filler",
+   "0.2.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5360,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"s4\": {\"side_1_title\": \"Открываемость\", \"side_2_title\": \"Отписки\"}}",
+  "usage": {
+   "completion_tokens": 37,
+   "prompt_tokens": 4419,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

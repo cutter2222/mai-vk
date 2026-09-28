@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:29:55Z",
+ "entry_version": 1,
+ "key": "4027e0b5071d8c4c58787b006b3d189196aabe0fb5a7072ccd07c0b6b52c48d1",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 2497,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 2965,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "Презентация из 11 слайдов, тексты по порядку:\n1. Запуск сервиса умных уведомлений — Запуск сервиса умных уведомлений | Пилот умных уведомлений поднял открываемость с f3 до f4 и дал экономию f7 при зат",
+  "prompt": [
+   "audit.content_questions",
+   "0.2.0"
+  ],
+  "response_format": "json_schema",
+  "role": "vlm",
+  "skill": [
+   "auditor",
+   "0.2.0"
+  ],
+  "stage": "audit"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 7267,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"items\": [{\"q\": 9, \"answer\": \"yes\", \"confidence\": 0.9, \"why\": \"Все тексты слайдов на русском языке, отдельные термины/единицы на латинице не меняют язык колоды.\"}, {\"q\": 11, \"answer\": \"yes\", \"confidence\": 0.75, \"why\": \"Слайды логично продолжают друг друга: от запуска и механизмов к результатам пилота, экономии, плану и риску, заканчивая просьбой об одобрении.\"}]}",
+  "usage": {
+   "completion_tokens": 352,
+   "prompt_tokens": 3932,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

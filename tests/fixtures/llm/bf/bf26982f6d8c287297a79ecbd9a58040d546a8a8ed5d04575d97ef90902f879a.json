@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:32:28Z",
+ "entry_version": 1,
+ "key": "bf26982f6d8c287297a79ecbd9a58040d546a8a8ed5d04575d97ef90902f879a",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 805,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 14,
+    "images": 1,
+    "role": "user"
+   }
+  ],
+  "preview": "Слайд 8 из 13.",
+  "prompt": [
+   "review.layout",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "vlm",
+  "skill": [
+   "visual_reviewer",
+   "0.1.0"
+  ],
+  "stage": "audit"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5578,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"issues\": [{\"code\": \"empty\", \"where\": \"Основная часть слайда под подзаголовком пустая — нет контента, раскрывающего экономику пилота\"}]}",
+  "usage": {
+   "completion_tokens": 103,
+   "prompt_tokens": 3171,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

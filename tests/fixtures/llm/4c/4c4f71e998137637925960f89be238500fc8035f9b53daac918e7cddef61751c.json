@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:33:20Z",
+ "entry_version": 1,
+ "key": "4c4f71e998137637925960f89be238500fc8035f9b53daac918e7cddef61751c",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 805,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 14,
+    "images": 1,
+    "role": "user"
+   }
+  ],
+  "preview": "Слайд 5 из 15.",
+  "prompt": [
+   "review.layout",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "vlm",
+  "skill": [
+   "visual_reviewer",
+   "0.1.0"
+  ],
+  "stage": "audit"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 6064,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"issues\": [{\"code\": \"clipped\", \"where\": \"заголовок «Все каналы уведомлений собраны в одном м...» обрезан правым краем слайда\"}, {\"code\": \"empty\", \"where\": \"основная часть слайда пустая — под заголовком и подзаголовком нет контента, кроме маленькой фиолетовой полоски внизу слева\"}]}",
+  "usage": {
+   "completion_tokens": 167,
+   "prompt_tokens": 3171,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

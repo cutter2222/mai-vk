@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:31:16Z",
+ "entry_version": 1,
+ "key": "22d76324748c22e4801d3fab23fe8b016bba588d08dc3a1dbe99f251054b5acd",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 805,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 14,
+    "images": 1,
+    "role": "user"
+   }
+  ],
+  "preview": "Слайд 9 из 15.",
+  "prompt": [
+   "review.layout",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "vlm",
+  "skill": [
+   "visual_reviewer",
+   "0.1.0"
+  ],
+  "stage": "audit"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 6003,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"issues\": [{\"code\": \"empty\", \"where\": \"Основная область слайда пустая — только заголовок и подзаголовок, никакого контента, подтверждающего окупаемость пилота\"}]}",
+  "usage": {
+   "completion_tokens": 111,
+   "prompt_tokens": 3171,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

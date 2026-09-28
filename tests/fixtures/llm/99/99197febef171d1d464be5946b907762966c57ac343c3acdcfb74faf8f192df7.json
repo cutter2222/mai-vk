@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:25:34Z",
+ "entry_version": 1,
+ "key": "99197febef171d1d464be5946b907762966c57ac343c3acdcfb74faf8f192df7",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 4044,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 2148,
+    "images": 0,
+    "role": "user"
+   }
+  ],
+  "preview": "{\"slides\": [{\"slide_id\": \"s5\", \"title\": \"Пилот заметно улучшил ключевые метрики\", \"key_message\": \"За три месяца пилота открываемость выросла, а отписки снизились — показатель зрелости и готовности реш",
+  "prompt": [
+   "fill.slots",
+   "0.2.0"
+  ],
+  "response_format": "json_object",
+  "role": "llm",
+  "skill": [
+   "slot_filler",
+   "0.2.0"
+  ],
+  "stage": "plan"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5680,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"s5\": {\"side_1_title\": \"Открываемость\", \"side_2_title\": \"Отписки\"}, \"s9\": {\"lead\": \"Три шага за квартал ведут к запуску во всех регионах с целью 60% открываемости\"}, \"s10\": {\"label_3\": \"Нагрузка на поддержку и зависимость от push-провайдера — риски заранее учтены\"}}",
+  "usage": {
+   "completion_tokens": 132,
+   "prompt_tokens": 2,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

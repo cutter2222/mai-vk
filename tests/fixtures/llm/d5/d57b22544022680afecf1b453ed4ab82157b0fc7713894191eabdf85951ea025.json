@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:26:52Z",
+ "entry_version": 1,
+ "key": "d57b22544022680afecf1b453ed4ab82157b0fc7713894191eabdf85951ea025",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 2497,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 1611,
+    "images": 1,
+    "role": "user"
+   }
+  ],
+  "preview": "Слайд 4 из 12.\nЗаголовок: Результаты пилота\nТекст слайда: Результаты пилота | Метрики пилота, проведённого с мая по июль 2026 года в трёх регионах.\nОбъекты: text×2\nГлавная мысль всей презентации: Пило",
+  "prompt": [
+   "audit.content_questions",
+   "0.2.0"
+  ],
+  "response_format": "json_schema",
+  "role": "vlm",
+  "skill": [
+   "auditor",
+   "0.2.0"
+  ],
+  "stage": "audit"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 7527,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"items\": [{\"q\": 1, \"answer\": \"no\", \"confidence\": 0.9, \"why\": \"Заголовок «Результаты пилота» называет тему, а не содержит вывод.\"}, {\"q\": 2, \"answer\": \"unsure\", \"confidence\": 0.4, \"why\": \"Содержания по сути нет (только подзаголовок с версией), оценить соответствие нечем.\"}, {\"q\": 3, \"answer\": \"no\", \"confidence\": 0.85, \"why\": \"Слайд не содержит данных или выводов, которые можно пересказать одним предложением.\"}, {\"q\": 4, \"answer\": \"unsure\", \"confidence\": 0.5, \"why\": \"На слайде нет цифр, кроме служебной пометки «ревизия 1», не относящейся к фактам.\"}, {\"q\": 5, \"answer\": \"no\", \"confidence\": 0.9, \"why\": \"Кроме заголовка есть только техническая подпись «Вариант balanced, ревизия 1», содержательных данных о пилоте нет.\"}, {\"q\": 7, \"answer\": \"no\", \"confidence\": 0.85, \"why\": \"Текст «Вариант balanced, ревизия 1» — это служебная метка черновика/шаблона, а не содержание слайда.\"}, {\"q\": 8, \"answer\": \"yes\", \"confidence\": 0.6, \"why\": \"Явных опечаток в словах не обнаружено.\"}]}",
+  "usage": {
+   "completion_tokens": 481,
+   "prompt_tokens": 2,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

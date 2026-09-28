@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:26:44Z",
+ "entry_version": 1,
+ "key": "be5345b3a5a47fc1ef8d2fbe41010b049ff29eab76bed76506ef418e47600e3a",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 805,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 15,
+    "images": 1,
+    "role": "user"
+   }
+  ],
+  "preview": "Слайд 13 из 13.",
+  "prompt": [
+   "review.layout",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "vlm",
+  "skill": [
+   "visual_reviewer",
+   "0.1.0"
+  ],
+  "stage": "audit"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5985,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"issues\": [{\"code\": \"clipped\", \"where\": \"заголовок «Просим одобрить расширение пилота на все...» обрезан правым краем слайда\"}, {\"code\": \"empty\", \"where\": \"основная область слайда пуста, кроме заголовка и подзаголовка\"}]}",
+  "usage": {
+   "completion_tokens": 140,
+   "prompt_tokens": 3171,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}

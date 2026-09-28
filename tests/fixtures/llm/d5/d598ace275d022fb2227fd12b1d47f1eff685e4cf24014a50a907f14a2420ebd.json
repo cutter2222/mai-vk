@@ -1,0 +1,46 @@
+{
+ "created_at": "2026-09-28T07:29:25Z",
+ "entry_version": 1,
+ "key": "d598ace275d022fb2227fd12b1d47f1eff685e4cf24014a50a907f14a2420ebd",
+ "origin": "own",
+ "request": {
+  "messages": [
+   {
+    "chars": 805,
+    "images": 0,
+    "role": "system"
+   },
+   {
+    "chars": 14,
+    "images": 1,
+    "role": "user"
+   }
+  ],
+  "preview": "Слайд 8 из 11.",
+  "prompt": [
+   "review.layout",
+   "0.1.0"
+  ],
+  "response_format": "json_schema",
+  "role": "vlm",
+  "skill": [
+   "visual_reviewer",
+   "0.1.0"
+  ],
+  "stage": "audit"
+ },
+ "response": {
+  "finish_reason": "stop",
+  "latency_ms": 5573,
+  "model": "claude-sonnet",
+  "provider": "qwen-api",
+  "text": "{\"issues\": [{\"code\": \"empty\", \"where\": \"Под подзаголовком «Вариант compact, ревизия 1» вся центральная и нижняя часть слайда пустая, нет содержательного контента\"}]}",
+  "usage": {
+   "completion_tokens": 117,
+   "prompt_tokens": 3171,
+   "reasoning_estimated": false,
+   "reasoning_tokens": null,
+   "source": "provider"
+  }
+ }
+}
