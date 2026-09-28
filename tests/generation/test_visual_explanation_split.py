@@ -230,11 +230,15 @@ def test_at_ceiling_service_slide_gives_its_page_to_commentary(profile, spare_ki
     # Luna detailed: 15 из 15 слайдов, пояснение к таблице итога уходило в заметки,
     # хотя в колоде было два слайда-разделителя с одним названием раздела.
     ctx, draft = context(profile)
-    spare = vr.Draft(kind=spare_kind, theses=[], pattern=draft.pattern, title="Результаты")
+    spare = vr.Draft(kind=spare_kind, theses=["sec1"], pattern=draft.pattern, title="Результаты")
+    draft.section = "sec1"
     ctx.spec.max = 2
     result = vr._split_visual_explanations(ctx, [spare, draft])
     assert len(result) == 2
     assert all(d.kind == "content" for d in result)
+    # Тезис-раздел снятого разделителя переходит содержательному слайду раздела (ЛЦТ detailed
+    # терял покрытие t11).
+    assert "sec1" in result[0].theses
     assert all(not d.overflow and not d.unplaced_text for d in result)
     assert vr.retry_content_loss([draft], result) is None
     assert any(f["code"] == "slide_dropped" and "Результаты" in f["message"] for f in ctx.fixes)

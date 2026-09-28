@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from presentation_designer.library.spec import Composition, load_families
@@ -97,8 +98,9 @@ def _base_layout(profile: JsonDict) -> str:
     def service_name(item: JsonDict) -> int:
         # Макет «TITLE» без плейсхолдеров (SlidesCarnival morph) выигрывал по их числу, а на
         # нём — декор обложки во весь слайд: имя макета — тоже свидетельство назначения.
-        name = str(item.get("name") or "").lower()
-        return 1 if any(w in name for w in _SERVICE_LAYOUT_WORDS) else 0
+        # Только целиком служебные имена: «Title and Content» и «Title Only» — содержательные.
+        name = " ".join(str(item.get("name") or "").lower().replace("_", " ").split())
+        return 1 if _SERVICE_LAYOUT_NAME.match(name) else 0
 
     ranked = sorted(
         layouts,
@@ -113,7 +115,10 @@ def _base_layout(profile: JsonDict) -> str:
     return str(ranked[0].get("layout_id") or "")
 
 
-_SERVICE_LAYOUT_WORDS = ("title", "cover", "section", "thank", "closing", "end", "титул", "обложк")
+_SERVICE_LAYOUT_NAME = re.compile(
+    r"^(?:title|title slide|cover|section|section header|thank you|thanks|closing|end|"
+    r"титульный(?: слайд)?|обложка|раздел|финал)$"
+)
 
 
 SERVICE_ROLES = {"title", "thanks", "section_divider", "qr", "agenda", "speaker"}

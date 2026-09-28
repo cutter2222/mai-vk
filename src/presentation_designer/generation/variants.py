@@ -2755,6 +2755,62 @@ def measure_blocks(ctx: Context, draft: Draft, blocks: list[JsonDict]) -> list[J
                     action = "font_step"
                     note = f"кегль {base:g} → {size:g}"
                     break
+        if not m.fits and block["kind"] == "title" and draft.kind == "content":
+            # Заголовок-тезис в 115 знаков не встаёт в строку ни в одном образце: хвост после
+            # последней запятой переезжает в текст слайда, а если его факты уже показаны
+            # таблицей, графиком или числом на этом слайде — опускается. Иначе план держал
+            # переполнение, сборка укорачивала заголовок сама, и слайд расходился с планом
+            # (VK Tech, VK WorkSpace с историей Sonnet, 28.09.2026).
+            split = cap.split_title(str(block["text"]))
+            target = next(
+                (b for b in blocks if b is not block and b.get("kind") in ("body", "bullets")),
+                None,
+            )
+            shown_here = _data_shown_facts(ctx, blocks) | {
+                b["number"]["fact_id"] for b in blocks if b.get("number")
+            }
+            if split is not None and (
+                target is not None or set(FACT_REF.findall(split[1])) <= shown_here
+            ):
+                kept, tail = split
+                kept_value = cap.substitute_facts(kept, ctx.facts)
+                for size in [
+                    base,
+                    *cap.font_steps(
+                        slot,
+                        ctx.scale,
+                        min_ratio=plan_cfg.min_font_ratio,
+                        min_pt=min_pt,
+                        fill_below=True,
+                    ),
+                ]:
+                    m3 = cap.measure(
+                        kept_value,
+                        slot,
+                        ctx.slide_w,
+                        ctx.slide_h,
+                        size_pt=size,
+                        margin_ratio=plan_cfg.margin_ratio,
+                    )
+                    if not m3.fits:
+                        continue
+                    block = {**block, "text": kept}
+                    draft.title = kept
+                    if target is not None:
+                        if target.get("kind") == "bullets":
+                            target["items"] = [
+                                {"text": tail, "fact_refs": FACT_REF.findall(tail)},
+                                *target.get("items", []),
+                            ]
+                        else:
+                            target["text"] = f"{tail} {target.get('text') or ''}".strip()
+                        note = "хвост заголовка — в текст слайда"
+                    else:
+                        note = "хвост заголовка повторяет данные слайда"
+                    m = m3
+                    action = "shortened"
+                    ctx.fix("title_split", f"«{kept[:40]}»: {note}")
+                    break
         if not m.fits and (draft.kind != "content" or block["slot_id"] in draft.filler_slots):
             # Lack of fact references does not make source prose optional. Content
             # must swap layout, retry or split; only service/filler text may shorten.
@@ -3934,6 +3990,18 @@ def _split_visual_explanations(ctx: Context, deck: list[Draft]) -> list[Draft]:
                 freed.append(spare.pop(0))
                 out[:] = [d for d in out if d is not freed[-1]]
                 remaining += 1
+                # Разделитель — единственный слайд своего тезиса-раздела: без переноса
+                # тезиса на содержательный слайд раздела план терял покрытие (ЛЦТ detailed).
+                host = next(
+                    (
+                        d
+                        for d in [*out, *parts, *deck]
+                        if d.kind == "content" and d.section in freed[-1].theses
+                    ),
+                    next((d for d in [*out, *parts] if d.kind == "content"), None),
+                )
+                if host is not None:
+                    host.theses = list(dict.fromkeys([*host.theses, *freed[-1].theses]))
                 ctx.fix(
                     "slide_dropped",
                     f"{freed[-1].kind}: «{freed[-1].title[:40]}» — место под пояснения",

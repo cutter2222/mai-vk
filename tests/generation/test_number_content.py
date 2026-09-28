@@ -316,3 +316,96 @@ def test_cover_beyond_slide_edge_yields_to_builtin_cover(monkeypatch):
     assert vr._first_fitting(ctx, [huge], "Тема презентации", "") is own
     assert any(f["code"] == "service_pattern_builtin" for f in ctx.fixes)
     assert vr._off_slide(huge.title) and not vr._off_slide(own.title)
+
+
+def _title_pattern(with_body: bool):
+    from presentation_designer.generation.matching import pattern_info
+
+    slots = [
+        {
+            "slot_id": "title",
+            "kind": "title",
+            # Две строки по ≈40 знаков: заголовок в 100+ знаков не встаёт, его начало — да.
+            "bbox": {"x": 0.05, "y": 0.05, "width": 0.5, "height": 0.14},
+            "font": {"family": "Arial", "size_pt": 24},
+        }
+    ]
+    if with_body:
+        slots.append(
+            {
+                "slot_id": "body",
+                "kind": "body",
+                "bbox": {"x": 0.05, "y": 0.2, "width": 0.9, "height": 0.6},
+                "font": {"family": "Arial", "size_pt": 18},
+            }
+        )
+    else:
+        slots.append(
+            {
+                "slot_id": "number_1",
+                "kind": "number",
+                "bbox": {"x": 0.05, "y": 0.3, "width": 0.4, "height": 0.2},
+                "font": {"family": "Arial", "size_pt": 40},
+            }
+        )
+    return pattern_info({"pattern_id": "narrow_title", "role": "text", "slots": slots})
+
+
+def test_overlong_title_tail_moves_into_body():
+    # VK Tech / VK WorkSpace с историей Sonnet: заголовок-тезис в 115 знаков не встаёт в строку
+    # образца; план держал переполнение, сборка укорачивала заголовок сама (28.09.2026).
+    ctx = _context("balanced", numbers=0, captions=0)
+    ctx.patterns = [_title_pattern(with_body=True)]
+    title = (
+        "Пилот принёс экономию {fact:f2} на поддержке за год при затратах на пилот, "
+        "а масштабирование обещает до {fact:f1}"
+    )
+    draft = vr.Draft(
+        kind="content",
+        theses=["t1"],
+        pattern=ctx.patterns[0],
+        title=title,
+        text="Проверено пилотом.",
+    )
+    vr.fit_draft(ctx, draft)
+    assert not draft.overflow
+    assert (
+        draft.title == "Пилот принёс экономию {fact:f2} на поддержке за год при затратах на пилот"
+    )
+    body = next(b for b in draft.blocks if b["kind"] == "body")
+    assert body["text"].startswith("Масштабирование обещает до {fact:f1}.")
+    assert "Проверено пилотом." in body["text"]
+    assert any(f["code"] == "title_split" for f in ctx.fixes)
+
+
+def test_overlong_title_tail_is_dropped_only_when_its_facts_are_shown():
+    ctx = _context("balanced", numbers=0, captions=0)
+    ctx.patterns = [_title_pattern(with_body=False)]
+    title = (
+        "Пилот принёс экономию на поддержке за год при затратах, "
+        "а масштабирование обещает до {fact:f1}"
+    )
+    draft = vr.Draft(
+        kind="content",
+        theses=["t1"],
+        pattern=ctx.patterns[0],
+        title=title,
+        facts=["f1"],
+        visual="number",
+    )
+    vr.fit_draft(ctx, draft)
+    # Факт хвоста показан числом на слайде — хвост опущен, заголовок помещается.
+    assert draft.title == "Пилот принёс экономию на поддержке за год при затратах"
+    assert not draft.overflow
+    # Факт хвоста нигде не показан и текста на слайде нет — заголовок остаётся целым.
+    ctx.patterns = [_title_pattern(with_body=False)]
+    draft2 = vr.Draft(
+        kind="content",
+        theses=["t1"],
+        pattern=ctx.patterns[0],
+        title=title,
+        facts=["f2"],
+        visual="number",
+    )
+    vr.fit_draft(ctx, draft2)
+    assert draft2.title == title

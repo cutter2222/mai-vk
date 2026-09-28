@@ -305,6 +305,26 @@ def shorten_title(text: str) -> str | None:
     return kept
 
 
+_TAIL_JOINER = re.compile(r"^(?:а|и|но|что|причём|при этом|а также|также)\s+", re.IGNORECASE)
+
+
+def split_title(text: str) -> tuple[str, str] | None:
+    """Длинный заголовок-тезис на две части по последней запятой, двоеточию или тире:
+    заголовок и хвост для текста слайда («…при затратах {fact:f8}» | «Масштабирование обещает
+    до {fact:f22}»). В отличие от `shorten_title`, факты в хвосте допустимы — он не
+    выбрасывается, а переезжает в тело. None — делить нечего."""
+    stripped = text.strip()
+    matches = list(_CLAUSE.finditer(stripped))
+    if not matches:
+        return None
+    cut = matches[-1]
+    kept = stripped[: cut.start()].rstrip(" :;,—–")
+    tail = _TAIL_JOINER.sub("", stripped[cut.end() :].strip()).strip(" .")
+    if len(kept) < 12 or len(tail) < 4:
+        return None
+    return kept, tail[:1].upper() + tail[1:] + "."
+
+
 def shorten_items(items: list[JsonDict], min_items: int = 1) -> list[JsonDict] | None:
     """Убирает последний пункт без ссылок на факты; None — нечего убирать."""
     if len(items) <= min_items:
@@ -328,6 +348,7 @@ __all__ = [
     "shorten_items",
     "shorten_text",
     "shorten_title",
+    "split_title",
     "substitute_facts",
     "wrap_lines",
 ]
