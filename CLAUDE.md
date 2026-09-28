@@ -49,6 +49,9 @@ uv run scripts/gen_models_md.py --check && uv run scripts/gen_audit_md.py --chec
   `docker compose -f docker/compose.yaml -f docker/compose.dev.yaml --env-file .env up -d api worker-generation worker-analysis`,
   дальше `docker restart presentation-designer-api-1 presentation-designer-worker-generation-{1,2,3} presentation-designer-worker-analysis-1`.
 - После смены `ANALYZER_VERSION`: `docker exec presentation-designer-api-1 python -m presentation_designer.cli.maintenance reanalyze-templates --wait 900`.
+- Выбор макета для своих композиций (`register._base_layout`) делается при анализе и лежит в
+  профиле: после его правки старые шаблоны на стенде остаются на прежнем макете — переанализ
+  (`reanalyze-templates --all`) или удалить шаблон и загрузить заново.
 - Модели: основной шлюз `qwen-api` (openlux, квота исчерпана 25.09.2026). Локально роли
   переключены на OpenRouter строками `PD_MODELS__ROLES__{LLM,VLM}__{PROVIDER,MODEL}` в `.env`
   (`openrouter`, `qwen/qwen3.8-27b`); убрать строки — вернуться к `qwen-api`. Баланс
