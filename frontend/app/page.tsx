@@ -5,6 +5,7 @@ import { IconPlus } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { CardSkeleton } from "@/components/common/CardSkeleton";
 import { CatalogHeader } from "@/components/common/CatalogHeader";
 import { ProjectCard } from "@/components/home/ProjectCard";
 import { api } from "@/lib/api/client";
@@ -73,17 +74,27 @@ export default function ProjectsPage() {
             сервис соберёт её в трёх вариантах вёрстки и проверит по правилам шаблона.
           </Text>
         ) : null}
-        {loaded || projects.length ? (
-          <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing="lg" data-testid="projects-grid">
+        {/* Сетка есть всегда: карточка создания — той же анатомии, что карточки проектов (миниатюра
+            16:9 и три строки), поэтому её размер один и тот же одна она или в ряду, на экране
+            и на телефоне; до ответа сервера вместо карточек — заглушки той же формы. */}
+        <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing="lg" data-testid="projects-grid">
             <button
               type="button"
-              className="grid-card-new"
+              className="grid-card grid-card-new"
               onClick={create}
               data-testid="new-project"
             >
-              <IconPlus size={26} stroke={1.6} />
-              <Text size="sm" fw={600}>Новая презентация</Text>
+              <div className="grid-card-thumb"><span className="grid-card-new-face"><IconPlus size={28} stroke={1.6} /></span></div>
+              {/* Строки — те же, что в карточке проекта (название, статус, дата): высота совпадает. */}
+              <div className="grid-card-body">
+                <Text fw={600} size="sm" truncate>Новая презентация</Text>
+                <Group gap={6} wrap="nowrap" mt={5} style={{ minWidth: 0 }}>
+                  <span className="quiet-status" style={{ fontSize: 12 }}><i />Шаблон, материалы или тема</span>
+                </Group>
+                <Text size="xs" c="dimmed" mt={2}>Три варианта за пару минут</Text>
+              </div>
             </button>
+            {!loaded && projects.length === 0 && [0, 1, 2].map((key) => <CardSkeleton key={key} />)}
             {shown.map((p) => (
               <ProjectCard
                 key={p.project_id}
@@ -93,8 +104,7 @@ export default function ProjectsPage() {
                 onDelete={() => setDeleting(p.project_id)}
               />
             ))}
-          </SimpleGrid>
-        ) : null}
+        </SimpleGrid>
         {loaded && projects.length > 0 && shown.length === 0 && <Text ta="center" c="dimmed" py={60}>По вашему запросу презентаций нет. Измените название или фильтр.</Text>}
       </Container>
 

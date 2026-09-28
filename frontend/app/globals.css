@@ -478,20 +478,31 @@ body {
   padding: 12px 16px 14px;
 }
 
+/* Карточка «новая» — та же анатомия, что у карточек сетки (миниатюра 16:9 и подпись в три
+   строки), поэтому её размер не зависит от соседей: одна в пустой сетке, в ряду с карточками
+   или в одну колонку на телефоне она одинаковая. Отличие — пунктир и плюс вместо миниатюры. */
 .grid-card-new {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 100%;
-  cursor: pointer;
-  border: 1px dashed var(--line);
-  border-radius: var(--mantine-radius-lg);
-  background: var(--card);
+  border-style: dashed;
   color: var(--ink2);
   font: inherit;
   transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.grid-card-new .grid-card-thumb {
+  display: grid;
+  place-items: center;
+  border-bottom-style: dashed;
+}
+
+.grid-card-new .grid-card-new-face {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px dashed var(--line);
+  color: var(--ink2);
+  transition: border-color 140ms ease, color 140ms ease;
 }
 
 .grid-card-new:hover,
@@ -499,12 +510,38 @@ body {
   border-color: var(--accent);
   background: var(--sky);
   color: var(--accent);
+  box-shadow: none;
   outline: none;
 }
 
-/* Одна в пустой сетке карточка не тянется на высоту ряда и схлопывалась в полосу: квадрат. */
-.grid-card-new:only-child {
-  aspect-ratio: 1 / 1;
+.grid-card-new:hover .grid-card-thumb,
+.grid-card-new:focus-visible .grid-card-thumb {
+  background: transparent;
+  border-color: var(--accent);
+}
+
+.grid-card-new:hover .grid-card-new-face,
+.grid-card-new:focus-visible .grid-card-new-face {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Строка «статуса» у карточки «новая» — без точки: это не состояние, а подсказка. */
+.grid-card-new .quiet-status i { display: none; }
+
+.grid-card-new:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+/* Заглушка на время загрузки: без курсора и тени, не выглядит нажимаемой. */
+.grid-card-skeleton {
+  cursor: default;
+  pointer-events: none;
+}
+
+.grid-card-skeleton .grid-card-thumb {
+  background: transparent;
 }
 
 /* ---------- Редактор проекта ---------- */

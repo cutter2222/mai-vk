@@ -1,11 +1,12 @@
 "use client";
 
-import { Alert, Button, Container, SimpleGrid, Skeleton, Text } from "@mantine/core";
+import { Alert, Button, Container, Group, SimpleGrid, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconPlus } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { CardSkeleton } from "@/components/common/CardSkeleton";
 import { CatalogHeader } from "@/components/common/CatalogHeader";
 import { api, ApiError, type TemplateListItem } from "@/lib/api/client";
 
@@ -116,18 +117,28 @@ export function TemplateLibrary() {
           data-testid="template-file-input"
         />
         <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing="lg" data-testid="templates-grid">
+          {/* Та же анатомия, что у карточки шаблона: размер не меняется, одна она или в ряду. */}
           <button
             type="button"
-            className="grid-card-new"
+            className="grid-card grid-card-new"
             onClick={() => fileInput.current?.click()}
             disabled={adding}
             data-testid="new-template"
           >
-            <IconPlus size={26} stroke={1.6} />
-            <Text size="sm" fw={600}>{adding ? "Загружаю…" : "Добавить шаблон"}</Text>
-            <Text size="xs" c="dimmed">PPTX · автоматический анализ</Text>
+            <div className="grid-card-thumb"><span className="grid-card-new-face"><IconPlus size={28} stroke={1.6} /></span></div>
+            {/* Строки — те же, что в карточке шаблона (название, статус, дата с палитрой). */}
+            <div className="grid-card-body">
+              <Text fw={600} size="sm" truncate>{adding ? "Загружаю…" : "Добавить шаблон"}</Text>
+              <Group gap={6} wrap="nowrap" mt={5} style={{ minWidth: 0 }}>
+                <span className="quiet-status" style={{ fontSize: 12 }}><i />PPTX · автоматический анализ</span>
+              </Group>
+              <Group justify="space-between" mt="sm">
+                <Text size="xs" c="dimmed">Композиции, палитра, шрифты, правила</Text>
+                <div className="tpl-mini-palette" aria-hidden />
+              </Group>
+            </div>
           </button>
-          {!loaded && [0, 1, 2].map((key) => <Skeleton key={key} height={230} radius="lg" />)}
+          {!loaded && [0, 1, 2].map((key) => <CardSkeleton key={key} kind="template" />)}
           {shown.map((t) => (
             <TemplateCard key={t.template_id} item={t} onOpen={() => open(t.template_id)} onDelete={() => setDeleting(t)} />
           ))}
