@@ -123,8 +123,8 @@ export function PatternModal({ pattern, src, onClose }: { pattern: Pattern | nul
             ...(pattern.notes ? [["Заметка", pattern.notes] as [string, React.ReactNode]] : []),
           ]}
         />
-        <div style={{ overflowX: "auto" }}>
-          <Table fz="xs" verticalSpacing={4} striped highlightOnHover data-testid="slots-table">
+        <Table.ScrollContainer minWidth={720}>
+          <Table fz="xs" verticalSpacing={6} className="detail-table" highlightOnHover data-testid="slots-table">
             <Table.Thead>
               <Table.Tr>
                 <Table.Th style={{ whiteSpace: "nowrap" }}>Слот</Table.Th>
@@ -154,7 +154,7 @@ export function PatternModal({ pattern, src, onClose }: { pattern: Pattern | nul
               ))}
             </Table.Tbody>
           </Table>
-        </div>
+        </Table.ScrollContainer>
       </Stack>
     </Modal>
   );

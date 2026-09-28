@@ -7,7 +7,7 @@ import type { TemplateProfile } from "@/lib/api/types";
 import { api } from "@/lib/api/client";
 import { ASSET_KIND_LABELS, formatNumber } from "@/lib/format";
 
-import { countBy, FilterChips, KeyValues, Section } from "./common";
+import { countBy, FilterChips, KeyValues, Section, StatGrid } from "./common";
 
 const STAT_LABELS: Array<[keyof TemplateProfile["stats"], string]> = [
   ["slides", "Слайдов"],
@@ -36,7 +36,8 @@ export function StructureSection({ profile, templateId }: { profile: TemplatePro
     <Stack gap={28}>
       <Stack gap={28}>
         <Section title="Файл" testId="structure-stats">
-          <KeyValues rows={[...STAT_LABELS.filter(([k]) => profile.stats[k] != null).map(([k, label]) => [label, formatNumber(profile.stats[k] as number)] as [string, React.ReactNode]), ["Размер слайда", `${formatNumber(profile.slide_size.width_emu)} × ${formatNumber(profile.slide_size.height_emu)} EMU · ${profile.slide_size.aspect_ratio.toFixed(2)}:1`]]} />
+          <StatGrid items={STAT_LABELS.filter(([k]) => profile.stats[k] != null).map(([k, label]) => [label, formatNumber(profile.stats[k] as number)])} />
+          <Text size="xs" c="dimmed" mt="md">Размер слайда {formatNumber(profile.slide_size.width_emu)} × {formatNumber(profile.slide_size.height_emu)} EMU · {profile.slide_size.aspect_ratio.toFixed(2)}:1</Text>
         </Section>
         <Section title="Мастера" aside={<Text size="xs" c="dimmed">{profile.masters?.length ?? 0}</Text>} testId="structure-masters">
           {profile.masters?.length ? (
@@ -48,15 +49,15 @@ export function StructureSection({ profile, templateId }: { profile: TemplatePro
       </Stack>
 
       <Section title="Макеты" aside={<Text size="xs" c="dimmed">{profile.layouts.length}</Text>} testId="structure-layouts">
-        <div style={{ overflowX: "auto" }}>
-          <Table fz="xs" verticalSpacing={4} striped>
+        <Table.ScrollContainer minWidth={560}>
+          <Table fz="sm" verticalSpacing={6} className="detail-table">
             <Table.Thead>
               <Table.Tr><Table.Th>Макет</Table.Th><Table.Th>Мастер</Table.Th><Table.Th>Заполнители</Table.Th><Table.Th>Образцов</Table.Th></Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {profile.layouts.map((l) => (
                 <Table.Tr key={l.layout_id}>
-                  <Table.Td><Text size="xs" fw={500}>{l.name}</Text><Text size="xs" c="dimmed">{l.layout_id}</Text></Table.Td>
+                  <Table.Td><Text size="sm" fw={500}>{l.name}</Text><Text size="xs" c="dimmed">{l.layout_id}</Text></Table.Td>
                   <Table.Td c="dimmed">{l.master_id ? masters.get(l.master_id)?.name ?? l.master_id : "—"}</Table.Td>
                   <Table.Td c="dimmed">{l.placeholders.length ? l.placeholders.map((p) => `${p.type}${p.font?.size_pt ? ` ${p.font.size_pt}pt` : ""}`).join(", ") : "—"}</Table.Td>
                   <Table.Td c="dimmed">{l.sample_slide_count ?? 0}</Table.Td>
@@ -64,7 +65,7 @@ export function StructureSection({ profile, templateId }: { profile: TemplatePro
               ))}
             </Table.Tbody>
           </Table>
-        </div>
+        </Table.ScrollContainer>
       </Section>
 
       <Section title="Ресурсы" aside={<Text size="xs" c="dimmed">{profile.assets.length}</Text>} testId="structure-assets">

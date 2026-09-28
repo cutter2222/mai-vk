@@ -201,10 +201,11 @@ body {
   border-top: 1px solid var(--line);
 }
 
-.sketch-margin-grid {
+/* Плитка величин: крупное число, подпись под ним. Число колонок задаётся на месте. */
+.stat-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 14px 10px;
   margin-top: 8px;
 }
 
@@ -214,7 +215,7 @@ body {
 
 @media (max-width: 900px) {
   .sketch-row { grid-template-columns: minmax(0, 1fr); }
-  .sketch-margin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sketch-facts .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 }
 
 /* Таблицы в карточках шаблона: тихая шапка капителью, без внешней рамки. */
@@ -232,6 +233,18 @@ body {
 
 .detail-table td:last-child,
 .detail-table th:last-child { padding-right: 0; }
+
+/* Пары «подпись — значение»: подпись строки тихая, обычным регистром, фиксированной ширины. */
+.detail-kv th[scope="row"] {
+  width: 200px;
+  font-size: inherit;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink2);
+  white-space: nowrap;
+  vertical-align: top;
+}
 
 /* Сетка образцов и слайдов шаблона: кнопка-карточка с миниатюрой. */
 .sample-card {

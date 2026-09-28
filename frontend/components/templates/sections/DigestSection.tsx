@@ -1,8 +1,8 @@
 "use client";
 
-import { Alert, Anchor, Button, Group, Stack, Text } from "@mantine/core";
+import { Anchor, Button, Group, Stack, Table, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconAlertTriangle, IconCopy, IconExternalLink } from "@tabler/icons-react";
+import { IconCopy, IconExternalLink } from "@tabler/icons-react";
 import { useMemo } from "react";
 
 import { api } from "@/lib/api/client";
@@ -37,13 +37,22 @@ export function DigestSection({ profile }: { profile: TemplateProfile }) {
       </Section>
       <Section title="Предупреждения анализа" aside={<Text size="xs" c="dimmed">{profile.warnings?.length ?? 0}</Text>} testId="digest-warnings">
         {profile.warnings?.length ? (
-          <Stack gap={6}>
-            {profile.warnings.map((w, i) => (
-              <Alert key={i} color="yellow" icon={<IconAlertTriangle size={16} />} title={w.code} py={6}>
-                <Text size="sm">{w.message}{w.slide_index != null ? ` (слайд ${w.slide_index})` : ""}</Text>
-              </Alert>
-            ))}
-          </Stack>
+          <Table.ScrollContainer minWidth={480}>
+            <Table fz="sm" verticalSpacing={6} className="detail-table">
+              <Table.Thead>
+                <Table.Tr><Table.Th>Код</Table.Th><Table.Th>Сообщение</Table.Th><Table.Th>Слайд</Table.Th></Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {profile.warnings.map((w, i) => (
+                  <Table.Tr key={i}>
+                    <Table.Td style={{ whiteSpace: "nowrap" }}><Text size="xs" ff="monospace">{w.code}</Text></Table.Td>
+                    <Table.Td>{w.message}</Table.Td>
+                    <Table.Td c="dimmed">{w.slide_index != null ? w.slide_index : "—"}</Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
         ) : (
           <Text size="sm" c="dimmed">Анализ прошёл без предупреждений.</Text>
         )}

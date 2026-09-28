@@ -4,13 +4,15 @@ import { Group, Stack, Text, Title } from "@mantine/core";
 
 import type { TemplateProfile } from "@/lib/api/types";
 
+import { StatGrid } from "./common";
+
 /**
  * Дизайн-код загруженного файла: палитра, шрифты, шкала кеглей, пластика и поля.
  *
  * Отдельные визуальные блоки; шрифты на всю ширину, геометрия и шкала рядом.
  */
 export function DesignCodeSection({ profile }: { profile: TemplateProfile }) {
-  const { colors, typography, spacing } = profile.design_tokens;
+  const { colors, typography } = profile.design_tokens;
   const shape = (profile.design_tokens as { shape?: Record<string, number | string> }).shape;
 
   const palette = colors.palette.slice(0, 16);
@@ -20,7 +22,6 @@ export function DesignCodeSection({ profile }: { profile: TemplateProfile }) {
     .map((s) => s.size_pt)
     .filter((v, i, arr) => arr.indexOf(v) === i)
     .slice(0, 12);
-  const margins = spacing?.margins;
 
   return (
     <div className="tpl-design-grid">
@@ -74,7 +75,8 @@ export function DesignCodeSection({ profile }: { profile: TemplateProfile }) {
       </section>
 
       <section className="tpl-design-card">
-        <Title order={4} className="code-title">Пластика и поля</Title>
+        <Title order={4} className="code-title">Пластика</Title>
+        {/* Поля здесь не повторяются: они ниже, на эскизе слайда, с точными долями по сторонам. */}
         <Group gap={40} align="center" wrap="wrap">
           <div className="plastic-sample">
             <span
@@ -91,26 +93,12 @@ export function DesignCodeSection({ profile }: { profile: TemplateProfile }) {
               {shape?.card_geometry === "roundRect" ? "скруглённые плашки" : "прямые углы"}
             </Text>
           </div>
-          {margins ? (
-            <div className="margins-sample">
-              <span
-                style={{
-                  paddingTop: `${(margins.top ?? 0) * 100}%`,
-                  paddingRight: `${(margins.right ?? 0) * 100}%`,
-                  paddingBottom: `${(margins.bottom ?? 0) * 100}%`,
-                  paddingLeft: `${(margins.left ?? 0) * 100}%`,
-                }}
-              >
-                <i />
-              </span>
-              <Text size="xs" c="dimmed">
-                поля{" "}
-                {[margins.top, margins.right, margins.bottom, margins.left]
-                  .map((v) => `${Math.round((v ?? 0) * 100)}%`)
-                  .join(" · ")}
-              </Text>
-            </div>
-          ) : null}
+          <div style={{ flex: "1 1 220px", minWidth: 0 }}>
+            <StatGrid columns={2} items={[
+              ["обводка", `${Number(shape?.stroke_pt ?? 1) || 1} pt`],
+              ["плашек с тенью", `${Math.round(Number(shape?.shadow_share ?? 0) * 100)} %`],
+            ]} />
+          </div>
         </Group>
       </section>
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Group, Modal, Stack, Text, Title } from "@mantine/core";
+import { Button, Group, Modal, Table, Text, Title } from "@mantine/core";
 
 import { SlideImage } from "@/components/common/SlideImage";
 
@@ -17,17 +17,30 @@ export function Section({ title, aside, children, testId }: { title: React.React
   );
 }
 
-/** Пары «подпись — значение» в две колонки. */
+/** Пары «подпись — значение»: та же таблица, что и остальные на странице шаблона, без шапки. */
 export function KeyValues({ rows }: { rows: Array<[string, React.ReactNode]> }) {
   return (
-    <Stack gap={4}>
-      {rows.map(([k, v]) => (
-        <Group key={k} gap="sm" wrap="nowrap" align="baseline">
-          <Text size="xs" c="dimmed" style={{ flex: "0 0 160px" }}>{k}</Text>
-          <Text size="sm" style={{ minWidth: 0 }}>{v}</Text>
-        </Group>
+    <Table fz="sm" verticalSpacing={6} className="detail-table detail-kv">
+      <Table.Tbody>
+        {rows.map(([k, v]) => (
+          <Table.Tr key={k}>
+            <Table.Th scope="row">{k}</Table.Th>
+            <Table.Td>{v}</Table.Td>
+          </Table.Tr>
+        ))}
+      </Table.Tbody>
+    </Table>
+  );
+}
+
+/** Плитка величин: крупное число и подпись под ним — для полей слайда и статистики файла. */
+export function StatGrid({ items, columns }: { items: Array<[string, React.ReactNode]>; columns?: number }) {
+  return (
+    <div className="stat-grid" style={columns ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } : undefined}>
+      {items.map(([label, value]) => (
+        <div key={label}><Text size="lg" fw={600} lh={1.1}>{value}</Text><Text size="xs" c="dimmed">{label}</Text></div>
       ))}
-    </Stack>
+    </div>
   );
 }
 

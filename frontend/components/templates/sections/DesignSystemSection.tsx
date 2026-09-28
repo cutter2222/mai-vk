@@ -6,7 +6,7 @@ import { useState } from "react";
 import type { FixedElement, TemplateProfile } from "@/lib/api/types";
 import { DYNAMIC_FIELD_LABELS, FIXED_KIND_LABELS, formatRatio, GUIDELINE_KIND_LABELS } from "@/lib/format";
 
-import { countBy, Section } from "./common";
+import { countBy, Section, StatGrid } from "./common";
 
 const FIXED_PREVIEW = 12;
 
@@ -80,11 +80,7 @@ function FrameFacts({ profile }: { profile: TemplateProfile }) {
       <div className="sketch-fact">
         <Text size="xs" fw={600} c="dimmed" tt="uppercase">Поля</Text>
         {m ? (
-          <div className="sketch-margin-grid">
-            {([["слева", m.left], ["сверху", m.top], ["справа", m.right], ["снизу", m.bottom]] as const).map(([label, value]) => (
-              <div key={label}><Text size="lg" fw={600} lh={1.1}>{formatRatio(value)}</Text><Text size="xs" c="dimmed">{label}</Text></div>
-            ))}
-          </div>
+          <StatGrid columns={4} items={[["слева", formatRatio(m.left)], ["сверху", formatRatio(m.top)], ["справа", formatRatio(m.right)], ["снизу", formatRatio(m.bottom)]]} />
         ) : <Text size="sm" c="dimmed" mt={4}>Не определены: образцы не дают устойчивого отступа.</Text>}
         <Text size="xs" c="dimmed" mt={6}>Доля ширины и высоты слайда; внутри полей стоит содержание образцов.</Text>
       </div>
