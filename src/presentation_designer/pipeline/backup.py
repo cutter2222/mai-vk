@@ -230,9 +230,9 @@ def prune_backups(out_dir: pathlib.Path, keep: int) -> list[str]:
 
 
 def _redis(url: str) -> Any:
-    import redis
+    from presentation_designer.shared.valkey import connect
 
-    return redis.Redis.from_url(url)
+    return connect(url)
 
 
 def dump_valkey(url: str, dest: pathlib.Path) -> int:

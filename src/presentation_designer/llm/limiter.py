@@ -273,7 +273,7 @@ class ValkeyLimiter:
         """Клиент redis.asyncio привязан к циклу событий. Синхронные вызывающие (воркер, CLI)
         запускают asyncio.run несколько раз за процесс — перед операцией клиент пересоздаётся
         под текущий цикл, иначе освобождение аренды падало и аренда «утекала» до истечения TTL."""
-        import redis.asyncio as aioredis
+        from presentation_designer.shared.valkey import connect_async
 
         try:
             loop = asyncio.get_running_loop()
@@ -282,7 +282,7 @@ class ValkeyLimiter:
         if self._redis is not None and loop is self._loop:
             return
         self._loop = loop
-        self._redis = aioredis.Redis.from_url(self.url, socket_timeout=5)
+        self._redis = connect_async(self.url, socket_timeout=5)
         self._acquire = self._redis.register_script(ACQUIRE_LUA)
         self._release = self._redis.register_script(RELEASE_LUA)
         self._snapshot = self._redis.register_script(SNAPSHOT_LUA)

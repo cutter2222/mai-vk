@@ -167,11 +167,12 @@ class RQExecutor:
     name = "rq"
 
     def __init__(self, url: str, settings: Settings) -> None:
-        import redis
         from rq import Queue
 
+        from presentation_designer.shared.valkey import connect
+
         self.settings = settings
-        self.redis = redis.Redis.from_url(url)
+        self.redis = connect(url)
         self._queues: dict[str, Queue] = {}
         self._queue_cls = Queue
 
@@ -2584,9 +2585,8 @@ def renderer_check(
     """
     import tempfile
 
-    import redis
-
     from presentation_designer.export import pdf, thumbnails
+    from presentation_designer.shared.valkey import connect
 
     ok = False
     fixture = (
@@ -2615,7 +2615,7 @@ def renderer_check(
         log.error("нет фикстуры для проверки рендерера: %s", fixture)
     try:
         # Срок жизни отметки — неделя: после падения воркера ключ не остаётся навсегда.
-        redis.Redis.from_url(redis_url).set(
+        connect(redis_url).set(
             f"pd:renderer:{worker_name}", "ok" if ok else "fail", ex=7 * 24 * 3600
         )
     except Exception:

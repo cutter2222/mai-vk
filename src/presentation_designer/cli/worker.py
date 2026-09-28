@@ -23,12 +23,13 @@ from presentation_designer.pipeline.jobs import renderer_check, worker_name
 
 def healthcheck(url: str, queues: list[str] | None = None) -> int:
     """Require full identity, an expiring heartbeat and the expected queues."""
-    import redis
     from rq import Worker
+
+    from presentation_designer.shared.valkey import connect
 
     host = socket.gethostname()
     try:
-        connection = redis.Redis.from_url(url, socket_timeout=5, socket_connect_timeout=5)
+        connection = connect(url, socket_timeout=5)
         alive = [
             w.name
             for w in Worker.all(connection=connection)
@@ -74,18 +75,18 @@ def main(argv: list[str] | None = None) -> int:
     # без обработчика SIGTERM во время старта (импорты, проверка рендерера) игнорируется,
     # и docker stop ждёт всю грацию. RQ ставит свои обработчики уже в work().
     signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(128 + signum))
-    import redis
     from rq import Queue
 
     from presentation_designer.pipeline.worker import RegisteredWorker
     from presentation_designer.shared.settings import get_settings
+    from presentation_designer.shared.valkey import connect
 
     url = os.environ.get("PD_VALKEY_URL", "redis://localhost:6379/0")
     # Суффикс имени случайный, а не PID: в контейнере PID всегда 1, и после аварийного падения
     # новый процесс упирался бы в ещё живую регистрацию прежнего (RQ отказывает на дубликате
     # имени до истечения TTL ключа, около семи минут).
     name = args.name or f"{worker_name('-'.join(args.queues))}-{uuid.uuid4().hex[:6]}"
-    connection = redis.Redis.from_url(url)
+    connection = connect(url)
     forget_stale_workers(connection, name)
     if not args.skip_render_check:
         ok = renderer_check(url, name)
