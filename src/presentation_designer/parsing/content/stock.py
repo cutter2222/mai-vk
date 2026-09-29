@@ -154,7 +154,13 @@ def _attempts(query: str) -> list[str]:
 
 
 def _usable(result: JsonDict) -> bool:
-    """Современная альбомная фотография: не архив, не вектор, не портрет."""
+    """Современная альбомная фотография без водяного знака: не архив, не вектор, не портрет."""
+    url = str(result.get("url") or "")
+    if "rawpixel.com" in url and "://img.rawpixel.com/" not in url:
+        # images.rawpixel.com/editor_…, image_… — превью редактора и витрины rawpixel с
+        # водяным знаком (фото техника на слайде VK Tech, 29.09.2026); чистые оригиналы
+        # public domain лежат на img.rawpixel.com.
+        return False
     width, height = int(result.get("width") or 0), int(result.get("height") or 0)
     if not width or not height or width < height * MIN_ASPECT:
         return False

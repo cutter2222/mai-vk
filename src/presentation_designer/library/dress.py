@@ -134,6 +134,8 @@ def dress_slide(
         if b.get("kind") == "icon"
     }
     done: list[str] = []
+    if _keep_in_column(frame, composition, refs):
+        done.append("content_column")
     family = composition.family
     if family in CARD_FAMILIES:
         if _dress_cards(frame, composition, refs, card_ids, queries):
@@ -178,6 +180,83 @@ def dress_slide(
     ):
         done.append("title_mark")
     return done
+
+
+# ---------- колонка содержания ----------
+
+
+def _keep_in_column(frame: Frame, composition: Composition, refs: dict[str, str]) -> bool:
+    """Содержание — в колонке заголовка и над нижними элементами шаблона (29.09.2026).
+
+    У шаблона с декором сбоку (WorkSpace: полосы слева) заголовок и подводка встают правее
+    декора, а таблица, график или картинка оставались на всю ширину композиции — поверх
+    декора и логотипа в колонтитуле. Такие объекты сдвигаются к левому краю заголовка
+    (правый край на месте; у таблицы колонки сжимаются пропорционально) и поднимаются
+    над логотипом и надписями нижнего колонтитула (у таблицы уменьшаются строки)."""
+    title = frame.get(refs.get("title"))
+    own = {str(v) for v in refs.values()}
+    changed = False
+    texts = [
+        frame.get(refs.get(slot.slot_id))
+        for slot in composition.slots
+        if slot.kind in ("body", "bullets") and not slot.on_card
+    ]
+    # Таблица, график и картинка к отделке уже собраны на месте якорей и получили новые id:
+    # берутся по типу — крупные объекты слайда вне колонтитула.
+    area = frame.width * frame.height
+    visuals = [
+        s
+        for s in frame.slide.shapes
+        if (getattr(s, "has_table", False) or getattr(s, "has_chart", False)
+            or getattr(s, "shape_type", None) == 13)
+        and int(s.width) * int(s.height) > area * 0.08
+    ]  # fmt: skip
+    targets = [(None, s) for s in [*texts, *visuals]]
+    if title is not None:
+        left = int(title.left)
+        if left > int(frame.width * 0.2):
+            for _slot, shape in targets:
+                if shape is None or int(shape.left) >= left - int(frame.width * 0.01):
+                    continue
+                right = int(shape.left) + int(shape.width)
+                if right - left < int(frame.width * 0.25):
+                    continue
+                k = (right - left) / max(int(shape.width), 1)
+                shape.left, shape.width = left, right - left
+                if getattr(shape, "has_table", False):
+                    for column in shape.table.columns:
+                        column.width = int(int(column.width) * k)
+                changed = True
+    # Нижний предел — верх объектов шаблона в нижней пятой части слайда (логотип, подпись).
+    footers = [
+        s
+        for s in frame.slide.shapes
+        if str(s.shape_id) not in own
+        and int(s.top) > int(frame.height * 0.8)
+        and int(s.height) < int(frame.height * 0.15)
+    ]
+    for _slot, shape in targets:
+        if shape is None:
+            continue
+        x0, x1 = int(shape.left), int(shape.left) + int(shape.width)
+        below = [
+            int(f.top)
+            for f in footers
+            if int(f.left) < x1 and int(f.left) + int(f.width) > x0 and int(f.top) > int(shape.top)
+        ]
+        if not below:
+            continue
+        limit = min(below) - int(frame.height * 0.02)
+        bottom = int(shape.top) + int(shape.height)
+        if bottom <= limit or limit - int(shape.top) < int(frame.height * 0.15):
+            continue
+        k = (limit - int(shape.top)) / max(int(shape.height), 1)
+        shape.height = limit - int(shape.top)
+        if getattr(shape, "has_table", False):
+            for row in shape.table.rows:
+                row.height = int(int(row.height) * k)
+        changed = True
+    return changed
 
 
 # ---------- измерение текста ----------

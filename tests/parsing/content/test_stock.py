@@ -7,8 +7,10 @@ import pytest
 from presentation_designer.parsing.content import stock
 
 
-def _result(title: str, width: int = 1800, height: int = 1200, creator: str = "") -> dict:
-    return {"title": title, "width": width, "height": height, "creator": creator}
+def _result(
+    title: str, width: int = 1800, height: int = 1200, creator: str = "", url: str = ""
+) -> dict:
+    return {"title": title, "width": width, "height": height, "creator": creator, "url": url}
 
 
 @pytest.mark.parametrize(
@@ -21,6 +23,9 @@ def _result(title: str, width: int = 1800, height: int = 1200, creator: str = ""
         _result("Passengers waiting station 1941"),
         _result("Empty bus stop", width=711, height=1024),  # портрет обрежется до полосы
         _result("Bus stop", width=1200, height=1150),  # почти квадрат — тоже
+        # Превью rawpixel с водяным знаком.
+        _result("Technician", url="https://images.rawpixel.com/editor_1024/abc.jpg"),
+        _result("Technician", url="https://images.rawpixel.com/image_1300/abc.jpg"),
     ],
 )
 def test_archival_graphic_and_portrait_photos_are_rejected(result: dict) -> None:
@@ -33,6 +38,8 @@ def test_archival_graphic_and_portrait_photos_are_rejected(result: dict) -> None
         _result("Empty bus stop"),
         _result("Red city bus, public transportation", creator="Steven Lewis"),
         _result("Passengers at a modern tram station", width=2000, height=1300),
+        _result("Technician", url="https://img.rawpixel.com/s3fs-private/x.jpg?w=1200"),
+        _result("Office desk", url="https://cdn.stocksnap.io/img-thumbs/960w/x.jpg"),
     ],
 )
 def test_modern_landscape_photos_are_kept(result: dict) -> None:

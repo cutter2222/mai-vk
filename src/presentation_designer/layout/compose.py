@@ -2459,13 +2459,14 @@ def _sample_icons(ctx: _Context, slide: Any, record: SlideRecord, pinfo: Any) ->
             continue
         _replace_icons(ctx, slide, record, pairs, fallback=False)
     # Столбец иконок слева от пунктов списка (29.09.2026): у образца один и тот же значок
-    # повторён у каждого пункта — по смыслу пункта ставится свой. Разные иконки образца
-    # (дизайнер подобрал их к своим карточкам) остаются на месте.
+    # повторён у каждого пункта — по смыслу пункта ставится свой. Если все иконки образца
+    # разные (дизайнер подобрал их к своим карточкам), они остаются на месте.
     columns: dict[int, list[Any]] = {}
     for shape in candidates:
         columns.setdefault(round(int(shape.left) / ctx.slide_w * 50), []).append(shape)
     for column in columns.values():
-        if len(column) < 2 or len({_icon_signature(s) for s in column}) != 1:
+        # Повтор значка в столбце — заглушка образца; все разные — подбор дизайнера, остаются.
+        if len(column) < 2 or len({_icon_signature(s) for s in column}) == len(column):
             continue
         column.sort(key=lambda s: int(s.top))
         pairs = []
@@ -2684,7 +2685,12 @@ def _legible_sample_text(ctx: _Context, slide: Any, record: SlideRecord, pinfo: 
         shape = top_level.get(str(fill.element_id))
         if slot is None or shape is None or fill.content_source != "plan" or not fill.text:
             continue
-        if slot.kind not in ("body", "bullets", "caption") or len(str(fill.text)) < 60:
+        # Пункты и абзацы — всегда (порог длины давал пестроту: короткие пункты оставались
+        # красными рядом с белыми длинными); подпись — только длинная: короткая цветная
+        # подпись бывает приёмом образца.
+        if slot.kind not in ("body", "bullets", "caption"):
+            continue
+        if slot.kind == "caption" and len(str(fill.text)) < 60:
             continue
         if not getattr(shape, "has_text_frame", False):
             continue

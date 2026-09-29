@@ -119,6 +119,14 @@ job_0508ce60… VK Tech, job_efa06344… VK Education, job_221edc70… WorkSpace
 гайд GenOffice по дизайну колод: заполнять страницу, одна акцентная система, без декора,
 обложка с якорем, разные композиции подряд, фото по конкретной сцене или никакого.
 
+## Сдача (29.09.2026)
+
+Qwen недоступен (у токена openlux нет канала к модели, баланс OpenRouter ≈ $2,8), поэтому стенд
+и колоды для сдачи — на мосте к Claude (Sonnet). Девять колод: `uv run python
+scripts/live_quality.py submission --label <метка> --parallel 3` (≈15 мин на мосте) →
+`runs/quality/<метка>/submit-{edu,workspace,tech}/{compact,balanced,detailed}.{pptx,pdf,html}`;
+на стенде проекты «Сдача · <шаблон>». В `generation_meta` у моста лицензия «proprietary».
+
 ## Открытые задачи
 
 0. Оформление: белые пустые карточки образцов шаблона с одним абзацем (ЛЦТ «Результаты
