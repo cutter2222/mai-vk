@@ -342,7 +342,8 @@ test("fullscreen page waits for callback and poll recovery, then returns to the 
   const state = await setup(page);
   await page.goto("/project?id=office-ui-test");
   await editorReady(page);
-  // Выбор варианта сразу открывает его PPTX.
+  // Выбор варианта в выпадающем списке сразу открывает его PPTX.
+  await page.getByTestId("office-variants").click();
   await page.getByTestId("office-variant-balanced").click();
   await expect.poll(() => state.opened.at(-1)).toBe("balanced/r1/deck.pptx");
   await expect.poll(() => state.configs).toBe(2);

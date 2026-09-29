@@ -104,24 +104,30 @@ test("первый вариант открыт, остальные с загру
 
   await page.goto("/project?id=variants-test");
   await expect(page.getByTestId("preview-pane").locator("iframe")).toBeVisible();
+  // Выбор варианта — выпадающий список рядом с шаблоном: открыт первый собранный.
   const switcher = page.getByTestId("office-variants");
   await expect(switcher).toBeVisible();
+  await expect(switcher).toHaveAttribute("data-value", "balanced");
+  await expect(switcher).toContainText("Сбалансированный");
+  await switcher.click();
   await expect(page.getByTestId("office-variant-compact")).toHaveAttribute("data-state", "building");
   await expect(page.getByTestId("office-variant-detailed")).toHaveAttribute("data-state", "building");
-  await expect(switcher.locator('input[value="compact"]')).toBeDisabled();
-  await expect(switcher.locator('input[value="balanced"]')).toBeChecked();
+  await expect(page.getByTestId("office-variant-compact")).toBeDisabled();
+  await expect(page.getByTestId("office-variant-balanced")).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Escape");
   expect(opened).toEqual(["balanced/r1/deck.pptx"]);
 
   // «Компактный» доделался: становится доступен, но открытую презентацию не подменяет.
   ready.add("compact");
+  await switcher.click();
   await expect(page.getByTestId("office-variant-compact")).toHaveAttribute("data-state", "ready", { timeout: 10000 });
-  await expect(switcher.locator('input[value="balanced"]')).toBeChecked();
+  await expect(switcher).toHaveAttribute("data-value", "balanced");
   await expect(page.getByText("Доступна другая версия презентации")).toHaveCount(0);
   expect(opened).toEqual(["balanced/r1/deck.pptx"]);
 
   await page.getByTestId("office-variant-compact").click();
   await expect.poll(() => opened).toEqual(["balanced/r1/deck.pptx", "compact/r1/deck.pptx"]);
-  await expect(switcher.locator('input[value="compact"]')).toBeChecked();
+  await expect(switcher).toHaveAttribute("data-value", "compact");
   await expect(page.getByTestId("preview-pane").locator("iframe")).toBeVisible();
 });
 

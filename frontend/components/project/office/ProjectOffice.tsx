@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Button, Group, Loader, SegmentedControl, Text } from "@mantine/core";
+import { Alert, Button, Group, Text } from "@mantine/core";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { createPortal } from "react-dom";
@@ -8,9 +8,9 @@ import { notifications } from "@mantine/notifications";
 
 import { OfficeEditor, type OfficeEditHandle } from "@/components/office/OfficeEditor";
 import { OfficeLoading } from "@/components/office/OfficeLoading";
+import { VariantPicker } from "./VariantPicker";
 import { api, type OfficeApplySlide, type OfficeDocument, type OfficeObject, type TemplateDetail } from "@/lib/api/client";
 import type { LiveSelection } from "@/lib/editor/officeLive";
-import { VARIANT_LABELS } from "@/lib/format";
 import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
 import { setOpenDocument } from "@/lib/state/projects";
 import { slideNumbers } from "../chat/routeRunner";
@@ -270,26 +270,17 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
   // Отмечен вариант, чей PPTX открыт сейчас, а не выбранный в сессии: до переключения это одно.
   const shownVariant = source.jobId === session.jobId ? variants.find((v) => v.artifacts?.pptx === source.artifact) : undefined;
   const switcher = variants.length > 1 && (
-    <SegmentedControl size="xs" value={shownVariant?.variant_id ?? ""} onChange={switchVariant} data-testid="office-variants" aria-label="Вариант презентации"
-      data={variants.map((v) => {
-        const ready = Boolean(v.artifacts?.pptx);
-        const failed = v.status === "failed";
-        const label = VARIANT_LABELS[v.variant_id] ?? v.variant_id;
-        return {
-          value: v.variant_id,
-          disabled: !ready,
-          label: <Group gap={6} wrap="nowrap" title={ready ? label : failed ? `${label}: не собрался` : `${label}: собирается`} data-testid={`office-variant-${v.variant_id}`} data-state={ready ? "ready" : failed ? "failed" : "building"}>
-            {!ready && !failed && <Loader size={10} aria-label="собирается" />}
-            <span style={failed ? { textDecoration: "line-through" } : undefined}>{label}</span>
-          </Group>,
-        };
-      })} />
+    <VariantPicker
+      value={shownVariant?.variant_id ?? ""}
+      onChange={switchVariant}
+      options={variants.map((v) => ({ id: v.variant_id, ready: Boolean(v.artifacts?.pptx), failed: v.status === "failed" }))}
+    />
   );
 
   return <div className="project-office" data-testid="project-office">
     {switcher && (actionsTarget ? createPortal(switcher, actionsTarget) : <Group p="xs">{switcher}</Group>)}
     {templateId && <Text size="xs" c="dimmed" p="xs">Рабочая копия шаблона · ИИ-правки сохраняются только в этом проекте. Исходный шаблон не изменяется.</Text>}
-    {!session.terminal && variants.length > 1 && variants.some((v) => !v.artifacts?.pptx && v.status !== "failed") && <Text size="xs" c="dimmed" p="xs" role="status">Остальные варианты ещё собираются — их можно будет открыть переключателем вверху.</Text>}
+    {!session.terminal && variants.length > 1 && variants.some((v) => !v.artifacts?.pptx && v.status !== "failed") && <Text size="xs" c="dimmed" p="xs" role="status">Остальные варианты ещё собираются — их можно будет выбрать в списке вариантов вверху.</Text>}
     {changed && <Alert color="blue" title="Доступна другая версия презентации">
       Ручные и ИИ-правки остаются в текущем PPTX и не переносятся в другую сборку.
       <Button ml="sm" size="xs" disabled={!doc || Boolean(doc.active_key) || Boolean(doc.error) || Boolean(pollError)} onClick={() => { if (latest) open(latest); }}>Открыть выбранную версию</Button>
