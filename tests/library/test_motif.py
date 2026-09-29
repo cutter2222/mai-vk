@@ -106,7 +106,9 @@ def test_motif_fills_the_empty_side_behind_content() -> None:
     boxes = occupied(slide, W, H) or []
     others = [b for b in boxes if b != _frac(decor)]
     assert not any(_overlaps(_frac(decor), b) for b in others)
-    assert _frac(decor)[0] + _frac(decor)[2] >= 0.999, "мотив прижат к краю, как в шаблоне"
+    x, y, w, h = _frac(decor)
+    assert x + w >= 0.999, "мотив прижат к краю, как в шаблоне"
+    assert y <= 0.001 or y + h >= 0.999, "и держится за угол, а не висит посередине края"
     assert int(body.top) < int(decor.top) + int(decor.height)
     # Прозрачность запечена в картинку: бледно, но видно.
     with Image.open(io.BytesIO(decor.image.blob)) as img:
@@ -184,3 +186,31 @@ def test_pattern_goes_further_off_edge_than_a_whole_figure() -> None:
     assert place_motif(slide, pattern, width=W, height=H, backdrop=1.0)
     decor = next(s for s in slide.shapes if s.name == NAME)
     assert _frac(decor)[0] >= 0.83 + 0.02
+
+
+def test_gradient_only_picture_is_not_a_motif() -> None:
+    """Картинка из одного полупрозрачного свечения — не мотив: на слайде вышло бы пятно."""
+    prs = Presentation()
+    prs.slide_width, prs.slide_height = Emu(W), Emu(H)
+    source = prs.slides.add_slide(prs.slide_layouts[6])
+    img = Image.new("RGBA", (400, 400), (0, 0, 0, 0))
+    glow = Image.linear_gradient("L").resize((400, 400)).point(lambda v: v // 3)
+    img.putalpha(glow)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    picture = source.shapes.add_picture(buf, 0, 0)
+    part = source.part.related_part(picture._element.xpath(".//a:blip/@r:embed")[0])
+    profile = {
+        "assets": [
+            {
+                "asset_id": "asset_1",
+                "kind": "image",
+                "media_path": str(part.partname).lstrip("/"),
+                "sha256": "x",
+                "tags": ["decor", "decor:8"],
+                "bbox_on_source": {"x": 0.7, "y": 0.0, "width": 0.3, "height": 1.0},
+            }
+        ]
+    }
+    assert motifs_for(profile, prs) == []

@@ -11,9 +11,15 @@
 * свободное место считается по тексту, а не по рамкам: рамка списка тянется до низа, а текст
   занимает её верх; плашки, таблицы, графики, картинки и объекты макета (логотип,
   колонтитул) занимают место целиком, с полем;
+* мотив держится за угол слайда (касается двух краёв), а не висит посередине края;
+* на всю колоду — один мотив, один угол и один размер, как колонтитул (`plan_deck`):
+  положение, которое помещается на большинстве слайдов; где не помещается — слайд без
+  мотива, а не мотив в другом месте;
 * мотив выдвигается из-за края ровно настолько, чтобы не задеть содержание: узор может
   уйти за край больше чем наполовину, цельная фигура — не больше чем на пятую часть, и на
   слайде должна остаться почти вся её плотная часть (без свечения вокруг);
+* мотив целиком из полупрозрачного (градиент, свечение, тень) не берётся: на бледном слайде
+  от него остаётся размытое пятно;
 * заметность, а не прозрачность: мотив берётся лучший по оценке из заметных на этом фоне
   (белый узор на белом не ставится), непрозрачность подбирается по разнице светлоты с фоном;
 * обрезка и прозрачность запекаются в PNG: слайд одинаково выглядит в ONLYOFFICE,
@@ -51,7 +57,7 @@ OPACITY = (0.08, 0.25)
 MIN_SHARE = {True: 0.05, False: 0.1}
 MAX_SHARE = 0.4
 # Поле между мотивом и содержанием.
-MARGIN = 0.04
+MARGIN = 0.06
 # Размер мотива: высота у бокового края в долях высоты слайда (у верхнего и нижнего края —
 # 0,6 от неё).
 SCALES = (1.2, 1.0, 0.85, 0.7, 0.55, 0.42)
@@ -62,12 +68,17 @@ KEPT = {True: 0.25, False: 0.85}
 STEP = 0.05
 # Видимая часть должна быть графикой, а не прозрачной пустотой картинки.
 MIN_INK = 0.12
+# Положение мотива на колоду: не меньше такой доли от лучшего покрытия слайдов, дальше — крупнее.
+COVERAGE = 0.7
 # Объект макета без текста крупнее этого — у макета свой декор; картинка слайда крупнее
 # этого — фото или иллюстрация, якорь у слайда уже есть.
 OWN_DECOR = 0.06
 PHOTO = 0.12
 MAX_PX = 1400
 EMU_PT = 12700
+# Доля плотных пикселей среди нарисованных: ниже — картинка целиком полупрозрачная (градиент,
+# свечение, тень), на бледном слайде от неё остаётся размытое пятно, а не мотив.
+MIN_SOLID = 0.5
 # Карта границ картинок-фонов: панели и карточки, нарисованные прямо в фоне макета (VK Tech),
 # структура файла не видит — мотив не встаёт туда, где у фона есть границы.
 EDGE_MAP = (192, 108)
@@ -135,6 +146,9 @@ def motifs_for(profile: JsonDict, prs: Any) -> list[Motif]:
         drawn = alpha.point(lambda a: 255 if a > 16 else 0)
         if not drawn.getbbox():
             continue
+        solid = alpha.point(lambda v: 255 if v > 128 else 0)
+        if solid.histogram()[255] < MIN_SOLID * drawn.histogram()[255]:
+            continue
         r, g, b, a = ImageStat.Stat(small, mask=drawn).mean
         color = f"#{round(r):02X}{round(g):02X}{round(b):02X}"
         out.append(
@@ -142,7 +156,7 @@ def motifs_for(profile: JsonDict, prs: Any) -> list[Motif]:
                 image,
                 _edge(asset.get("bbox_on_source") or {}),
                 alpha,
-                alpha.point(lambda v: 255 if v > 128 else 0),
+                solid,
                 score=_score(asset),
                 croppable=CROP_TAG in (asset.get("tags") or []),
                 lightness=_lightness(relative_luminance(color)),
@@ -368,21 +382,23 @@ def _hits(a: Box, b: Box, pad: float) -> bool:
 
 
 def _slides(motif: Motif, ratio: float) -> list[tuple[str, list[Box]]]:
-    """Для каждого края, размера и места вдоль края — положения мотива от наименьшего выхода
-    за край к наибольшему. `ratio` — высота слайда к ширине: доли по осям разные."""
+    """Для каждого края, размера и угла — положения мотива от наименьшего выхода за край к
+    наибольшему. Мотив всегда держится за угол слайда (касается двух краёв): посередине края
+    — внизу по центру под текстом или сбоку посередине — он выглядит брошенным, а не
+    задуманным. `ratio` — высота слайда к ширине: доли по осям разные."""
     low, high = BLEED[motif.croppable]
     bleeds = [low + STEP * i for i in range(round((high - low) / STEP) + 1)]
     out: list[tuple[str, list[Box]]] = []
     for s in SCALES:
         mh, mw = s, s * motif.aspect * ratio
         if mw <= 0.8:
-            for y in (1 - mh * 0.9, (1 - mh) / 2, -mh * 0.1):
+            for y in (1 - mh * 0.9, -mh * 0.1):
                 out.append(("right", [(1 - mw * (1 - b), y, mw, mh) for b in bleeds]))
                 out.append(("left", [(-mw * b, y, mw, mh) for b in bleeds]))
         mh = s * 0.6
         mw = mh * motif.aspect * ratio
         if motif.croppable and mw <= 1.0:
-            for x in (1 - mw * 0.9, (1 - mw) / 2, -mw * 0.1):
+            for x in (1 - mw * 0.9, -mw * 0.1):
                 out.append(("bottom", [(x, 1 - mh * (1 - b), mw, mh) for b in bleeds]))
                 out.append(("top", [(x, -mh * b, mw, mh) for b in bleeds]))
     return out
@@ -408,57 +424,138 @@ def _masked(mask: Any, rect: Box, visible: Box) -> tuple[float, float]:
     return density, (float(ImageStat.Stat(part).sum[0]) / total if total else 0.0)
 
 
+def _fits(motif: Motif, rect: Box, boxes: list[Box], edges: Any | None) -> tuple[float, Box] | None:
+    """Видимая часть мотива в этом положении и её оценка, если содержание не задето."""
+    solid = motif.solid if motif.solid is not None and motif.solid.getbbox() else motif.alpha
+    visible = _clip(rect)
+    if visible is None or any(_hits(visible, box, MARGIN) for box in boxes):
+        return None
+    if not _calm(edges, visible):
+        return None
+    share = visible[2] * visible[3]
+    ink, _ = _masked(motif.alpha, rect, visible)
+    _, kept = _masked(solid, rect, visible)
+    if (
+        MIN_SHARE[motif.croppable] <= share <= MAX_SHARE
+        and ink >= MIN_INK
+        and kept >= KEPT[motif.croppable]
+    ):
+        return share * min(ink * 2, 1.0), visible
+    return None
+
+
 def best_place(
     motif: Motif, boxes: list[Box], ratio: float, edges: Any | None = None
 ) -> tuple[Box, Box] | None:
     """Положение мотива (целиком и видимая часть) с наибольшей видимой графикой, не задевающее
     содержание; край мотива в шаблоне в приоритете. None — места нет."""
-    solid = motif.solid if motif.solid is not None and motif.solid.getbbox() else motif.alpha
     best: tuple[float, Box, Box] | None = None
     for edge, positions in _slides(motif, ratio):
         for rect in positions:
-            visible = _clip(rect)
-            if visible is None or any(_hits(visible, box, MARGIN) for box in boxes):
-                continue
-            if not _calm(edges, visible):
+            found = _fits(motif, rect, boxes, edges)
+            if found is None:
                 continue
             # Наименьший выход за край, при котором содержание не задето, — дальше мотив
             # только меньше виден.
-            share = visible[2] * visible[3]
-            ink, _ = _masked(motif.alpha, rect, visible)
-            _, kept = _masked(solid, rect, visible)
-            if (
-                MIN_SHARE[motif.croppable] <= share <= MAX_SHARE
-                and ink >= MIN_INK
-                and kept >= KEPT[motif.croppable]
-            ):
-                score = share * min(ink * 2, 1.0) * (1.3 if edge == motif.edge else 1.0)
-                if best is None or score > best[0]:
-                    best = (score, rect, visible)
+            score = found[0] * (1.3 if edge == motif.edge else 1.0)
+            if best is None or score > best[0]:
+                best = (score, rect, found[1])
             break
     return (best[1], best[2]) if best else None
+
+
+@dataclass
+class SlideRoom:
+    """Слайд колоды, которому нужен мотив: его содержание и фон."""
+
+    slide: Any
+    backdrop: float
+    boxes: list[Box]
+    edges: Any | None = None
+
+
+def plan_deck(
+    motifs: list[Motif], rooms: list[SlideRoom], ratio: float
+) -> tuple[Motif, Box, list[SlideRoom]] | None:
+    """Один мотив, один угол и один размер на всю колоду — как колонтитул: положение, которое
+    помещается на наибольшем числе слайдов (при равенстве — крупнее и у края мотива в
+    шаблоне). Слайды, где оно не помещается, остаются без мотива: мотив в другом месте или
+    другого размера ломает ритм колоды. None — мотива нет или он не помещается нигде."""
+    if not rooms:
+        return None
+    # При равной оценке — самая заметная на фоне колоды расцветка: цельный узор, а не версия,
+    # где часть форм белая и на белом от неё остаются клочки.
+    typical = sorted(r.backdrop for r in rooms)[len(rooms) // 2]
+    ranked = sorted(motifs, key=lambda m: (-m.score, -m.contrast(typical)))
+    fallback: tuple[int, float, Motif, Box, list[SlideRoom]] | None = None
+    for motif in ranked:
+        able = [r for r in rooms if motif.contrast(r.backdrop) >= MIN_CONTRAST]
+        if not able:
+            continue
+        options: list[tuple[int, float, float, Box, list[SlideRoom]]] = []
+        for edge, positions in _slides(motif, ratio):
+            for rect in positions:
+                fits = [r for r in able if _fits(motif, rect, r.boxes, r.edges) is not None]
+                if not fits:
+                    continue
+                visible = _clip(rect)
+                share = visible[2] * visible[3] if visible else 0.0
+                options.append((len(fits), 1.0 if edge == motif.edge else 0.0, share, rect, fits))
+        if not options:
+            continue
+        # Крупный мотив на большинстве слайдов лучше мелкого на всех: среди положений, что
+        # покрывают не меньше COVERAGE от лучшего покрытия, берётся самое крупное.
+        most = max(o[0] for o in options)
+        wide = [o for o in options if o[0] >= COVERAGE * most]
+        count, _own, share, rect, fits = max(wide, key=lambda o: (o[2], o[1], o[0]))
+        if count * 2 >= len(able):
+            return motif, rect, fits
+        if fallback is None or (count, share) > fallback[:2]:
+            fallback = (count, share, motif, rect, fits)
+    # Ни один мотив не покрыл половину слайдов: тот, что покрыл больше всех.
+    return fallback[2:] if fallback else None
+
+
+def room_of(slide: Any, *, width: int, height: int, backdrop: float) -> SlideRoom | None:
+    """Место слайда для мотива; None — слайду мотив не нужен (свой декор или фото)."""
+    boxes = occupied(slide, width, height)
+    if boxes is None:
+        return None
+    return SlideRoom(slide, backdrop, boxes, background_edges(slide, width, height))
+
+
+def place_deck(
+    motifs: list[Motif], rooms: list[SlideRoom], *, width: int, height: int
+) -> list[Any]:
+    """Ставит мотив колоды на все слайды, где он помещается; возвращает эти слайды."""
+    planned = plan_deck(motifs, rooms, height / width)
+    if planned is None:
+        return []
+    motif, rect, fits = planned
+    visible = _clip(rect)
+    if visible is None:
+        return []
+    for room in fits:
+        _draw(
+            room.slide,
+            motif,
+            rect,
+            visible,
+            width=width,
+            height=height,
+            opacity=motif.opacity(room.backdrop),
+        )
+    return [room.slide for room in fits]
 
 
 def place_motif(
     slide: Any, motifs: list[Motif], *, width: int, height: int, backdrop: float
 ) -> bool:
-    """Ставит мотив на пустоту слайда под всё содержание: лучший по оценке из заметных на фоне
-    яркости `backdrop`, которому нашлось место. False — места нет или мотив не нужен."""
-    boxes = occupied(slide, width, height)
-    if boxes is None:
+    """Мотив на одном слайде (колода из одного слайда — та же логика, что `place_deck`)."""
+    room = room_of(slide, width=width, height=height, backdrop=backdrop)
+    if room is None:
         return False
-    # При равной оценке — самая заметная расцветка: цельный узор, а не версия, где часть форм
-    # белая и на белом от неё остаются клочки.
-    ranked = sorted(motifs, key=lambda m: (-m.score, -m.contrast(backdrop)))
-    edges = background_edges(slide, width, height)
-    for motif in ranked:
-        if motif.contrast(backdrop) < MIN_CONTRAST:
-            continue
-        found = best_place(motif, boxes, height / width, edges)
-        if found is not None:
-            _draw(slide, motif, *found, width=width, height=height, opacity=motif.opacity(backdrop))
-            return True
-    return False
+    return bool(place_deck(motifs, [room], width=width, height=height))
 
 
 def _draw(
@@ -498,9 +595,13 @@ def _draw(
 __all__ = [
     "NAME",
     "Motif",
+    "SlideRoom",
     "background_edges",
     "best_place",
     "motifs_for",
     "occupied",
+    "place_deck",
     "place_motif",
+    "plan_deck",
+    "room_of",
 ]

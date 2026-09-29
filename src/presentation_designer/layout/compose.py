@@ -98,7 +98,7 @@ from presentation_designer.library import iconset
 from presentation_designer.library.build import build_slide as build_builtin_slide
 from presentation_designer.library.build import slide_backdrop
 from presentation_designer.library.dress import dress_slide, look_for
-from presentation_designer.library.motif import Motif, motifs_for, place_motif
+from presentation_designer.library.motif import Motif, SlideRoom, motifs_for, place_deck, room_of
 from presentation_designer.library.skin import Skin, template_skin
 from presentation_designer.library.spec import find_composition
 from presentation_designer.library.tokens import DesignCode
@@ -205,6 +205,8 @@ class _Context:
     skins: dict[str, Skin] = field(default_factory=dict)
     # Фоновые мотивы шаблона (`library/motif.py`): None — ещё не искали.
     motifs: list[Motif] | None = None
+    # Слайды, ждущие мотив колоды: ставится одним решением после сборки всех слайдов.
+    motif_rooms: list[SlideRoom] = field(default_factory=list)
     # Текст, не вошедший на текущий слайд даже на минимальном кегле: уходит в заметки.
     spill: list[str] = field(default_factory=list)
     # Оставшиеся карточки однорядной сетки расходятся на всю ширину ряда (`_reflow_cards`);
@@ -2883,26 +2885,40 @@ MOTIF_SKIP = frozenset(
 
 
 def _decor_motif(ctx: _Context, slide: Any, backdrop: float | None) -> bool:
-    """Фоновый мотив шаблона на пустоте слайда (`library/motif.py`); `backdrop` — яркость фона
-    слайда, None — неизвестна, мотив не ставится."""
+    """Слайд встаёт в очередь на мотив шаблона (`library/motif.py`); `backdrop` — яркость его
+    фона, None — неизвестна, мотива не будет. Сам мотив ставится на всю колоду разом
+    (`_place_motifs`), чтобы угол и размер были одни на всех слайдах."""
     if backdrop is None:
         return False
     if ctx.motifs is None:
         ctx.motifs = motifs_for(ctx.profile, ctx.prs)
     if not ctx.motifs:
         return False
-    before = set(slide.shapes._spTree)
-    placed = place_motif(
-        slide,
+    room = room_of(
+        slide, width=int(ctx.prs.slide_width), height=int(ctx.prs.slide_height), backdrop=backdrop
+    )
+    if room is None:
+        return False
+    ctx.motif_rooms.append(room)
+    return True
+
+
+def _place_motifs(ctx: _Context) -> int:
+    """Мотив колоды на всех слайдах из очереди; возвращает число слайдов с мотивом."""
+    if not ctx.motifs or not ctx.motif_rooms:
+        return 0
+    before = {id(r.slide): set(r.slide.shapes._spTree) for r in ctx.motif_rooms}
+    placed = place_deck(
         ctx.motifs,
+        ctx.motif_rooms,
         width=int(ctx.prs.slide_width),
         height=int(ctx.prs.slide_height),
-        backdrop=backdrop,
     )
-    for element in list(slide.shapes._spTree):
-        if element not in before:
-            ctx.fresh_ids(element)
-    return placed
+    for slide in placed:
+        for element in list(slide.shapes._spTree):
+            if element not in before[id(slide)]:
+                ctx.fresh_ids(element)
+    return len(placed)
 
 
 def _dress_builtin(ctx: _Context, slide: Any, meta: _BuiltinSlide, plan_slide: JsonDict) -> None:
@@ -2926,11 +2942,9 @@ def _dress_builtin(ctx: _Context, slide: Any, meta: _BuiltinSlide, plan_slide: J
         blocks=list(plan_slide.get("blocks") or []),
         title_decor=meta.title_decor,
     )
-    # Обложка, разделы и финал держатся на своём якоре; остальным — мотив шаблона на пустоте.
-    if meta.composition.family not in MOTIF_SKIP and _decor_motif(
-        ctx, slide, relative_luminance(meta.backdrop)
-    ):
-        done.append("decor_motif")
+    # Обложка, разделы и финал держатся на своём якоре; остальные ждут мотив колоды.
+    if meta.composition.family not in MOTIF_SKIP:
+        _decor_motif(ctx, slide, relative_luminance(meta.backdrop))
     # Новые фигуры отделки не занимают id удалённых объектов (python-pptx заполняет пропуски).
     for element in list(slide.shapes._spTree):
         if element not in before:
@@ -3132,11 +3146,13 @@ def compose_deck(
                 luminance = tone.get("luminance")
                 if luminance is None and tone.get("background") in ("light", "dark"):
                     luminance = 0.9 if tone.get("background") == "light" else 0.05
-                if _decor_motif(ctx, clone, luminance):
-                    ctx.count("sample_decor_motif")
+                _decor_motif(ctx, clone, luminance)
     timings["clone_fill_ms"] = int((time.perf_counter() - t0) * 1000)
     if not new_slides:
         raise ComposeError("compose_plan_empty", "в плане нет слайдов")
+    placed = _place_motifs(ctx)
+    if placed:
+        ctx.count("decor_motif", placed)
     swaps: list[chart_images.ChartSwap] = []
     if preserve and composites:
         # Готовая презентация: диаграммы из фигур слайда → нативные, до картинок — как в
