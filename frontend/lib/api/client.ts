@@ -136,6 +136,8 @@ export interface HealthResponse {
   valkey_ok: boolean;
   renderer_ok: boolean;
   version: string;
+  /** Выложенная версия: тег образа (в конце — время сборки, UTC) и commit. */
+  release?: { image_tag?: string | null; commit?: string | null; schema?: number | null };
   /** Какие слои работают по-настоящему, а какие пока заглушки. */
   execution_mode?: { mode: "real" | "mixed" | "stub"; layers: Record<string, string> };
   /** Провайдер модели и роли: что именно отвечает за текст и за картинки. */
