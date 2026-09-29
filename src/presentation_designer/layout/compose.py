@@ -2575,7 +2575,7 @@ def _legible_sample_text(ctx: _Context, slide: Any, record: SlideRecord, pinfo: 
                     continue  # цвет темы или наследуемый — не трогаем
                 value = str(color.rgb).upper()
                 if value in accents or _saturated(value):
-                    run.font.color.rgb = RGBColor.from_string(target.lstrip("#"))
+                    run.font.color.rgb = RGBColor.from_string(target.lstrip("#").upper())  # type: ignore[no-untyped-call]
                     changed = True
         if changed:
             ctx.count("sample_text_recolored")
