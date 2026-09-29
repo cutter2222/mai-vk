@@ -82,7 +82,12 @@ def substitute_facts(text: str, facts: dict[str, JsonDict]) -> str:
         fact = facts.get(m.group(1))
         return fact_text(fact) if fact else m.group(0)
 
-    return FACT_REF.sub(repl, text)
+    out = FACT_REF.sub(repl, text)
+    # Оборванный маркер («… с {fact» после обрезки текста) на слайд не попадает никогда.
+    return _BROKEN_REF.sub("", out).rstrip() if "{fact" in out else out
+
+
+_BROKEN_REF = re.compile(r"\s*\{fact(?::[\w-]*)?(?![\w:-]*\})")
 
 
 def number_format(fact: JsonDict) -> str:

@@ -1163,6 +1163,21 @@ def _without_notice(text: str, notice: str) -> str:
     return re.sub(r"\s+", " ", pattern.sub(" ", text)).strip(" ;:,")
 
 
+_PLACEHOLDER_TEXT = re.compile(
+    r"^(?:test(?:\s+text)?|тест(?:овый текст)?|lorem ipsum.*|todo|tbd|xxx+|placeholder|"
+    r"заглушка|текст|title|заголовок|sample(?:\s+text)?)[.!]?$",
+    re.IGNORECASE,
+)
+
+
+def _placeholder_answer(raw: JsonDict) -> bool:
+    """Заголовок или текст слайда из ответа модели — заглушка, а не содержание."""
+    texts = [raw.get("title"), raw.get("text"), raw.get("message")] + [
+        it.get("text") if isinstance(it, dict) else it for it in raw.get("items") or []
+    ]
+    return any(isinstance(t, str) and _PLACEHOLDER_TEXT.match(" ".join(t.split())) for t in texts)
+
+
 def drafts_from_answer(
     ctx: Context, packet: Packet, answer: JsonDict, *, content_first: bool = False
 ) -> list[Draft]:
@@ -1179,6 +1194,11 @@ def drafts_from_answer(
         title = _clean(raw.get("title"), 200)
         if not title:
             raise ValueError("у каждого слайда нужен непустой title")
+        if _placeholder_answer(raw):
+            # Модель иногда отвечает на повтор заглушкой («Test», «Test text», «lorem»):
+            # такой ответ — отказ, после повторов слайд собирается без модели (29.09.2026:
+            # слайд «Test» дошёл до колоды для сдачи).
+            raise ValueError(f"слайд «{title[:40]}»: текст-заглушка вместо содержания")
         theses = [str(t) for t in (raw.get("theses") or []) if str(t) in packet_ids]
         if not theses:
             # Слайд о тезисе чужого пакета (чаще вывод, сославшийся на тезис колоды):
@@ -2649,7 +2669,9 @@ def _heading_from(ctx: Context, slot: SlotInfo, text: str) -> str:
     """Заголовок карточки из её текста: целиком, до первого знака препинания или первые
     слова — что помещается в слот; пустая строка, если не помещается ничего."""
     candidates = [text]
-    clause = re.split(r"[:;,.!?—–(]", text, maxsplit=1)[0].strip()
+    # Двоеточие внутри маркера факта «{fact:f3}» — не граница фразы: заголовок карточки
+    # обрывался на «{fact» (29.09.2026, колода для сдачи).
+    clause = re.split(r"(?<!\{fact)[:;,.!?—–(]", text, maxsplit=1)[0].strip()
     if clause and clause != text:
         candidates.append(clause)
     words = text.split()
@@ -2657,6 +2679,8 @@ def _heading_from(ctx: Context, slot: SlotInfo, text: str) -> str:
         if len(words) > n:
             candidates.append(" ".join(words[:n]))
     for c in candidates:
+        if c.count("{") != c.count("}"):
+            continue
         substituted = cap.substitute_facts(c, ctx.facts)
         if substituted and _fits_slot(ctx, slot, substituted):
             return c
@@ -3830,7 +3854,11 @@ def assemble(ctx: Context, structure: Structure, packet_drafts: list[list[Draft]
     _drop_overflowing_optional(title_draft)
     drafts: list[Draft] = [title_draft]
     if structure.agenda_pattern is not None:
-        drafts.append(fit_draft(ctx, _agenda_draft(ctx, structure)))
+        agenda = fit_draft(ctx, _agenda_draft(ctx, structure))
+        if _agenda_filled(agenda):
+            drafts.append(agenda)
+        else:
+            ctx.fix("agenda_empty", "оглавление без пунктов не ставится: композиция их не вмещает")
     content: list[Draft] = [d for pack in packet_drafts for d in pack]
     # Порядок по первому тезису; разделители перед первым слайдом раздела.
     order = {t.id: t.order for t in ctx.theses}
@@ -4395,8 +4423,19 @@ def _add_agenda(
     if p is None or len(structure.sections) < 2:
         return False
     structure.agenda_pattern = p
-    deck.insert(1, fit_draft(ctx, _agenda_draft(ctx, structure)))
+    agenda = fit_draft(ctx, _agenda_draft(ctx, structure))
+    if not _agenda_filled(agenda):
+        ctx.fix("agenda_empty", "оглавление без пунктов не ставится: композиция их не вмещает")
+        return False
+    deck.insert(1, agenda)
     return True
+
+
+def _agenda_filled(draft: Draft) -> bool:
+    """В оглавление встал хотя бы один пункт (29.09.2026): у образца-оглавления из карточек
+    «номер + название» пункты могли не лечь, и в колоде оставался слайд «Содержание» с одним
+    заголовком."""
+    return any(b.get("kind") != "title" and (b.get("text") or b.get("items")) for b in draft.blocks)
 
 
 def _split_one(ctx: Context, deck: list[Draft], *, min_items: int = 4) -> bool:
