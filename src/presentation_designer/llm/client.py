@@ -554,12 +554,18 @@ def model_refs(models: ModelsConfig | None = None) -> list[JsonDict]:
         ref: JsonDict = {"role": role_name, "name": role.model}
         if role.provider:
             ref["provider"] = role.provider
-        if role.hf_url:
-            ref["hf_url"] = role.hf_url
-        if role.params_b is not None:
-            ref["params_b"] = role.params_b
-        if role.license:
-            ref["license"] = role.license
+        provider = models.providers.get(role.provider or "")
+        if provider is not None and not provider.open_weights:
+            # Роль переключена на закрытую модель разработки: карточка открытой модели роли
+            # (Qwen, Apache-2.0, 27B) её не описывает и в результат не пишется.
+            ref["license"] = "proprietary"
+        else:
+            if role.hf_url:
+                ref["hf_url"] = role.hf_url
+            if role.params_b is not None:
+                ref["params_b"] = role.params_b
+            if role.license:
+                ref["license"] = role.license
         if role.reasoning.mode:
             ref["reasoning_mode"] = role.reasoning.mode
         out.append(ref)

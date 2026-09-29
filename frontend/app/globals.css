@@ -2470,3 +2470,31 @@ body {
   background: var(--card);
 }
 
+/* Версии скиллов в подробностях задания: имя и версия в две колонки. */
+.job-version-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 2px 12px;
+  margin-top: 6px;
+}
+
+.job-version-grid span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.job-version-grid i {
+  font-style: normal;
+  color: var(--ink2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.job-version-grid b {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+

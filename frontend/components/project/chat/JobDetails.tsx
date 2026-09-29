@@ -45,6 +45,39 @@ export function JobDetails({ result }: { result: GenerationResult }) {
       </Group>
 
       <MetricsPanel result={result} />
+      <Versions versions={result.versions} />
+    </div>
+  );
+}
+
+/**
+ * Чем сделан результат (29.09.2026): модель и версии скиллов задания. Скиллы и промпты
+ * версионируются в репозитории (`skills/<name>/skill.yaml`); по этому списку видно, что
+ * новая версия скилла дала другой результат.
+ */
+function Versions({ versions }: { versions?: GenerationResult["versions"] }) {
+  if (!versions) return null;
+  const models = versions.models ?? [];
+  const skills = [...(versions.skills ?? [])].sort((a, b) => a.name.localeCompare(b.name));
+  return (
+    <div className="job-versions" data-testid="job-versions">
+      <Text size="xs" fw={600} c="dimmed" tt="uppercase" mt={12} mb={6}>Версии</Text>
+      {models.map((m) => (
+        <Text key={`${m.role}-${m.name}`} size="xs" data-testid={`job-model-${m.role}`}>
+          <Text span size="xs" c="dimmed">{m.role === "vlm" ? "зрение" : m.role === "llm" ? "модель" : m.role}: </Text>
+          {m.name}{m.params_b ? ` · ${m.params_b}B` : ""}{m.license ? ` · ${m.license}` : ""}
+        </Text>
+      ))}
+      <div className="job-version-grid">
+        {skills.map((sk) => (
+          <span key={sk.name} data-testid={`job-skill-${sk.name}`}><i>{sk.name}</i><b>{sk.version}</b></span>
+        ))}
+      </div>
+      <Text size="xs" c="dimmed" mt={6}>
+        {[`приложение ${versions.app}`, versions.contracts ? `контракты ${versions.contracts}` : null,
+          versions.analyzer ? `анализатор ${versions.analyzer.version}` : null,
+          versions.renderer ? `рендерер ${versions.renderer.version}` : null].filter(Boolean).join(" · ")}
+      </Text>
     </div>
   );
 }

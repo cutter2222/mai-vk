@@ -116,6 +116,14 @@ SCENARIOS: dict[str, dict[str, Any]] = {
         "slides": {"min": 9, "max": 11},
     },
 }
+# Сдача по ТЗ: один контент на три шаблона организаторов, по три варианта — девять колод.
+# Контент — сценарий «уведомления» (docx, xlsx, заметки, картинка графика): в нём есть и
+# таблица, и график, и текст, так что видно все виды подачи.
+SUBMISSION_TEMPLATES = ("edu", "workspace", "tech")
+SUBMISSION = {
+    f"submit-{key}": {**SCENARIOS["notify"], "template": key} for key in SUBMISSION_TEMPLATES
+}
+
 # Темы для незнакомых шаблонов: разные жанры и аудитории, без материалов.
 ZOO_TOPICS: list[dict[str, Any]] = [
     {
@@ -278,15 +286,20 @@ def run(
         brief = json.loads((ROOT / brief).read_text())
     brief = {k: v for k, v in brief.items() if k != "slide_count"}
     template = spec.get("template_id") or api.template_id(TEMPLATE_NAMES[spec["template"]])
-    project = api.call("POST", "/projects", json={"title": f"QA {name}", "brief": brief})
+    title = spec.get("title") or f"QA {name}"
+    project = api.call("POST", "/projects", json={"title": title, "brief": brief})
     pid = project["project_id"]
     file_ids: list[str] = []
     if spec["files"]:
         files = [("files", (p.name, p.read_bytes())) for p in spec["files"]]
         file_ids = [f["file_id"] for f in api.call("POST", f"/projects/{pid}/files", files=files)]
-    package = api.call("POST", "/content", json={"file_ids": file_ids, "brief": brief})
-    if api.wait(package["job_id"])["status"] != "succeeded":
-        raise SystemExit(f"{name}: импорт не удался")
+    if spec.get("package_id"):
+        # Один пакет содержания на несколько шаблонов (режим submission).
+        package = {"package_id": spec["package_id"]}
+    else:
+        package = api.call("POST", "/content", json={"file_ids": file_ids, "brief": brief})
+        if api.wait(package["job_id"])["status"] != "succeeded":
+            raise SystemExit(f"{name}: импорт не удался")
     request = {
         "schema_version": "1.2",
         "template_id": template,
@@ -313,7 +326,7 @@ def run(
             "chosen_variant": variants[0],
         },
     )
-    return report_job(api, name, out, variants, job_id, pid, started)
+    return report_job(api, name, out, variants, job_id, pid, started, keep=bool(spec.get("keep")))
 
 
 def report_job(
@@ -324,8 +337,10 @@ def report_job(
     job_id: str,
     pid: str = "",
     started: float | None = None,
+    keep: bool = False,
 ) -> dict[str, Any]:
-    """Листы, аудит и сводка по заданию генерации (новому или уже готовому)."""
+    """Листы, аудит и сводка по заданию генерации (новому или уже готовому); `keep` —
+    сохранить и сами файлы PPTX и HTML каждого варианта (для сдачи)."""
     out.mkdir(parents=True, exist_ok=True)
     started = time.monotonic() if started is None else started
     job = api.wait(job_id, limit=3600)
@@ -342,6 +357,10 @@ def report_job(
         pdf = api.client.get(f"/generations/{job_id}/artifacts/{prefix}/deck.pdf")
         if pdf.is_success:
             (out / f"{variant}.pdf").write_bytes(pdf.content)
+            for ext in ("pptx", "html") if keep else ():
+                data = api.client.get(f"/generations/{job_id}/artifacts/{prefix}/deck.{ext}")
+                if data.is_success:
+                    (out / f"{variant}.{ext}").write_bytes(data.content)
             report.update(contact_sheet(out / f"{variant}.pdf", out, variant))
             audit = api.client.get(f"/generations/{job_id}/artifacts/{prefix}/audit.json")
             if audit.is_success:
@@ -436,7 +455,7 @@ def _span_s(job: dict[str, Any]) -> int | None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("scenario", choices=[*SCENARIOS, "all", "zoo"])
+    parser.add_argument("scenario", choices=[*SCENARIOS, "all", "zoo", "submission"])
     parser.add_argument("--dir", default=str(ROOT / "test_pptx"), help="папка шаблонов для zoo")
     parser.add_argument(
         "--topic-order", default=None, help="папка, по порядку файлов которой выбираются темы"
@@ -469,6 +488,30 @@ def main() -> int:
         for item in rejected:
             print(f"ОТКАЗ {item['template']} ({item['stage']}): {item['error'][:160]}")
         names = list(specs)
+    elif args.scenario == "submission":
+        # Контент импортируется один раз: все девять колод — из одного пакета.
+        spec = SCENARIOS["notify"]
+        brief = json.loads((ROOT / spec["brief"]).read_text())
+        brief = {k: v for k, v in brief.items() if k != "slide_count"}
+        project = api.call("POST", "/projects", json={"title": "Сдача: контент", "brief": brief})
+        files = [("files", (p.name, p.read_bytes())) for p in spec["files"]]
+        file_ids = [
+            f["file_id"]
+            for f in api.call("POST", f"/projects/{project['project_id']}/files", files=files)
+        ]
+        package = api.call("POST", "/content", json={"file_ids": file_ids, "brief": brief})
+        if api.wait(package["job_id"])["status"] != "succeeded":
+            raise SystemExit("submission: импорт не удался")
+        for key, item in SUBMISSION.items():
+            specs[key] = {
+                **item,
+                "files": [],
+                "package_id": package["package_id"],
+                "keep": True,
+                "title": f"Сдача · {TEMPLATE_NAMES[item['template']].removesuffix('.pptx')}",
+            }
+        names = list(specs)
+        print("пакет содержания:", package["package_id"], flush=True)
     else:
         names = list(SCENARIOS) if args.scenario == "all" else [args.scenario]
 

@@ -389,6 +389,9 @@ class Provider(BaseModel):
     quantization: str | None = None
     model_dir: str | None = None
     note: str | None = None
+    # Провайдер отдаёт модель с открытыми весами. У закрытого (мост к Claude для разработки)
+    # карточка модели роли — ссылка HF, число параметров, лицензия — к ответам не относится.
+    open_weights: bool = True
     # Как endpoint принимает режим рассуждения: qwen_enable_thinking (extra_body с
     # enable_thinking / thinking_budget), openai_reasoning_effort (reasoning_effort),
     # vllm_chat_template, openrouter_reasoning (reasoning.enabled/effort) или none.

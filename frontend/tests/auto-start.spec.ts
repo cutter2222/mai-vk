@@ -153,6 +153,9 @@ test("итог — о первом варианте со временем от �
     job_id: "job_lead", ...job, created_at: created, metrics: { totals: { duration_ms: 908_000 } }, execution_mode: { mode: "real", layers: {} },
     progress: { percent: 40, message: "Собираю первый вариант" },
     variants: ["compact", "balanced", "detailed"].map((id) => variants[id]),
+    versions: { app: "0.1.0", contracts: "1.13", analyzer: { name: "template_analyzer", version: "0.4.6" },
+      skills: [{ name: "variant_planner", version: "0.5.1" }, { name: "story_planner", version: "0.3.2" }],
+      models: [{ role: "llm", name: "qwen3.8-27b", params_b: 27, license: "Apache-2.0" }] },
   } }));
 
   await page.goto("/project?id=lead-test");
@@ -180,4 +183,11 @@ test("итог — о первом варианте со временем от �
   await expect(lines).toHaveText(["Компактный — собран за 1 мин 52 с, 10 слайдов", "Подробный — собран за 4 мин 31 с, 14 слайдов"], { timeout: 10_000 });
   await expect(card.getByTestId("job-summary")).toHaveText("Собрал сбалансированный вариант из 12 слайдов за 3 мин 14 с.");
   await expect(card).not.toContainText("15 мин");
+
+  // В подробностях — чем сделан результат: модель и версии скиллов.
+  await card.getByTestId("job-details").click();
+  const versions = card.getByTestId("job-versions");
+  await expect(versions.getByTestId("job-model-llm")).toHaveText("модель: qwen3.8-27b · 27B · Apache-2.0");
+  await expect(versions.getByTestId("job-skill-variant_planner")).toHaveText("variant_planner0.5.1");
+  await expect(versions).toContainText("анализатор 0.4.6");
 });
