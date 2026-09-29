@@ -53,7 +53,7 @@ PPTX шаблона ──▶ parsing.template ──▶ TemplateProfile ─┐
 | Генерация | `generation/` | `ContentPackage` + `TemplateProfile` → `StoryPlan` (общий смысл) и три `SlidePlan` (compact, balanced, detailed) |
 | Вёрстка | `layout/` | `SlidePlan` + исходный PPTX → PPTX и `ComposedDeck` (что и где стоит на каждом слайде) |
 | Экспорт | `export/` | PPTX → PDF (ONLYOFFICE), миниатюры (PDFium), автономный HTML из объектов, а не снимков |
-| Аудит | `audit/` | `ComposedDeck`, PPTX, миниатюры → `AuditReport`: 35 проверок, находки, покрытие |
+| Аудит | `audit/` | `ComposedDeck`, PPTX, миниатюры → `AuditReport`: 36 проверок, находки, покрытие |
 
 **Что не является слоем конвейера**, хотя живёт рядом:
 

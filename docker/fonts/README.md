@@ -11,6 +11,6 @@
 | Liberation Sans/Serif/Mono | пакет `fonts-liberation` | SIL OFL 1.1 | метрически совместимая замена Arial, Times New Roman, Courier New на машинах без шрифтов Microsoft (машина разработчика без них, сборка без сети к sourceforge) |
 | Carlito, Caladea | пакеты `fonts-crosextra-carlito`, `fonts-crosextra-caladea` | SIL OFL 1.1 | метрически совместимая замена Calibri и Cambria |
 | Noto Sans и др. | пакет `fonts-noto-core` | SIL OFL 1.1 | кириллица и символы, запасной шрифт |
-| DejaVu Sans | пакет `fonts-dejavu-core` | Bitstream Vera / public domain дополнения | запасной шрифт LibreOffice |
+| DejaVu Sans | пакет `fonts-dejavu-core` | Bitstream Vera / public domain дополнения | запасной шрифт рендера |
 
 Замена метрически совместимым клоном (`text_metrics.METRIC_EQUIVALENTS`: Arial → Liberation Sans, Times New Roman → Liberation Serif, Courier New → Liberation Mono, Calibri → Carlito, Cambria → Caladea) подменой не считается: ширины глифов совпадают, измерение текста точное, в PPTX остаётся исходное имя, а профиль получает заметку `font_metric_equivalent` вместо предупреждения `font_substituted`. Consolas (VK Tech, VK Education) в образе отсутствует: шрифт проприетарный и в «Core fonts» не входит, LibreOffice заменяет его DejaVu Sans Mono (строки кода переносятся иначе, чем в PowerPoint); подмена записывается в профиль шаблона (`design_tokens.typography.fonts[].fallback`) и в ComposedDeck (`fonts[]`). Lato из ЛЦТ в образцах не употребляется и не добавлен. Факты подмены — в отчёте рендера (`docs/pptx-capabilities.md`).
