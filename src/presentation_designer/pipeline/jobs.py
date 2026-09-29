@@ -2002,7 +2002,7 @@ def task_variant(job_id: str, variant_id: str) -> None:
 def task_finalize(job_id: str) -> None:
     o = get_orchestrator()
     job = o.state.get_job(job_id)
-    if job["status"] in TERMINAL:
+    if job["status"] in TERMINAL and not _deadline_only(job):
         return
     gen = o.state.get_generation(job_id)
     variants = o.state.get_variants(job_id)
@@ -2047,7 +2047,9 @@ def task_finalize(job_id: str) -> None:
     elif len(failed) == len(variants):
         status, error = (
             "failed",
-            {
+            job.get("error")
+            if _deadline_only(job)
+            else {
                 "code": "all_variants_failed",
                 "message": "Ни один вариант не собран",
                 "retryable": True,
@@ -2066,6 +2068,15 @@ def task_finalize(job_id: str) -> None:
         finished_at=ts,
         error=error,
         progress={"percent": 100, "message": _final_message(variants)},
+    )
+
+
+def _deadline_only(job: JsonDict) -> bool:
+    """Задание помечено ошибкой только по общему сроку (`Orchestrator.reconcile`), а варианты
+    ещё собирались: итог подводится по ним. Колода Education на мосте к Claude собралась за
+    15 мин 31 с при сроке 15 мин — три готовых варианта, а проект показывал ошибку."""
+    return job["status"] == "failed" and (job.get("error") or {}).get("code") == (
+        "deadline_exceeded"
     )
 
 

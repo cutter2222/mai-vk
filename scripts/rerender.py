@@ -6,7 +6,7 @@
 
 С хоста (стенд поднят с docker/compose.dev.yaml — код примонтирован):
     uv run python scripts/rerender.py job_… [job_…] --variants balanced --label look-1
-Листы миниатюр — runs/rerender/<label>/<job>/<variant>-contact.png.
+Листы миниатюр — runs/rerender/<label>/<job>/<variant>-contact.png; рядом pptx, pdf и html.
 """
 
 from __future__ import annotations
@@ -88,6 +88,15 @@ def inside(job_id: str, variants: list[str], out: pathlib.Path, photos: bool = F
             fit_min_title_pt=float(settings.plan.min_title_pt),
         )
         composed = time.monotonic() - started
+        from presentation_designer.export.html import build_html
+
+        # Нативный HTML, как у конвейера (`export/deck.py`): колода сдаётся в pptx, pdf и html.
+        brief = (package["package"] or {}).get("brief") or {}
+        title = str(brief.get("title") or (result.slide_titles or [job_id])[0])
+        (target / "deck.html").write_text(
+            build_html(title, result.deck, target / "deck.pptx", result.slide_titles),
+            encoding="utf-8",
+        )
         pdf = convert_to_pdf(target / "deck.pptx", target, settings=settings)
         codes = sorted({str(w.get("code")) for w in result.warnings})
         print(
@@ -120,6 +129,9 @@ def outside(args: argparse.Namespace) -> int:
             )
             subprocess.run(
                 ["docker", "cp", f"{src}/deck.pptx", str(local / f"{variant}.pptx")], check=True
+            )
+            subprocess.run(
+                ["docker", "cp", f"{src}/deck.html", str(local / f"{variant}.html")], check=True
             )
             contact_sheet(local / f"{variant}.pdf", local, variant)
             print(f"    {local / f'{variant}-contact.png'}")

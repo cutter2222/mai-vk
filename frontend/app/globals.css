@@ -2463,6 +2463,8 @@ body {
 /* Раскрытые подробности: единственное место в ленте, где рамка уместна — внутри неё
    действительно таблица служебных чисел, а не реплика. */
 .chat-details {
+  min-width: 0;
+  max-width: 100%;
   margin-top: 8px;
   padding: 12px 14px;
   border: 1px solid var(--line);
@@ -2470,10 +2472,35 @@ body {
   background: var(--card);
 }
 
+/* Таблица этапов в подробностях задания: в ширину колонки чата, длинные названия этапов
+   переносятся, а не выталкивают таблицу за край. */
+.metrics-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.metrics-table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.metrics-table th,
+.metrics-table td {
+  padding-left: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.metrics-table th:first-child,
+.metrics-table td:first-child {
+  width: 46%;
+}
+
 /* Версии скиллов в подробностях задания: имя и версия в две колонки. */
 .job-version-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(160px, 100%), 1fr));
   gap: 2px 12px;
   margin-top: 6px;
 }
