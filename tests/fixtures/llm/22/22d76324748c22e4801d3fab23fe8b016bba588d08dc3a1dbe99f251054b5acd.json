@@ -32,7 +32,7 @@
  "response": {
   "finish_reason": "stop",
   "latency_ms": 6003,
-  "model": "claude-sonnet",
+  "model": "dev-model",
   "provider": "qwen-api",
   "text": "{\"issues\": [{\"code\": \"empty\", \"where\": \"Основная область слайда пустая — только заголовок и подзаголовок, никакого контента, подтверждающего окупаемость пилота\"}]}",
   "usage": {

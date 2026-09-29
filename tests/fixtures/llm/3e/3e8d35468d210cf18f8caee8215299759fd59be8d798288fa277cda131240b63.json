@@ -32,7 +32,7 @@
  "response": {
   "finish_reason": "stop",
   "latency_ms": 3562,
-  "model": "claude-sonnet",
+  "model": "dev-model",
   "provider": "qwen-api",
   "text": "{\"s11\": {\"card_2_title\": \"Нагрузка на поддержку\"}}",
   "usage": {

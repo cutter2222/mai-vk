@@ -32,7 +32,7 @@
  "response": {
   "finish_reason": "stop",
   "latency_ms": 6918,
-  "model": "claude-sonnet",
+  "model": "dev-model",
   "provider": "qwen-api",
   "text": "{\"issues\": [{\"code\": \"clipped\", \"where\": \"Заголовок «Динамика по месяцам показывает устойчив...» обрезан правым краем слайда\"}, {\"code\": \"empty\", \"where\": \"Основная область слайда под подзаголовком пустая, нет графика/диаграммы\"}]}",
   "usage": {

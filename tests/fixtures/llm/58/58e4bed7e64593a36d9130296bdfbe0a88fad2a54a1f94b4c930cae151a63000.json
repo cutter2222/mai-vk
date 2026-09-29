@@ -32,7 +32,7 @@
  "response": {
   "finish_reason": "stop",
   "latency_ms": 6076,
-  "model": "claude-sonnet",
+  "model": "dev-model",
   "provider": "qwen-api",
   "text": "{\"issues\": [{\"code\": \"empty\", \"where\": \"Под подзаголовком «Вариант compact, ревизия 1» вся центральная и нижняя часть слайда пустая, нет содержательной информации\"}]}",
   "usage": {

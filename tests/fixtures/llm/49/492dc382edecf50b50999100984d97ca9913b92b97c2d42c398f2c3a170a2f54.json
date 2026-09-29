@@ -32,7 +32,7 @@
  "response": {
   "finish_reason": "stop",
   "latency_ms": 4971,
-  "model": "claude-sonnet",
+  "model": "dev-model",
   "provider": "qwen-api",
   "text": "{\"s2\": {\"card_1_title\": \"Приоритизация по контексту\", \"card_2_title\": \"Единый центр\"}}",
   "usage": {

@@ -32,7 +32,7 @@
  "response": {
   "finish_reason": "stop",
   "latency_ms": 5985,
-  "model": "claude-sonnet",
+  "model": "dev-model",
   "provider": "qwen-api",
   "text": "{\"issues\": [{\"code\": \"clipped\", \"where\": \"заголовок «Просим одобрить расширение пилота на все...» обрезан правым краем слайда\"}, {\"code\": \"empty\", \"where\": \"основная область слайда пуста, кроме заголовка и подзаголовка\"}]}",
   "usage": {

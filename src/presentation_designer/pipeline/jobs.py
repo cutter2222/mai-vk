@@ -2073,7 +2073,7 @@ def task_finalize(job_id: str) -> None:
 
 def _deadline_only(job: JsonDict) -> bool:
     """Задание помечено ошибкой только по общему сроку (`Orchestrator.reconcile`), а варианты
-    ещё собирались: итог подводится по ним. Колода Education на мосте к Claude собралась за
+    ещё собирались: итог подводится по ним. Колода Education на мосте разработки собралась за
     15 мин 31 с при сроке 15 мин — три готовых варианта, а проект показывал ошибку."""
     return job["status"] == "failed" and (job.get("error") or {}).get("code") == (
         "deadline_exceeded"

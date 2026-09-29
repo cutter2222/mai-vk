@@ -32,7 +32,7 @@
  "response": {
   "finish_reason": "stop",
   "latency_ms": 5360,
-  "model": "claude-sonnet",
+  "model": "dev-model",
   "provider": "qwen-api",
   "text": "{\"s4\": {\"side_1_title\": \"Открываемость\", \"side_2_title\": \"Отписки\"}}",
   "usage": {

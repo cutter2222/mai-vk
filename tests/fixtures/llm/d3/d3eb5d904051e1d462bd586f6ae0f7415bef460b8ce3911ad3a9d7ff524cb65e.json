@@ -32,7 +32,7 @@
  "response": {
   "finish_reason": "stop",
   "latency_ms": 5992,
-  "model": "claude-sonnet",
+  "model": "dev-model",
   "provider": "qwen-api",
   "text": "{\"issues\": [{\"code\": \"clipped\", \"where\": \"Заголовок «Экономия на пилоте кратно превышает затр...» обрезан правым краем слайда\"}, {\"code\": \"empty\", \"where\": \"Основная часть слайда пуста — только заголовок и подзаголовок, нет содержания\"}]}",
   "usage": {

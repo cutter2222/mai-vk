@@ -32,7 +32,7 @@
  "response": {
   "finish_reason": "stop",
   "latency_ms": 5466,
-  "model": "claude-sonnet",
+  "model": "dev-model",
   "provider": "qwen-api",
   "text": "{\"issues\": [{\"code\": \"empty\", \"where\": \"Всё пространство ниже подзаголовка пустое — нет ни контента, ни карточек, ни данных, подтверждающих пользу\"}]}",
   "usage": {

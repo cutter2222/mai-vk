@@ -32,7 +32,7 @@
  "response": {
   "finish_reason": "stop",
   "latency_ms": 5732,
-  "model": "claude-sonnet",
+  "model": "dev-model",
   "provider": "qwen-api",
   "text": "{\"s8\": {\"lead\": \"Октябрь: новые продукты. Ноябрь: тихие часы. Декабрь: все регионы, цель — открываемость {fact:f11}\"}, \"s10\": {\"support\": \"Экономия на поддержке {fact:f7} за год при затратах на пилот {fact:f8}\"}}",
   "usage": {

@@ -389,7 +389,7 @@ class Provider(BaseModel):
     quantization: str | None = None
     model_dir: str | None = None
     note: str | None = None
-    # Провайдер отдаёт модель с открытыми весами. У закрытого (мост к Claude для разработки)
+    # Провайдер отдаёт модель с открытыми весами. У закрытого (мост разработки)
     # карточка модели роли — ссылка HF, число параметров, лицензия — к ответам не относится.
     open_weights: bool = True
     # Как endpoint принимает режим рассуждения: qwen_enable_thinking (extra_body с

@@ -32,7 +32,7 @@
  "response": {
   "finish_reason": "stop",
   "latency_ms": 5851,
-  "model": "claude-sonnet",
+  "model": "dev-model",
   "provider": "qwen-api",
   "text": "{\"issues\": [{\"code\": \"clipped\", \"where\": \"заголовок «К декабрю сервис работает во всех регионах» обрезан правым краем слайда\"}, {\"code\": \"empty\", \"where\": \"основная область слайда под заголовком пустая, содержательного контента нет\"}]}",
   "usage": {

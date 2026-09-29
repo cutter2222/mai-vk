@@ -32,7 +32,7 @@
  "response": {
   "finish_reason": "stop",
   "latency_ms": 6331,
-  "model": "claude-sonnet",
+  "model": "dev-model",
   "provider": "qwen-api",
   "text": "{\"issues\": [{\"code\": \"empty\", \"where\": \"под подзаголовком «Вариант balanced, ревизия 1» вся нижняя часть слайда пустая, нет контента кроме короткой розовой полоски внизу\"}]}",
   "usage": {

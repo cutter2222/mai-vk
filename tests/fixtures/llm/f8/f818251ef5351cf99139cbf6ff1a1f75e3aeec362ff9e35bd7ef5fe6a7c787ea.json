@@ -32,7 +32,7 @@
  "response": {
   "finish_reason": "stop",
   "latency_ms": 5627,
-  "model": "claude-sonnet",
+  "model": "dev-model",
   "provider": "qwen-api",
   "text": "{\"photos\": [{\"slide_id\": \"s4\", \"query\": \"smartphone notification\"}, {\"slide_id\": \"s8\", \"query\": \"person checking phone\"}, {\"slide_id\": \"s12\", \"query\": \"team office map\"}, {\"slide_id\": \"s13\", \"query\": \"team meeting discussion\"}]}",
   "usage": {

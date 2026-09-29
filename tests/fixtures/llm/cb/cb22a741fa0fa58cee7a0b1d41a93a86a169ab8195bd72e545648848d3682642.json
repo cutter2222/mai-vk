@@ -32,7 +32,7 @@
  "response": {
   "finish_reason": "stop",
   "latency_ms": 5727,
-  "model": "claude-sonnet",
+  "model": "dev-model",
   "provider": "qwen-api",
   "text": "{\"issues\": [{\"code\": \"clipped\", \"where\": \"заголовок «Два риска расширения находятся под контро...» обрезан правым краем слайда\"}, {\"code\": \"empty\", \"where\": \"вся нижняя и центральная часть слайда пустая, нет содержательных элементов кроме заголовка и подзаголовка\"}]}",
   "usage": {

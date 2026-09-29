@@ -32,7 +32,7 @@
  "response": {
   "finish_reason": "stop",
   "latency_ms": 6190,
-  "model": "claude-sonnet",
+  "model": "dev-model",
   "provider": "qwen-api",
   "text": "{\n  \"s2\": {\n    \"card_1_title\": \"Приоритизация по контексту\",\n    \"card_2_title\": \"Единый центр уведомлений\"\n  },\n  \"s5\": {\n    \"caption\": \"Открываемость выросла с мая по июль, отписки снизились, число активных пользователей увеличилось\"\n  },\n  \"s9\": {\n    \"card_2_title\": \"Нагрузка на поддержку\"\n  }\n}",
   "usage": {

@@ -32,7 +32,7 @@
  "response": {
   "finish_reason": "stop",
   "latency_ms": 6130,
-  "model": "claude-sonnet",
+  "model": "dev-model",
   "provider": "qwen-api",
   "text": "{\"items\": [{\"q\": 9, \"answer\": \"yes\", \"confidence\": 0.9, \"why\": \"Все заголовки и текст по всем слайдам на русском языке.\"}, {\"q\": 11, \"answer\": \"yes\", \"confidence\": 0.55, \"why\": \"Слайды последовательно ведут от проблемы к пилоту, результатам, рискам и запросу на расширение — логика сохраняется.\"}]}",
   "usage": {

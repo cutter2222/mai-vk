@@ -32,7 +32,7 @@
  "response": {
   "finish_reason": "stop",
   "latency_ms": 5662,
-  "model": "claude-sonnet",
+  "model": "dev-model",
   "provider": "qwen-api",
   "text": "{\"issues\": [{\"code\": \"clipped\", \"where\": \"заголовок «Единый центр уведомлений объединяет все» обрезан правым краем слайда\"}, {\"code\": \"empty\", \"where\": \"основная область слайда пуста — под подзаголовком нет содержимого, только маленький розовый штрих внизу слева\"}]}",
   "usage": {

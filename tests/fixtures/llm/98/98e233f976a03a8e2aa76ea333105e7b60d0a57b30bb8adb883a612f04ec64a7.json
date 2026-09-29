@@ -32,7 +32,7 @@
  "response": {
   "finish_reason": "stop",
   "latency_ms": 5664,
-  "model": "claude-sonnet",
+  "model": "dev-model",
   "provider": "qwen-api",
   "text": "{\"s7\":{\"card_1_title\":\"North region support lead\",\"card_2_title\":\"Notifications now help, not interrupt\",\"card_2_body\":\"For the first time, notifications started helping users instead of interrupting them, per the North region support lead.\"},\"s11\":{\"card_2_title\":\"Support savings exceed spend\",\"card_2_body\":\"Support savings from the pilot exceeded pilot spend, adding net cost savings to the case for scaling.\"},\"s12\":{\"contacts\":\"\"}}",
   "usage": {

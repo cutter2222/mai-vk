@@ -32,7 +32,7 @@
  "response": {
   "finish_reason": "stop",
   "latency_ms": 4613,
-  "model": "claude-sonnet",
+  "model": "dev-model",
   "provider": "qwen-api",
   "text": "{\"issues\": [{\"code\": \"clipped\", \"where\": \"заголовок «Все каналы уведомлений — в одном интерф...» обрезан правым краем слайда\"}, {\"code\": \"empty\", \"where\": \"основная часть слайда пустая — только заголовок и подзаголовок, нет содержательных элементов\"}]}",
   "usage": {

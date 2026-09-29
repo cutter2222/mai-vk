@@ -32,7 +32,7 @@
  "response": {
   "finish_reason": "stop",
   "latency_ms": 5885,
-  "model": "claude-sonnet",
+  "model": "dev-model",
   "provider": "qwen-api",
   "text": "{\"issues\": [{\"code\": \"empty\", \"where\": \"Основная область слайда пуста — есть только заголовок и подзаголовок, ниже нет графика, текста или данных, подтверждающих заявление о росте открываемости\"}]}",
   "usage": {

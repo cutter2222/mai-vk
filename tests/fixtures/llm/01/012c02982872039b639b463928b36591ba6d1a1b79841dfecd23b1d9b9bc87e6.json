@@ -32,7 +32,7 @@
  "response": {
   "finish_reason": "stop",
   "latency_ms": 4754,
-  "model": "claude-sonnet",
+  "model": "dev-model",
   "provider": "qwen-api",
   "text": "{\"issues\": [{\"code\": \"empty\", \"where\": \"Слайд содержит только заголовок «Содержание» и подзаголовок, основной контент (список пунктов содержания) отсутствует\"}]}",
   "usage": {

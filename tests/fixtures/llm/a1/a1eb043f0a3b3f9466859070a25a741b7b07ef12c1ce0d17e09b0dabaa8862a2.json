@@ -32,7 +32,7 @@
  "response": {
   "finish_reason": "stop",
   "latency_ms": 6195,
-  "model": "claude-sonnet",
+  "model": "dev-model",
   "provider": "qwen-api",
   "text": "{\"issues\": [{\"code\": \"clipped\", \"where\": \"Заголовок «Три механизма решают проблему приоритиз...» обрезан правым краем слайда\"}, {\"code\": \"empty\", \"where\": \"Основная область слайда под подзаголовком пустая, нет содержимого\"}]}",
   "usage": {
