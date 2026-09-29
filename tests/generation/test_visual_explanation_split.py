@@ -227,7 +227,7 @@ def test_long_commentary_needs_two_pages_and_respects_budget(profile, extra_budg
 
 @pytest.mark.parametrize("spare_kind", ["divider", "agenda"])
 def test_at_ceiling_service_slide_gives_its_page_to_commentary(profile, spare_kind):
-    # Luna detailed: 15 из 15 слайдов, пояснение к таблице итога уходило в заметки,
+    # Вариант detailed: 15 из 15 слайдов, пояснение к таблице итога уходило в заметки,
     # хотя в колоде было два слайда-разделителя с одним названием раздела.
     ctx, draft = context(profile)
     spare = vr.Draft(kind=spare_kind, theses=["sec1"], pattern=draft.pattern, title="Результаты")

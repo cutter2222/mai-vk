@@ -220,7 +220,7 @@ ECONOMY_TABLE = {"kind": "table", "table": {"dataset_id": "ds2", "columns": ["С
 
 
 def test_labelled_row_of_another_source_covers_prose_fact():
-    # Luna detailed, слайд 14: строки «Экономия на поддержке: 12,5 млн ₽» и «Затратах на
+    # Вариант detailed, слайд 14: строки «Экономия на поддержке: 12,5 млн ₽» и «Затратах на
     # пилот: 2,4 млн ₽» дублировали таблицу и переполняли подводку.
     assert vr._data_shown_facts(economy_context(), [ECONOMY_TABLE]) == {"f7", "f8"}
 
