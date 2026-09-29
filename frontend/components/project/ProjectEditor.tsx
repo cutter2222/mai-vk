@@ -344,7 +344,7 @@ export function ProjectEditor({ project }: { project: Project }) {
             {/* Пока ответа о задании нет, индикатор не показывается: у готового проекта он лишь мелькал перед заставкой редактора. */}
             {(starting || session.job.error || (session.result && !session.terminal)) && !deckJob && <GenerationProgress session={session} compact starting={starting} />}
             {officePresent
-              ? <ProjectOffice session={session} title={project.title} projectId={project.project_id} editRef={officeEdit} actionsTarget={officeActionsTarget} onEditorReady={onEditorReady} onLiveSelection={setLiveSelection} />
+              ? <ProjectOffice session={session} title={project.title} projectId={project.project_id} editRef={officeEdit} actionsTarget={officeActionsTarget} onAddVariant={(v) => void chat.addVariant(v)} onEditorReady={onEditorReady} onLiveSelection={setLiveSelection} />
               : <div className="office-pending" data-testid="office-pending">
                 {/* Место под каждый слайд, пока файл готовится: число страниц сервер знает сразу. */}
                 {pendingSlides > 0 && <div className="slide-skeletons" data-testid="slide-skeletons" aria-hidden>

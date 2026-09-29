@@ -8,7 +8,7 @@ import { notifications } from "@mantine/notifications";
 
 import { OfficeEditor, type OfficeEditHandle } from "@/components/office/OfficeEditor";
 import { OfficeLoading } from "@/components/office/OfficeLoading";
-import { VariantPicker } from "./VariantPicker";
+import { VARIANT_ORDER, VariantPicker } from "./VariantPicker";
 import { api, type OfficeApplySlide, type OfficeDocument, type OfficeObject, type TemplateDetail } from "@/lib/api/client";
 import type { LiveSelection } from "@/lib/editor/officeLive";
 import type { GenerationSession } from "@/lib/hooks/useGenerationSession";
@@ -29,7 +29,9 @@ function revisionOf(artifact: string): { variant: string; revision: number } | n
  * (29.09): больше места даёт сворачивание чата без второй сессии редактора; страница `/office`
  * остаётся доступной по адресу.
  */
-export function ProjectOffice({ session, title, projectId, editRef, actionsTarget, template, onEditorReady, onLiveSelection }: {
+export function ProjectOffice({ session, title, projectId, editRef, actionsTarget, template, onEditorReady, onLiveSelection, onAddVariant }: {
+  /** Собрать тип вёрстки, которого в задании нет. */
+  onAddVariant?: (variantId: string) => void;
   session: GenerationSession; title: string; projectId: string;
   /** Текущий слайд и выделение живого редактора — адресат сообщения в чате. */
   onLiveSelection?: (value: LiveSelection | null) => void;
@@ -269,11 +271,21 @@ export function ProjectOffice({ session, title, projectId, editRef, actionsTarge
   };
   // Отмечен вариант, чей PPTX открыт сейчас, а не выбранный в сессии: до переключения это одно.
   const shownVariant = source.jobId === session.jobId ? variants.find((v) => v.artifacts?.pptx === source.artifact) : undefined;
-  const switcher = variants.length > 1 && (
+  // Список типов вёрстки есть всегда, когда презентация собрана (29.09.2026): задание из одного
+  // варианта показывало только его, и выбрать другой тип было негде. Несобранный тип можно
+  // собрать; готовая презентация (вариант «original») типов вёрстки не имеет.
+  const byId = new Map(variants.map((v) => [v.variant_id, v]));
+  const switcher = variants.length > 0 && !byId.has("original") && (
     <VariantPicker
       value={shownVariant?.variant_id ?? ""}
       onChange={switchVariant}
-      options={variants.map((v) => ({ id: v.variant_id, ready: Boolean(v.artifacts?.pptx), failed: v.status === "failed" }))}
+      onAdd={onAddVariant}
+      options={VARIANT_ORDER.map((id) => {
+        const v = byId.get(id);
+        return v
+          ? { id, ready: Boolean(v.artifacts?.pptx), failed: v.status === "failed" }
+          : { id, ready: false, failed: false, absent: true };
+      })}
     />
   );
 

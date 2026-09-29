@@ -481,3 +481,29 @@ test("loading screen shows the opening stages in project style until slides are 
   await expect(loading).toHaveCount(0);
   await expect(page.getByTestId("preview-pane").locator("iframe")).toBeVisible();
 });
+
+test("variant list shows all three layouts; an absent one is built on request next to the others", async ({ page }) => {
+  await setup(page);
+  const created: Array<Record<string, unknown>> = [];
+  await page.route("**/api/generations", (r) => {
+    if (r.request().method() !== "POST") return r.fallback();
+    created.push(r.request().postDataJSON());
+    return r.fulfill({ status: 202, json: { job_id: "job_more", status: "queued" } });
+  });
+  await page.route("**/api/generations/job_officeuitest", (r) => r.fulfill({ json: {
+    job_id: "job_officeuitest", status: "succeeded", stage: "done", metrics: { totals: { duration_ms: 1000 } }, execution_mode: { mode: "real", layers: {} },
+    request: { template_id: "tpl", package_id: "pkg", settings: { variants: ["compact", "balanced"], force_regenerate: true, seed: 1 } },
+    variants: ["compact", "balanced"].map((variant_id) => ({ variant_id, status: "ready", revision: 1, artifacts: { pptx: `${variant_id}/r1/deck.pptx` } })),
+  } }));
+  await page.goto("/project?id=office-ui-test");
+  await editorReady(page);
+  await page.getByTestId("office-variants").click();
+  const detailed = page.getByTestId("office-variant-detailed");
+  await expect(detailed).toHaveAttribute("data-state", "absent");
+  await expect(detailed).toContainText("Собрать");
+  await detailed.click();
+  await expect.poll(() => created.length).toBe(1);
+  expect(created[0]).toMatchObject({ template_id: "tpl", package_id: "pkg",
+    settings: { variants: ["compact", "balanced", "detailed"], force_regenerate: false, seed: 1 } });
+  await expect(page.getByText(/Собираю подробный вариант/)).toBeVisible();
+});

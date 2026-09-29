@@ -385,6 +385,33 @@ export function useChat(project: Project, session: GenerationSession, generate: 
     }
   }, [id, say, session.result?.request]);
 
+  /**
+   * Ещё один тип вёрстки к собранной презентации (29.09.2026): то же задание с добавленным
+   * вариантом. Смысловой план и планы собранных вариантов берутся из кэша, модель считает
+   * только новый; открытая презентация остаётся открытой.
+   */
+  const addVariant = useCallback(async (variantId: string) => {
+    const request = session.result?.request;
+    if (!request) return;
+    type Layout = "compact" | "balanced" | "detailed";
+    const layouts: readonly string[] = ["compact", "balanced", "detailed"];
+    const have = (session.result?.variants ?? []).map((v) => v.variant_id).filter((v): v is Layout => layouts.includes(v));
+    if (!layouts.includes(variantId) || have.includes(variantId as Layout)) return;
+    const label = VARIANT_LABELS[variantId] ?? variantId;
+    try {
+      const job = await api.generations.create({
+        ...request,
+        idempotency_key: `variant-${variantId}-${id}-${Date.now().toString(36)}`,
+        // Схема задаёт список кортежем от одного до трёх: собираем его как кортеж.
+        settings: { ...request.settings, variants: [...have, variantId as Layout] as [Layout] | [Layout, Layout] | [Layout, Layout, Layout], force_regenerate: false },
+      });
+      updateProject(id, { job_id: job.job_id });
+      say(`Собираю ${label.toLowerCase()} вариант — остальные остаются как есть. Он появится в списке вариантов вверху.`);
+    } catch (e) {
+      say(`Не удалось запустить ${label.toLowerCase()} вариант: ${e instanceof ApiError ? e.message : "неизвестная ошибка"}.`);
+    }
+  }, [id, say, session.result?.request, session.result?.variants]);
+
   /** Действие по ответу на вопрос о PPTX: разбор как шаблона или импорт как материала. */
   /**
    * Готовая презентация: тот же файл разбирается как шаблон (композиции слайдов) и импортируется
@@ -547,7 +574,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
 
   const notifyError = (title: string, e: unknown) => notifications.show({ color: "red", title, message: e instanceof ApiError ? e.message : "Неизвестная ошибка" });
 
-  return { send, respond, suggest: setSuggestions, say, editSlide, suggestions, attach, staged, answerStaged, resolveTemplateQuestion, setPurpose, removeFile, importMaterials, selectTemplate, addTemplate, notifyError, deckStart, recheckDeck };
+  return { send, respond, suggest: setSuggestions, say, editSlide, suggestions, attach, staged, answerStaged, resolveTemplateQuestion, setPurpose, removeFile, importMaterials, selectTemplate, addTemplate, notifyError, deckStart, recheckDeck, addVariant };
 }
 
 export type Chat = ReturnType<typeof useChat>;
