@@ -6,6 +6,13 @@
 многоцветная — фото; во всю площадь — фон; на мастере/макете или повторяющаяся малая — логотип.
 Изображения из каталогов ресурсов сохраняются как переиспользуемые, но не становятся паттернами.
 Теги по назначению добираются пакетами через VLM: несколько иконок на одном листе с номерами.
+
+Фоновый декор (29.09.2026): вырезанная графика позади текста — в макете, мастере или под
+текстом слайда, с прозрачностью, крупнее значка, — кандидат в мотив шаблона. Что из
+кандидатов фирменный декор, а что иллюстрация со смыслом (фото, скриншот, схема), решает VLM
+по листу с номерами; выбранное помечается тегом `decor` и оценкой `decor:<0–10>` (узор, который
+можно резать краем слайда, — ещё `decor-crop`), и вёрстка
+ставит этот мотив бледно на пустоты своих слайдов (`library/motif.py`).
 """
 
 from __future__ import annotations
@@ -26,6 +33,11 @@ log = logging.getLogger(__name__)
 
 ICON_MAX_AREA = 0.012
 LOGO_MAX_AREA = 0.06
+# Кандидат в фоновый декор: не меньше такой доли слайда и с такой долей прозрачных пикселей
+# (вырезанная графика, а не прямоугольное фото и не почти пустой слой).
+DECOR_MIN_AREA = 0.03
+DECOR_ALPHA = (0.15, 0.97)
+DECOR_TAG = "decor"
 
 
 @dataclass
@@ -45,6 +57,8 @@ class Asset:
     mean_luminance: float | None = None
     color_bins: int | None = None
     occurrences: int = 1
+    # Лежит позади текста: в мастере или макете либо на слайде ниже всех текстовых объектов.
+    behind: bool = False
     blob: bytes | None = field(default=None, repr=False)
 
     def as_dict(self) -> dict[str, Any]:
@@ -163,6 +177,7 @@ def index_assets(
         on_master: bool,
         catalog: bool,
         nearby_text: str,
+        behind: bool = False,
     ) -> None:
         if shape.kind != "picture" or not shape.media_sha256 or not shape.media_part:
             return
@@ -170,6 +185,7 @@ def index_assets(
         if sha in assets:
             assets[sha].occurrences += 1
             existing = assets[sha]
+            existing.behind = existing.behind or behind
             if on_master and existing.kind == "icon":
                 existing.kind = "logo"
             return
@@ -199,6 +215,7 @@ def index_assets(
             transparent=props.transparent,
             mean_luminance=props.mean_luminance,
             color_bins=props.color_bins,
+            behind=behind,
             blob=blob,
         )
         if catalog:
@@ -208,16 +225,24 @@ def index_assets(
 
     for master in pkg.masters:
         for shape in master.shapes:
-            register(shape, slide_index=None, on_master=True, catalog=False, nearby_text="")
+            register(
+                shape, slide_index=None, on_master=True, catalog=False, nearby_text="", behind=True
+            )
     for layout in pkg.layouts:
         for shape in layout.shapes:
-            register(shape, slide_index=None, on_master=True, catalog=False, nearby_text="")
+            register(
+                shape, slide_index=None, on_master=True, catalog=False, nearby_text="", behind=True
+            )
     for slide in pkg.slides:
         kind = by_kind.get(slide.index, "content_sample")
         if kind == "hidden":
             continue
         catalog = kind == "asset_catalog"
         text = normalize_text(slide.all_text)
+        # Слой: картинка ниже всех текстовых объектов слайда лежит под текстом, как фон.
+        lowest_text = min(
+            (s.z_order for s in slide.shapes if s.text.strip()), default=len(slide.shapes) + 1
+        )
         for shape in slide.shapes:
             register(
                 shape,
@@ -225,6 +250,7 @@ def index_assets(
                 on_master=False,
                 catalog=catalog,
                 nearby_text=text if catalog else _nearby(slide.shapes, shape),
+                behind=shape.z_order < lowest_text and not shape.group_path,
             )
     ordered = [assets[s] for s in order]
     return ordered, {a.sha256: a.asset_id for a in ordered}
@@ -362,6 +388,176 @@ TAG_SCHEMA: dict[str, Any] = {
                     "logo": {"type": "boolean"},
                 },
                 "required": ["n", "tags"],
+            },
+        }
+    },
+    "required": ["items"],
+}
+
+
+# ---------- фоновый декор через VLM ----------
+
+
+def alpha_share(blob: bytes) -> float | None:
+    """Доля прозрачных пикселей картинки (по уменьшенной копии); None — не читается."""
+    try:
+        from PIL import Image
+
+        with Image.open(io.BytesIO(blob)) as img:
+            if img.mode not in ("RGBA", "LA", "P", "PA"):
+                return 0.0
+            alpha = img.convert("RGBA").getchannel("A")
+            alpha.thumbnail((96, 96))
+            hist = alpha.histogram()
+            return sum(hist[:16]) / max(1, alpha.width * alpha.height)
+    except Exception:
+        return None
+
+
+def decor_candidates(assets: list[Asset], *, limit: int = 8) -> list[Asset]:
+    """Кандидаты в фоновый декор — по устройству файла, без модели: картинка позади текста
+    (макет, мастер или нижний слой слайда), крупнее значка, вырезанная (с прозрачностью),
+    не логотип и не QR. Крупные и повторяющиеся — первыми."""
+
+    def area(a: Asset) -> float:
+        box = a.bbox_on_source or {}
+        return float(box.get("width", 0)) * float(box.get("height", 0))
+
+    out: list[Asset] = []
+    for asset in assets:
+        if not asset.blob or not asset.behind or "catalog" in asset.tags:
+            continue
+        if asset.kind in ("icon", "logo", "qr") or area(asset) < DECOR_MIN_AREA:
+            continue
+        share = alpha_share(asset.blob)
+        if share is None or not DECOR_ALPHA[0] <= share <= DECOR_ALPHA[1]:
+            continue
+        out.append(asset)
+    out.sort(key=lambda a: -area(a) * min(a.occurrences, 4))
+    return out[:limit]
+
+
+def _where(asset: Asset) -> str:
+    box = asset.bbox_on_source or {}
+    x, y = float(box.get("x", 0)), float(box.get("y", 0))
+    w, h = float(box.get("width", 0)), float(box.get("height", 0))
+    edges = [
+        name
+        for name, touch in (
+            ("левого", x <= 0.02),
+            ("правого", x + w >= 0.98),
+            ("верхнего", y <= 0.02),
+            ("нижнего", y + h >= 0.98),
+        )
+        if touch
+    ]
+    place = (
+        "в макете" if asset.source_slide_index is None else f"на слайде {asset.source_slide_index}"
+    )
+    edge = f", у {' и '.join(edges)} края" if edges else ""
+    return f"{place}, позади текста, {round(w * h * 100)} % площади{edge}"
+
+
+def decor_sheet(assets: list[Asset], *, cell: int = 220, columns: int = 4) -> bytes:
+    """Лист кандидатов на нейтральном сером: видны и белые, и тёмные вырезки."""
+    from PIL import Image, ImageDraw
+
+    rows = (len(assets) + columns - 1) // columns
+    sheet = Image.new("RGB", (columns * cell, max(1, rows) * cell), (150, 154, 160))
+    draw = ImageDraw.Draw(sheet)
+    for i, asset in enumerate(assets):
+        x, y = (i % columns) * cell, (i // columns) * cell
+        try:
+            with Image.open(io.BytesIO(asset.blob or b"")) as img:
+                pic = img.convert("RGBA")
+                box = pic.getchannel("A").getbbox()
+                if box:
+                    pic = pic.crop(box)
+                pic.thumbnail((cell - 24, cell - 34))
+                sheet.paste(pic, (x + (cell - pic.width) // 2, y + 26), pic)
+        except Exception:
+            pass
+        draw.rectangle((x, y, x + cell - 1, y + cell - 1), outline=(110, 114, 120))
+        draw.rectangle((x, y, x + 28, y + 20), fill=(40, 40, 40))
+        draw.text((x + 6, y + 4), str(i + 1), fill=(255, 255, 255))
+    buf = io.BytesIO()
+    sheet.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def pick_decor_with_vlm(
+    assets: list[Asset],
+    client: Any,
+    skill: Any,
+    *,
+    limit: int = 8,
+    deadline_s: float = 40.0,
+    deadline: Any = None,
+) -> int:
+    """Какие из кандидатов — фоновый декор шаблона (промпт pick_decor): один лист, один
+    запрос. Выбранным ставится тег `decor` и оценка `decor:<0–10>`; возвращает их число.
+    Без модели декор не выбирается: по устройству файла фирменный узор не отличить от
+    иллюстрации со смыслом."""
+    from presentation_designer.llm.types import Deadline, Image, LlmError, Message
+
+    candidates = decor_candidates(assets, limit=limit)
+    if not candidates or client is None or skill is None:
+        return 0
+    if deadline is not None and deadline.remaining() < 5:
+        log.warning("выбор декора пропущен: бюджет времени VLM исчерпан")
+        return 0
+    lines = "\n".join(f"{i}. {_where(a)}" for i, a in enumerate(candidates, 1))
+    req = skill.request(
+        "analyze.pick_decor",
+        f"На листе {len(candidates)} пронумерованных картинок шаблона, показаны на сером. "
+        f"Где каждая стоит в шаблоне:\n{lines}",
+        schema=DECOR_SCHEMA,
+        stage="analyze",
+    )
+    req.messages[1] = Message(
+        "user", req.messages[1].text, (Image(decor_sheet(candidates), "image/png"),)
+    )
+    req.deadline = deadline or Deadline.after(deadline_s)
+    req.schema_name = "template_decor"
+    import asyncio
+
+    try:
+        outcome = asyncio.run(client.complete(req))
+    except LlmError as e:
+        log.warning("декор шаблона не выбран: %s", e)
+        return 0
+    items = outcome.parsed.get("items", []) if isinstance(outcome.parsed, dict) else []
+    picked = 0
+    for item in items:
+        try:
+            idx, score = int(item.get("n", 0)) - 1, int(item.get("score", 0))
+        except (TypeError, ValueError):
+            continue
+        if not 0 <= idx < len(candidates) or item.get("decor") is not True or score < 5:
+            continue
+        asset = candidates[idx]
+        tags = {DECOR_TAG, f"{DECOR_TAG}:{min(score, 10)}"}
+        if item.get("crop") is True:
+            tags.add(f"{DECOR_TAG}-crop")
+        asset.tags = sorted({t for t in asset.tags if not t.startswith(DECOR_TAG)} | tags)
+        picked += 1
+    return picked
+
+
+DECOR_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "n": {"type": "integer"},
+                    "decor": {"type": "boolean"},
+                    "crop": {"type": "boolean"},
+                    "score": {"type": "integer", "minimum": 0, "maximum": 10},
+                },
+                "required": ["n", "decor", "crop", "score"],
             },
         }
     },

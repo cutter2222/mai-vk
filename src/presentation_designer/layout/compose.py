@@ -98,6 +98,7 @@ from presentation_designer.library import iconset
 from presentation_designer.library.build import build_slide as build_builtin_slide
 from presentation_designer.library.build import slide_backdrop
 from presentation_designer.library.dress import dress_slide, look_for
+from presentation_designer.library.motif import Motif, motifs_for, place_motif
 from presentation_designer.library.skin import Skin, template_skin
 from presentation_designer.library.spec import find_composition
 from presentation_designer.library.tokens import DesignCode
@@ -202,6 +203,8 @@ class _Context:
     # Слайды образцов до сборки и снятая с них кожа (фон и декор) по макету — тоже лениво.
     samples: list[Any] = field(default_factory=list)
     skins: dict[str, Skin] = field(default_factory=dict)
+    # Фоновые мотивы шаблона (`library/motif.py`): None — ещё не искали.
+    motifs: list[Motif] | None = None
     # Текст, не вошедший на текущий слайд даже на минимальном кегле: уходит в заметки.
     spill: list[str] = field(default_factory=list)
     # Оставшиеся карточки однорядной сетки расходятся на всю ширину ряда (`_reflow_cards`);
@@ -2872,6 +2875,36 @@ def _line_count(text: str, family: str | None, size: float, width: int) -> int:
     )
 
 
+# Слайды со своим якорем — обложка, разделы, финал, картинка во весь слайд: мотив шаблона им
+# не нужен (семейства своих композиций и роли образцов).
+MOTIF_SKIP = frozenset(
+    {"title_slide", "section", "closing", "title", "section_divider", "thanks", "qr", "image_full"}
+)
+
+
+def _decor_motif(ctx: _Context, slide: Any, backdrop: float | None) -> bool:
+    """Фоновый мотив шаблона на пустоте слайда (`library/motif.py`); `backdrop` — яркость фона
+    слайда, None — неизвестна, мотив не ставится."""
+    if backdrop is None:
+        return False
+    if ctx.motifs is None:
+        ctx.motifs = motifs_for(ctx.profile, ctx.prs)
+    if not ctx.motifs:
+        return False
+    before = set(slide.shapes._spTree)
+    placed = place_motif(
+        slide,
+        ctx.motifs,
+        width=int(ctx.prs.slide_width),
+        height=int(ctx.prs.slide_height),
+        backdrop=backdrop,
+    )
+    for element in list(slide.shapes._spTree):
+        if element not in before:
+            ctx.fresh_ids(element)
+    return placed
+
+
 def _dress_builtin(ctx: _Context, slide: Any, meta: _BuiltinSlide, plan_slide: JsonDict) -> None:
     """Отделка собственной композиции по заполненному тексту: кегль, высота карточек по
     тексту, значки с иконками, маркеры списка, акценты (`library/dress.py`)."""
@@ -2893,6 +2926,11 @@ def _dress_builtin(ctx: _Context, slide: Any, meta: _BuiltinSlide, plan_slide: J
         blocks=list(plan_slide.get("blocks") or []),
         title_decor=meta.title_decor,
     )
+    # Обложка, разделы и финал держатся на своём якоре; остальным — мотив шаблона на пустоте.
+    if meta.composition.family not in MOTIF_SKIP and _decor_motif(
+        ctx, slide, relative_luminance(meta.backdrop)
+    ):
+        done.append("decor_motif")
     # Новые фигуры отделки не занимают id удалённых объектов (python-pptx заполняет пропуски).
     for element in list(slide.shapes._spTree):
         if element not in before:
@@ -3089,6 +3127,13 @@ def compose_deck(
             _sample_icons(ctx, clone, records[-1], pinfos[pattern_id])
             _legible_sample_text(ctx, clone, records[-1], pinfos[pattern_id])
             _grow_template_text(ctx, clone, records[-1], pinfos[pattern_id])
+            if str(pattern_raw.get("role") or "") not in MOTIF_SKIP:
+                tone = pattern_raw.get("tone") or {}
+                luminance = tone.get("luminance")
+                if luminance is None and tone.get("background") in ("light", "dark"):
+                    luminance = 0.9 if tone.get("background") == "light" else 0.05
+                if _decor_motif(ctx, clone, luminance):
+                    ctx.count("sample_decor_motif")
     timings["clone_fill_ms"] = int((time.perf_counter() - t0) * 1000)
     if not new_slides:
         raise ComposeError("compose_plan_empty", "в плане нет слайдов")

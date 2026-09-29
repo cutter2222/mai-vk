@@ -27,6 +27,7 @@ from presentation_designer.generation.office_logo import logo_hashes
 from presentation_designer.layout import background as slide_background
 from presentation_designer.layout.composed import object_kind
 from presentation_designer.layout.images import image_size
+from presentation_designer.library.motif import NAME as MOTIF_NAME
 from presentation_designer.parsing.template.geometry import NS, ShapeInfo
 from presentation_designer.parsing.template.package import TemplatePackage, open_template
 from presentation_designer.parsing.template.styles import StyleResolver
@@ -249,6 +250,9 @@ def _role(info: ShapeInfo, kind: str, obj: JsonDict, logos: set[str]) -> str:
     if kind == "picture":
         if (obj.get("picture") or {}).get("sha256") in logos:
             return "logo"
+        if info.name == MOTIF_NAME:
+            # Бледный мотив шаблона на пустоте (`library/motif.py`) — оформление, не картинка.
+            return "decoration"
         if info.area >= 0.85:
             return "background"
         return "icon" if info.area < 0.012 and 0.5 <= _aspect(info) <= 2 else "image"

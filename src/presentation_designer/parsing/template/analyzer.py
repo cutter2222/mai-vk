@@ -55,7 +55,7 @@ from presentation_designer.shared.settings import Settings, get_settings
 log = logging.getLogger(__name__)
 
 ANALYZER_NAME = "template_analyzer"
-ANALYZER_VERSION = "0.4.6"  # 28.09.2026: макет для своих композиций — не титульный
+ANALYZER_VERSION = "0.4.7"  # 29.09.2026: фоновый декор шаблона (VLM, тег decor у ресурсов)
 # Версия схемы профиля: пишется в документ и входит в ключ кэша разбора.
 PROFILE_SCHEMA_VERSION = "1.4"
 PREVIEW_DIR = "previews"
@@ -296,6 +296,16 @@ def analyze_template(
             )
         except Exception as e:
             report.vlm["assets_error"] = str(e)[:200]
+        try:
+            report.vlm["decor_picked"] = assets_mod.pick_decor_with_vlm(
+                assets,
+                llm_client,
+                skill,
+                limit=int(params.get("decor_limit", 8)),
+                deadline=budget,
+            )
+        except Exception as e:
+            report.vlm["decor_error"] = str(e)[:200]
         report.vlm["budget_left_s"] = round(max(budget.remaining(), 0.0), 1)
     elif skill is not None:
         report.warnings.append(

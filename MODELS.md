@@ -86,7 +86,7 @@
 | `slide_editor` 0.2.1 | plan | llm | `edit.slide` 0.2.1 | выключено, до 8000 | json_schema |
 | `slot_filler` 0.2.0 | plan | llm | `fill.slots` 0.2.0 | выключено, до 6000 | json_object |
 | `story_planner` 0.3.2 | story | llm | `story.outline` 0.3.2 | выключено, до 14000 | json_schema |
-| `template_analyzer` 0.2.0 | analyze | vlm | `analyze.classify_samples` 0.3.0, `analyze.tag_assets` 0.1.0 | выключено, до 6000 | json_schema |
+| `template_analyzer` 0.3.0 | analyze | vlm | `analyze.classify_samples` 0.3.0, `analyze.tag_assets` 0.1.0, `analyze.pick_decor` 0.1.0 | выключено, до 6000 | json_schema |
 | `variant_planner` 0.5.1 | plan | llm | `plan.slides` 0.5.1 | выключено, до 14000 | json_schema |
 | `visual_picker` 0.1.0 | compose | llm | `photo.queries` 0.1.0 | выключено, до 800 | json_schema |
 | `visual_reviewer` 0.1.0 | audit | vlm | `review.layout` 0.1.0 | выключено, до 600 | json_schema |
