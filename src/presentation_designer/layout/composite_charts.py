@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import io
 import math
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from itertools import pairwise, permutations
@@ -514,6 +515,123 @@ def _ring_chart(
         hole=hole,
         ring_labels=labels,
     )
+
+
+# ---------- кольцо-показатель, прочитанное с картинки ----------
+
+
+def indicator_ring(picture: Any, reading: Any, theme: Theme | None = None) -> Assembled | None:
+    """Кольцо-показатель с картинки («35%» нарисовано в центре самой картинки) — тем же
+    построением, что кольцо из кусков: число встаёт в центр подписью диаграммы и меняется
+    вместе с данными, а не мелкой подписью на дуге. None — не кольцо-показатель или число
+    в центре по пикселям не найдено."""
+    if reading.kind != "doughnut" or len(reading.series) != 1 or len(reading.slice_colors) != 2:
+        return None
+    points = reading.series[0].points
+    if len(points) != 2 or points[0].basis != "label" or points[1].label:
+        return None
+    number = label_number(points[0].label or "")
+    if number is None or number.unit != "%" or not reading.hole or reading.geometry.plot is None:
+        return None
+    try:
+        image = rgba(picture.image.blob)
+    except Exception:  # связанная или битая картинка
+        return None
+    sx, sy = picture.width / image.width, picture.height / image.height
+    if abs(sx - sy) > 0.05 * max(sx, sy):
+        return None  # картинка растянута — на слайде эллипс
+    left, top, right, bottom = reading.geometry.plot
+    inner_px = (right - left) / 2 * reading.hole
+    ink = _center_ink(image, (left + right) / 2, (top + bottom) / 2, 0.9 * inner_px)
+    if ink is None:
+        return None
+    (x0, y0, x1, y1), color = ink
+    # Высота цифр — около 0,72 кегля; по ширине — не шире числа на картинке (цифра около
+    # 0,56 кегля, «%» — 0,9): шрифт темы бывает плотнее тонкого шрифта картинки.
+    text = (points[0].label or "").strip()
+    em = sum(0.9 if ch == "%" else 0.28 if ch in ".,  " else 0.56 for ch in text) or 1.0
+    by_height = (y1 - y0) * sy / EMU_PT / 0.72
+    by_width = (x1 - x0) * sx / EMU_PT / em
+    size_pt = round(min(by_height, by_width) * 2) / 2
+    font = theme.minor_font if theme is not None else None
+    style = TextStyle(size=size_pt, color=color, font=font or None)
+    px, py = int(picture.left), int(picture.top)
+    ring_box = (px + left * sx, py + top * sy, (right - left) * sx, (bottom - top) * sy)
+    cx, cy = ring_box[0] + ring_box[2] / 2, ring_box[1] + ring_box[3] / 2
+    target = (px + (x0 + x1) / 2 * sx, py + (y0 + y1) / 2 * sy)
+    size = ((x1 - x0) * sx * 1.25 + 0.1 * EMU_IN, size_pt * 1.6 * EMU_PT)
+    # Невидимое внешнее кольцо несёт число, как в `_ring_chart`.
+    hole = float(reading.hole)
+    outer = ring_box[2] / 2
+    total = (2 - hole) * outer
+    plot = (cx - total, cy - total, 2 * total, 2 * total)
+    first_angle = float(reading.first_angle or 0.0)
+    r_mid = outer + (1 - hole) * outer / 2
+    angle = math.radians(first_angle + 180)
+    anchor = (cx + r_mid * math.sin(angle), cy - r_mid * math.cos(angle))
+    parts = [ring_box, plot]
+    for x, y in (anchor, target):
+        parts.append((x - size[0] / 2, y - size[1] / 2, size[0], size[1]))
+    decimals = number.decimals
+    value = points[0].value
+    paints = [Paint((Stop(0.0, _rgb_of(c), 1.0),)) for c in reading.slice_colors]
+    return Assembled(
+        kind="doughnut",
+        frame=_pad(_union(parts), 0.04 * EMU_IN),
+        plot=plot,
+        categories=["Значение", "Остаток"],
+        names=["Доля"],
+        values=[[value, round(100 - value, max(decimals, 2))]],
+        paints=paints,
+        number_format="0" + ("." + "0" * decimals if decimals else "") + '"%"',
+        basis="label",
+        pieces=[],
+        first_angle=first_angle,
+        hole=hole / (2 - hole),
+        ring_labels=[Label(target, anchor, size, style)],
+    )
+
+
+def _rgb_of(hex_color: str) -> tuple[int, int, int]:
+    h = hex_color.lstrip("#")
+    return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+
+def _center_ink(
+    image: Image.Image, cx: float, cy: float, radius: float
+) -> tuple[tuple[int, int, int, int], str] | None:
+    """Число в отверстии кольца: рамка тёмных (отличных от фона отверстия) пикселей и их
+    цвет. None — в отверстии пусто."""
+    px: Any = image.load()
+    r = int(radius)
+    cells: list[tuple[int, int, tuple[int, int, int, int]]] = [
+        (x, y, px[x, y])
+        for y in range(max(0, int(cy) - r), min(image.height, int(cy) + r + 1))
+        for x in range(max(0, int(cx) - r), min(image.width, int(cx) + r + 1))
+        if (x - cx) ** 2 + (y - cy) ** 2 <= r * r
+    ]
+    solid = [(x, y, (c[0], c[1], c[2])) for x, y, c in cells if c[3] >= 128]
+    if not solid:
+        return None
+    # Отверстие прозрачное — всё непрозрачное в нём и есть число; иначе фон — частый цвет.
+    clear = len(solid) < 0.5 * len(cells)
+    back = Counter(c for _, _, c in solid).most_common(1)[0][0]
+
+    def far(c: tuple[int, int, int]) -> int:
+        if clear:
+            return 255 * 3 - sum(c)  # чем темнее, тем дальше от сглаженного края
+        return sum(abs(a - b) for a, b in zip(c, back, strict=True))
+
+    ink = solid if clear else [(x, y, c) for x, y, c in solid if far(c) > 120]
+    if len(ink) < 20:
+        return None
+    xs, ys = [x for x, _, _ in ink], [y for _, y, _ in ink]
+    # Цвет — по самым непохожим на фон пикселям: края букв сглажены в сторону фона.
+    ink.sort(key=lambda t: -far(t[2]))
+    core = [c for _, _, c in ink[: max(1, len(ink) // 3)]]
+    mean = tuple(round(sum(c[k] for c in core) / len(core)) for k in range(3))
+    color = "#{:02X}{:02X}{:02X}".format(*mean)
+    return (min(xs), min(ys), max(xs) + 1, max(ys) + 1), color
 
 
 def _pad(box: Box, margin: float) -> Box:
@@ -1503,4 +1621,12 @@ def swap_composites(prs: Any, *, slides: Iterable[Any] | None = None) -> list[Ch
 
 _KIND_NAMES = {"doughnut": "кольцо", "column": "столбцы", "bar": "полосы"}
 
-__all__ = ["Assembled", "build", "describe", "find_charts", "swap", "swap_composites"]
+__all__ = [
+    "Assembled",
+    "build",
+    "describe",
+    "find_charts",
+    "indicator_ring",
+    "swap",
+    "swap_composites",
+]

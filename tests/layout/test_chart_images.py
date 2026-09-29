@@ -379,3 +379,38 @@ def test_original_build_swaps_charts_only_with_readings(
     # Описание колоды видит диаграмму на месте картинки.
     kinds = [o["kind"] for o in swapped.deck["slides"][-1]["objects"]]
     assert "chart" in kinds
+
+
+def test_indicator_ring_keeps_its_number_in_the_center() -> None:
+    """Кольцо-показатель с картинки («35%» нарисовано в отверстии) — кольцо с числом в центре,
+    связанным с данными (как кольцо из кусков), а не мелкие подписи на дугах."""
+    from PIL import Image, ImageDraw
+
+    from presentation_designer.parsing.raster_charts.pixels import load
+    from presentation_designer.parsing.raster_charts.rebuild import read_with_structure
+
+    image = Image.open(io.BytesIO(synth.doughnut([35, 65], [synth.BLUE, synth.PINK], hole=0.6)))
+    ImageDraw.Draw(image).rectangle([250, 210, 350, 260], fill=(20, 30, 60))  # «число»
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    blob = buf.getvalue()
+    structure = ChartStructure(
+        status="chart",
+        kind="doughnut",
+        categories=["Значение", "Остаток"],
+        category_colors=["#0077FF", "#FF3885"],
+        slice_labels=["35%", None],
+    )
+    outcome = read_with_structure(load(blob), structure)
+    assert outcome.reading is not None
+    deck = Presentation()
+    slide = deck.slides.add_slide(deck.slide_layouts[6])
+    picture = slide.shapes.add_picture(io.BytesIO(blob), Inches(1), Inches(1), Inches(4))
+    swaps = swap_pictures(deck, {picture_sha(picture): outcome.reading})
+    assert [s.status for s in swaps] == ["replaced"]
+    (frame,) = [s for s in slide.shapes if s.has_chart]
+    series = list(frame.chart.plots[0].series)
+    assert [s.name for s in series] == ["Доля", "Число в центре"]
+    assert list(series[0].values) == [35.0, 65.0]
+    center = series[1]._element.find(qn("c:dLbls")).find(qn("c:dLbl"))
+    assert center.find(qn("c:numFmt")).get("formatCode") == '0"%"'

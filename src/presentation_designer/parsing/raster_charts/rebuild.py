@@ -120,6 +120,13 @@ def _reconcile_round(image: Image.Image, st: ChartStructure, m: Measured) -> Cha
             points.append(Point(value=round(value, 4), basis="measured"))
         else:
             raise MeasureError(f"сегмент «{names[k]}» не найден")
+    # Проценты подписаны у всех, кроме одной доли (кольцо-показатель «35%»): она — остаток до
+    # 100, а не замер по пикселям (скруглённый конец дуги сдвигает замер на доли процента).
+    measured = [k for k, p in enumerate(points) if p.basis == "measured"]
+    if percent and len(measured) == 1:
+        rest = 100 - sum(p.value for p in points if p.basis == "label")
+        if abs(rest - points[measured[0]].value) <= 1.6:
+            points[measured[0]] = Point(value=round(rest, 4), basis="inferred")
     return ChartReading(
         kind=st.kind or "doughnut",
         categories=names,

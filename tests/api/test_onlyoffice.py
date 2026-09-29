@@ -996,6 +996,37 @@ def test_insert_slide_puts_a_template_slide_after_the_current_one(client, office
     assert store.get(doc_id)["active_key"] is None
 
 
+def test_insert_slide_makes_template_charts_editable(client, office, pptx_bytes, monkeypatch):
+    """Диаграммы вставленного слайда шаблона (картинки-кольца и т. п.) сразу становятся
+    нативными — тем же разбором, что «сделай редактируемой» из чата; итог — в сообщении."""
+    from presentation_designer.generation import office_chart
+
+    store, doc_id = office
+    calls: list[int] = []
+
+    async def fake(data: bytes, slide: int, settings: object) -> tuple[bytes, list[str]]:
+        calls.append(slide)
+        deck = Presentation(io.BytesIO(data))
+        box = deck.slides[slide - 1].shapes.add_textbox(0, 0, 100, 100)
+        box.text_frame.text = "Диаграмма стала нативной"
+        out = io.BytesIO()
+        deck.save(out)
+        return out.getvalue(), ["сделал диаграммы редактируемыми: 3"]
+
+    monkeypatch.setattr(office_chart, "make_editable_all", fake)
+    _saved(store, doc_id, Presentation(io.BytesIO(pptx_bytes)))
+    upload = client.post("/api/templates", files={"file": ("Шаблон.pptx", pptx_bytes)})
+    body = {"revision": 1, "template_id": upload.json()["template_id"], "slide": 3, "after": 1}
+    response = client.post(f"/api/office/documents/{doc_id}/insert-slide", json=body)
+    assert response.status_code == 200, response.text
+    assert calls == [2]
+    assert response.json()["message"] == (
+        "Слайд 3 шаблона вставлен после слайда 1. Сделал диаграммы редактируемыми: 3."
+    )
+    saved = Presentation(io.BytesIO(store.read(doc_id, 2)))
+    assert saved.slides[1].shapes[-1].text_frame.text == "Диаграмма стала нативной"
+
+
 def _group_and_placeholder_deck() -> Presentation:
     from pptx.util import Mm
 

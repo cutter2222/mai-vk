@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
 import re
 from typing import Any
@@ -764,11 +765,18 @@ async def make_editable_all(data: bytes, slide: int, settings: Any) -> tuple[byt
             continue
     readings: dict[str, Any] = {}
     failed = 0
-    for sha, blob in list(blobs.items())[:3]:
-        try:
-            readings[sha] = await read_picture(blob, settings)
-        except ValueError:
+    # Картинки читаются разом: три кольца на слайде — одно ожидание модели, а не три.
+    picked = list(blobs.items())[:3]
+    results = await asyncio.gather(
+        *(read_picture(blob, settings) for _, blob in picked), return_exceptions=True
+    )
+    for (sha, _), result in zip(picked, results, strict=True):
+        if isinstance(result, ValueError):
             failed += 1
+        elif isinstance(result, BaseException):
+            raise result
+        else:
+            readings[sha] = result
     swaps = swap_pictures(prs, readings, slides=[page]) if readings else []
     done = [s for s in swaps if s.status == "replaced"]
     if done:

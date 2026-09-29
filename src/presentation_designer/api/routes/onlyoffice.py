@@ -370,9 +370,12 @@ class InsertSlideRequest(BaseModel):
 
 
 @router.post("/documents/{document_id}/insert-slide")
-def insert_template_slide(document_id: str, body: InsertSlideRequest, orch: Orch) -> dict[str, Any]:
+async def insert_template_slide(
+    document_id: str, body: InsertSlideRequest, orch: Orch
+) -> dict[str, Any]:
     """Готовый слайд шаблона перетащили из панели «Файлы» в редактор: он встаёт копией следом
-    за текущим слайдом, остальные слайды и ручные правки не меняются."""
+    за текущим слайдом, остальные слайды и ручные правки не меняются. Диаграммы слайда,
+    нарисованные картинками или фигурами, сразу становятся редактируемыми."""
     from pptx import Presentation
 
     office = store(orch)
@@ -393,17 +396,42 @@ def insert_template_slide(document_id: str, body: InsertSlideRequest, orch: Orch
         insert_slide(base, body.after, Presentation(str(source_path)), body.slide - 1)
         out = io.BytesIO()
         base.save(out)
-        office.commit_edit(document_id, token, body.revision, out.getvalue())
+        data, charts = await _editable_charts(out.getvalue(), body.after + 1, orch)
+        office.commit_edit(document_id, token, body.revision, data)
         place = "в начало" if body.after == 0 else f"после слайда {body.after}"
         return {
             "document": office.get(document_id),
             "changed": True,
-            "message": f"Слайд {body.slide} шаблона вставлен {place}.",
+            "message": f"Слайд {body.slide} шаблона вставлен {place}." + charts,
         }
     except (MergeError, ValueError) as exc:
         raise ApiError(422, "office_insert_failed", "Слайд не вставлен: " + str(exc)) from exc
     finally:
         office.end_edit(document_id, token)
+
+
+# Сколько вставка слайда ждёт чтения диаграмм моделью; дольше — слайд встаёт как в шаблоне,
+# а сделать диаграммы редактируемыми можно из чата.
+INSERT_CHARTS_S = 60.0
+
+
+async def _editable_charts(data: bytes, slide: int, orch: Orch) -> tuple[bytes, str]:
+    """Диаграммы вставленного слайда шаблона — нативными, как «сделай редактируемой» из чата.
+    Слайд без диаграмм или неудачное чтение слайд не меняют."""
+    from presentation_designer.generation import office_chart
+
+    try:
+        updated, notes = await asyncio.wait_for(
+            office_chart.make_editable_all(data, slide, orch.settings), timeout=INSERT_CHARTS_S
+        )
+    except ValueError:
+        return data, ""
+    except Exception:  # модель недоступна или долго: слайд остаётся как в шаблоне
+        log.warning("диаграммы вставленного слайда не разобраны", exc_info=True)
+        return data, ""
+    if updated == data:
+        return data, ""
+    return updated, " " + " ".join(n[:1].upper() + n[1:] + "." for n in notes)
 
 
 def _document_template(orch: Orch, source: str) -> str | None:

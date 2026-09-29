@@ -83,9 +83,9 @@ def test_pie_with_percent_labels_takes_labels_exactly() -> None:
     )
     r = _read(synth.doughnut(values, [synth.BLUE, synth.PINK, synth.CYAN], hole=0), st)
     points = r.series[0].points
-    assert [p.basis for p in points] == ["label", "label", "measured"]
-    assert points[0].value == 50 and points[1].value == 30
-    assert abs(points[2].value - 20) < 0.6
+    # Одна доля без подписи — остаток до 100 %, а не замер.
+    assert [p.basis for p in points] == ["label", "label", "inferred"]
+    assert [p.value for p in points] == [50, 30, 20]
     assert r.hole == 0.0
     assert r.data_labels and r.label_format == '0"%"'
 

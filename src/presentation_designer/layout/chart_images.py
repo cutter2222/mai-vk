@@ -588,9 +588,15 @@ def add_native_chart(
 
 def swap_picture(slide: Any, picture: Any, reading: ChartReading) -> Any:
     """Картинка → нативная диаграмма на том же месте и в том же порядке наложения."""
+    from presentation_designer.layout.composite_charts import build, indicator_ring
+
     box = (int(picture.left), int(picture.top), int(picture.width), int(picture.height))
-    names = series_names(reading, slide, picture)
-    frame = add_native_chart(slide, box, reading, names)
+    ring = indicator_ring(picture, reading, _slide_theme(slide))
+    if ring is not None:
+        # Кольцо-показатель: число — в центре, как на картинке (см. indicator_ring).
+        frame = build(slide, ring)
+    else:
+        frame = add_native_chart(slide, box, reading, series_names(reading, slide, picture))
     pic_el = picture._element
     rid = pic_el.blipFill.blip.rEmbed if pic_el.blipFill.blip is not None else None
     pic_el.addprevious(frame._element)

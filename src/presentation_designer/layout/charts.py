@@ -47,6 +47,8 @@ _XL_FAMILY: dict[str, set[Any]] = {
         XL_CHART_TYPE.PIE_EXPLODED,
         XL_CHART_TYPE.DOUGHNUT,
         XL_CHART_TYPE.DOUGHNUT_EXPLODED,
+        XL_CHART_TYPE.THREE_D_PIE,
+        XL_CHART_TYPE.THREE_D_PIE_EXPLODED,
     },
     "xy": {
         XL_CHART_TYPE.XY_SCATTER,
@@ -454,7 +456,7 @@ def explicit_booleans(chart: Any) -> None:
 def chart_family_of(chart: Any) -> str:
     try:
         kind = chart.chart_type
-    except (ValueError, AttributeError):
+    except (ValueError, AttributeError, KeyError, NotImplementedError):
         return "unknown"
     for family, members in _XL_FAMILY.items():
         if kind in members:
@@ -491,9 +493,15 @@ def describe_chart(chart: Any) -> dict[str, Any]:
     """Сведения о диаграмме для ComposedDeck."""
     try:
         chart_type = str(chart.chart_type).split(".")[-1].split(" ")[0]
-    except (ValueError, AttributeError):
+    except (ValueError, AttributeError, KeyError, NotImplementedError):
         chart_type = "unknown"
-    series_count = sum(len(list(p.series)) for p in chart.plots)
+    # Диаграмма незнакомого python-pptx вида (поверхность, биржевая) — сведения без рядов,
+    # а не падение сборки.
+    try:
+        plots = list(chart.plots)
+    except (ValueError, AttributeError, KeyError):
+        plots = []
+    series_count = sum(len(list(p.series)) for p in plots)
     has_axis_titles = False
     try:
         has_axis_titles = bool(chart.value_axis.has_title or chart.category_axis.has_title)
@@ -503,7 +511,7 @@ def describe_chart(chart: Any) -> dict[str, Any]:
     # больше неоткуда взять, а аудит подписей без него считал, что подписей категорий нет.
     categories_count = 0
     try:
-        categories_count = max((len(list(p.categories)) for p in chart.plots), default=0)
+        categories_count = max((len(list(p.categories)) for p in plots), default=0)
     except (ValueError, AttributeError, KeyError, TypeError):
         pass
     return {
@@ -512,7 +520,7 @@ def describe_chart(chart: Any) -> dict[str, Any]:
         "categories_count": categories_count,
         "has_legend": bool(chart.has_legend),
         "has_axis_titles": has_axis_titles,
-        "has_data_labels": any(p.has_data_labels for p in chart.plots),
+        "has_data_labels": any(p.has_data_labels for p in plots),
     }
 
 
