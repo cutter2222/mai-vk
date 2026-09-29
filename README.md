@@ -153,6 +153,8 @@ uv run -m presentation_designer.cli compose runs/plan/balanced.json \
 
 ## Документация
 
+Полный путеводитель по документам — [DOCUMENTATION.md](DOCUMENTATION.md). Главное:
+
 | Документ | О чём |
 | --- | --- |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | слои, контракты, очереди, поток данных |
