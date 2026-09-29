@@ -387,8 +387,9 @@ export function useChat(project: Project, session: GenerationSession, generate: 
 
   /**
    * Ещё один тип вёрстки к собранной презентации (29.09.2026): то же задание с добавленным
-   * вариантом. Смысловой план и планы собранных вариантов берутся из кэша, модель считает
-   * только новый; открытая презентация остаётся открытой.
+   * вариантом без принудительной пересборки. Если смысловой план и планы собранных вариантов
+   * есть в кэше, модель считает только новый; задание, собранное с force_regenerate, кэша
+   * не оставило — тогда пересчитываются все (замер: два варианта ≈ 4 мин).
    */
   const addVariant = useCallback(async (variantId: string) => {
     const request = session.result?.request;
@@ -406,7 +407,7 @@ export function useChat(project: Project, session: GenerationSession, generate: 
         settings: { ...request.settings, variants: [...have, variantId as Layout] as [Layout] | [Layout, Layout] | [Layout, Layout, Layout], force_regenerate: false },
       });
       updateProject(id, { job_id: job.job_id });
-      say(`Собираю ${label.toLowerCase()} вариант — остальные остаются как есть. Он появится в списке вариантов вверху.`);
+      say(`Собираю ${label.toLowerCase()} вариант — это пара минут, открытая презентация остаётся открытой. Он появится в списке вариантов вверху.`);
     } catch (e) {
       say(`Не удалось запустить ${label.toLowerCase()} вариант: ${e instanceof ApiError ? e.message : "неизвестная ошибка"}.`);
     }
