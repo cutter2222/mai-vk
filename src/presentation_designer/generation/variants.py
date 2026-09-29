@@ -1940,6 +1940,31 @@ def _item_text(item: JsonDict) -> str:
     return f"{sub}: {text}" if sub and sub != text.strip() else text
 
 
+def balanced_chunks(lengths: list[int], columns: int) -> list[tuple[int, int]]:
+    """Границы пунктов по колонкам: порядок сохраняется, длина текста в колонках близка.
+
+    Каждая колонка берёт пункты, пока её длина ближе к доле оставшегося текста с пунктом,
+    чем без него; в каждой колонке хотя бы один пункт, пока пунктов хватает."""
+    n = len(lengths)
+    columns = max(1, min(columns, n))
+    out: list[tuple[int, int]] = []
+    start = 0
+    for col in range(columns):
+        left_cols = columns - col
+        if left_cols == 1:
+            out.append((start, n))
+            break
+        target = sum(lengths[start:]) / left_cols
+        end, size = start + 1, lengths[start]
+        # Оставить хотя бы по пункту следующим колонкам.
+        while end < n - (left_cols - 1) and abs(size + lengths[end] - target) < abs(size - target):
+            size += lengths[end]
+            end += 1
+        out.append((start, end))
+        start = end
+    return out
+
+
 def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
     """Блоки по слотам паттерна для черновика: заголовок, подача, обязательные слоты."""
     p = draft.pattern
@@ -2133,12 +2158,14 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
             )
             items = []
         elif cards is not None and card_slots_free and p.list_columns:
-            # Колонки списков: пункты делятся между колонками по порядку, а не по одному.
+            # Колонки списков: пункты делятся между колонками по порядку и по длине текста
+            # (29.09.2026), а не поровну по числу: два абзаца слева и две короткие строки
+            # справа давали перекошенный слайд.
             columns = [cards.card(i)["bullets"] for i in range(p.list_columns)]
             columns = [c for c in columns if c.slot_id not in used]
-            per = max(1, math.ceil(len(items) / max(len(columns), 1)))
-            for i, column in enumerate(columns):
-                chunk = items[i * per : (i + 1) * per]
+            chunks = balanced_chunks([len(_item_line(ctx, it)) for it in items], len(columns))
+            for column, (start, end) in zip(columns, chunks, strict=False):
+                chunk = items[start:end]
                 if not chunk:
                     break
                 put(
@@ -2158,7 +2185,7 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
                         ],
                     }
                 )
-            items = items[per * len(columns) :]
+            items = items[chunks[-1][1] :] if chunks else items
         elif cards is not None and card_slots_free:
             unplaced = [
                 it

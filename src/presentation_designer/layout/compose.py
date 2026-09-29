@@ -2389,6 +2389,51 @@ def _sample_icons(ctx: _Context, slide: Any, record: SlideRecord, pinfo: Any) ->
         ):
             continue
         candidates.append(shape)
+    # Значки друг в друге — дубль (29.09.2026): у образца бывает крупная картинка-иконка и
+    # мелкая внутри неё, а значок из плана встаёт в слот поверх картинки образца. Остаётся
+    # один: значок плана важнее картинки образца под ним; из двух картинок образца остаётся
+    # внешняя, видимая, — её и заменит шаг ниже.
+    placed = [s for s in slide.shapes if str(s.name).startswith("Icon ") and s not in candidates]
+
+    def centre_inside(inner: Any, outer: Any) -> bool:
+        cx = int(inner.left) + int(inner.width) // 2
+        cy = int(inner.top) + int(inner.height) // 2
+        return int(outer.left) <= cx <= int(outer.left) + int(outer.width) and int(
+            outer.top
+        ) <= cy <= int(outer.top) + int(outer.height)
+
+    def drop(shape: Any) -> None:
+        removed = remove_shape(slide, shape._element)
+        record.static_object_ids = [i for i in record.static_object_ids if i not in removed]
+        record.removed_object_ids.extend(i for i in removed if i)
+        candidates.remove(shape)
+        ctx.count("sample_icons_deduplicated")
+
+    for shape in list(candidates):
+        if any(centre_inside(icon, shape) for icon in placed):
+            drop(shape)
+    for shape in list(candidates):
+        if shape not in candidates:
+            continue
+        area = int(shape.width) * int(shape.height)
+        outer = next(
+            (
+                other
+                for other in candidates
+                if other is not shape
+                and int(other.width) * int(other.height) > area * 1.5
+                and centre_inside(shape, other)
+            ),
+            None,
+        )
+        if outer is None:
+            continue
+        if _plate_picture(outer):
+            # Однотонная картинка-подложка (голубой квадрат VK Tech): значок в ней — сам
+            # значок, подложка не иконка и не меняется.
+            candidates.remove(outer)
+        else:
+            drop(shape)
     if len(candidates) < 2:
         return
     # Ряд иконок: одна высота, по одной над каждой колонкой текста ниже.
@@ -2480,6 +2525,79 @@ def _inner_picture(shape: Any) -> tuple[Any, tuple[int, int, int, int]] | None:
     return picture, (x, y, int(int(picture.width) * kx), int(int(picture.height) * ky))
 
 
+def _plate_under(slide: Any, shape: Any) -> str | None:
+    """Средний цвет однотонной картинки-подложки под значком (центр значка внутри неё)."""
+    import io
+
+    cx = int(shape.left) + int(shape.width) // 2
+    cy = int(shape.top) + int(shape.height) // 2
+    for other in slide.shapes:
+        if other is shape or getattr(other, "shape_type", None) != 13:
+            continue
+        if not (
+            int(other.left) <= cx <= int(other.left) + int(other.width)
+            and int(other.top) <= cy <= int(other.top) + int(other.height)
+        ):
+            continue
+        if int(other.width) * int(other.height) <= int(shape.width) * int(shape.height):
+            continue
+        if not _plate_picture(other):
+            continue
+        try:
+            from PIL import Image, ImageStat
+
+            with Image.open(io.BytesIO(other.image.blob)) as img:
+                rgba = img.convert("RGBA").resize((48, 48))
+        except Exception:
+            return None
+        mask = rgba.getchannel("A").point(lambda a: 255 if a > 128 else 0)
+        r, g, b = (int(v) for v in ImageStat.Stat(rgba.convert("RGB"), mask).mean)
+        return f"#{r:02X}{g:02X}{b:02X}"
+    return None
+
+
+def _plate_picture(shape: Any) -> bool:
+    """Картинка — однотонная подложка (круг, квадрат), а не рисунок значка: непрозрачные
+    пиксели почти одного цвета и занимают больше половины картинки."""
+    if getattr(shape, "shape_type", None) != 13:
+        return getattr(shape, "shape_type", None) == 6
+    import io
+
+    try:
+        from PIL import Image, ImageStat
+
+        with Image.open(io.BytesIO(shape.image.blob)) as img:
+            rgba = img.convert("RGBA").resize((48, 48))
+    except Exception:
+        return False
+    mask = rgba.getchannel("A").point(lambda a: 255 if a > 128 else 0)
+    coverage = float(ImageStat.Stat(mask).mean[0]) / 255
+    if coverage < 0.5:
+        return False
+    stat = ImageStat.Stat(rgba.convert("RGB"), mask)
+    return max(stat.stddev) < 18
+
+
+def _plate_theme_color(shape: Any, code: DesignCode | None) -> str | None:
+    """Цвет подложки значка, заданный цветом темы (accent1…): акцент шаблона. Явный RGB
+    читает `_shape_color`; здесь — заливка фигуры группы цветом темы."""
+    if code is None:
+        return None
+    for child in shape.shapes:
+        if getattr(child, "shape_type", None) in (6, 13):
+            continue
+        fill = child._element.spPr.find(f"{{{NS_A}}}solidFill")
+        scheme = fill.find(f"{{{NS_A}}}schemeClr") if fill is not None else None
+        if scheme is None:
+            continue
+        name = str(scheme.get("val") or "")
+        if name.startswith("accent") and name[6:].isdigit():
+            return code.accent_at(int(name[6:]) - 1)
+        if name in ("tx1", "dk1", "tx2", "dk2"):
+            return code.text_color
+    return None
+
+
 def _replace_icons(
     ctx: _Context,
     slide: Any,
@@ -2516,13 +2634,16 @@ def _replace_icons(
             # Группа «подложка + картинка»: подложка образца остаётся, заменяется картинка;
             # значок — цветом, читаемым на подложке (белый на синем круге).
             picture, (left, top, width, height) = inner
-            plate = _shape_color(shape)
+            plate = _shape_color(shape) or _plate_theme_color(shape, code)
             color = code.on_accent(plate) if code is not None and plate else on_slide
             target = picture
         else:
-            # Цвет — как у фигур образца; у картинки цвета не прочесть, тогда цвет текста
-            # слайда: белый на тёмном, основной на светлом (акцент рядом с текстом кричал).
-            color = _shape_color(shape) or on_slide
+            # Цвет — как у фигур образца; у картинки цвета не прочесть: на цветной подложке —
+            # читаемый на ней (белый на синем круге), иначе цвет текста слайда.
+            under = _plate_under(slide, shape)
+            color = _shape_color(shape) or (
+                code.on_accent(under) if code is not None and under else on_slide
+            )
             left, top, width, height = (
                 int(v) for v in (shape.left, shape.top, shape.width, shape.height)
             )

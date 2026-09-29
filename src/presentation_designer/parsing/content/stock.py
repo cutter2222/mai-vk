@@ -45,6 +45,17 @@ STOCK_DIR = "stock"
 MIN_WIDTH_PX = 1000
 MAX_WIDTH_PX = 1800  # больше на слайде не видно, а файл растёт
 PAGE_SIZE = 12
+# Рамка фото на слайде — альбомная (≈ 1,2 : 1); портретный снимок в ней обрезается до
+# случайной полосы (рамка и вывеска вместо остановки, 29.09.2026).
+MIN_ASPECT = 1.15
+# Не фотографии и не современные снимки: архивные кадры в сепии, векторные элементы,
+# коллажи, макеты. Сверяется с названием и автором снимка в нижнем регистре.
+NOT_PHOTO = re.compile(
+    r"\b(?:archives?|vintage|retro|historic(?:al)?|antique|old|vector|illustrations?|"
+    r"drawings?|collage|element|mockup|mock-up|template|psd|png|poster|clipart|icon|"
+    r"pattern|lithograph|engraving|painting|sketch|cartoon)\b"
+    r"|\b1[89]\d\d\b|/19\d\d\b"
+)
 
 
 @dataclass
@@ -112,7 +123,7 @@ def find_photo(
         for attempt in _attempts(query):
             for result in _search(attempt, package_dir, client):
                 asset_id = _asset_id(result)
-                if asset_id in exclude:
+                if asset_id in exclude or not _usable(result):
                     continue
                 photo = _download(result, asset_id, attempt, package_dir, client)
                 if photo is not None:
@@ -129,14 +140,26 @@ def _clean(query: str) -> str:
 
 
 def _attempts(query: str) -> list[str]:
-    """Запрос целиком, затем короче: у фотобанков узкие запросы часто пустые."""
+    """Запрос целиком, затем короче: у фотобанков узкие запросы часто пустые.
+
+    Короче — не меньше двух слов (29.09.2026): одно слово («shelter», «frame») находило
+    хижины и рамки вместо остановки; без фото слайд лучше, чем со случайным. Сначала два
+    последних слова — у английской фразы это обычно сам предмет («bus shelter»)."""
     words = query.split()
     out = [query]
     if len(words) > 2:
+        out.append(" ".join(words[-2:]))
         out.append(" ".join(words[:2]))
-    if len(words) > 1:
-        out.append(words[-1])
     return list(dict.fromkeys(out))
+
+
+def _usable(result: JsonDict) -> bool:
+    """Современная альбомная фотография: не архив, не вектор, не портрет."""
+    width, height = int(result.get("width") or 0), int(result.get("height") or 0)
+    if not width or not height or width < height * MIN_ASPECT:
+        return False
+    text = f"{result.get('title') or ''} {result.get('creator') or ''}".lower()
+    return NOT_PHOTO.search(text) is None
 
 
 def _search(query: str, package_dir: pathlib.Path, client: Any) -> list[JsonDict]:
