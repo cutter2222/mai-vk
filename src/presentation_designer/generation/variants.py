@@ -2316,14 +2316,24 @@ def fill_blocks(ctx: Context, draft: Draft) -> list[JsonDict]:
         elif slot.kind in ("label", "title"):
             # Дополнительный заголовок или подпись: раздел, иначе очередной пункт/сообщение.
             spare_items = [it["text"] for it in draft.items if not _item_placed(blocks, it)]
+            # У обложки и финала подпись — их сообщение (подзаголовок, призыв), если оно
+            # помещается: название первого раздела («Проблема») под темой презентации
+            # читалось как подзаголовок (29.09.2026).
+            lead = draft.message if draft.kind in ("title", "final") and draft.message else ""
+            if lead and not _fits_slot(ctx, slot, lead):
+                first = _sentences(lead)[:1]
+                lead = first[0] if first and _fits_slot(ctx, slot, first[0]) else ""
             put(
                 _text_block(
                     slot,
-                    spare_items[0]
-                    if spare_items
-                    else cap.substitute_facts(section.statement, ctx.facts)
-                    if section
-                    else draft.message or draft.title,
+                    lead
+                    or (
+                        spare_items[0]
+                        if spare_items
+                        else cap.substitute_facts(section.statement, ctx.facts)
+                        if section
+                        else draft.message or draft.title
+                    ),
                 )
             )
         elif slot.kind == "caption":

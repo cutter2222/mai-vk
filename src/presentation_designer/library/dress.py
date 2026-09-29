@@ -227,10 +227,19 @@ def _keep_in_column(frame: Frame, composition: Composition, refs: dict[str, str]
                     for column in shape.table.columns:
                         column.width = int(int(column.width) * k)
                 changed = True
-    # Нижний предел — верх объектов шаблона в нижней пятой части слайда (логотип, подпись).
+    # Нижний предел — верх объектов шаблона в нижней пятой части слайда (логотип, подпись):
+    # на самом слайде и в его макете и мастере (логотип VK Tech лежит в макете). Заполнители
+    # макета не рисуются, пока их нет на слайде, — они не в счёт.
+    layout = frame.slide.slide_layout
+    inherited = [
+        s
+        for part in (layout, layout.slide_master)
+        for s in part.shapes
+        if not getattr(s, "is_placeholder", False)
+    ]
     footers = [
         s
-        for s in frame.slide.shapes
+        for s in [*frame.slide.shapes, *inherited]
         if str(s.shape_id) not in own
         and int(s.top) > int(frame.height * 0.8)
         and int(s.height) < int(frame.height * 0.15)
