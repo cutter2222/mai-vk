@@ -38,7 +38,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from lxml import etree
 from pptx import Presentation
+from pptx.dml.color import RGBColor
+from pptx.enum.dml import MSO_COLOR_TYPE
 from pptx.util import Pt
 
 from presentation_designer.generation import reflow
@@ -2344,7 +2347,7 @@ def _even_indents(ctx: _Context, slide: Any, record: SlideRecord) -> None:
 
 
 # Иконка-декор образца: доля ширины слайда и допуск квадратности.
-ICON_SIDE = (0.025, 0.11)
+ICON_SIDE = (0.015, 0.11)
 ICON_ASPECT = (0.6, 1.6)
 
 
@@ -2409,30 +2412,181 @@ def _sample_icons(ctx: _Context, slide: Any, record: SlideRecord, pinfo: Any) ->
             pairs.append((shape, nearest[2]))
         if len(pairs) != len(row) or len({p[1] for p in pairs}) != len(pairs):
             continue
-        names = iconset.pick_icons([text for _, text in pairs])
-        if not all(names):
+        _replace_icons(ctx, slide, record, pairs, fallback=False)
+    # Столбец иконок слева от пунктов списка (29.09.2026): у образца один и тот же значок
+    # повторён у каждого пункта — по смыслу пункта ставится свой. Разные иконки образца
+    # (дизайнер подобрал их к своим карточкам) остаются на месте.
+    columns: dict[int, list[Any]] = {}
+    for shape in candidates:
+        columns.setdefault(round(int(shape.left) / ctx.slide_w * 50), []).append(shape)
+    for column in columns.values():
+        if len(column) < 2 or len({_icon_signature(s) for s in column}) != 1:
             continue
-        for (shape, _text), name in zip(pairs, names, strict=True):
-            color = _shape_color(shape) or (
-                ctx.design_code.accent if ctx.design_code is not None else "#0077FF"
+        column.sort(key=lambda s: int(s.top))
+        pairs = []
+        for shape in column:
+            cy = (int(shape.top) + int(shape.height) / 2) / ctx.slide_h
+            right = (int(shape.left) + int(shape.width)) / ctx.slide_w
+            beside = [t for t in texts if t[0] > right and abs(t[1] - cy) < 0.08]
+            if not beside:
+                break
+            pairs.append((shape, min(beside, key=lambda t: abs(t[1] - cy))[2]))
+        if len(pairs) != len(column) or len({p[1] for p in pairs}) != len(pairs):
+            continue
+        _replace_icons(ctx, slide, record, pairs, fallback=True)
+
+
+def _icon_signature(shape: Any) -> str:
+    """Отпечаток иконки образца: хеш картинки; у группы — отпечатки её частей (одна и та
+    же картинка в двух группах идёт по разным ссылкам, поэтому XML сравнивать нельзя)."""
+    kind = getattr(shape, "shape_type", None)
+    if kind == 13:
+        try:
+            return "pic:" + str(shape.image.sha1)
+        except (AttributeError, ValueError):
+            return "pic:" + str(shape.shape_id)
+    if kind == 6:
+        # Группа сравнивается по картинкам и составу частей: подложки одного значка у
+        # образца бывают с обводкой и без, а значок в них тот же.
+        parts = [
+            _icon_signature(c) if getattr(c, "shape_type", None) in (6, 13) else "sp"
+            for c in shape.shapes
+        ]
+        return "grp:" + "|".join(parts)
+    xml = etree.tostring(shape._element, encoding="unicode")
+    xml = re.sub(r'\b(id|name|r:embed)="[^"]*"', "", xml)
+    return "sp:" + re.sub(r"<a:off [^>]*/>", "", xml)
+
+
+def _inner_picture(shape: Any) -> tuple[Any, tuple[int, int, int, int]] | None:
+    """Картинка внутри группы-значка (круг + картинка) и её положение на слайде."""
+    if getattr(shape, "shape_type", None) != 6:
+        return None
+    pictures = [c for c in shape.shapes if getattr(c, "shape_type", None) == 13]
+    if len(pictures) != 1:
+        return None
+    picture = pictures[0]
+    xfrm = shape._element.grpSpPr.find(f"{{{NS_A}}}xfrm")
+    if xfrm is None:
+        return None
+    off, ext = xfrm.find(f"{{{NS_A}}}off"), xfrm.find(f"{{{NS_A}}}ext")
+    ch_off, ch_ext = xfrm.find(f"{{{NS_A}}}chOff"), xfrm.find(f"{{{NS_A}}}chExt")
+    if None in (off, ext, ch_off, ch_ext):
+        return None
+    kx = int(ext.get("cx")) / max(int(ch_ext.get("cx")), 1)
+    ky = int(ext.get("cy")) / max(int(ch_ext.get("cy")), 1)
+    x = int(off.get("x")) + int((int(picture.left) - int(ch_off.get("x"))) * kx)
+    y = int(off.get("y")) + int((int(picture.top) - int(ch_off.get("y"))) * ky)
+    return picture, (x, y, int(int(picture.width) * kx), int(int(picture.height) * ky))
+
+
+def _replace_icons(
+    ctx: _Context,
+    slide: Any,
+    record: SlideRecord,
+    pairs: list[tuple[Any, str]],
+    *,
+    fallback: bool,
+) -> None:
+    """Иконки образца → иконки набора по смыслу текста. Без `fallback` замена только если
+    для каждого текста нашлась иконка по словарю, иначе остаются иконки образца (ряд над
+    колонками — обычно разные значки, подобранные дизайнером)."""
+    names = iconset.pick_icons([text for _, text in pairs])
+    # Столбец одинаковых значков у пунктов: пункт без иконки по словарю — по заголовку
+    # пункта до двоеточия, потом нейтральная галочка: один одинаковый значок у всех пунктов
+    # хуже, чем нейтральный у одного.
+    for position, (_shape, text) in enumerate(pairs):
+        if not fallback:
+            break
+        if names[position] is None:
+            head = text.split(":")[0] if ":" in text else text
+            names[position] = iconset.find_icon(head, exclude=set(filter(None, names)))
+        if names[position] is None:
+            names[position] = next(
+                (n for n in ("check", "circle-check", "chevron-right") if iconset.icon_nodes(n)),
+                None,
             )
+    if not all(names):
+        return
+    code = ctx.design_code
+    on_slide = "#FFFFFF" if ctx.slide_dark else (code.text_color if code is not None else "#111111")
+    for (shape, _text), name in zip(pairs, names, strict=True):
+        inner = _inner_picture(shape)
+        if inner is not None:
+            # Группа «подложка + картинка»: подложка образца остаётся, заменяется картинка;
+            # значок — цветом, читаемым на подложке (белый на синем круге).
+            picture, (left, top, width, height) = inner
+            plate = _shape_color(shape)
+            color = code.on_accent(plate) if code is not None and plate else on_slide
+            target = picture
+        else:
+            # Цвет — как у фигур образца; у картинки цвета не прочесть, тогда цвет текста
+            # слайда: белый на тёмном, основной на светлом (акцент рядом с текстом кричал).
+            color = _shape_color(shape) or on_slide
             left, top, width, height = (
                 int(v) for v in (shape.left, shape.top, shape.width, shape.height)
             )
-            side = min(width, height)
-            removed = remove_shape(slide, shape._element)
-            icon = iconset.add_icon(
-                slide,
-                str(name),
-                left + (width - side) // 2,
-                top + (height - side) // 2,
-                side,
-                color,
-            )
-            ctx.fresh_ids(icon._element)
-            record.static_object_ids = [i for i in record.static_object_ids if i not in removed]
-            record.removed_object_ids.extend(i for i in removed if i)
-            ctx.count("sample_icons_replaced")
+            target = shape
+        side = min(width, height)
+        removed = remove_shape(slide, target._element)
+        icon = iconset.add_icon(
+            slide,
+            str(name),
+            left + (width - side) // 2,
+            top + (height - side) // 2,
+            side,
+            color,
+        )
+        ctx.fresh_ids(icon._element)
+        record.static_object_ids = [i for i in record.static_object_ids if i not in removed]
+        record.removed_object_ids.extend(i for i in removed if i)
+        ctx.count("sample_icons_replaced")
+
+
+def _legible_sample_text(ctx: _Context, slide: Any, record: SlideRecord, pinfo: Any) -> None:
+    """Абзацы в слотах образца — цветом текста, а не акцентом (29.09.2026).
+
+    Образец красит свою строку-рыбу акцентом (синий, красный) — для короткой подписи это
+    приём, а наш абзац в шесть строк таким цветом читался как ошибка. Длинный текст в
+    слотах body/bullets/caption получает цвет текста слайда: белый на тёмном фоне, основной
+    на светлом. Заголовки, числа, подписи и короткие строки не трогаются."""
+    if ctx.preserve:
+        return
+    if ctx.design_code is None:
+        ctx.design_code = DesignCode.from_profile(ctx.profile)
+    code = ctx.design_code
+    accents = {c.lstrip("#").upper() for c in (*code.accents, *code.light_accents)}
+    target = "#FFFFFF" if ctx.slide_dark else code.text_color
+    top_level = {str(s.shape_id): s for s in slide.shapes}
+    for fill in record.fills:
+        slot = pinfo.slots.get(fill.slot_id)
+        shape = top_level.get(str(fill.element_id))
+        if slot is None or shape is None or fill.content_source != "plan" or not fill.text:
+            continue
+        if slot.kind not in ("body", "bullets", "caption") or len(str(fill.text)) < 60:
+            continue
+        if not getattr(shape, "has_text_frame", False):
+            continue
+        changed = False
+        for paragraph in shape.text_frame.paragraphs:
+            for run in paragraph.runs:
+                color = run.font.color
+                if color is None or color.type != MSO_COLOR_TYPE.RGB:
+                    continue  # цвет темы или наследуемый — не трогаем
+                value = str(color.rgb).upper()
+                if value in accents or _saturated(value):
+                    run.font.color.rgb = RGBColor.from_string(target.lstrip("#"))
+                    changed = True
+        if changed:
+            ctx.count("sample_text_recolored")
+
+
+def _saturated(hex_color: str) -> bool:
+    import colorsys
+
+    r, g, b = (int(hex_color[i : i + 2], 16) / 255 for i in (0, 2, 4))
+    _h, s, v = colorsys.rgb_to_hsv(r, g, b)
+    return s > 0.55 and v > 0.35
 
 
 def _shape_color(shape: Any) -> str | None:
@@ -2806,6 +2960,7 @@ def compose_deck(
         _even_indents(ctx, clone, records[-1])
         if source.get("kind") == "sample_slide":
             _sample_icons(ctx, clone, records[-1], pinfos[pattern_id])
+            _legible_sample_text(ctx, clone, records[-1], pinfos[pattern_id])
             _grow_template_text(ctx, clone, records[-1], pinfos[pattern_id])
     timings["clone_fill_ms"] = int((time.perf_counter() - t0) * 1000)
     if not new_slides:
